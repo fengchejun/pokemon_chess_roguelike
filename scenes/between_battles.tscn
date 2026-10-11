@@ -1,0 +1,136 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/between_battles.gd" id="1"]
+
+[node name="BetweenBattles" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.082, 0.129, 0.153, 1)
+
+[node name="Layout" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 64
+theme_override_constants/margin_top = 42
+theme_override_constants/margin_right = 64
+theme_override_constants/margin_bottom = 42
+
+[node name="Column" type="VBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Layout/Column"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "战后整备"
+
+[node name="Summary" type="Label" parent="Layout/Column"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+autowrap_mode = 3
+
+[node name="PendingTitle" type="Label" parent="Layout/Column"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+
+[node name="PendingRow" type="HBoxContainer" parent="Layout/Column"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="CardTitle" type="Label" parent="Layout/Column"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "环境卡奖励"
+
+[node name="CardRow" type="HBoxContainer" parent="Layout/Column"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="DeckLabel" type="Label" parent="Layout/Column"]
+layout_mode = 2
+autowrap_mode = 3
+text = "本局环境卡组"
+
+[node name="NextRegionLabel" type="Label" parent="Layout/Column"]
+layout_mode = 2
+autowrap_mode = 3
+text = "下一场区域"
+
+[node name="PendingLabel" type="Label" parent="Layout/Column/PendingRow"]
+custom_minimum_size = Vector2(260, 44)
+layout_mode = 2
+vertical_alignment = 1
+
+[node name="ReplaceChoice" type="OptionButton" parent="Layout/Column/PendingRow"]
+custom_minimum_size = Vector2(220, 44)
+layout_mode = 2
+
+[node name="ReplaceButton" type="Button" parent="Layout/Column/PendingRow"]
+custom_minimum_size = Vector2(150, 44)
+layout_mode = 2
+text = "替换所选怪物"
+
+[node name="DeclineButton" type="Button" parent="Layout/Column/PendingRow"]
+custom_minimum_size = Vector2(150, 44)
+layout_mode = 2
+text = "放弃这只怪物"
+
+[node name="RosterTitle" type="Label" parent="Layout/Column"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "本局携带队伍"
+
+[node name="RosterGrid" type="GridContainer" parent="Layout/Column"]
+layout_mode = 2
+columns = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 8
+
+[node name="Hint" type="Label" parent="Layout/Column"]
+layout_mode = 2
+autowrap_mode = 3
+text = "点击怪物切换出战；下一场必须恰好选三只。每场战斗的生命值会重置。"
+
+[node name="Status" type="Label" parent="Layout/Column"]
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="Spacer" type="Control" parent="Layout/Column"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BottomRow" type="HBoxContainer" parent="Layout/Column"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="NextButton" type="Button" parent="Layout/Column/BottomRow"]
+custom_minimum_size = Vector2(220, 50)
+layout_mode = 2
+text = "进入下一场战斗"
+
+[node name="MenuButton" type="Button" parent="Layout/Column/BottomRow"]
+custom_minimum_size = Vector2(160, 50)
+layout_mode = 2
+text = "返回菜单"
+
+[connection signal="pressed" from="Layout/Column/PendingRow/ReplaceButton" to="." method="_on_replace_pressed"]
+[connection signal="pressed" from="Layout/Column/PendingRow/DeclineButton" to="." method="_on_decline_pressed"]
+[connection signal="pressed" from="Layout/Column/BottomRow/NextButton" to="." method="_on_next_pressed"]
+[connection signal="pressed" from="Layout/Column/BottomRow/MenuButton" to="." method="_on_menu_pressed"]
