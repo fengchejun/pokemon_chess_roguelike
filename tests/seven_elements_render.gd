@@ -30,6 +30,11 @@ func _run() -> void:
 	var state: BattleState = battle.get("state")
 	state.terrain.set_vine(Vector2i(3, 3))
 	state.terrain.set_ice(Vector2i(4, 3))
+	state.terrain.objects.erase(Vector2i(5, 3))
+	var slider: CombatUnit = state.unit_by_id("ally_ice")
+	slider.cell = Vector2i(4, 3)
+	slider.last_move_direction = Vector2i.RIGHT
+	battle.set("selected_unit_id", slider.unit_id)
 	battle.set("hover_cell", Vector2i(4, 3))
 	battle.call("_refresh")
 	await RenderingServer.frame_post_draw

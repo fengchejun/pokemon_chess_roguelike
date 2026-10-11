@@ -240,7 +240,7 @@ func _refresh() -> void:
 	else:
 		var movement_blocked: bool = state.is_rooted_now(selected) or selected.frozen or selected.frozen_skip_round == state.turn_number or selected.paralyzed_skip_round == state.turn_number
 		var move_limit: int = 0 if movement_blocked else state.effective_move_range(selected)
-		selected_label.text = "%s · HP %d/%d\n移动 %s（最远 %d） · %s\n%s" % [selected.display_name, selected.hp, selected.max_hp, "受控" if movement_blocked else "可用" if selected.move_points > 0 else "已用", move_limit, _unit_status_text(selected), "捕获 %d/%d" % [selected.capture_points, CombatConfig.CAPTURE_ATTEMPTS_PER_TURN] if selected.unit_id == "trainer" else "技能点 %d" % selected.skill_points]
+		selected_label.text = "%s · HP %d/%d\n移动 %s（最远 %d） · %s\n%s%s" % [selected.display_name, selected.hp, selected.max_hp, "受控" if movement_blocked else "可用" if selected.move_points > 0 else "已用", move_limit, _unit_status_text(selected), "捕获 %d/%d" % [selected.capture_points, CombatConfig.CAPTURE_ATTEMPTS_PER_TURN] if selected.unit_id == "trainer" else "技能点 %d" % selected.skill_points, _ice_slide_text(selected)]
 	_refresh_skill_buttons(selected)
 	var player_lines: Array[String] = []
 	var enemy_lines: Array[String] = []
@@ -332,6 +332,17 @@ func _unit_status_text(unit: CombatUnit) -> String:
 	return "、".join(labels) if not labels.is_empty() else "正常"
 
 
+func _ice_slide_text(unit: CombatUnit) -> String:
+	if unit == null or unit.last_move_direction == Vector2i.ZERO or unit.flying or not state.terrain.is_ice(unit.cell):
+		return ""
+	var target: Vector2i = state.ice_slide_target(unit, unit.cell, unit.last_move_direction)
+	var arrow: String = "→" if unit.last_move_direction == Vector2i.RIGHT else "←" if unit.last_move_direction == Vector2i.LEFT else "↓" if unit.last_move_direction == Vector2i.DOWN else "↑"
+	if target == unit.cell:
+		return " · 冰面滑行 %s 受阻" % arrow
+	var danger: String = "（致死）" if state.terrain.is_collapsed(target) or state.terrain.is_deep_water(target) and unit.element_type != "water" else ""
+	return " · 冰面滑行 %s 至 (%d,%d)%s" % [arrow, target.x + 1, target.y + 1, danger]
+
+
 func _refresh_skill_buttons(selected: CombatUnit) -> void:
 	for child in skill_buttons.get_children():
 		skill_buttons.remove_child(child)
@@ -408,7 +419,7 @@ func _refresh_terrain_detail() -> void:
 			details.append("藤蔓：可燃、可站立；进入或在脚下生成时，下一次行动不能主动移动，仍可施法；覆盖浅水时也可燃烧。")
 		"ice":
 			var underlay: Dictionary = terrain.ice_underlay.get(cell, {})
-			details.append("冰面：本场持续，可行走；火命中会融化并露出原地形%s。" % ("（%s）" % str(underlay.get("ground", "地面")) if not underlay.is_empty() else ""))
+			details.append("冰面：整轮末按本轮最后位移方向滑行一格，受阻停下；飞行单位不滑行。火命中会融化并露出原地形%s。" % ("（%s）" % str(underlay.get("ground", "地面")) if not underlay.is_empty() else ""))
 		"fragile":
 			details.append("易碎地块：可站立；被造岩作用时塌为深坑，地面单位立即坠亡；造雨可将其变为浅水。")
 		"collapsed":
@@ -469,7 +480,7 @@ func _refresh_enemy_detail() -> void:
 		var spent: bool = int(skill.get("uses_per_battle", 0)) > 0 and int(enemy.battle_skill_uses.get(skill_id, 0)) >= int(skill["uses_per_battle"])
 		skills.append("%s%s%s：%s" % [skill["name"], " ★" if enemy.upgraded_skill_id == skill_id else "", "（本场已用）" if spent else "", skill["description"]])
 	var current_move_limit: int = 0 if enemy.eligible_round > state.turn_number or state.is_rooted_now(enemy) or enemy.frozen or enemy.frozen_skip_round == state.turn_number or enemy.paralyzed_skip_round == state.turn_number else state.effective_move_range(enemy)
-	enemy_detail_label.text = "敌人详情：%s（%s）· 格 (%d, %d)\n生命 %d/%d · 本轮移动%s · 移动上限 %d 格 · 技能点 %d\n状态：%s\n技能：\n%s" % [enemy.display_name, element_names.get(enemy.element_type, enemy.element_type), enemy.cell.x + 1, enemy.cell.y + 1, enemy.hp, enemy.max_hp, "可用" if enemy.move_points > 0 else "已用", current_move_limit, enemy.skill_points, "；".join(statuses) if not statuses.is_empty() else "正常", "\n".join(skills)]
+	enemy_detail_label.text = "敌人详情：%s（%s）· 格 (%d, %d)\n生命 %d/%d · 本轮移动%s · 移动上限 %d 格 · 技能点 %d\n状态：%s%s\n技能：\n%s" % [enemy.display_name, element_names.get(enemy.element_type, enemy.element_type), enemy.cell.x + 1, enemy.cell.y + 1, enemy.hp, enemy.max_hp, "可用" if enemy.move_points > 0 else "已用", current_move_limit, enemy.skill_points, "；".join(statuses) if not statuses.is_empty() else "正常", _ice_slide_text(enemy), "\n".join(skills)]
 
 
 func _refresh_preview() -> void:

@@ -227,6 +227,12 @@ func _draw_unit(unit: CombatUnit) -> void:
 	var font_size := 20
 	var text_size: Vector2 = font.get_string_size(unit.glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	draw_string(font, center + Vector2(-text_size.x / 2.0, font.get_ascent(font_size) / 3.0), unit.glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
+	if not unit.flying and unit.last_move_direction != Vector2i.ZERO and battle_state.terrain.is_ice(unit.cell):
+		var arrow: String = "→" if unit.last_move_direction == Vector2i.RIGHT else "←" if unit.last_move_direction == Vector2i.LEFT else "↓" if unit.last_move_direction == Vector2i.DOWN else "↑"
+		var landing: Vector2i = battle_state.ice_slide_target(unit, unit.cell, unit.last_move_direction)
+		draw_string(font, cell_rect.position + Vector2(cell_rect.size.x - 20.0, cell_rect.size.y - 5.0), arrow, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(1.0, 0.92, 0.34))
+		if landing != unit.cell:
+			draw_rect(get_cell_rect(landing).grow(-7.0), Color(1.0, 0.92, 0.34, 0.7), false, 2.0)
 	var bar_rect := Rect2(cell_rect.position + Vector2(8, cell_rect.size.y - 10), Vector2(cell_rect.size.x - 16, 5))
 	draw_rect(bar_rect, Color("#29302c"))
 	var health_ratio: float = clampf(float(unit.hp) / float(unit.max_hp), 0.0, 1.0)

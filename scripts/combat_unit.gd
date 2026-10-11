@@ -10,6 +10,7 @@ var max_hp: int
 var hp: int
 var move_points: int
 var base_move: int
+var last_move_direction: Vector2i = Vector2i.ZERO
 var skill_points: int
 var capture_points: int = 0
 var burned: bool = false

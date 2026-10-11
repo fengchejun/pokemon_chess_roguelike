@@ -192,6 +192,7 @@ func undo_last_move() -> bool:
 	unit.burn_damage_from_round = snapshot["burn_damage_from_round"]
 	unit.rooted_skip_round = snapshot["rooted_skip_round"]
 	unit.move_points = snapshot["move_points"]
+	unit.last_move_direction = snapshot["last_move_direction"]
 	phase = snapshot["phase"]
 	outcome = snapshot["outcome"]
 	events.resize(snapshot["event_count"])
@@ -215,10 +216,11 @@ func try_player_move(unit_id: String, target: Vector2i) -> bool:
 		_log("无法移动：终点不能被占用，路线不能穿过敌人或禁入地形，也不能超出当前移动上限；每回合只能移动一次。")
 		return false
 	if not movement_undo_locked:
-		movement_history.append({"unit_id": unit.unit_id, "cell": unit.cell, "hp": unit.hp, "burned": unit.burned, "burn_damage_from_round": unit.burn_damage_from_round, "rooted_skip_round": unit.rooted_skip_round, "move_points": unit.move_points, "phase": phase, "outcome": outcome, "event_count": events.size()})
+		movement_history.append({"unit_id": unit.unit_id, "cell": unit.cell, "hp": unit.hp, "burned": unit.burned, "burn_damage_from_round": unit.burn_damage_from_round, "rooted_skip_round": unit.rooted_skip_round, "move_points": unit.move_points, "last_move_direction": unit.last_move_direction, "phase": phase, "outcome": outcome, "event_count": events.size()})
 	unit.move_points = 0
 	_log("%s 开始一次性移动，路线长度 %d 格。" % [unit.display_name, path.size()])
 	for cell in path:
+		unit.last_move_direction = cell - unit.cell
 		unit.cell = cell
 		if not unit.flying or cell == path.back():
 			_apply_entry_effects(unit)
@@ -382,6 +384,8 @@ func _resolve_push_direction(unit: CombatUnit, victim: CombatUnit, direction: Ve
 	var obstacle_cell: Vector2i = result["collision_cell"]
 	var old_cell: Vector2i = victim.cell
 	victim.cell = result["destination"]
+	if victim.cell != old_cell:
+		victim.last_move_direction = Vector2i(signi(victim.cell.x - old_cell.x), signi(victim.cell.y - old_cell.y))
 	_log("%s 对 %s 使用%s：%s。" % [unit.display_name, victim.display_name, source_name, result["description"]])
 	_damage_reward_at(old_cell)
 	if int(result["target_damage"]) > 0:
@@ -515,6 +519,7 @@ func resolve_flame_charge(caster: CombatUnit, target: Vector2i) -> void:
 			_damage_reward_at(middle)
 			_apply_damage(passed_unit, 1, "强化闪焰冲锋", true)
 	caster.cell = target
+	caster.last_move_direction = direction
 	_log("%s 闪焰冲锋至 (%d, %d)。" % [caster.display_name, target.x + 1, target.y + 1])
 	_apply_entry_effects(caster)
 
@@ -585,8 +590,33 @@ func _start_round() -> void:
 		_log(notice)
 
 
+func ice_slide_target(unit: CombatUnit, cell: Vector2i, direction: Vector2i) -> Vector2i:
+	if unit == null or not unit.is_alive() or unit.flying or direction == Vector2i.ZERO or not terrain.is_ice(cell):
+		return cell
+	var target: Vector2i = cell + direction
+	if not GridSpec.is_inside(target) or unit_at(target) != null or terrain.blocks_move(target) or is_nest_at(target):
+		return cell
+	return target
+
+
+func _settle_ice_slides() -> void:
+	for unit in units:
+		if outcome != "":
+			break
+		var destination: Vector2i = ice_slide_target(unit, unit.cell, unit.last_move_direction)
+		if destination != unit.cell:
+			unit.cell = destination
+			_log("%s 在冰面上沿最后位移方向滑至 (%d, %d)。" % [unit.display_name, destination.x + 1, destination.y + 1])
+			_apply_entry_effects(unit)
+	for unit in units:
+		unit.last_move_direction = Vector2i.ZERO
+
+
 func _settle_round_and_continue() -> void:
 	phase = "round_settlement"
+	_settle_ice_slides()
+	if outcome != "":
+		return
 	begin_environment_resolution()
 	EnvironmentResolver.settle_round(self)
 	end_environment_resolution()
@@ -631,6 +661,7 @@ func enemy_move_path(enemy: CombatUnit, path: Array[Vector2i]) -> bool:
 		previous = cell
 	enemy.move_points = 0
 	for cell in path:
+		enemy.last_move_direction = cell - enemy.cell
 		enemy.cell = cell
 		if not enemy.flying or cell == path.back():
 			_apply_entry_effects(enemy)
