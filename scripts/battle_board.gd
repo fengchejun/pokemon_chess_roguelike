@@ -23,6 +23,8 @@ const ENEMY_MOVE_RANGE_FILL := Color("#ef6476", 0.16)
 const WATER_COLOR := Color("#3d8fb3", 0.72)
 const DEEP_WATER_COLOR := Color("#17446e", 0.95)
 const GRASS_COLOR := Color("#5a9a54", 0.80)
+const VINE_COLOR := Color("#3b8647", 0.90)
+const ICE_COLOR := Color("#95d9e9", 0.84)
 const NEST_COLOR := Color("#8d477e", 0.95)
 const REWARD_COLOR := Color("#f6d76c", 0.95)
 const ROCK_COLOR := Color("#636e70", 0.9)
@@ -70,6 +72,10 @@ func _draw() -> void:
 				_draw_highlight(cell, WATER_COLOR)
 			elif battle_state.terrain.ground_at(cell) == "grass":
 				_draw_highlight(cell, GRASS_COLOR)
+			elif battle_state.terrain.is_vine(cell):
+				_draw_highlight(cell, VINE_COLOR)
+			elif battle_state.terrain.is_ice(cell):
+				_draw_highlight(cell, ICE_COLOR)
 			elif battle_state.terrain.is_fragile(cell):
 				_draw_highlight(cell, FRAGILE_COLOR)
 			elif battle_state.terrain.is_collapsed(cell):
@@ -120,11 +126,13 @@ func _draw() -> void:
 			var skill_id: String = action_mode.trim_prefix("skill:")
 			var impact: Vector2i = battle_state.projected_skill_impact(selected, skill_id, hover_cell)
 			for cell in EnvironmentResolver.skill_area(battle_state, skill_id, impact, selected.cell):
-				_draw_highlight(cell, RAIN_PREVIEW_COLOR if skill_id == "rain_call" else SKILL_COLOR)
+				_draw_highlight(cell, RAIN_PREVIEW_COLOR if skill_id in ["rain_call", "frozen_ground"] else SKILL_COLOR)
 				if skill_id == "rain_call":
 					draw_rect(get_cell_rect(cell).grow(-6.0), WATER_COLOR, false, 3.0)
 				if (skill_id in ["rock_create", "fire_burst"] or skill_id == "rock_break" and selected.upgraded_skill_id == "rock_break") and battle_state.terrain.is_fragile(cell):
 					_draw_collapse_preview(cell)
+				if skill_id in ["fire_burst", "flame_jet"] and battle_state.terrain.is_ice(cell):
+					draw_rect(get_cell_rect(cell).grow(-7.0), BURN_COLOR, false, 3.0)
 			if skill_id == "flame_charge":
 				draw_line(get_cell_rect(selected.cell).get_center(), get_cell_rect(impact).get_center(), ROUTE_COLOR, 5.0)
 				if battle_state.terrain.is_deep_water(impact) or battle_state.terrain.is_collapsed(impact):
@@ -173,6 +181,10 @@ func _draw() -> void:
 				marker = "浅"
 			elif battle_state.terrain.ground_at(cell) == "grass":
 				marker = "草"
+			elif battle_state.terrain.is_vine(cell):
+				marker = "藤"
+			elif battle_state.terrain.is_ice(cell):
+				marker = "冰"
 			if marker != "":
 				draw_string(ThemeDB.fallback_font, cell_rect.position + Vector2(5, 18), marker, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color.WHITE)
 	for unit in battle_state.units:
@@ -199,6 +211,12 @@ func _draw_unit(unit: CombatUnit) -> void:
 		draw_arc(center, radius + 6.0, 0.0, TAU, 32, BURN_COLOR, 3.0)
 	if unit.wet:
 		draw_circle(center + Vector2(-radius * 0.8, -radius * 0.8), 5.0, WATER_COLOR)
+	if unit.frozen or unit.frozen_skip_round == battle_state.turn_number:
+		draw_arc(center, radius + 7.0, 0.0, TAU, 32, ICE_COLOR, 3.0)
+	elif unit.paralyzed_skip_round == battle_state.turn_number or unit.shocked:
+		draw_arc(center, radius + 7.0, 0.0, TAU, 32, SELECT_COLOR, 3.0)
+	if unit.rooted_skip_round == battle_state.turn_number:
+		draw_circle(center + Vector2(radius * 0.8, radius * 0.8), 5.0, VINE_COLOR)
 	if unit.battle_buff != "":
 		draw_circle(center + Vector2(radius * 0.8, -radius * 0.8), 6.0, REWARD_COLOR)
 	if unit.unit_id == selected_unit_id:

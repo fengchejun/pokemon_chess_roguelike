@@ -9,6 +9,8 @@ var ground: Dictionary = {}
 var objects: Dictionary = {}
 var steam: Dictionary = {}
 var burning: Dictionary = {}
+var vine_underlay: Dictionary = {}
+var ice_underlay: Dictionary = {}
 
 
 func _init(layout: Dictionary = {}) -> void:
@@ -17,6 +19,8 @@ func _init(layout: Dictionary = {}) -> void:
 		objects = layout.get("objects", {}).duplicate(true)
 		steam = layout.get("steam", {}).duplicate(true)
 		burning = layout.get("burning", {}).duplicate(true)
+		vine_underlay = layout.get("vine_underlay", {}).duplicate(true)
+		ice_underlay = layout.get("ice_underlay", {}).duplicate(true)
 		return
 	# Stable fixture for stage 0–4 rule regression.
 	for cell in [Vector2i(3, 1), Vector2i(3, 2), Vector2i(4, 2)]:
@@ -77,7 +81,60 @@ func is_deep_water(cell: Vector2i) -> bool:
 
 
 func is_flammable(cell: Vector2i) -> bool:
-	return ground_at(cell) == "grass" or object_at(cell).get("type", "") == "plant"
+	return ground_at(cell) in ["grass", "vine"] or object_at(cell).get("type", "") == "plant"
+
+
+func is_vine(cell: Vector2i) -> bool:
+	return ground_at(cell) == "vine"
+
+
+func is_ice(cell: Vector2i) -> bool:
+	return ground_at(cell) == "ice"
+
+
+func set_vine(cell: Vector2i) -> bool:
+	if not GridSpec.is_inside(cell) or ground_at(cell) not in ["ground", "grass", "shallow_water", "water"] or not object_at(cell).is_empty():
+		return false
+	vine_underlay[cell] = ground_at(cell)
+	ground[cell] = "vine"
+	return true
+
+
+func remove_vine(cell: Vector2i) -> void:
+	if not is_vine(cell):
+		return
+	var previous: String = vine_underlay.get(cell, "ground")
+	vine_underlay.erase(cell)
+	if previous == "ground":
+		ground.erase(cell)
+	else:
+		ground[cell] = previous
+	burning.erase(cell)
+
+
+func set_ice(cell: Vector2i) -> bool:
+	if not GridSpec.is_inside(cell) or is_ice(cell) or not object_at(cell).is_empty():
+		return false
+	ice_underlay[cell] = {"ground": ground_at(cell), "vine_underlay": vine_underlay.get(cell, "")}
+	ground[cell] = "ice"
+	burning.erase(cell)
+	steam.erase(cell)
+	return true
+
+
+func melt_ice(cell: Vector2i) -> bool:
+	if not is_ice(cell):
+		return false
+	var saved: Dictionary = ice_underlay.get(cell, {"ground": "ground", "vine_underlay": ""})
+	ice_underlay.erase(cell)
+	var previous: String = saved["ground"]
+	if previous == "ground":
+		ground.erase(cell)
+	else:
+		ground[cell] = previous
+	if previous == "vine" and str(saved["vine_underlay"]) != "":
+		vine_underlay[cell] = saved["vine_underlay"]
+	return true
 
 
 func is_burning(cell: Vector2i) -> bool:
@@ -89,16 +146,18 @@ func is_steam(cell: Vector2i) -> bool:
 
 
 func set_water(cell: Vector2i) -> bool:
-	if not GridSpec.is_inside(cell) or ground_at(cell) not in ["ground", "grass"] or not object_at(cell).is_empty():
+	if not GridSpec.is_inside(cell) or ground_at(cell) not in ["ground", "grass", "vine"] or not object_at(cell).is_empty():
 		return false
+	vine_underlay.erase(cell)
 	ground[cell] = "shallow_water"
 	extinguish_fire(cell)
 	return true
 
 
 func set_rain_water(cell: Vector2i) -> bool:
-	if not GridSpec.is_inside(cell) or ground_at(cell) not in ["ground", "grass", "fragile"] or not object_at(cell).is_empty():
+	if not GridSpec.is_inside(cell) or ground_at(cell) not in ["ground", "grass", "fragile", "vine"] or not object_at(cell).is_empty():
 		return false
+	vine_underlay.erase(cell)
 	ground[cell] = "shallow_water"
 	extinguish_fire(cell)
 	return true

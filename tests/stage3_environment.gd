@@ -57,8 +57,10 @@ func _test_terrain_and_breaking() -> bool:
 
 
 func _test_water_electric_and_steam() -> bool:
-	var state := BattleState.new()
-	var water: CombatUnit = state.unit_by_id("ally_water")
+	var run := RunState.new()
+	run.set_starters(["fire", "electric", "rock"])
+	var state := BattleState.new(run)
+	var water: CombatUnit = state.unit_by_id("ally_electric")
 	var fire: CombatUnit = state.unit_by_id("ally_fire")
 	var first: CombatUnit = state.unit_by_id("wild_a")
 	var second: CombatUnit = state.unit_by_id("wild_b")
@@ -69,7 +71,7 @@ func _test_water_electric_and_steam() -> bool:
 	first.wet = true
 	first.move_points = 0
 	first.skill_points = 0
-	if not TurnTestHelper.advance_to_player(state, "ally_water") or not state.try_use_skill("ally_water", "electric_arc", Vector2i(3, 2)):
+	if not TurnTestHelper.advance_to_player(state, "ally_electric") or not state.try_use_skill("ally_electric", "electric_arc", Vector2i(3, 2)):
 		return _fail("Electric skill could not hit connected water")
 	if fire.hp != fire.max_hp - 1 or first.hp != first.max_hp - 1 or second.hp != second.max_hp - 1:
 		return _fail("Connected water did not hit each unit exactly once")
@@ -124,8 +126,10 @@ func _test_burning_and_push_collision() -> bool:
 
 
 func _test_reaction_batch() -> bool:
-	var state := BattleState.new()
-	state.unit_by_id("ally_water").cell = Vector2i(2, 1)
+	var run := RunState.new()
+	run.set_starters(["fire", "electric", "rock"])
+	var state := BattleState.new(run)
+	state.unit_by_id("ally_electric").cell = Vector2i(2, 1)
 	var trainer: CombatUnit = state.unit_by_id("trainer")
 	trainer.cell = Vector2i(3, 2)
 	trainer.hp = 1
@@ -137,7 +141,7 @@ func _test_reaction_batch() -> bool:
 	last_enemy.skill_points = 0
 	state.unit_by_id("wild_b").hp = 0
 	state.unit_by_id("wild_c").hp = 0
-	if not TurnTestHelper.advance_to_player(state, "ally_water") or not state.try_use_skill("ally_water", "electric_arc", Vector2i(3, 1)):
+	if not TurnTestHelper.advance_to_player(state, "ally_electric") or not state.try_use_skill("ally_electric", "electric_arc", Vector2i(3, 1)):
 		return _fail("Batch fixture could not cast electric skill")
 	if last_enemy.is_alive() or trainer.is_alive() or state.outcome != "defeat":
 		return _fail("Reaction stopped after the first target ended combat")
@@ -154,7 +158,7 @@ func _test_fog_propagation_and_enemy_setup() -> bool:
 	enemy.wet = true
 	enemy.move_points = 0
 	enemy.skill_points = 0
-	if not TurnTestHelper.advance_to_player(state, "ally_water") or state.try_use_skill("ally_water", "electric_arc", Vector2i(4, 2)) or enemy.hp != enemy.max_hp or water.skill_points != 1:
+	if not TurnTestHelper.advance_to_player(state, "ally_water") or state.try_use_skill("ally_water", "water_flow", Vector2i(4, 2)) or enemy.hp != enemy.max_hp or water.skill_points != 1:
 		return _fail("Steam failed to block water skill without spending resources")
 	state = BattleState.new()
 	state.unit_by_id("wild_b").hp = 0
@@ -228,14 +232,25 @@ func _test_skill_ui() -> void:
 	if not button.text.contains("水流") or not preview.text.contains("造成 1 伤"):
 		_fail("Water skill UI did not show new damage")
 		return
+	var electric_run := RunState.new()
+	electric_run.set_starters(["fire", "electric", "rock"])
+	state = BattleState.new(electric_run)
+	battle.set("state", state)
+	battle.set("selected_unit_id", "ally_electric")
+	state.unit_by_id("ally_electric").cell = Vector2i(2, 2)
+	state.unit_by_id("wild_a").cell = Vector2i(3, 2)
+	battle.call("_refresh")
 	button = battle.find_child("SkillButton_electric_arc", true, false) as Button
+	if button == null:
+		_fail("Electric monster skill button is missing")
+		return
 	button.pressed.emit()
 	board.cell_hovered.emit(Vector2i(3, 2))
 	if not button.text.contains("放电") or not preview.text.contains("影响 3 格"):
 		_fail("Electric area preview is missing")
 		return
 	board.cell_pressed.emit(Vector2i(3, 2))
-	if state.unit_by_id("wild_a").hp != CombatConfig.WILD_HP - CombatConfig.ELECTRIC_DAMAGE or state.unit_by_id("ally_water").skill_points != 0:
+	if state.unit_by_id("wild_a").hp != CombatConfig.WILD_HP - CombatConfig.ELECTRIC_DAMAGE or state.unit_by_id("ally_electric").skill_points != 0:
 		_fail("Skill click did not settle electric damage and cost")
 		return
 	print("STAGE3_ENVIRONMENT passed")

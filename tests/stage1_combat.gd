@@ -52,7 +52,7 @@ func _test_victory_and_defeat() -> bool:
 		state.unit_by_id(enemy_id).hp = 1
 	if not state.try_use_skill("ally_fire", "fire_burst", Vector2i(3, 2)):
 		return _fail("First enemy was not hit")
-	if not state.try_use_skill("ally_water", "electric_arc", Vector2i(2, 4)):
+	if not state.try_use_skill("ally_water", "water_flow", Vector2i(2, 4)):
 		return _fail("Second enemy was not hit")
 	if not state.try_use_skill("ally_rock", "rock_break", Vector2i(4, 3)) or state.outcome != "victory" or state.finish_player_turn():
 		return _fail("Skill-only victory did not stop battle")
@@ -78,6 +78,14 @@ func _test_scene_flow() -> void:
 		_fail("Start button is missing")
 		return
 	start_button.pressed.emit()
+	await process_frame
+	await process_frame
+	if current_scene == null or current_scene.name != "StarterSelection":
+		_fail("Starter selection did not open")
+		return
+	for species_id in ["fire", "water", "rock"]:
+		current_scene.call("_toggle", species_id)
+	current_scene.call("_confirm")
 	await process_frame
 	await process_frame
 	if current_scene == null or current_scene.name != "Battle":
@@ -116,11 +124,21 @@ func _test_scene_flow() -> void:
 		return
 	var restart_button := battle.find_child("RestartButton", true, false) as Button
 	restart_button.pressed.emit()
-	state = battle.get("state")
-	if state.turn_number != 1 or state.unit_by_id("trainer").cell != Vector2i(1, 3):
-		_fail("Restart did not reset battle")
+	await process_frame
+	await process_frame
+	if current_scene == null or current_scene.name != "StarterSelection":
+		_fail("Restart did not reopen starter selection")
 		return
-	var menu_button := battle.find_child("MenuButton", true, false) as Button
+	current_scene.call("_toggle", "fire")
+	current_scene.call("_toggle", "water")
+	current_scene.call("_toggle", "rock")
+	current_scene.call("_confirm")
+	await process_frame
+	await process_frame
+	if current_scene == null or current_scene.name != "Battle":
+		_fail("Battle did not restart after starter selection")
+		return
+	var menu_button := current_scene.find_child("MenuButton", true, false) as Button
 	menu_button.pressed.emit()
 	await process_frame
 	await process_frame

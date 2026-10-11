@@ -63,9 +63,13 @@ func _init(current_run: RunState = null, generated_layout: Dictionary = {}) -> v
 	var active_records: Array[Dictionary] = run_state.active_records()
 	for index in mini(active_records.size(), CombatConfig.DEPLOYED_MONSTER_LIMIT):
 		units.append(MonsterCatalog.make_ally(active_records[index], deployment_cells[index]))
-	units.append(MonsterCatalog.make_enemy("wild_a", "fire", Vector2i(6, 2)))
-	units.append(MonsterCatalog.make_enemy("wild_b", "water", Vector2i(6, 5)))
-	units.append(MonsterCatalog.make_enemy("wild_c", "rock", Vector2i(6, 3)))
+	var enemy_species: Array[String] = ["fire", "water", "rock"]
+	if not generated_layout.is_empty():
+		enemy_species.clear()
+		for index in 3:
+			enemy_species.append(MonsterCatalog.pick_region_enemy(str(map_info.get("region_id", "wetland")), spawn_rng, enemy_species))
+	for index in 3:
+		units.append(MonsterCatalog.make_enemy(["wild_a", "wild_b", "wild_c"][index], enemy_species[index], [Vector2i(6, 2), Vector2i(6, 5), Vector2i(6, 3)][index]))
 	_log("战斗开始：我方整队行动，结束回合后敌人依次移动并施法。")
 	_start_round()
 
@@ -100,7 +104,13 @@ func current_player_ids() -> Array[String]:
 func can_act_now(unit: CombatUnit) -> bool:
 	if unit == null or not unit.is_alive() or outcome != "" or unit.eligible_round > turn_number:
 		return false
+	if unit.frozen or unit.frozen_skip_round == turn_number or unit.paralyzed_skip_round == turn_number:
+		return false
 	return phase == "player" if unit.team == "player" else phase in ["enemy_move", "enemy_attack"]
+
+
+func is_rooted_now(unit: CombatUnit) -> bool:
+	return unit != null and unit.rooted_skip_round == turn_number
 
 
 func can_enter_voluntarily(unit: CombatUnit, cell: Vector2i) -> bool:
@@ -124,7 +134,7 @@ func can_player_move(unit: CombatUnit, target: Vector2i) -> bool:
 
 func get_move_path(unit: CombatUnit, target: Vector2i) -> Array[Vector2i]:
 	var empty: Array[Vector2i] = []
-	if not _can_player_act(unit) or unit.move_points <= 0:
+	if not _can_player_act(unit) or unit.move_points <= 0 or is_rooted_now(unit):
 		return empty
 	return MovementPathfinder.find_path(self, unit, target, unit.move_points)
 
@@ -147,7 +157,7 @@ func preview_skill_push(unit: CombatUnit, skill_id: String, target: Vector2i) ->
 
 func enemy_move_cells(enemy: CombatUnit) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
-	if enemy == null or enemy.team != "enemy" or not enemy.is_alive() or enemy.eligible_round > turn_number or enemy.move_points <= 0:
+	if enemy == null or enemy.team != "enemy" or not enemy.is_alive() or enemy.eligible_round > turn_number or enemy.move_points <= 0 or is_rooted_now(enemy) or enemy.frozen or enemy.frozen_skip_round == turn_number or enemy.paralyzed_skip_round == turn_number:
 		return cells
 	var limit: int = mini(effective_move_range(enemy), enemy.move_points)
 	var frontier: Array[Dictionary] = [{"cell": enemy.cell, "steps": 0}]
@@ -180,6 +190,7 @@ func undo_last_move() -> bool:
 	unit.hp = snapshot["hp"]
 	unit.burned = snapshot["burned"]
 	unit.burn_damage_from_round = snapshot["burn_damage_from_round"]
+	unit.rooted_skip_round = snapshot["rooted_skip_round"]
 	unit.move_points = snapshot["move_points"]
 	phase = snapshot["phase"]
 	outcome = snapshot["outcome"]
@@ -204,7 +215,7 @@ func try_player_move(unit_id: String, target: Vector2i) -> bool:
 		_log("无法移动：终点不能被占用，路线不能穿过敌人或禁入地形，也不能超出当前移动上限；每回合只能移动一次。")
 		return false
 	if not movement_undo_locked:
-		movement_history.append({"unit_id": unit.unit_id, "cell": unit.cell, "hp": unit.hp, "burned": unit.burned, "burn_damage_from_round": unit.burn_damage_from_round, "move_points": unit.move_points, "phase": phase, "outcome": outcome, "event_count": events.size()})
+		movement_history.append({"unit_id": unit.unit_id, "cell": unit.cell, "hp": unit.hp, "burned": unit.burned, "burn_damage_from_round": unit.burn_damage_from_round, "rooted_skip_round": unit.rooted_skip_round, "move_points": unit.move_points, "phase": phase, "outcome": outcome, "event_count": events.size()})
 	unit.move_points = 0
 	_log("%s 开始一次性移动，路线长度 %d 格。" % [unit.display_name, path.size()])
 	for cell in path:
@@ -224,7 +235,7 @@ func effective_skill_range(unit: CombatUnit, skill_id: String) -> int:
 
 
 func effective_move_range(unit: CombatUnit) -> int:
-	return maxi(0, unit.base_move + unit.bonus_move - (CombatConfig.WET_MOVE_PENALTY if unit.wet and turn_number >= unit.wet_move_from_round else 0)) if unit != null else 0
+	return maxi(0, unit.base_move + unit.bonus_move + (unit.temporary_move_bonus if unit.temporary_move_bonus_round == turn_number else 0) - (CombatConfig.WET_MOVE_PENALTY if unit.wet and turn_number >= unit.wet_move_from_round else 0)) if unit != null else 0
 
 
 func projected_skill_impact(unit: CombatUnit, skill_id: String, target: Vector2i) -> Vector2i:
@@ -235,6 +246,15 @@ func projected_skill_impact(unit: CombatUnit, skill_id: String, target: Vector2i
 		return invalid
 	if skill_id == "rock_create":
 		return target if distance(unit.cell, target) == 1 and effective_skill_range(unit, skill_id) >= 1 else invalid
+	if skill_id in ["wild_vines", "frozen_ground", "tailwind"]:
+		return target if distance(unit.cell, target) == 1 else invalid
+	if skill_id == "herbal_heal":
+		return target if target == unit.cell else invalid
+	if skill_id == "double_cast":
+		var ally: CombatUnit = unit_at(target)
+		return target if distance(unit.cell, target) == 1 and ally != null and ally.team == unit.team and ally.unit_id != "trainer" and ally.double_cast_round != turn_number else invalid
+	if skill_id == "lightning":
+		return target if unit_at(target) != null else invalid
 	if skill_id == "flame_charge":
 		return target if distance(unit.cell, target) == 2 and (unit.cell.x == target.x or unit.cell.y == target.y) and unit_at(target) == null and terrain.object_at(target).is_empty() and not is_nest_at(target) else invalid
 	var skill: Dictionary = CombatConfig.SKILLS[skill_id]
@@ -251,12 +271,15 @@ func projected_skill_impact(unit: CombatUnit, skill_id: String, target: Vector2i
 	# and first blocking obstacle are resolved by the shared area calculation.
 	if skill_id == "flame_jet":
 		return target
-	if skill_id == "water_flow":
+	if skill_id in ["water_flow", "freeze_ray"]:
 		var delta: Vector2i = target - unit.cell
 		var direction := Vector2i(signi(delta.x), signi(delta.y))
 		var cell: Vector2i = unit.cell + direction
 		while true:
 			if unit_at(cell) != null or not terrain.object_at(cell).is_empty() or is_nest_at(cell) or cell == target:
+				if skill_id == "freeze_ray":
+					var first: CombatUnit = unit_at(cell)
+					return cell if first != null and first.team != unit.team else invalid
 				return cell if distance(unit.cell, cell) >= int(skill.get("min_range", 1)) else invalid
 			cell += direction
 	if not skill.get("ignores_obstacles", false) and (terrain.ranged_blocker(unit.cell, target) != "" or _nest_blocks_ray(unit.cell, target)):
@@ -284,6 +307,8 @@ func can_use_skill(unit: CombatUnit, skill_id: String, target: Vector2i) -> bool
 	if skill_id == "rock_push":
 		var victim: CombatUnit = unit_at(impact)
 		return (victim != null and victim.team != unit.team) or is_nest_at(impact)
+	if skill_id == "electric_arc":
+		return terrain.is_water(impact)
 	return true
 
 
@@ -350,7 +375,9 @@ func _resolve_push(unit: CombatUnit, victim: CombatUnit) -> void:
 	_resolve_push_direction(unit, victim, victim.cell - unit.cell, int(CombatConfig.SKILLS["rock_push"]["damage"]), "推击", 2 if unit.upgraded_skill_id == "rock_push" else 1)
 
 
-func _resolve_push_direction(unit: CombatUnit, victim: CombatUnit, direction: Vector2i, damage: int, source_name: String, push_distance: int = 1) -> void:
+func _resolve_push_direction(unit: CombatUnit, victim: CombatUnit, direction: Vector2i, damage: int, source_name: String, push_distance: int = 1) -> bool:
+	if _thaw_on_hit(victim, source_name):
+		return false
 	var result: Dictionary = PushResolver.preview_direction(self, victim, direction, damage, push_distance)
 	var obstacle_cell: Vector2i = result["collision_cell"]
 	var old_cell: Vector2i = victim.cell
@@ -376,6 +403,7 @@ func _resolve_push_direction(unit: CombatUnit, victim: CombatUnit, direction: Ve
 		_apply_entry_effects(victim)
 	if environment_resolution_depth == 0:
 		_check_outcome()
+	return true
 
 
 func resolve_water_flow(caster: CombatUnit, target: Vector2i) -> void:
@@ -385,8 +413,8 @@ func resolve_water_flow(caster: CombatUnit, target: Vector2i) -> void:
 	if victim != null:
 		var direction: Vector2i = target - caster.cell
 		direction = Vector2i(signi(direction.x), signi(direction.y))
-		_resolve_push_direction(caster, victim, direction, int(CombatConfig.SKILLS["water_flow"]["damage"]), "水流", 2 if caster.upgraded_skill_id == "water_flow" else 1)
-		apply_skill_wet(victim)
+		if _resolve_push_direction(caster, victim, direction, int(CombatConfig.SKILLS["water_flow"]["damage"]), "水流", 2 if caster.upgraded_skill_id == "water_flow" else 1):
+			apply_skill_wet(victim)
 	else:
 		hit_cell(target, int(CombatConfig.SKILLS["water_flow"]["damage"]), "水流")
 		var object_result: Dictionary = terrain.damage_object(target, int(CombatConfig.SKILLS["water_flow"]["damage"]))
@@ -422,6 +450,61 @@ func apply_skill_wet(unit: CombatUnit) -> void:
 	_log("%s 获得浸湿；下一轮移动力 -1。" % unit.display_name)
 
 
+func apply_shock(unit: CombatUnit) -> void:
+	if unit == null or not unit.is_alive() or unit.debuff_immune:
+		return
+	if unit.shocked:
+		unit.shocked = false
+		unit.paralyzed_skip_round = _next_action_round(unit)
+		_log("%s 再次感电，麻痹至下一次可行动阶段结束。" % unit.display_name)
+	else:
+		unit.shocked = true
+		_log("%s 感电；再次感电将麻痹。" % unit.display_name)
+
+
+func apply_freeze(unit: CombatUnit) -> void:
+	if unit == null or not unit.is_alive() or unit.debuff_immune or unit.frozen or unit.frozen_skip_round > 0:
+		return
+	unit.frozen = true
+	unit.frozen_skip_round = _next_action_round(unit)
+	_log("%s 被冻结：下一次行动跳过；第一次受伤会免伤解冻。" % unit.display_name)
+
+
+func apply_root(unit: CombatUnit) -> void:
+	if unit == null or not unit.is_alive() or unit.flying or unit.debuff_immune or unit.rooted_skip_round > 0:
+		return
+	unit.rooted_skip_round = _next_action_round(unit, true)
+	_log("%s 被藤蔓缠住：下一次行动不能主动移动，仍可施法。" % unit.display_name)
+
+
+func apply_tailwind(unit: CombatUnit) -> void:
+	if unit == null or not unit.is_alive() or unit.temporary_move_bonus_round == turn_number:
+		return
+	unit.temporary_move_bonus = 2
+	unit.temporary_move_bonus_round = turn_number
+	if unit.move_points > 0:
+		unit.move_points = effective_move_range(unit)
+	_log("%s 本轮移动力 +2。" % unit.display_name)
+
+
+func apply_double_cast(unit: CombatUnit) -> void:
+	if unit == null or not unit.is_alive() or unit.unit_id == "trainer" or unit.double_cast_round == turn_number:
+		return
+	unit.double_cast_round = turn_number
+	unit.skill_points += 1
+	_log("%s 本轮可额外施放一次技能。" % unit.display_name)
+
+
+func _next_action_round(unit: CombatUnit, movement: bool = false) -> int:
+	if unit.team == "player":
+		if phase == "player" and (unit.move_points > 0 if movement else unit.move_points > 0 or unit.skill_points > 0 or unit.capture_points > 0):
+			return turn_number
+		return turn_number + 1
+	if phase == "player" or phase in ["enemy_move", "enemy_attack"] and unit.acted_round != turn_number and (not movement or unit.move_points > 0):
+		return turn_number
+	return turn_number + 1
+
+
 func resolve_flame_charge(caster: CombatUnit, target: Vector2i) -> void:
 	var direction: Vector2i = (target - caster.cell) / 2
 	var middle: Vector2i = caster.cell + direction
@@ -443,15 +526,24 @@ func finish_player_turn() -> bool:
 	_log("我方回合结束，未使用的行动已放弃。")
 	_claim_reward("enemy")
 	var enemy_ids: Array[String] = []
+	# Wind supports act first; other enemies retain deployment and spawn order.
+	for unit in units:
+		if unit.team == "enemy" and unit.element_type == "wind" and unit.is_alive() and unit.eligible_round <= turn_number:
+			enemy_ids.append(unit.unit_id)
 	for unit in units:
 		if unit.team == "enemy" and unit.is_alive() and unit.eligible_round <= turn_number:
-			enemy_ids.append(unit.unit_id)
+			if not enemy_ids.has(unit.unit_id):
+				enemy_ids.append(unit.unit_id)
 	var ai := EnemyAI.new()
 	for enemy_id in enemy_ids:
 		if outcome != "":
 			break
 		var enemy: CombatUnit = unit_by_id(enemy_id)
 		if enemy == null or not enemy.is_alive():
+			continue
+		if enemy.frozen or enemy.frozen_skip_round == turn_number or enemy.paralyzed_skip_round == turn_number:
+			enemy.acted_round = turn_number
+			_log("%s 受控制状态影响，跳过本次行动。" % enemy.display_name)
 			continue
 		phase = "enemy_move"
 		_log("%s 开始行动：先移动。" % enemy.display_name)
@@ -461,6 +553,7 @@ func finish_player_turn() -> bool:
 		phase = "enemy_attack"
 		_log("%s 准备施放技能。" % enemy.display_name)
 		ai.attack_phase(self, [enemy_id])
+		enemy.acted_round = turn_number
 	var expired_rocks: Array[Vector2i] = terrain.expire_temporary_rocks(turn_number)
 	if not expired_rocks.is_empty():
 		_log("敌方行动结束，%d 处临时岩石消失。" % expired_rocks.size())
@@ -479,8 +572,8 @@ func _start_round() -> void:
 	movement_undo_locked = false
 	if turn_number in [2, 4] and not scheduled_nest_rounds.has(turn_number) and not nest.is_empty() and int(nest.get("hp", 0)) > 0:
 		scheduled_nest_rounds.append(turn_number)
-		var species: Array[String] = ["fire", "water", "rock"]
-		pending_nest_spawns.append({"round": turn_number, "species": species[spawn_rng.randi_range(0, species.size() - 1)]})
+		var species_id: String = MonsterCatalog.pick_region_enemy(str(map_info.get("region_id", "wetland")), spawn_rng) if not map_info.is_empty() else ["fire", "water", "rock"][spawn_rng.randi_range(0, 2)]
+		pending_nest_spawns.append({"round": turn_number, "species": species_id})
 	if not pending_nest_spawns.is_empty():
 		_spawn_from_nest()
 	if outcome != "":
@@ -497,6 +590,7 @@ func _settle_round_and_continue() -> void:
 	begin_environment_resolution()
 	EnvironmentResolver.settle_round(self)
 	end_environment_resolution()
+	_expire_turn_statuses()
 	if outcome != "":
 		return
 	if turn_number >= CombatConfig.MAX_PLAYER_ROUNDS:
@@ -526,7 +620,7 @@ func enemy_move(enemy: CombatUnit, target: Vector2i) -> bool:
 
 
 func enemy_move_path(enemy: CombatUnit, path: Array[Vector2i]) -> bool:
-	if enemy == null or enemy.team != "enemy" or not enemy.is_alive() or outcome != "" or path.is_empty() or path.size() > enemy.move_points:
+	if enemy == null or enemy.team != "enemy" or not enemy.is_alive() or outcome != "" or path.is_empty() or path.size() > enemy.move_points or is_rooted_now(enemy):
 		return false
 	if phase != "enemy_move" or not can_act_now(enemy):
 		return false
@@ -587,7 +681,17 @@ func _can_player_act(unit: CombatUnit) -> bool:
 	return phase == "player" and unit != null and unit.team == "player" and can_act_now(unit)
 
 
-func _apply_damage(target: CombatUnit, damage: int, source_name: String, direct_skill: bool = false) -> void:
+func _thaw_on_hit(target: CombatUnit, source_name: String) -> bool:
+	if target == null or not target.is_alive() or not target.frozen:
+		return false
+	target.frozen = false
+	_log("%s 命中 %s：冻结抵消本次伤害与附加效果，目标解冻，但仍会失去下一次行动。" % [source_name, target.display_name])
+	return true
+
+
+func _apply_damage(target: CombatUnit, damage: int, source_name: String, direct_skill: bool = false, instant_death: bool = false) -> bool:
+	if not instant_death and _thaw_on_hit(target, source_name):
+		return false
 	var actual_damage: int = maxi(0, damage - (target.direct_damage_reduction if direct_skill else 0))
 	target.hp = maxi(0, target.hp - actual_damage)
 	_log("%s 攻击 %s，造成 %d 伤害（%d/%d HP）。" % [source_name, target.display_name, actual_damage, target.hp, target.max_hp])
@@ -595,6 +699,7 @@ func _apply_damage(target: CombatUnit, damage: int, source_name: String, direct_
 		_log("%s 被击败。" % target.display_name)
 		if target.team == "enemy" and not defeated_enemy_ids.has(target.unit_id):
 			defeated_enemy_ids.append(target.unit_id)
+	return true
 
 
 func _apply_entry_effects(unit: CombatUnit) -> void:
@@ -604,11 +709,13 @@ func _apply_entry_effects(unit: CombatUnit) -> void:
 		unit.burned = false
 		unit.burn_damage_from_round = 0
 	if terrain.is_deep_water(unit.cell) and unit.element_type != "water":
-		_apply_damage(unit, unit.hp, "深水淹没")
+		_apply_damage(unit, unit.hp, "深水淹没", false, true)
 		_log("%s 进入深水，立即淹没。" % unit.display_name)
 	elif terrain.is_collapsed(unit.cell):
-		_apply_damage(unit, unit.hp, "塌陷深坑")
+		_apply_damage(unit, unit.hp, "塌陷深坑", false, true)
 		_log("%s 进入塌陷深坑，立即坠落。" % unit.display_name)
+	elif terrain.is_vine(unit.cell):
+		apply_root(unit)
 	if environment_resolution_depth == 0:
 		_check_outcome()
 
@@ -643,9 +750,9 @@ func _damage_reward_at(cell: Vector2i) -> void:
 		_log("地面奖励受到伤害，已被摧毁。")
 
 
-func hit_cell(cell: Vector2i, damage: int, source_name: String, ground_strike: bool = false, direct_skill: bool = true) -> void:
+func hit_cell(cell: Vector2i, damage: int, source_name: String, ground_strike: bool = false, direct_skill: bool = true) -> bool:
 	if damage <= 0:
-		return
+		return false
 	_damage_reward_at(cell)
 	if ground_strike:
 		collapse_fragile(cell, source_name)
@@ -657,10 +764,12 @@ func hit_cell(cell: Vector2i, damage: int, source_name: String, ground_strike: b
 		if nest["hp"] <= 0:
 			_log("巢穴被摧毁，战斗立即获胜。")
 	var victim: CombatUnit = unit_at(cell)
+	var landed := true
 	if victim != null:
-		_apply_damage(victim, damage, source_name, direct_skill)
+		landed = _apply_damage(victim, damage, source_name, direct_skill)
 	if environment_resolution_depth == 0:
 		_check_outcome()
+	return landed
 
 
 func collapse_fragile(cell: Vector2i, source_name: String) -> bool:
@@ -670,7 +779,7 @@ func collapse_fragile(cell: Vector2i, source_name: String) -> bool:
 	_log("%s 击碎易碎地块 (%d, %d)，留下永久深坑。" % [source_name, cell.x + 1, cell.y + 1])
 	var victim: CombatUnit = unit_at(cell)
 	if victim != null and not victim.flying:
-		_apply_damage(victim, victim.hp, "地块塌陷")
+		_apply_damage(victim, victim.hp, "地块塌陷", false, true)
 	if environment_resolution_depth == 0:
 		_check_outcome()
 	return true
@@ -725,6 +834,11 @@ func _apply_reward_buff(unit: CombatUnit, buff_id: String) -> void:
 			unit.wet = false
 			unit.wet_move_from_round = 0
 			unit.skill_wet_through_round = 0
+			unit.shocked = false
+			unit.paralyzed_skip_round = 0
+			unit.frozen = false
+			unit.frozen_skip_round = 0
+			unit.rooted_skip_round = 0
 		"direct_guard":
 			unit.direct_damage_reduction = 1
 		_:
@@ -739,6 +853,22 @@ func apply_environment_damage(unit: CombatUnit, amount: int, source_name: String
 	_apply_damage(unit, amount, source_name)
 	if environment_resolution_depth == 0:
 		_check_outcome()
+
+
+func _expire_turn_statuses() -> void:
+	for unit in units:
+		if unit.paralyzed_skip_round > 0 and unit.paralyzed_skip_round <= turn_number:
+			unit.paralyzed_skip_round = 0
+		if unit.frozen_skip_round > 0 and unit.frozen_skip_round <= turn_number:
+			unit.frozen_skip_round = 0
+			unit.frozen = false
+		if unit.rooted_skip_round > 0 and unit.rooted_skip_round <= turn_number:
+			unit.rooted_skip_round = 0
+		if unit.temporary_move_bonus_round == turn_number:
+			unit.temporary_move_bonus = 0
+			unit.temporary_move_bonus_round = 0
+		if unit.double_cast_round == turn_number:
+			unit.double_cast_round = 0
 
 
 func begin_environment_resolution() -> void:

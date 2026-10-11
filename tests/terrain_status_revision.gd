@@ -117,7 +117,7 @@ func _test_fragile_ground() -> bool:
 	TurnTestHelper.advance_to_player(state, "ally_rock")
 	if not state.try_use_skill(rock.unit_id, "rock_create", Vector2i(4, 3)) or victim.is_alive() or not state.terrain.is_collapsed(Vector2i(4, 3)) or not state.terrain.is_collapsed(Vector2i(3, 3)) or not state.terrain.object_at(Vector2i(3, 3)).is_empty():
 		return _fail("Rock creation did not collapse empty and occupied fragile cells")
-	for skill_id in ["water_flow", "electric_arc", "rock_break"]:
+	for skill_id in ["water_flow", "rock_break"]:
 		state = BattleState.new()
 		state.terrain.ground[Vector2i(3, 3)] = "fragile"
 		var caster: CombatUnit = state.unit_by_id("ally_rock") if skill_id == "rock_break" else state.unit_by_id("ally_water")

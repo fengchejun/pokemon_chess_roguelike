@@ -3,7 +3,7 @@ extends Control
 
 func _on_start_pressed() -> void:
 	RunManager.start_new_run()
-	get_tree().change_scene_to_file("res://scenes/battle.tscn")
+	get_tree().change_scene_to_file("res://scenes/starter_selection.tscn")
 
 
 func _on_preview_pressed() -> void:

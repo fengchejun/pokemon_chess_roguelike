@@ -333,7 +333,7 @@ func _test_capture_ui() -> bool:
 	if not capture_button.text.contains("捕获") or not capture_button.tooltip_text.contains("周围八格") or not preview.text.contains("可尝试") or not preview.text.contains("100%"):
 		return _fail("Capture mode did not show chance and eligibility")
 	board.cell_pressed.emit(target.cell)
-	var new_ally_skill := battle.find_child("SkillButton_fire_burst", true, false) as Button
+	var new_ally_skill := battle.find_child("SkillButton_" + target.skill_ids[0], true, false) as Button
 	var team_track := battle.find_child("TeamStatusTrack", true, false) as Control
 	if not target.is_alive() or target.team != "player" or state.unit_by_id("trainer").capture_points != 0 or state.captured_records.size() != 1 or board.selected_unit_id != target.unit_id or new_ally_skill == null or team_track == null or team_track.get_child_count() != 5:
 		return _fail("Capture click did not convert and select the new ally")

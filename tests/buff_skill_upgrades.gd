@@ -62,7 +62,10 @@ func _test_water() -> bool:
 	if not state.try_use_skill(caster.unit_id, "rain_call", Vector2i(4, 4)) or not victim.wet or not state.terrain.is_shallow_water(victim.cell):
 		return _fail("Upgraded rain did not immediately wet its target")
 	state = BattleState.new()
-	caster = state.unit_by_id("ally_water")
+	var electric_run := RunState.new()
+	electric_run.set_starters(["fire", "electric", "rock"])
+	state = BattleState.new(electric_run)
+	caster = state.unit_by_id("ally_electric")
 	victim = state.unit_by_id("wild_a")
 	caster.cell = Vector2i(2, 2)
 	victim.cell = Vector2i(3, 2)

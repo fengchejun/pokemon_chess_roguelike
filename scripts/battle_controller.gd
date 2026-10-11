@@ -197,13 +197,13 @@ func _on_undo_move_pressed() -> void:
 
 func _on_restart_pressed() -> void:
 	RunManager.start_new_run()
-	_start_new_battle()
+	get_tree().change_scene_to_file("res://scenes/starter_selection.tscn")
 
 
 func _on_result_pressed() -> void:
 	if state.outcome == "defeat":
 		RunManager.start_new_run()
-		_start_new_battle()
+		get_tree().change_scene_to_file("res://scenes/starter_selection.tscn")
 		return
 	get_tree().change_scene_to_file("res://scenes/between_battles.tscn")
 
@@ -238,20 +238,21 @@ func _refresh() -> void:
 	if selected == null:
 		selected_label.text = "选中单位：无"
 	else:
-		var move_limit: int = state.effective_move_range(selected)
-		selected_label.text = "%s · HP %d/%d\n移动 %s（最远 %d） · %s\n%s" % [selected.display_name, selected.hp, selected.max_hp, "可用" if selected.move_points > 0 else "已用", move_limit, "Buff：" + BattleBuffSystem.short_name(selected.battle_buff) if selected.battle_buff != "" else "浸湿" if selected.wet else "正常", "捕获 %d/%d" % [selected.capture_points, CombatConfig.CAPTURE_ATTEMPTS_PER_TURN] if selected.unit_id == "trainer" else "技能点 %d/%d" % [selected.skill_points, CombatConfig.SKILL_POINTS_PER_TURN]]
+		var movement_blocked: bool = state.is_rooted_now(selected) or selected.frozen or selected.frozen_skip_round == state.turn_number or selected.paralyzed_skip_round == state.turn_number
+		var move_limit: int = 0 if movement_blocked else state.effective_move_range(selected)
+		selected_label.text = "%s · HP %d/%d\n移动 %s（最远 %d） · %s\n%s" % [selected.display_name, selected.hp, selected.max_hp, "受控" if movement_blocked else "可用" if selected.move_points > 0 else "已用", move_limit, _unit_status_text(selected), "捕获 %d/%d" % [selected.capture_points, CombatConfig.CAPTURE_ATTEMPTS_PER_TURN] if selected.unit_id == "trainer" else "技能点 %d" % selected.skill_points]
 	_refresh_skill_buttons(selected)
 	var player_lines: Array[String] = []
 	var enemy_lines: Array[String] = []
 	for unit in state.units:
-		var status: String = "%s%d/%d%s%s%s" % [unit.glyph, unit.hp, unit.max_hp, "灼" if unit.burned else "", "湿" if unit.wet else "", "★" if unit.battle_buff != "" else ""] if unit.is_alive() else "%s倒下" % unit.glyph
+		var status: String = "%s%d/%d%s%s%s%s%s%s" % [unit.glyph, unit.hp, unit.max_hp, "灼" if unit.burned else "", "湿" if unit.wet else "", "电" if unit.shocked else "", "麻" if unit.paralyzed_skip_round > 0 else "", "冻" if unit.frozen else "", "★" if unit.battle_buff != "" else ""] if unit.is_alive() else "%s倒下" % unit.glyph
 		if unit.team == "player":
 			player_lines.append(status)
 		else:
 			enemy_lines.append(status)
 	roster_label.text = "己方：%s\n敌方：%s" % ["  ".join(player_lines), "  ".join(enemy_lines)]
 	var map_info: Dictionary = state.map_info
-	var counts := {"shallow_water": 0, "deep_water": 0, "grass": 0, "fragile": 0, "collapsed": 0, "rock": 0}
+	var counts := {"shallow_water": 0, "deep_water": 0, "grass": 0, "vine": 0, "ice": 0, "fragile": 0, "collapsed": 0, "rock": 0}
 	for terrain_kind in state.terrain.ground.values():
 		if counts.has(terrain_kind):
 			counts[terrain_kind] += 1
@@ -262,7 +263,7 @@ func _refresh() -> void:
 	combo_lines.assign(map_info.get("combinations", []))
 	var nest_text: String = "巢穴 %d/%d · 待产 %d · %s · 摧毁即胜" % [state.nest.get("hp", 0), CombatConfig.NEST_HP, state.pending_nest_spawns.size(), "守口防御 1" if state.nest_exit_guarded() else "第2/4轮排队"] if not state.nest.is_empty() else "测试布局：无巢穴"
 	var reward_text: String = "待争夺%s" % ("（末轮我方不可领取）" if state.turn_number == CombatConfig.MAX_PLAYER_ROUNDS else "") if state.reward_state == "ground" else "由 %s 领取" % state.reward_winner_id if state.reward_state == "claimed" else "已损毁" if state.reward_state == "destroyed" else "末轮失效" if state.reward_state == "expired" else "无"
-	environment_label.text = "区域：%s%s\n浅 %d · 深 %d · 草 %d · 裂 %d · 坑 %d · 岩 %d\n%s · 奖励：%s\n%s" % [map_info.get("region_name", "测试布局"), "（备用）" if map_info.get("fallback", false) else "", counts.get("shallow_water", 0), counts.get("deep_water", 0), counts.get("grass", 0), counts.get("fragile", 0), counts.get("collapsed", 0), counts.get("rock", 0), nest_text, reward_text, "；".join(combo_lines) if not combo_lines.is_empty() else "浅水结算后浸湿；造雨可转化裂地；仅造岩可使裂地塌陷"]
+	environment_label.text = "区域：%s%s\n浅 %d · 深 %d · 草 %d · 藤 %d · 冰 %d · 裂 %d · 坑 %d · 岩 %d\n%s · 奖励：%s\n%s" % [map_info.get("region_name", "测试布局"), "（备用）" if map_info.get("fallback", false) else "", counts.get("shallow_water", 0), counts.get("deep_water", 0), counts.get("grass", 0), counts.get("vine", 0), counts.get("ice", 0), counts.get("fragile", 0), counts.get("collapsed", 0), counts.get("rock", 0), nest_text, reward_text, "；".join(combo_lines) if not combo_lines.is_empty() else "浅水浸湿；藤蔓束缚；火可融冰"]
 	_refresh_terrain_detail()
 	_refresh_enemy_detail()
 	undo_move_button.disabled = not state.can_undo_move()
@@ -303,9 +304,32 @@ func _refresh_team_status_track() -> void:
 		chip.add_theme_font_size_override("font_size", 13)
 		var second_action: String = "捕" if unit.unit_id == "trainer" else "技"
 		var second_ready: bool = unit.capture_points > 0 if unit.unit_id == "trainer" else unit.skill_points > 0
-		chip.text = "%s  HP %d/%d\n移%s · %s%s" % [unit.glyph, unit.hp, unit.max_hp, "可" if unit.move_points > 0 else "已用", second_action, "可" if second_ready else "已用"] if unit.is_alive() else "%s  倒下" % unit.glyph
+		chip.text = "%s  HP %d/%d\n移%s · %s%s" % [unit.glyph, unit.hp, unit.max_hp, "禁" if state.is_rooted_now(unit) or unit.frozen or unit.frozen_skip_round == state.turn_number or unit.paralyzed_skip_round == state.turn_number else "可" if unit.move_points > 0 else "已用", second_action, "可" if second_ready else "已用"] if unit.is_alive() else "%s  倒下" % unit.glyph
 		chip.add_theme_color_override("font_color", Color(0.61, 0.95, 0.78) if unit.is_alive() and state.phase == "player" else Color(0.58, 0.62, 0.64))
 		team_status_track.add_child(chip)
+
+
+func _unit_status_text(unit: CombatUnit) -> String:
+	var labels: Array[String] = []
+	if unit.battle_buff != "":
+		labels.append(BattleBuffSystem.short_name(unit.battle_buff))
+	if unit.burned:
+		labels.append("灼烧")
+	if unit.wet:
+		labels.append("浸湿")
+	if unit.shocked:
+		labels.append("感电")
+	if unit.paralyzed_skip_round > 0:
+		labels.append("麻痹")
+	if unit.frozen or unit.frozen_skip_round > 0:
+		labels.append("冻结")
+	if unit.rooted_skip_round > 0:
+		labels.append("藤蔓束缚")
+	if unit.temporary_move_bonus_round == state.turn_number:
+		labels.append("加速 +2")
+	if unit.double_cast_round == state.turn_number:
+		labels.append("本轮两次施法")
+	return "、".join(labels) if not labels.is_empty() else "正常"
 
 
 func _refresh_skill_buttons(selected: CombatUnit) -> void:
@@ -333,7 +357,7 @@ func _refresh_skill_buttons(selected: CombatUnit) -> void:
 			button.text = "捕获\n机会 %d/%d" % [selected.capture_points, CombatConfig.CAPTURE_ATTEMPTS_PER_TURN]
 			if selected.capture_points <= 0:
 				reasons.append("捕获机会已用")
-			button.tooltip_text = "周围八格、生命不高于一半的野生怪物可捕获。1 HP 必定成功；灼烧或浸湿时 2 HP 也必定成功。成功后原地成为可行动队友；战后仅收容存活者。"
+			button.tooltip_text = "周围八格、生命不高于一半的野生怪物可捕获。1 HP 必定成功；有任意减益状态时 2 HP 也必定成功。成功后原地成为可行动队友；战后仅收容存活者。"
 		else:
 			var skill_id: String = mode.trim_prefix("skill:")
 			var skill: Dictionary = CombatConfig.SKILLS[skill_id]
@@ -380,6 +404,11 @@ func _refresh_terrain_detail() -> void:
 			details.append("深水：非水系单位不能主动进入，被推入会立即溺亡；水系可以进入，放电可沿水域传导。")
 		"grass":
 			details.append("草丛：可站立；受火点燃后每次回合结算向相邻可燃物蔓延，燃烧两次结算后烧尽。")
+		"vine":
+			details.append("藤蔓：可燃、可站立；进入或在脚下生成时，下一次行动不能主动移动，仍可施法；覆盖浅水时也可燃烧。")
+		"ice":
+			var underlay: Dictionary = terrain.ice_underlay.get(cell, {})
+			details.append("冰面：本场持续，可行走；火命中会融化并露出原地形%s。" % ("（%s）" % str(underlay.get("ground", "地面")) if not underlay.is_empty() else ""))
 		"fragile":
 			details.append("易碎地块：可站立；被造岩作用时塌为深坑，地面单位立即坠亡；造雨可将其变为浅水。")
 		"collapsed":
@@ -412,12 +441,20 @@ func _refresh_enemy_detail() -> void:
 	if enemy == null or not enemy.is_alive():
 		enemy_detail_label.text = "敌人详情：点击敌人查看"
 		return
-	var element_names := {"fire": "火", "water": "水", "rock": "岩", "electric": "电"}
+	var element_names := {"fire": "火", "water": "水", "rock": "岩", "electric": "电", "grass": "草", "ice": "冰", "wind": "风"}
 	var statuses: Array[String] = []
 	if enemy.wet:
 		statuses.append("浸湿：移动力 -1")
 	if enemy.burned:
 		statuses.append("灼烧：后续结算每回合受 1 伤；入水解除")
+	if enemy.shocked:
+		statuses.append("感电：再次感电将麻痹")
+	if enemy.paralyzed_skip_round > 0:
+		statuses.append("麻痹：第 %d 回合不能行动" % enemy.paralyzed_skip_round)
+	if enemy.frozen or enemy.frozen_skip_round > 0:
+		statuses.append("冻结：首次受伤免伤解冻；第 %d 回合不能行动" % enemy.frozen_skip_round)
+	if enemy.rooted_skip_round > 0:
+		statuses.append("藤蔓束缚：第 %d 回合不能主动移动" % enemy.rooted_skip_round)
 	if state.terrain.is_steam(enemy.cell):
 		statuses.append("站在雾中：不能施法")
 	if enemy.eligible_round > state.turn_number:
@@ -429,7 +466,7 @@ func _refresh_enemy_detail() -> void:
 		var skill: Dictionary = CombatConfig.SKILLS[skill_id]
 		var spent: bool = int(skill.get("uses_per_battle", 0)) > 0 and int(enemy.battle_skill_uses.get(skill_id, 0)) >= int(skill["uses_per_battle"])
 		skills.append("%s%s%s：%s" % [skill["name"], " ★" if enemy.upgraded_skill_id == skill_id else "", "（本场已用）" if spent else "", skill["description"]])
-	var current_move_limit: int = 0 if enemy.eligible_round > state.turn_number else state.effective_move_range(enemy)
+	var current_move_limit: int = 0 if enemy.eligible_round > state.turn_number or state.is_rooted_now(enemy) or enemy.frozen or enemy.frozen_skip_round == state.turn_number or enemy.paralyzed_skip_round == state.turn_number else state.effective_move_range(enemy)
 	enemy_detail_label.text = "敌人详情：%s（%s）· 格 (%d, %d)\n生命 %d/%d · 本轮移动%s · 移动上限 %d 格 · 技能点 %d\n状态：%s\n技能：\n%s" % [enemy.display_name, element_names.get(enemy.element_type, enemy.element_type), enemy.cell.x + 1, enemy.cell.y + 1, enemy.hp, enemy.max_hp, "可用" if enemy.move_points > 0 else "已用", current_move_limit, enemy.skill_points, "；".join(statuses) if not statuses.is_empty() else "正常", "\n".join(skills)]
 
 
@@ -441,7 +478,7 @@ func _refresh_preview() -> void:
 	var hovered: CombatUnit = state.unit_at(hover_cell)
 	if action_mode == "capture":
 		if hovered == null or hovered.team != "enemy":
-			preview_label.text = "捕获：选择周围八格、生命不高于一半的野生怪物；1 HP 或带灼烧/浸湿的 2 HP 必定成功。每回合一次。"
+			preview_label.text = "捕获：选择周围八格、生命不高于一半的野生怪物；1 HP 或带任意减益的 2 HP 必定成功。每回合一次。"
 		else:
 			preview_label.text = "捕获 %s：%d%%；%s" % [hovered.display_name, roundi(state.capture_chance(hovered) * 100.0), "可尝试" if state.can_capture(hovered) else "未满足条件或机会已用"]
 		return
@@ -477,6 +514,12 @@ func _refresh_preview() -> void:
 				detail += "；障碍前方 (%d, %d) 可形成浅水" % [water_cell.x + 1, water_cell.y + 1]
 			if skill_id == "rain_call":
 				detail += "；仅可转化地面、草丛与裂地；可直接点击友军格作为中心"
+			if skill_id == "frozen_ground":
+				detail += "；可覆盖深水和深坑；火命中冰面会恢复下层地形"
+			if skill_id == "wild_vines":
+				detail += "；障碍格跳过，单位脚下可生成；藤蔓下一次行动阻止主动移动"
+			if skill_id == "electric_arc":
+				detail += "；含相邻浸湿陆地单位；每单位本次最多命中一次"
 		if state.terrain.is_steam(selected.cell):
 			detail = "站在蒸汽雾中不能施放任何技能；移动离开后可施放，失败不消耗技能点"
 		if selected.skill_points < int(skill["cost"]):
@@ -496,6 +539,10 @@ func _refresh_preview() -> void:
 	var route: Array[Vector2i] = state.get_move_path(selected, hover_cell)
 	if not route.is_empty():
 		preview_label.text = "移动预览：%d 格；移动后本回合不能再移动。" % route.size()
+	elif state.is_rooted_now(selected):
+		preview_label.text = "藤蔓束缚：本次行动不能主动移动，仍可施放技能。"
+	elif selected.frozen or selected.frozen_skip_round == state.turn_number or selected.paralyzed_skip_round == state.turn_number:
+		preview_label.text = "控制状态：本次行动无法移动、施法或捕获。"
 	elif GridSpec.is_inside(hover_cell) and (state.terrain.is_collapsed(hover_cell) or (state.terrain.is_deep_water(hover_cell) and selected.element_type != "water")):
 		preview_label.text = "不能主动进入此格；强制位移进入会立即死亡。"
 	elif inspected_enemy_id != "":

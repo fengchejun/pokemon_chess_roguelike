@@ -27,6 +27,23 @@ func _init() -> void:
 	active_ids = ["ally_fire", "ally_water", "ally_rock"]
 
 
+func set_starters(species_ids: Array[String]) -> bool:
+	if species_ids.size() != CombatConfig.DEPLOYED_MONSTER_LIMIT:
+		return false
+	var unique: Dictionary = {}
+	for species_id in species_ids:
+		if not MonsterCatalog.SPECIES.has(species_id) or unique.has(species_id):
+			return false
+		unique[species_id] = true
+	roster.clear()
+	active_ids.clear()
+	for species_id in species_ids:
+		var instance_id := "ally_" + species_id
+		roster.append(MonsterCatalog.make_record(instance_id, species_id))
+		active_ids.append(instance_id)
+	return true
+
+
 func active_records() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for instance_id in active_ids:

@@ -17,6 +17,6 @@ static func can_capture(state: BattleState, target: CombatUnit) -> bool:
 static func chance(target: CombatUnit) -> float:
 	if target == null or not target.is_alive():
 		return 0.0
-	if target.hp <= CombatConfig.CAPTURE_GUARANTEED_HP or (target.hp <= CombatConfig.CAPTURE_DEBUFF_GUARANTEED_HP and (target.burned or target.wet)):
+	if target.hp <= CombatConfig.CAPTURE_GUARANTEED_HP or (target.hp <= CombatConfig.CAPTURE_DEBUFF_GUARANTEED_HP and target.has_debuff()):
 		return 1.0
 	return clampf(CombatConfig.CAPTURE_BASE_CHANCE + (1.0 - float(target.hp) / float(target.max_hp)) * CombatConfig.CAPTURE_LOW_HP_BONUS, 0.0, 1.0)

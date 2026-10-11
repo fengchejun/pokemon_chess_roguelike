@@ -7,7 +7,7 @@ const BASE_BUFFS: Array[String] = ["move_plus", "flying", "debuff_immune", "dire
 const NAMES := {
 	"move_plus": "疾行：移动力 +1",
 	"flying": "飞行：越过单位、障碍和危险地形，免疫地面效果",
-	"debuff_immune": "净化：免疫灼烧与浸湿，并立即解除它们",
+	"debuff_immune": "净化：免疫灼烧、浸湿、感电、麻痹、冻结与藤蔓束缚，并立即解除",
 	"direct_guard": "护体：技能直接伤害 -1",
 }
 const SKILL_UPGRADES := {
@@ -52,10 +52,10 @@ static func short_name(buff_id: String) -> String:
 
 
 static func enemy_choice(choices: Array[String], unit: CombatUnit) -> String:
-	if (unit.burned or unit.wet) and choices.has("debuff_immune"):
+	if unit.has_debuff() and choices.has("debuff_immune"):
 		return "debuff_immune"
 	var ranking: Array[String] = []
-	if unit.burned or unit.wet:
+	if unit.has_debuff():
 		ranking.assign(["debuff_immune", "direct_guard", "flying", "move_plus"])
 	else:
 		ranking.assign(["direct_guard", "flying", "move_plus", "debuff_immune"])

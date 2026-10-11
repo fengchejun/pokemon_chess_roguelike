@@ -20,7 +20,7 @@ func move_phase(state: RefCounted, group_ids: Array[String] = []) -> void:
 
 func plan_move(state: RefCounted, enemy: CombatUnit) -> Array[Vector2i]:
 	var empty: Array[Vector2i] = []
-	if enemy == null or not enemy.is_alive() or enemy.move_points <= 0:
+	if enemy == null or not enemy.is_alive() or enemy.move_points <= 0 or state.is_rooted_now(enemy):
 		return empty
 	var targets: Array[CombatUnit] = []
 	var trainer: CombatUnit = state.unit_by_id("trainer")
@@ -36,6 +36,16 @@ func plan_move(state: RefCounted, enemy: CombatUnit) -> Array[Vector2i]:
 		var reward_route: Dictionary = paths[state.reward_cell]
 		if int(reward_route["steps"]) <= enemy.move_points:
 			return reward_route["path"]
+	if enemy.element_type == "wind":
+		for direction in DIRECTIONS:
+			var forward: Vector2i = enemy.cell + direction
+			var adjacent: CombatUnit = state.unit_at(forward)
+			if adjacent != null and adjacent.team == enemy.team and adjacent.acted_round != state.turn_number and adjacent.double_cast_round != state.turn_number:
+				return empty
+			for affected in EnvironmentResolver.skill_area(state, "tailwind", forward, enemy.cell):
+				var ally: CombatUnit = state.unit_at(affected)
+				if ally != null and ally.team == enemy.team and ally.move_points > 0 and ally.acted_round != state.turn_number:
+					return empty
 	var best: Dictionary = {}
 	for target in targets:
 		if _is_engaged(state, enemy, target):
@@ -87,19 +97,25 @@ func attack_phase(state: RefCounted, group_ids: Array[String] = []) -> void:
 			return
 		if enemy.team != "enemy" or not enemy.is_alive() or enemy.skill_points <= 0 or (not group_ids.is_empty() and not group_ids.has(enemy.unit_id)):
 			continue
-		var action: Dictionary = _best_offense(state, enemy, state.unit_by_id("trainer"))
-		if action.is_empty():
-			for ally in state.units:
-				if ally.team == "player" and ally.is_alive() and ally.unit_id != "trainer":
-					var candidate: Dictionary = _best_offense(state, enemy, ally)
-					if not candidate.is_empty() and (action.is_empty() or candidate["score"] > action["score"]):
-						action = candidate
-		if action.is_empty():
-			action = _setup_action(state, enemy, state.unit_by_id("trainer"))
-		if action.is_empty():
-			state.add_event("%s 没有合法技能目标，待机。" % enemy.display_name)
-		else:
-			state.try_use_skill(enemy.unit_id, action["skill_id"], action["cell"])
+		for cast_index in 2:
+			if enemy.skill_points <= 0 or state.outcome != "":
+				break
+			var action: Dictionary = _best_offense(state, enemy, state.unit_by_id("trainer"))
+			if action.is_empty():
+				for ally in state.units:
+					if ally.team == "player" and ally.is_alive() and ally.unit_id != "trainer":
+						var candidate: Dictionary = _best_offense(state, enemy, ally)
+						if not candidate.is_empty() and (action.is_empty() or candidate["score"] > action["score"]):
+							action = candidate
+			if action.is_empty():
+				action = _support_action(state, enemy)
+			if action.is_empty():
+				action = _setup_action(state, enemy, state.unit_by_id("trainer"))
+			if action.is_empty():
+				state.add_event("%s 没有合法技能目标，待机。" % enemy.display_name)
+				break
+			if not state.try_use_skill(enemy.unit_id, action["skill_id"], action["cell"]):
+				break
 
 
 func _best_offense(state: RefCounted, enemy: CombatUnit, victim: CombatUnit) -> Dictionary:
@@ -108,7 +124,7 @@ func _best_offense(state: RefCounted, enemy: CombatUnit, victim: CombatUnit) -> 
 	var best: Dictionary = {}
 	for skill_id in enemy.skill_ids:
 		var skill: Dictionary = CombatConfig.SKILLS[skill_id]
-		if enemy.skill_points < int(skill["cost"]) or state.terrain.is_steam(enemy.cell) or skill_id == "rain_call":
+		if enemy.skill_points < int(skill["cost"]) or state.terrain.is_steam(enemy.cell) or skill_id in ["rain_call", "herbal_heal", "tailwind", "double_cast", "frozen_ground"]:
 			continue
 		if int(skill.get("uses_per_battle", 0)) > 0 and int(enemy.battle_skill_uses.get(skill_id, 0)) >= int(skill["uses_per_battle"]):
 			continue
@@ -120,6 +136,8 @@ func _best_offense(state: RefCounted, enemy: CombatUnit, victim: CombatUnit) -> 
 		for target_cell in candidates:
 			var impact: Vector2i = state.projected_skill_impact(enemy, skill_id, target_cell)
 			if impact == Vector2i(-1, -1):
+				continue
+			if skill_id == "electric_arc" and not state.terrain.is_water(impact):
 				continue
 			if skill_id == "flame_charge" and (state.terrain.is_deep_water(impact) or state.terrain.is_collapsed(impact) or state.terrain.is_burning(impact)):
 				continue
@@ -137,6 +155,10 @@ func _best_offense(state: RefCounted, enemy: CombatUnit, victim: CombatUnit) -> 
 				score += 6
 			if skill_id == "flame_charge":
 				score = 5 if not victim.burned and victim.element_type != "fire" else -100
+			if skill_id == "freeze_ray":
+				score = 16 if not victim.frozen and victim.frozen_skip_round == 0 else -100
+			if skill_id == "wild_vines":
+				score = 7 if not victim.flying and not victim.debuff_immune and victim.rooted_skip_round == 0 else -100
 			if skill_id == "rock_create" and state.terrain.is_fragile(victim.cell):
 				score += 100
 			if skill_id in ["rock_push", "water_flow"] and impact == victim.cell:
@@ -158,10 +180,45 @@ func _best_offense(state: RefCounted, enemy: CombatUnit, victim: CombatUnit) -> 
 	return best
 
 
+func _support_action(state: RefCounted, enemy: CombatUnit) -> Dictionary:
+	if enemy.skill_points <= 0 or state.terrain.is_steam(enemy.cell):
+		return {}
+	if enemy.skill_ids.has("herbal_heal") and state.can_use_skill(enemy, "herbal_heal", enemy.cell):
+		var hurt := 0
+		for cell in EnvironmentResolver.skill_area(state, "herbal_heal", enemy.cell, enemy.cell):
+			var ally: CombatUnit = state.unit_at(cell)
+			if ally != null and ally.team == enemy.team and ally.hp < ally.max_hp:
+				hurt += 1
+		if hurt > 0:
+			return {"skill_id": "herbal_heal", "cell": enemy.cell}
+	if enemy.skill_ids.has("double_cast"):
+		for direction in DIRECTIONS:
+			var cell: Vector2i = enemy.cell + direction
+			var ally: CombatUnit = state.unit_at(cell)
+			if ally != null and ally.team == enemy.team and ally.acted_round != state.turn_number and state.can_use_skill(enemy, "double_cast", cell):
+				return {"skill_id": "double_cast", "cell": cell}
+	if enemy.skill_ids.has("tailwind"):
+		var best: Dictionary = {}
+		for direction in DIRECTIONS:
+			var cell: Vector2i = enemy.cell + direction
+			if not state.can_use_skill(enemy, "tailwind", cell):
+				continue
+			var count := 0
+			for affected in EnvironmentResolver.skill_area(state, "tailwind", cell, enemy.cell):
+				var ally: CombatUnit = state.unit_at(affected)
+				if ally != null and ally.team == enemy.team and ally.move_points > 0 and ally.acted_round != state.turn_number:
+					count += 1
+			if count > int(best.get("count", 0)):
+				best = {"skill_id": "tailwind", "cell": cell, "count": count}
+		if not best.is_empty():
+			return best
+	return {}
+
+
 func _setup_action(state: RefCounted, enemy: CombatUnit, trainer: CombatUnit) -> Dictionary:
 	var best: Dictionary = {}
 	for skill_id in enemy.skill_ids:
-		if skill_id in ["rock_create", "flame_charge", "fire_burst"]:
+		if skill_id in ["rock_create", "flame_charge", "fire_burst", "lightning", "freeze_ray", "wild_vines", "herbal_heal", "tailwind", "double_cast", "electric_arc"]:
 			continue
 		for cell in _all_cells():
 			if not state.can_use_skill(enemy, skill_id, cell):
@@ -182,6 +239,11 @@ func _setup_action(state: RefCounted, enemy: CombatUnit, trainer: CombatUnit) ->
 					useful = not object.is_empty() or state.terrain.ground_at(impact) in ["ground", "grass"]
 				"rock_break":
 					useful = object.get("type", "") == "rock" and state.distance(enemy.cell, impact) + state.distance(impact, trainer.cell) <= state.distance(enemy.cell, trainer.cell) + 2
+				"frozen_ground":
+					for affected in EnvironmentResolver.skill_area(state, skill_id, impact, enemy.cell):
+						if state.terrain.ground_at(affected) in ["deep_water", "collapsed"] and state.terrain.object_at(affected).is_empty():
+							converted_cells += 1
+					useful = converted_cells > 0
 			if useful:
 				var rank: Array[int] = [state.distance(impact, trainer.cell), -converted_cells, impact.y, impact.x]
 				if best.is_empty() or _rank_less(rank, best["rank"]):

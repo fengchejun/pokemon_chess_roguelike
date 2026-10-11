@@ -14,6 +14,15 @@ var skill_points: int
 var capture_points: int = 0
 var burned: bool = false
 var wet: bool = false
+var shocked: bool = false
+var paralyzed_skip_round: int = 0
+var frozen: bool = false
+var frozen_skip_round: int = 0
+var rooted_skip_round: int = 0
+var acted_round: int = 0
+var temporary_move_bonus: int = 0
+var temporary_move_bonus_round: int = 0
+var double_cast_round: int = 0
 var burn_damage_from_round: int = 0
 var skill_wet_through_round: int = 0
 var wet_move_from_round: int = 0
@@ -58,3 +67,7 @@ func _init(
 
 func is_alive() -> bool:
 	return hp > 0
+
+
+func has_debuff() -> bool:
+	return burned or wet or shocked or paralyzed_skip_round > 0 or frozen or frozen_skip_round > 0 or rooted_skip_round > 0
