@@ -132,8 +132,8 @@ func _test_ui() -> void:
 	var skill_button := battle.find_child("SkillButton_rock_push", true, false) as Button
 	skill_button.pressed.emit()
 	board.cell_hovered.emit(Vector2i(3, 3))
-	if not preview.text.contains("造成 2 伤") or not preview.text.contains("目标受 2 伤"):
-		_fail("Push preview did not show base and total damage")
+	if not preview.text.contains("目标受 2 点技能直伤"):
+		_fail("Push preview did not separate direct and collision damage")
 		return
 	print("STAGE2_TACTICS passed")
 	quit(0)

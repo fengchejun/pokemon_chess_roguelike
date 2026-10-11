@@ -23,9 +23,6 @@ func plan_move(state: RefCounted, enemy: CombatUnit) -> Array[Vector2i]:
 	if enemy == null or not enemy.is_alive() or enemy.move_points <= 0:
 		return empty
 	var targets: Array[CombatUnit] = []
-	var carrier: CombatUnit = state.reward_carrier()
-	if carrier != null and carrier.is_alive():
-		targets.append(carrier)
 	var trainer: CombatUnit = state.unit_by_id("trainer")
 	if trainer != null and trainer.is_alive() and not targets.has(trainer):
 		targets.append(trainer)
@@ -35,12 +32,18 @@ func plan_move(state: RefCounted, enemy: CombatUnit) -> Array[Vector2i]:
 	if targets.is_empty():
 		return empty
 	var paths: Dictionary = _reachable_paths(state, enemy)
+	if state.reward_state == "ground" and state.unit_at(state.reward_cell) == null and paths.has(state.reward_cell) and (not state.terrain.is_burning(state.reward_cell) or enemy.element_type == "fire" or enemy.flying or enemy.debuff_immune):
+		var reward_route: Dictionary = paths[state.reward_cell]
+		if int(reward_route["steps"]) <= enemy.move_points:
+			return reward_route["path"]
 	var best: Dictionary = {}
 	for target in targets:
 		if _is_engaged(state, enemy, target):
 			return empty
 		for cell in paths.keys():
 			if cell == enemy.cell:
+				continue
+			if not state.can_enter_voluntarily(enemy, cell):
 				continue
 			var route: Dictionary = paths[cell]
 			var original: Vector2i = enemy.cell
@@ -56,6 +59,8 @@ func plan_move(state: RefCounted, enemy: CombatUnit) -> Array[Vector2i]:
 		var best_distance: int = 999
 		for cell in paths.keys():
 			if cell == enemy.cell:
+				continue
+			if not state.can_enter_voluntarily(enemy, cell):
 				continue
 			var route: Dictionary = paths[cell]
 			var distance: int = state.distance(cell, target.cell)
@@ -82,9 +87,7 @@ func attack_phase(state: RefCounted, group_ids: Array[String] = []) -> void:
 			return
 		if enemy.team != "enemy" or not enemy.is_alive() or enemy.skill_points <= 0 or (not group_ids.is_empty() and not group_ids.has(enemy.unit_id)):
 			continue
-		var action: Dictionary = _best_offense(state, enemy, state.reward_carrier())
-		if action.is_empty():
-			action = _best_offense(state, enemy, state.unit_by_id("trainer"))
+		var action: Dictionary = _best_offense(state, enemy, state.unit_by_id("trainer"))
 		if action.is_empty():
 			for ally in state.units:
 				if ally.team == "player" and ally.is_alive() and ally.unit_id != "trainer":
@@ -104,7 +107,10 @@ func _best_offense(state: RefCounted, enemy: CombatUnit, victim: CombatUnit) -> 
 		return {}
 	var best: Dictionary = {}
 	for skill_id in enemy.skill_ids:
-		if enemy.skill_points < int(CombatConfig.SKILLS[skill_id]["cost"]) or state.terrain.is_steam(enemy.cell) or skill_id == "rain_call":
+		var skill: Dictionary = CombatConfig.SKILLS[skill_id]
+		if enemy.skill_points < int(skill["cost"]) or state.terrain.is_steam(enemy.cell) or skill_id == "rain_call":
+			continue
+		if int(skill.get("uses_per_battle", 0)) > 0 and int(enemy.battle_skill_uses.get(skill_id, 0)) >= int(skill["uses_per_battle"]):
 			continue
 		var candidates: Array[Vector2i] = _all_cells()
 		if skill_id == "rock_create":
@@ -125,19 +131,25 @@ func _best_offense(state: RefCounted, enemy: CombatUnit, victim: CombatUnit) -> 
 			var score: int = int(CombatConfig.SKILLS[skill_id]["damage"]) * 10
 			if skill_id == "fire_burst" and impact == victim.cell:
 				score += 12
+			elif skill_id == "fire_burst":
+				score -= 5 # Save the one-use fireball when another attack can reach.
+			if skill_id == "flame_jet" and not victim.burned and victim.element_type != "fire":
+				score += 6
 			if skill_id == "flame_charge":
 				score = 5 if not victim.burned and victim.element_type != "fire" else -100
 			if skill_id == "rock_create" and state.terrain.is_fragile(victim.cell):
 				score += 100
 			if skill_id in ["rock_push", "water_flow"] and impact == victim.cell:
-				var direction := victim.cell - enemy.cell
-				direction = Vector2i(signi(direction.x), signi(direction.y))
-				var result: Dictionary = PushResolver.preview_direction(state, victim, direction, int(CombatConfig.SKILLS[skill_id]["damage"]))
+				var result: Dictionary = state.preview_skill_push(enemy, skill_id, target_cell)
+				if result.is_empty():
+					continue
 				score = int(result["target_damage"]) * 10
-				if state.terrain.is_deep_water(result["destination"]) and victim.element_type != "water":
+				if state.terrain.is_deep_water(result["destination"]) and victim.element_type != "water" and not victim.flying:
 					score += 100
 			if skill_id == "electric_arc" and state.terrain.is_water(impact):
 				score += 2
+			if enemy.upgraded_skill_id == skill_id:
+				score += 5
 			for ally in state.units:
 				if ally.team == "enemy" and ally.is_alive() and ally.unit_id != enemy.unit_id and area.has(ally.cell):
 					score -= 8
@@ -149,7 +161,7 @@ func _best_offense(state: RefCounted, enemy: CombatUnit, victim: CombatUnit) -> 
 func _setup_action(state: RefCounted, enemy: CombatUnit, trainer: CombatUnit) -> Dictionary:
 	var best: Dictionary = {}
 	for skill_id in enemy.skill_ids:
-		if skill_id in ["rock_create", "flame_charge"]:
+		if skill_id in ["rock_create", "flame_charge", "fire_burst"]:
 			continue
 		for cell in _all_cells():
 			if not state.can_use_skill(enemy, skill_id, cell):
@@ -168,11 +180,6 @@ func _setup_action(state: RefCounted, enemy: CombatUnit, trainer: CombatUnit) ->
 					useful = converted_cells > 0
 				"water_flow":
 					useful = not object.is_empty() or state.terrain.ground_at(impact) in ["ground", "grass"]
-				"fire_burst":
-					useful = not object.is_empty()
-					for affected in EnvironmentResolver.skill_area(state, skill_id, impact):
-						if state.terrain.is_flammable(affected) and not state.terrain.is_burning(affected) or (state.terrain.is_water(affected) and not state.terrain.is_steam(affected)):
-							useful = true
 				"rock_break":
 					useful = object.get("type", "") == "rock" and state.distance(enemy.cell, impact) + state.distance(impact, trainer.cell) <= state.distance(enemy.cell, trainer.cell) + 2
 			if useful:
@@ -197,9 +204,9 @@ func _reachable_paths(state: RefCounted, enemy: CombatUnit) -> Dictionary:
 			continue
 		for direction in DIRECTIONS:
 			var next_cell: Vector2i = cell + direction
-			if not state.can_enter_voluntarily(enemy, next_cell):
+			if not state.can_traverse_voluntarily(enemy, next_cell):
 				continue
-			var hazards: int = int(entry["hazards"]) + (2 if state.terrain.is_shallow_water(next_cell) and enemy.element_type != "water" else 0) + (3 if state.terrain.is_burning(next_cell) and enemy.element_type != "fire" else 0)
+			var hazards: int = int(entry["hazards"]) + (2 if state.terrain.is_shallow_water(next_cell) and enemy.element_type != "water" and not enemy.flying else 0) + (3 if state.terrain.is_burning(next_cell) and enemy.element_type != "fire" and not enemy.flying else 0)
 			var route: Array[Vector2i] = entry["path"].duplicate()
 			route.append(next_cell)
 			var next_entry: Dictionary = {"cell": next_cell, "path": route, "hazards": hazards, "steps": route.size()}

@@ -67,8 +67,8 @@ func _test_forced_entry_and_collapse() -> bool:
 	enemy = state.unit_by_id("wild_a")
 	enemy.cell = Vector2i(4, 0)
 	state.terrain.ground[enemy.cell] = "fragile"
-	if not state.try_use_skill(fire.unit_id, "fire_burst", enemy.cell) or not enemy.is_alive() or state.terrain.is_collapsed(enemy.cell) or enemy.hp != enemy.max_hp - 2:
-		return _fail("Fire should damage an occupied fragile tile without collapsing it")
+	if not state.try_use_skill(fire.unit_id, "fire_burst", enemy.cell) or enemy.is_alive() or not state.terrain.is_collapsed(enemy.cell):
+		return _fail("Fireball should collapse an occupied fragile tile")
 	return true
 
 

@@ -4,9 +4,11 @@ extends RefCounted
 const PLAYER_MOVE_POINTS: int = 3
 const TRAINER_SPEED: int = 2
 const SKILL_POINTS_PER_TURN: int = 1
-const MAX_PLAYER_ROUNDS: int = 4
+const MAX_PLAYER_ROUNDS: int = 6
 const CAPTURE_ATTEMPTS_PER_TURN: int = 1
 const CAPTURE_MAX_HP_RATIO: float = 0.5
+const CAPTURE_GUARANTEED_HP: int = 1
+const CAPTURE_DEBUFF_GUARANTEED_HP: int = 2
 const CAPTURE_BASE_CHANCE: float = 0.65
 const CAPTURE_LOW_HP_BONUS: float = 0.15
 const EXPERIENCE_PER_KILL: int = 2
@@ -25,7 +27,8 @@ const BURNING_TURNS: int = 2
 const WET_MOVE_PENALTY: int = 1
 
 const SKILLS := {
-	"fire_burst": {"name": "火种", "element": "fire", "range": 8, "min_range": 2, "axis": true, "cost": 1, "damage": 1, "description": "沿行列射击；中心命中单位造成 2 伤并灼烧，否则十字范围各 1 伤；不击碎易碎地块"},
+	"fire_burst": {"name": "火球术", "element": "fire", "range": 8, "min_range": 2, "axis": true, "cost": 1, "damage": 1, "uses_per_battle": 1, "ignores_obstacles": true, "description": "沿行列选点并越过障碍；中心单位 2 伤、四邻单位各 1 伤；击碎易碎地块，只点燃命中的可燃物；每场限用一次"},
+	"flame_jet": {"name": "喷射火焰", "element": "fire", "range": 3, "min_range": 1, "axis": true, "cost": 1, "damage": 1, "description": "点选正交方向，向前喷射最多 3 格；沿途单位各受 1 伤并灼烧，首个障碍受 1 耐久伤害且挡住后续格"},
 	"flame_charge": {"name": "闪焰冲锋", "element": "fire", "range": 2, "min_range": 2, "axis": true, "cost": 1, "damage": 0, "description": "直线越过一格落在两格外；途中非火系单位灼烧，落在深水或深坑会死亡"},
 	"water_flow": {"name": "水流", "element": "water", "range": 8, "axis": true, "cost": 1, "damage": 1, "description": "沿行列射击；命中单位造成 1 伤、击退并浸湿；命中障碍在其前方造浅水"},
 	"rain_call": {"name": "造雨术", "element": "water", "range": 5, "min_range": 0, "cost": 1, "damage": 0, "description": "曼哈顿距离 5 格内选点，周围 3×3 可转化地块变浅水并熄火；Shift+点击友军格可作为中心"},

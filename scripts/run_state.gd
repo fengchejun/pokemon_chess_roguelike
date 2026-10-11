@@ -14,8 +14,6 @@ var last_reward: Dictionary = {}
 var next_capture_serial: int = 1
 var environment_cards: Array[String] = []
 var offered_environment_cards: Array[String] = []
-var pending_bonus_card: bool = false
-var bonus_choice_active: bool = false
 var run_seed: int = 0
 
 
@@ -51,6 +49,11 @@ func apply_battle_result(state: BattleState) -> Dictionary:
 	state.reward_claimed = true
 	battle_count += 1
 	var experience: int = state.defeated_enemy_ids.size() * CombatConfig.EXPERIENCE_PER_KILL + state.captured_records.size() * CombatConfig.EXPERIENCE_PER_CAPTURE
+	var surviving_captures: Array[Dictionary] = []
+	for captured in state.captured_records:
+		var unit: CombatUnit = state.unit_by_id(captured["enemy_id"])
+		if unit != null and unit.team == "player" and unit.is_alive():
+			surviving_captures.append(captured)
 	if state.outcome == "defeat":
 		experience = 0
 	else:
@@ -58,17 +61,15 @@ func apply_battle_result(state: BattleState) -> Dictionary:
 			if active_ids.has(record["instance_id"]):
 				record["experience"] = int(record["experience"]) + experience
 		total_experience += experience
-		for captured in state.captured_records:
+		for captured in surviving_captures:
 			var record: Dictionary = make_capture_record(captured["species_id"])
 			if roster.size() < CombatConfig.CARRIED_MONSTER_LIMIT:
 				roster.append(record)
 			else:
 				pending_captures.append(record)
-	last_reward = {"outcome": state.outcome, "kills": state.defeated_enemy_ids.size(), "captures": state.captured_records.size(), "escaped": state.escaped_enemy_ids.size(), "experience": experience, "bonus_card": state.bonus_card_earned()}
+	last_reward = {"outcome": state.outcome, "kills": state.defeated_enemy_ids.size(), "captures": surviving_captures.size() if state.outcome != "defeat" else 0, "lost_captures": state.captured_records.size() - surviving_captures.size(), "escaped": state.escaped_enemy_ids.size(), "experience": experience}
 	if state.outcome != "defeat":
 		offered_environment_cards = EnvironmentCardSystem.offer(environment_cards, run_seed + battle_count * 3571)
-		pending_bonus_card = state.bonus_card_earned()
-		bonus_choice_active = false
 	return last_reward
 
 
@@ -77,12 +78,6 @@ func choose_environment_card(card_id: String) -> bool:
 		return false
 	environment_cards.append(card_id)
 	offered_environment_cards.clear()
-	if pending_bonus_card:
-		pending_bonus_card = false
-		bonus_choice_active = true
-		offered_environment_cards = EnvironmentCardSystem.offer(environment_cards, run_seed + battle_count * 3571 + 100003)
-	else:
-		bonus_choice_active = false
 	return true
 
 
@@ -133,4 +128,4 @@ func has_roster_member(instance_id: String) -> bool:
 
 
 func can_start_battle() -> bool:
-	return pending_captures.is_empty() and offered_environment_cards.is_empty() and not pending_bonus_card and active_ids.size() == CombatConfig.DEPLOYED_MONSTER_LIMIT and active_records().size() == CombatConfig.DEPLOYED_MONSTER_LIMIT
+	return pending_captures.is_empty() and offered_environment_cards.is_empty() and active_ids.size() == CombatConfig.DEPLOYED_MONSTER_LIMIT and active_records().size() == CombatConfig.DEPLOYED_MONSTER_LIMIT

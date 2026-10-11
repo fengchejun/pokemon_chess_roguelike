@@ -17,7 +17,7 @@ func _run() -> void:
 		return
 	if not _test_enemy_chooses_wall():
 		return
-	if not await _test_shift_click_on_ally():
+	if not await _test_click_on_ally():
 		return
 	print("TEMPORARY_ROCK_WALL passed")
 	quit(0)
@@ -121,7 +121,7 @@ func _test_enemy_chooses_wall() -> bool:
 	return true
 
 
-func _test_shift_click_on_ally() -> bool:
+func _test_click_on_ally() -> bool:
 	if change_scene_to_file("res://scenes/battle.tscn") != OK:
 		return _fail("Battle UI scene could not open")
 	await process_frame
@@ -141,11 +141,10 @@ func _test_shift_click_on_ally() -> bool:
 	var event := InputEventMouseButton.new()
 	event.button_index = MOUSE_BUTTON_LEFT
 	event.pressed = true
-	event.shift_pressed = true
 	event.position = board.get_cell_rect(ally.cell).get_center()
 	board._gui_input(event)
 	if rock.skill_points != 0 or ally.hp != ally.max_hp - 2 or battle.get("selected_unit_id") != rock.unit_id:
-		return _fail("Shift-click on an allied direction did not cast without switching selection")
+		return _fail("Clicking an allied direction did not cast without switching selection")
 	return true
 
 

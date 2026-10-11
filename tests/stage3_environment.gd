@@ -31,17 +31,17 @@ func _test_terrain_and_breaking() -> bool:
 		return _fail("Initial terrain types are wrong")
 	var fire: CombatUnit = state.unit_by_id("ally_fire")
 	fire.cell = Vector2i(4, 3)
-	if state.can_use_skill(fire, "fire_burst", Vector2i(6, 3)):
-		return _fail("Adjacent rock did not trigger fire's blind spot")
+	if not state.can_use_skill(fire, "fire_burst", Vector2i(6, 3)) or state.projected_skill_impact(fire, "fire_burst", Vector2i(6, 3)) != Vector2i(6, 3):
+		return _fail("Fireball could not pass the adjacent rock")
 	fire.cell = Vector2i(3, 3)
-	if not state.can_use_skill(fire, "fire_burst", Vector2i(6, 3)) or state.projected_skill_impact(fire, "fire_burst", Vector2i(6, 3)) != Vector2i(5, 3):
-		return _fail("Fire did not land on the first blocking rock")
+	if not state.can_use_skill(fire, "fire_burst", Vector2i(6, 3)) or state.projected_skill_impact(fire, "fire_burst", Vector2i(6, 3)) != Vector2i(6, 3):
+		return _fail("Fireball did not land beyond the blocking rock")
 	fire.cell = Vector2i(1, 2)
 	var rock: CombatUnit = state.unit_by_id("ally_rock")
 	rock.cell = Vector2i(4, 3)
 	if not TurnTestHelper.advance_to_player(state, "ally_rock") or state.can_player_move(rock, Vector2i(5, 3)) or not state.try_use_skill("ally_rock", "rock_break", Vector2i(5, 3)):
 		return _fail("Rock obstacle or breaking skill failed")
-	if state.terrain.blocks_move(Vector2i(5, 3)) or not state.can_player_move(rock, Vector2i(5, 3)):
+	if state.terrain.blocks_move(Vector2i(5, 3)) or not state.can_enter_voluntarily(rock, Vector2i(5, 3)) or rock.move_points != 0:
 		return _fail("Destroyed rock did not open a path")
 	state = BattleState.new()
 	var water: CombatUnit = state.unit_by_id("ally_water")
@@ -80,11 +80,11 @@ func _test_water_electric_and_steam() -> bool:
 		return _fail("Fire on water did not create steam")
 	fire.cell = Vector2i(1, 2)
 	fire.skill_points = 1
-	if not state.can_use_skill(fire, "fire_burst", Vector2i(3, 2)):
-		return _fail("Steam incorrectly blocked a skill cast from outside")
+	if state.can_use_skill(fire, "fire_burst", Vector2i(3, 2)) or not state.can_use_skill(fire, "flame_jet", Vector2i(3, 2)):
+		return _fail("Spent fireball became reusable or steam blocked flamethrower from outside")
 	fire.cell = Vector2i(3, 2)
-	if state.can_use_skill(fire, "fire_burst", Vector2i(5, 2)) or state.can_use_skill(fire, "fire_burst", Vector2i(4, 2)):
-		return _fail("Fog failed to suppress the fire skill with a two-cell minimum")
+	if state.can_use_skill(fire, "flame_jet", Vector2i(5, 2)) or state.can_use_skill(fire, "flame_jet", Vector2i(4, 2)):
+		return _fail("Fog failed to suppress flamethrower")
 	state.begin_environment_resolution()
 	EnvironmentResolver.settle_round(state)
 	state.end_environment_resolution()

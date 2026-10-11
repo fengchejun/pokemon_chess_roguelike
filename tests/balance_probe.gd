@@ -1,6 +1,7 @@
 extends SceneTree
 
 const MapGenerator = preload("res://scripts/map_generator.gd")
+const CombatConfig = preload("res://scripts/combat_config.gd")
 
 
 func _initialize() -> void:
@@ -18,8 +19,10 @@ func _run() -> void:
 		run.run_seed = seed_value
 		var layout: Dictionary = MapGenerator.generate("wetland", [], seed_value)
 		var state := BattleState.new(run, layout)
-		while state.outcome == "" and state.turn_number <= 4:
+		while state.outcome == "" and state.turn_number <= CombatConfig.MAX_PLAYER_ROUNDS:
 			state.finish_player_turn()
+			if state.phase == "reward_choice":
+				state.choose_reward_buff(state.reward_choices[0])
 		match state.outcome:
 			"defeat": defeat += 1
 			"escape": escape += 1
@@ -45,7 +48,7 @@ func _fixed_duel(use_terrain: bool) -> Dictionary:
 	state.terrain.ground[Vector2i(4, 3)] = "deep_water"
 	state.reward_cell = Vector2i(2, 3)
 	state.reward_state = "ground"
-	while state.outcome == "" and state.turn_number <= 4:
+	while state.outcome == "" and state.turn_number <= CombatConfig.MAX_PLAYER_ROUNDS:
 		if use_terrain:
 			if state.turn_number == 1 and state.current_player_ids().has("ally_water"):
 				state.try_use_skill("ally_water", "water_flow", Vector2i(3, 3))
@@ -53,4 +56,6 @@ func _fixed_duel(use_terrain: bool) -> Dictionary:
 			state.try_use_skill("ally_rock", "rock_break", Vector2i(3, 3))
 		if state.outcome == "":
 			state.finish_player_turn()
-	return {"outcome": state.outcome, "turn": state.turn_number, "trainer_hp": state.unit_by_id("trainer").hp, "bonus": state.bonus_card_earned()}
+			if state.phase == "reward_choice":
+				state.choose_reward_buff(state.reward_choices[0])
+	return {"outcome": state.outcome, "turn": state.turn_number, "trainer_hp": state.unit_by_id("trainer").hp, "buff_claimed": state.reward_state == "claimed"}

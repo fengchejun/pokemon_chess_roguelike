@@ -4,7 +4,7 @@ extends RefCounted
 const CombatConfig = preload("res://scripts/combat_config.gd")
 
 const SPECIES := {
-	"fire": {"name": "火系怪物", "glyph": "火", "element": "fire", "speed": 3, "move": 3, "skills": ["fire_burst", "flame_charge"]},
+	"fire": {"name": "火系怪物", "glyph": "火", "element": "fire", "speed": 3, "move": 3, "skills": ["fire_burst", "flame_charge", "flame_jet"]},
 	"water": {"name": "水电怪物", "glyph": "水", "element": "water", "speed": 2, "move": 3, "skills": ["water_flow", "electric_arc", "rain_call"]},
 	"rock": {"name": "岩系怪物", "glyph": "岩", "element": "rock", "speed": 1, "move": 2, "skills": ["rock_push", "rock_break", "rock_create"]},
 }

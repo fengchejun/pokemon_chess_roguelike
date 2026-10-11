@@ -50,7 +50,7 @@ func _run() -> void:
 		[Vector2i(3, 1), "蒸汽雾"],
 		[Vector2i(7, 7), "巢穴"],
 		[Vector2i(7, 6), "巢穴出口"],
-		[Vector2i(0, 6), "额外奖励"]
+		[Vector2i(0, 6), "战斗 Buff 奖励"]
 	]:
 		board.cell_hovered.emit(case[0])
 		if not terrain_detail.text.contains(case[1]):
@@ -60,10 +60,10 @@ func _run() -> void:
 		return _fail("Terrain details remained after pointer left board")
 	var enemy: CombatUnit = state.unit_by_id("wild_a")
 	board.cell_pressed.emit(enemy.cell)
-	if board.inspected_enemy_id != enemy.unit_id or not enemy_detail.text.contains("生命 4/4") or not enemy_detail.text.contains("火种") or not enemy_detail.text.contains("闪焰冲锋") or not preview.text.contains("可移动"):
+	if board.inspected_enemy_id != enemy.unit_id or not enemy_detail.text.contains("生命 4/4") or not enemy_detail.text.contains("火球术") or not enemy_detail.text.contains("喷射火焰") or not preview.text.contains("可移动"):
 		return _fail("Enemy click did not show detail and movement range")
 	board.cell_hovered.emit(Vector2i(4, 1))
-	if not enemy_detail.text.contains("火种") or not terrain_detail.text.contains("易碎地块"):
+	if not enemy_detail.text.contains("火球术") or not terrain_detail.text.contains("易碎地块"):
 		return _fail("Enemy detail did not persist alongside terrain hover")
 	enemy.wet = true
 	enemy.burned = true

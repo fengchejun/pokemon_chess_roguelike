@@ -89,11 +89,11 @@ func _test_fire_and_water_skills() -> bool:
 	var enemy: CombatUnit = state.unit_by_id("wild_a")
 	fire.cell = Vector2i(1, 0)
 	enemy.cell = Vector2i(4, 0)
-	if state.can_use_skill(fire, "fire_burst", Vector2i(2, 0)) or not state.can_use_skill(fire, "fire_burst", enemy.cell) or EnvironmentResolver.skill_area(state, "fire_burst", enemy.cell).size() != 1:
-		return _fail("Fire blind spot or occupied-center collapse failed")
+	if state.can_use_skill(fire, "fire_burst", Vector2i(2, 0)) or not state.can_use_skill(fire, "fire_burst", enemy.cell) or EnvironmentResolver.skill_area(state, "fire_burst", enemy.cell).size() != 4:
+		return _fail("Fireball minimum range or occupied-center cross failed")
 	state.terrain.objects[Vector2i(2, 0)] = TerrainManager.make_rock()
-	if state.can_use_skill(fire, "fire_burst", enemy.cell) or state.projected_skill_impact(fire, "fire_burst", enemy.cell) != Vector2i(-1, -1):
-		return _fail("Adjacent obstacle did not activate fire blind spot")
+	if not state.can_use_skill(fire, "fire_burst", enemy.cell) or state.projected_skill_impact(fire, "fire_burst", enemy.cell) != enemy.cell:
+		return _fail("Adjacent obstacle incorrectly blocked fireball")
 	state.terrain.add_steam(fire.cell)
 	if state.can_use_skill(fire, "fire_burst", enemy.cell):
 		return _fail("Fog failed to suppress fire skill")
@@ -170,14 +170,12 @@ func _test_rock_and_nest() -> bool:
 		return _fail("Living nest incorrectly blocked victory")
 	state = BattleState.new()
 	state.nest = {"cell": Vector2i(5, 2), "exit": Vector2i(6, 2), "hp": 3}
+	state.unit_by_id("wild_a").cell = Vector2i(6, 1)
 	if not state.try_use_skill("ally_fire", "fire_burst", Vector2i(5, 2)) or state.nest["hp"] != 2:
 		return _fail("Damage skill did not harm nest")
 	state.hit_cell(Vector2i(5, 2), 2, "测试")
-	if state.nest["hp"] != 0:
-		return _fail("Nest did not break at zero durability")
-	TurnTestHelper.finish_round(state)
-	if state.turn_number != 2 or state.spawned_count != 0:
-		return _fail("Destroyed nest still spawned an enemy")
+	if state.nest["hp"] != 0 or state.outcome != "victory" or state.finish_player_turn():
+		return _fail("Destroyed nest did not end battle immediately")
 	return true
 
 
@@ -186,46 +184,32 @@ func _test_reward_and_aggro() -> bool:
 	var water: CombatUnit = state.unit_by_id("ally_water")
 	state.reward_cell = water.cell
 	state.reward_state = "ground"
-	state.terrain.ground[water.cell] = "grass"
-	state.terrain.ignite_plant(water.cell)
-	state.begin_environment_resolution()
-	EnvironmentResolver.settle_round(state)
-	state.end_environment_resolution()
-	if state.reward_state != "carried" or not water.burned:
-		return _fail("Reward was not picked before environmental damage")
-	state.apply_environment_damage(water, water.hp, "测试")
-	if state.reward_state != "destroyed":
-		return _fail("Carrier death did not destroy reward")
+	state.unit_by_id("trainer").hp = 99
+	for enemy in state.units:
+		if enemy.team == "enemy":
+			enemy.move_points = 0
+			enemy.skill_points = 0
+	state.finish_player_turn()
+	if state.phase != "reward_choice" or state.reward_state != "claimed":
+		return _fail("Player did not receive buff choices after enemy action")
+	var chosen: String = state.reward_choices[0]
+	if not state.choose_reward_buff(chosen) or water.battle_buff != chosen:
+		return _fail("Selected combat buff was not applied")
 	state = BattleState.new()
 	state.reward_cell = Vector2i(4, 3)
 	state.reward_state = "ground"
 	state.hit_cell(state.reward_cell, 1, "测试")
 	if state.reward_state != "destroyed":
 		return _fail("Unpicked reward survived damage")
-	state = BattleState.new()
-	state.unit_by_id("wild_b").hp = 0
-	state.unit_by_id("wild_c").hp = 0
-	state.reward_state = "carried"
-	state.reward_carrier_id = "ally_fire"
-	state.unit_by_id("wild_a").cell = Vector2i(4, 2)
-	state.unit_by_id("trainer").cell = Vector2i(4, 0)
-	state.finish_player_turn()
-	if state.unit_by_id("ally_fire").hp != state.unit_by_id("ally_fire").max_hp - 2 or state.unit_by_id("trainer").hp != state.unit_by_id("trainer").max_hp:
-		return _fail("Enemy did not prioritize a hittable reward carrier")
 	var run := RunState.new()
 	state = BattleState.new(run)
-	state.reward_state = "carried"
-	state.reward_carrier_id = "ally_water"
 	state.outcome = "victory"
 	var reward: Dictionary = run.apply_battle_result(state)
-	if not reward.get("bonus_card", false) or not run.pending_bonus_card or run.offered_environment_cards.size() != 3:
-		return _fail("Surviving carrier did not grant a second card choice")
+	if reward.has("bonus_card") or run.offered_environment_cards.size() != 3:
+		return _fail("Old extra card reward survived the buff conversion")
 	var first_card: String = run.offered_environment_cards[0]
-	if not run.choose_environment_card(first_card) or not run.bonus_choice_active or run.offered_environment_cards.size() != 3 or run.can_start_battle():
-		return _fail("First card choice did not lead to bonus choice")
-	var second_card: String = run.offered_environment_cards[0]
-	if not run.choose_environment_card(second_card) or run.environment_cards.size() != 2 or not run.can_start_battle():
-		return _fail("Bonus card choice did not finish reward flow")
+	if not run.choose_environment_card(first_card) or run.environment_cards.size() != 1 or not run.can_start_battle():
+		return _fail("Normal card choice did not finish reward flow")
 	return true
 
 

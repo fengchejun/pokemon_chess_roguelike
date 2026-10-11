@@ -34,8 +34,8 @@ func _test_movement_and_skills() -> bool:
 	target.skill_points = 0
 	if not state.try_use_skill("ally_fire", "fire_burst", target.cell) or target.hp != CombatConfig.WILD_HP - 2 or fire.skill_points != 0:
 		return _fail("Fire skill did not remain available in the shared player phase")
-	if not state.try_player_move("ally_fire", Vector2i(0, 2)) or fire.move_points != 0:
-		return _fail("Movement was not independent of skill use")
+	if state.try_player_move("ally_fire", Vector2i(0, 2)) or fire.move_points != 0:
+		return _fail("Casting did not end the fire monster's movement opportunity")
 	if not TurnTestHelper.finish_round(state):
 		return _fail("Round could not finish")
 	if fire.skill_points != CombatConfig.SKILL_POINTS_PER_TURN or trainer.skill_points != 0 or fire.move_points != state.effective_move_range(fire):
@@ -47,14 +47,14 @@ func _test_victory_and_defeat() -> bool:
 	var state := BattleState.new()
 	state.unit_by_id("wild_a").cell = Vector2i(3, 2)
 	state.unit_by_id("wild_b").cell = Vector2i(2, 4)
-	state.unit_by_id("wild_c").cell = Vector2i(3, 3)
+	state.unit_by_id("wild_c").cell = Vector2i(4, 3)
 	for enemy_id in ["wild_a", "wild_b", "wild_c"]:
 		state.unit_by_id(enemy_id).hp = 1
 	if not state.try_use_skill("ally_fire", "fire_burst", Vector2i(3, 2)):
 		return _fail("First enemy was not hit")
 	if not state.try_use_skill("ally_water", "electric_arc", Vector2i(2, 4)):
 		return _fail("Second enemy was not hit")
-	if not state.try_use_skill("ally_rock", "rock_break", Vector2i(3, 3)) or state.outcome != "victory" or state.finish_player_turn():
+	if not state.try_use_skill("ally_rock", "rock_break", Vector2i(4, 3)) or state.outcome != "victory" or state.finish_player_turn():
 		return _fail("Skill-only victory did not stop battle")
 	state = BattleState.new()
 	var trainer: CombatUnit = state.unit_by_id("trainer")

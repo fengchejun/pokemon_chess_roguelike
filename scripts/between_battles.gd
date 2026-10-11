@@ -28,7 +28,7 @@ func _refresh() -> void:
 	var run: RunState = RunManager.run_state
 	var reward: Dictionary = run.last_reward
 	var result_name := "胜利" if reward.get("outcome", "") == "victory" else "野生怪物逃离"
-	summary.text = "第 %d 场：%s  ·  击败 %d  ·  捕获 %d  ·  逃离 %d%s\n出战怪物各获得 %d 经验；本局累计 %d 经验。等级成长将在阶段 6 实现。" % [run.battle_count, result_name, reward.get("kills", 0), reward.get("captures", 0), reward.get("escaped", 0), " · 额外环境卡" if reward.get("bonus_card", false) else "", reward.get("experience", 0), run.total_experience]
+	summary.text = "第 %d 场：%s  ·  击败 %d  ·  捕获存活 %d  ·  捕获后折损 %d  ·  逃离 %d\n出战怪物各获得 %d 经验；本局累计 %d 经验。战斗 Buff 已清除。等级成长将在阶段 6 实现。" % [run.battle_count, result_name, reward.get("kills", 0), reward.get("captures", 0), reward.get("lost_captures", 0), reward.get("escaped", 0), reward.get("experience", 0), run.total_experience]
 	var has_pending: bool = not run.pending_captures.is_empty()
 	pending_title.text = "待收容捕获 %d 只（逐只处理）" % run.pending_captures.size() if has_pending else "捕获收容完毕"
 	pending_row.visible = has_pending
@@ -42,7 +42,7 @@ func _refresh() -> void:
 			replace_choice.set_item_metadata(index, record["instance_id"])
 	for child in card_row.get_children():
 		child.queue_free()
-	card_title.text = "选择额外环境卡（奖励携带者存活）" if run.bonus_choice_active and not run.offered_environment_cards.is_empty() else "选择一张环境卡（后续战场持续生效）" if not run.offered_environment_cards.is_empty() else "环境卡奖励已领取"
+	card_title.text = "选择一张环境卡（后续战场持续生效）" if not run.offered_environment_cards.is_empty() else "环境卡奖励已领取"
 	for card_id in run.offered_environment_cards:
 		var button := Button.new()
 		button.custom_minimum_size = Vector2(0, 70)

@@ -21,6 +21,13 @@ var speed: int = 0
 var eligible_round: int = 1
 var element_type: String
 var skill_ids: Array[String]
+var battle_skill_uses: Dictionary = {}
+var battle_buff: String = ""
+var upgraded_skill_id: String = ""
+var flying: bool = false
+var debuff_immune: bool = false
+var direct_damage_reduction: int = 0
+var bonus_move: int = 0
 
 
 func _init(

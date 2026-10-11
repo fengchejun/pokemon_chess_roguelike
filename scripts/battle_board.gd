@@ -111,7 +111,7 @@ func _draw() -> void:
 				last_center = route_center
 		if action_mode == "skill:rock_push":
 			var hovered: CombatUnit = battle_state.unit_at(hover_cell)
-			var preview: Dictionary = battle_state.preview_push(selected, hovered)
+			var preview: Dictionary = battle_state.preview_skill_push(selected, action_mode.trim_prefix("skill:"), hover_cell) if hovered != null else {}
 			if not preview.is_empty():
 				var landing_cell: Vector2i = preview["destination"]
 				if landing_cell != hovered.cell:
@@ -123,7 +123,7 @@ func _draw() -> void:
 				_draw_highlight(cell, RAIN_PREVIEW_COLOR if skill_id == "rain_call" else SKILL_COLOR)
 				if skill_id == "rain_call":
 					draw_rect(get_cell_rect(cell).grow(-6.0), WATER_COLOR, false, 3.0)
-				if skill_id == "rock_create" and battle_state.terrain.is_fragile(cell):
+				if (skill_id in ["rock_create", "fire_burst"] or skill_id == "rock_break" and selected.upgraded_skill_id == "rock_break") and battle_state.terrain.is_fragile(cell):
 					_draw_collapse_preview(cell)
 			if skill_id == "flame_charge":
 				draw_line(get_cell_rect(selected.cell).get_center(), get_cell_rect(impact).get_center(), ROUTE_COLOR, 5.0)
@@ -133,6 +133,10 @@ func _draw() -> void:
 				var delta: Vector2i = impact - selected.cell
 				var water_cell: Vector2i = impact - Vector2i(signi(delta.x), signi(delta.y))
 				_draw_highlight(water_cell, WATER_COLOR)
+			if skill_id == "water_flow":
+				var push_result: Dictionary = battle_state.preview_skill_push(selected, skill_id, hover_cell)
+				if not push_result.is_empty() and push_result["destination"] != impact:
+					_draw_highlight(push_result["destination"], PUSH_COLOR)
 			if impact != hover_cell:
 				draw_rect(get_cell_rect(impact).grow(-4.0), SELECT_COLOR, false, 3.0)
 	var inspected_enemy: CombatUnit = battle_state.unit_by_id(inspected_enemy_id)
@@ -146,7 +150,7 @@ func _draw() -> void:
 			var cell_rect: Rect2 = get_cell_rect(cell)
 			var marker := ""
 			if battle_state.is_nest_at(cell):
-				marker = "巢%d" % battle_state.nest["hp"]
+				marker = "巢!" if battle_state.nest_spawn_notice() != "" else "巢%d" % battle_state.nest["hp"]
 			elif battle_state.terrain.is_burning(cell):
 				marker = "燃"
 			elif battle_state.terrain.is_steam(cell):
@@ -195,7 +199,7 @@ func _draw_unit(unit: CombatUnit) -> void:
 		draw_arc(center, radius + 6.0, 0.0, TAU, 32, BURN_COLOR, 3.0)
 	if unit.wet:
 		draw_circle(center + Vector2(-radius * 0.8, -radius * 0.8), 5.0, WATER_COLOR)
-	if battle_state.reward_carrier_id == unit.unit_id and battle_state.reward_state == "carried":
+	if unit.battle_buff != "":
 		draw_circle(center + Vector2(radius * 0.8, -radius * 0.8), 6.0, REWARD_COLOR)
 	if unit.unit_id == selected_unit_id:
 		draw_arc(center, radius + 3.0, 0.0, TAU, 48, SELECT_COLOR, 3.0)

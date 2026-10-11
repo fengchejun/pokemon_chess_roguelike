@@ -97,16 +97,16 @@ func _test_fragile_ground() -> bool:
 	trainer.cell = Vector2i(4, 4)
 	state.unit_by_id("ally_rock").cell = Vector2i(0, 0)
 	state.terrain.ground[trainer.cell] = "fragile"
-	if not state.try_use_skill(fire.unit_id, "fire_burst", Vector2i(4, 3)) or state.terrain.is_collapsed(trainer.cell) or not trainer.is_alive() or trainer.hp != trainer.max_hp - 1:
-		return _fail("Fire splash should damage trainer without collapsing fragile ground")
+	if not state.try_use_skill(fire.unit_id, "fire_burst", Vector2i(4, 3)) or not state.terrain.is_collapsed(trainer.cell) or trainer.is_alive():
+		return _fail("Fireball splash should collapse fragile ground beneath trainer")
 	state = BattleState.new()
 	fire = state.unit_by_id("ally_fire")
 	fire.cell = Vector2i(1, 1)
 	var victim: CombatUnit = state.unit_by_id("wild_a")
 	victim.cell = Vector2i(4, 1)
 	state.terrain.ground[Vector2i(4, 2)] = "fragile"
-	if not state.try_use_skill(fire.unit_id, "fire_burst", victim.cell) or state.terrain.is_collapsed(victim.cell) or not victim.is_alive() or victim.hp != victim.max_hp - 2 or not state.terrain.is_fragile(Vector2i(4, 2)):
-		return _fail("Occupied fire center should hit only center without collapsing ground")
+	if not state.try_use_skill(fire.unit_id, "fire_burst", victim.cell) or not state.terrain.is_collapsed(victim.cell) or victim.is_alive() or not state.terrain.is_collapsed(Vector2i(4, 2)):
+		return _fail("Occupied fireball center should collapse center and adjacent fragile ground")
 	state = BattleState.new()
 	var rock: CombatUnit = state.unit_by_id("ally_rock")
 	rock.cell = Vector2i(4, 4)
@@ -154,11 +154,10 @@ func _test_fragile_ground() -> bool:
 	fire = state.unit_by_id("ally_fire")
 	fire.cell = Vector2i(4, 3)
 	state.terrain.ground[fire.cell] = "fragile"
-	state.reward_state = "carried"
-	state.reward_carrier_id = fire.unit_id
+	state._apply_reward_buff(fire, "flying")
 	TurnTestHelper.advance_to_player(state, "ally_rock")
-	if not state.try_use_skill(rock.unit_id, "rock_create", Vector2i(4, 3)) or state.reward_state != "destroyed":
-		return _fail("Collapsed reward carrier did not lose the bonus")
+	if not state.try_use_skill(rock.unit_id, "rock_create", Vector2i(4, 3)) or not fire.is_alive():
+		return _fail("Flying unit died when fragile ground collapsed")
 	return true
 
 
@@ -181,12 +180,16 @@ func _test_selection_and_preview() -> void:
 		return
 	fire_button.pressed.emit()
 	board.cell_hovered.emit(Vector2i(4, 2))
-	if board.action_mode != "skill:fire_burst" or not preview.text.contains("不击碎") or preview.text.contains("将塌陷"):
-		_fail("Fire preview still advertised fragile collapse")
+	if board.action_mode != "skill:fire_burst" or not preview.text.contains("将塌陷"):
+		_fail("Fireball preview did not show fragile collapse")
 		return
+	var cancel_aim := InputEventKey.new()
+	cancel_aim.pressed = true
+	cancel_aim.keycode = KEY_ESCAPE
+	battle.call("_unhandled_input", cancel_aim)
 	board.cell_pressed.emit(state.unit_by_id("ally_water").cell)
 	if board.selected_unit_id != "ally_water" or board.action_mode != "move":
-		_fail("Clicking another ally in skill mode did not switch to movement")
+		_fail("Canceling aim did not allow selecting another ally")
 		return
 	board.cell_pressed.emit(state.unit_by_id("ally_rock").cell)
 	TurnTestHelper.advance_to_player(state, "ally_rock")

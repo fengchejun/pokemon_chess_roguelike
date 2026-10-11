@@ -14,7 +14,7 @@ func _run() -> void:
 		return
 	if not _test_ray_interception():
 		return
-	if not _test_birth_move():
+	if not _test_birth_wait():
 		return
 	await _test_preview()
 
@@ -39,8 +39,8 @@ func _test_preview() -> void:
 		return
 	skill_button.pressed.emit()
 	board.cell_hovered.emit(Vector2i(6, 2))
-	if board.action_mode != "skill:fire_burst" or not preview.text.contains("被 (4, 3) 遮挡"):
-		_fail("Ray preview did not report the actual first impact cell")
+	if board.action_mode != "skill:fire_burst" or not preview.text.contains("影响 5 格") or preview.text.contains("遮挡，实际落点"):
+		_fail("Fireball preview did not show the cross beyond the obstacle")
 		return
 	print("ENEMY_APPROACH_LOS passed")
 	quit(0)
@@ -68,8 +68,11 @@ func _test_movement_values_and_paths() -> bool:
 	if not EnemyAI.new().plan_move(state, fire).is_empty():
 		return _fail("Ranged fire moved despite a clear line")
 	state.terrain.objects[Vector2i(4, 2)] = TerrainManager.make_plant()
+	if not EnemyAI.new().plan_move(state, fire).is_empty():
+		return _fail("Fire moved despite having an unobstructed fireball")
+	fire.battle_skill_uses["fire_burst"] = 1
 	if EnemyAI.new().plan_move(state, fire).is_empty():
-		return _fail("Blocked ranged fire did not seek a new firing line")
+		return _fail("Fire with spent fireball did not seek a flamethrower firing line")
 	state = BattleState.new()
 	rock = state.unit_by_id("wild_c")
 	state.terrain.objects.erase(Vector2i(5, 3))
@@ -86,14 +89,14 @@ func _test_ray_interception() -> bool:
 	var state := BattleState.new()
 	var target: CombatUnit = state.unit_by_id("wild_a")
 	state.terrain.objects[Vector2i(3, 2)] = TerrainManager.make_plant()
-	if state.projected_skill_impact(state.unit_by_id("ally_fire"), "fire_burst", target.cell) != Vector2i(3, 2) or not state.try_use_skill("ally_fire", "fire_burst", target.cell):
-		return _fail("Tree did not intercept fire")
-	if target.hp != target.max_hp or state.terrain.object_at(Vector2i(3, 2)).get("hp") != 1 or not state.terrain.is_burning(Vector2i(3, 2)):
-		return _fail("Fire did not damage and ignite the intercepted tree")
+	if state.projected_skill_impact(state.unit_by_id("ally_fire"), "fire_burst", target.cell) != target.cell or not state.try_use_skill("ally_fire", "fire_burst", target.cell):
+		return _fail("Fireball did not pass through tree")
+	if target.hp != target.max_hp - 2 or state.terrain.object_at(Vector2i(3, 2)).get("hp") != 2:
+		return _fail("Fireball affected a crossed tree or missed its target")
 	state = BattleState.new()
 	state.unit_by_id("ally_rock").cell = Vector2i(3, 2)
-	if state.projected_skill_impact(state.unit_by_id("ally_fire"), "fire_burst", Vector2i(6, 2)) != Vector2i(3, 2):
-		return _fail("Friendly unit did not intercept fire")
+	if state.projected_skill_impact(state.unit_by_id("ally_fire"), "fire_burst", Vector2i(6, 2)) != Vector2i(6, 2):
+		return _fail("Friendly unit incorrectly intercepted fireball")
 	state = BattleState.new()
 	state.terrain.objects[Vector2i(3, 4)] = TerrainManager.make_rock()
 	var water: CombatUnit = state.unit_by_id("ally_water")
@@ -102,11 +105,11 @@ func _test_ray_interception() -> bool:
 		return _fail("Rock did not intercept water")
 	if not TurnTestHelper.advance_to_player(state, water.unit_id) or not state.try_use_skill(water.unit_id, "water_flow", Vector2i(6, 4)) or state.terrain.object_at(impact).get("hp") != 1:
 		return _fail("Water did not damage its first blocking rock")
-	for skill_id in ["fire_burst", "water_flow"]:
+	for skill_id in ["water_flow"]:
 		for blocker in ["tree", "rock", "nest", "ally", "enemy"]:
 			state = BattleState.new()
-			var caster: CombatUnit = state.unit_by_id("ally_fire") if skill_id == "fire_burst" else state.unit_by_id("ally_water")
-			caster.cell = Vector2i(1, 2) if skill_id == "fire_burst" else Vector2i(1, 4)
+			var caster: CombatUnit = state.unit_by_id("ally_water")
+			caster.cell = Vector2i(1, 4)
 			var barrier: Vector2i = Vector2i(3, caster.cell.y)
 			var intended: Vector2i = Vector2i(6, caster.cell.y)
 			match blocker:
@@ -119,7 +122,7 @@ func _test_ray_interception() -> bool:
 				return _fail("Ray failed to stop at first blocker: %s / %s" % [skill_id, blocker])
 			if blocker in ["tree", "rock", "nest"]:
 				var old_hp: int = int(state.nest["hp"]) if blocker == "nest" else int(state.terrain.object_at(barrier)["hp"])
-				if skill_id == "water_flow" and not TurnTestHelper.advance_to_player(state, caster.unit_id):
+				if not TurnTestHelper.advance_to_player(state, caster.unit_id):
 					return _fail("Water caster never became active")
 				if not state.try_use_skill(caster.unit_id, skill_id, intended):
 					return _fail("Intercepted skill could not cast: %s / %s" % [skill_id, blocker])
@@ -128,12 +131,14 @@ func _test_ray_interception() -> bool:
 					return _fail("First obstacle did not lose one durability: %s / %s" % [skill_id, blocker])
 	state = BattleState.new()
 	state.terrain.objects[Vector2i(2, 2)] = TerrainManager.make_plant()
-	if state.projected_skill_impact(state.unit_by_id("ally_fire"), "fire_burst", Vector2i(6, 2)) != Vector2i(-1, -1):
-		return _fail("Adjacent first blocker did not enforce the fire blind spot")
+	if state.projected_skill_impact(state.unit_by_id("ally_fire"), "fire_burst", Vector2i(6, 2)) != Vector2i(6, 2):
+		return _fail("Adjacent tree incorrectly blocked fireball")
+	if EnvironmentResolver.skill_area(state, "flame_jet", Vector2i(4, 2), Vector2i(1, 2)) != [Vector2i(2, 2)]:
+		return _fail("Adjacent tree failed to stop flamethrower")
 	return true
 
 
-func _test_birth_move() -> bool:
+func _test_birth_wait() -> bool:
 	var state := BattleState.new()
 	state.nest = {"cell": Vector2i(7, 1), "exit": Vector2i(6, 1), "hp": 3}
 	state.unit_by_id("trainer").hp = 99
@@ -143,8 +148,8 @@ func _test_birth_move() -> bool:
 	if not TurnTestHelper.finish_round(state) or state.turn_number != 2:
 		return _fail("Could not reach first nest spawn")
 	var newborn: CombatUnit = state.unit_by_id("nest_2_1")
-	if newborn == null or newborn.cell == Vector2i(6, 1) or newborn.skill_points != 0 or newborn.eligible_round != 3:
-		return _fail("Newborn did not move once without gaining a skill action: %s events=%s" % [str({"cell": newborn.cell, "skill": newborn.skill_points, "eligible": newborn.eligible_round}) if newborn != null else "missing", str(state.events.slice(maxi(0, state.events.size() - 8)))])
+	if newborn == null or newborn.cell != Vector2i(6, 1) or newborn.move_points != 0 or newborn.skill_points != 0 or newborn.eligible_round != 3:
+		return _fail("Newborn did not wait at the exit without actions: %s events=%s" % [str({"cell": newborn.cell, "move": newborn.move_points, "skill": newborn.skill_points, "eligible": newborn.eligible_round}) if newborn != null else "missing", str(state.events.slice(maxi(0, state.events.size() - 8)))])
 	return true
 
 

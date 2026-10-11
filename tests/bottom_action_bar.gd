@@ -32,7 +32,7 @@ func _run() -> void:
 	board.cell_pressed.emit(state.unit_by_id("ally_fire").cell)
 	var burst := battle.find_child("SkillButton_fire_burst", true, false) as Button
 	var charge := battle.find_child("SkillButton_flame_charge", true, false) as Button
-	if burst == null or charge == null or burst.disabled or charge.disabled:
+	if burst == null or charge == null or burst.disabled or charge.disabled or not burst.tooltip_text.contains("移动机会"):
 		return _fail("All learned fire skills were not shown")
 	burst.pressed.emit()
 	if board.action_mode != "skill:fire_burst" or undo_button.disabled:
@@ -62,9 +62,10 @@ func _run() -> void:
 	board.cell_pressed.emit(Vector2i(7, 7))
 	if board.action_mode != "skill:fire_burst" or undo_button.disabled:
 		return _fail("Invalid skill click locked undo or left aiming")
+	battle.call("_unhandled_input", escape)
 	board.cell_pressed.emit(state.unit_by_id("ally_water").cell)
 	if board.action_mode != "move" or board.selected_unit_id != "ally_water":
-		return _fail("Switching ally did not return to direct movement")
+		return _fail("Canceling aim did not allow switching to an ally")
 	var water: CombatUnit = state.unit_by_id("ally_water")
 	water.skill_points = 0
 	battle.call("_refresh")
@@ -80,6 +81,25 @@ func _run() -> void:
 	undo_button.pressed.emit()
 	if state.unit_by_id("trainer").cell != Vector2i(1, 3):
 		return _fail("Movement could not be undone after aiming and cancellation")
+	state = BattleState.new()
+	battle.set("state", state)
+	battle.set("selected_unit_id", "ally_fire")
+	battle.call("_refresh")
+	burst = battle.find_child("SkillButton_fire_burst", true, false) as Button
+	burst.pressed.emit()
+	board.cell_pressed.emit(Vector2i(1, 0))
+	if state.unit_by_id("ally_fire").skill_points != 0 or board.action_mode != "move":
+		return _fail("Skill-first fixture did not cast successfully")
+	board.cell_pressed.emit(Vector2i(0, 2))
+	if state.unit_by_id("ally_fire").cell != Vector2i(1, 2) or not undo_button.disabled:
+		return _fail("The caster could move after casting or gained an invalid undo")
+	board.cell_pressed.emit(state.unit_by_id("ally_water").cell)
+	board.cell_pressed.emit(Vector2i(0, 4))
+	if state.unit_by_id("ally_water").cell != Vector2i(0, 4) or undo_button.disabled:
+		return _fail("An unused ally's movement was not undoable after another unit cast")
+	undo_button.pressed.emit()
+	if state.unit_by_id("ally_water").cell != Vector2i(1, 4) or state.unit_by_id("ally_fire").skill_points != 0:
+		return _fail("UI undo reversed a skill or the wrong unit's movement")
 	print("BOTTOM_ACTION_BAR passed")
 	quit(0)
 

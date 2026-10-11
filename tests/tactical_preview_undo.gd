@@ -56,8 +56,16 @@ func _test_action_lock() -> bool:
 		return _fail("Invalid skill unexpectedly locked movement undo")
 	if not state.try_use_skill("ally_fire", "fire_burst", Vector2i(0, 0)) or state.can_undo_move() or state.undo_last_move():
 		return _fail("Valid skill did not commit earlier movement")
-	if not state.try_player_move("trainer", Vector2i(0, 3)) or state.can_undo_move():
-		return _fail("A committed skill did not keep later movement outside the undo window")
+	if not state.try_player_move("trainer", Vector2i(0, 3)) or not state.can_undo_move() or not state.undo_last_move() or state.unit_by_id("trainer").cell != Vector2i(1, 3):
+		return _fail("A skill incorrectly blocked undo of movement performed afterward")
+	state = BattleState.new()
+	if not state.try_use_skill("ally_fire", "fire_burst", Vector2i(1, 0)) or state.try_player_move("ally_fire", Vector2i(0, 2)) or state.unit_by_id("ally_fire").move_points != 0 or state.can_undo_move():
+		return _fail("Casting before moving did not forfeit the caster's movement")
+	state = BattleState.new()
+	if not state.try_player_move("trainer", Vector2i(0, 3)) or not state.try_use_skill("ally_fire", "fire_burst", Vector2i(1, 0)) or state.can_undo_move():
+		return _fail("A later ally skill did not commit earlier trainer movement")
+	if not state.try_player_move("ally_water", Vector2i(0, 4)) or not state.undo_last_move() or state.unit_by_id("trainer").cell != Vector2i(0, 3):
+		return _fail("Undoing a new movement after another ally's skill changed the committed position")
 	state = BattleState.new()
 	var target: CombatUnit = state.unit_by_id("wild_a")
 	state.unit_by_id("ally_rock").cell = Vector2i(3, 4)
@@ -70,9 +78,10 @@ func _test_action_lock() -> bool:
 	TurnTestHelper.advance_to_player(state, "trainer")
 	if not state.try_player_move("trainer", Vector2i(2, 4)) or not state.can_undo_move():
 		return _fail("Capture fixture did not create undoable movement")
-	state.try_capture(target.unit_id)
-	if state.can_undo_move():
+	if not state.try_capture(target.unit_id) or state.can_undo_move():
 		return _fail("Capture attempt did not commit previous movement")
+	if not state.try_player_move("ally_fire", Vector2i(0, 2)) or not state.can_undo_move() or not state.undo_last_move() or not target.is_alive() or target.team != "player":
+		return _fail("Post-capture movement was not undoable or capture conversion was reversed")
 	state = BattleState.new()
 	TurnTestHelper.advance_to_player(state, "trainer")
 	if not state.try_player_move("trainer", Vector2i(0, 3)) or not state.finish_player_turn() or state.can_undo_move():

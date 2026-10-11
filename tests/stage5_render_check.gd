@@ -19,12 +19,35 @@ func _run() -> void:
 	root.get_viewport().get_texture().get_image().save_png("res://artifacts/stage5_battle.png")
 	var battle: Control = current_scene
 	var state: BattleState = battle.get("state")
+	var guard: CombatUnit = state.unit_by_id("wild_a")
+	var original_guard_cell: Vector2i = guard.cell
+	guard.cell = state.nest["exit"]
+	battle.set("hover_cell", state.nest["cell"])
+	battle.call("_refresh")
+	await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_viewport().get_texture().get_image().save_png("res://artifacts/nest_guard_ui.png")
+	guard.cell = original_guard_cell
+	battle.set("hover_cell", Vector2i(-1, -1))
 	var preview_state := BattleState.new()
 	preview_state.unit_by_id("trainer").wet = true
 	preview_state.unit_by_id("trainer").move_points = 2
 	battle.set("state", preview_state)
 	battle.call("_refresh")
 	var board := battle.find_child("BattleBoard", true, false) as BattleBoard
+	var waiting_state := BattleState.new()
+	waiting_state.nest = {"cell": Vector2i(7, 1), "exit": Vector2i(6, 1), "hp": 3}
+	waiting_state.turn_number = 2
+	waiting_state._start_round()
+	battle.set("state", waiting_state)
+	battle.call("_refresh")
+	board.cell_pressed.emit(Vector2i(6, 1))
+	await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_viewport().get_texture().get_image().save_png("res://artifacts/nest_spawn_wait.png")
+	battle.set("state", preview_state)
+	battle.set("inspected_enemy_id", "")
+	battle.call("_refresh")
 	board.cell_pressed.emit(preview_state.unit_by_id("ally_fire").cell)
 	var skill_button := battle.find_child("SkillButton_fire_burst", true, false) as Button
 	skill_button.pressed.emit()
@@ -34,6 +57,13 @@ func _run() -> void:
 	await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_viewport().get_texture().get_image().save_png("res://artifacts/terrain_status_preview.png")
+	battle.set("action_mode", "skill:flame_jet")
+	battle.set("hover_cell", Vector2i(4, 2))
+	battle.call("_refresh")
+	board.queue_redraw()
+	await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_viewport().get_texture().get_image().save_png("res://artifacts/flame_jet_preview.png")
 	battle.set("action_mode", "skill:flame_charge")
 	battle.set("hover_cell", Vector2i(3, 2))
 	battle.call("_refresh")
@@ -81,11 +111,5 @@ func _run() -> void:
 	await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_viewport().get_texture().get_image().save_png("res://artifacts/stage5_camp.png")
-	run.last_reward["bonus_card"] = true
-	run.bonus_choice_active = true
-	current_scene.call("_refresh")
-	await process_frame
-	await RenderingServer.frame_post_draw
-	root.get_viewport().get_texture().get_image().save_png("res://artifacts/combat_rework_bonus.png")
 	print("STAGE5_RENDER_CHECK passed")
 	quit(0)

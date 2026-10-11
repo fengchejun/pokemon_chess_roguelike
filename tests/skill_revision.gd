@@ -23,10 +23,10 @@ func _fire_and_charge() -> bool:
 	var fire: CombatUnit = state.unit_by_id("ally_fire")
 	var victim: CombatUnit = state.unit_by_id("wild_b")
 	victim.cell = Vector2i(4, 2)
-	state.terrain.ground[victim.cell] = "fragile"
+	state.terrain.ground.erase(victim.cell)
 	var fire_result: bool = state.try_use_skill(fire.unit_id, "fire_burst", victim.cell)
-	if not fire_result or victim.hp != victim.max_hp - 2 or not victim.burned or state.terrain.is_collapsed(victim.cell):
-		return _fail("Fire center damage, burn or fragile preservation")
+	if not fire_result or victim.hp != victim.max_hp - 2 or not victim.burned or state.terrain.is_burning(victim.cell):
+		return _fail("Fireball center damage, burn or normal-ground preservation")
 	state.begin_environment_resolution()
 	EnvironmentResolver.settle_round(state)
 	state.end_environment_resolution()
@@ -52,8 +52,8 @@ func _fire_and_charge() -> bool:
 	victim = state.unit_by_id("wild_b")
 	victim.cell = Vector2i(3, 2)
 	state.terrain.objects[Vector2i(3, 2)] = state.terrain.make_rock()
-	if not state.try_use_skill(fire.unit_id, "flame_charge", Vector2i(4, 2)) or fire.cell != Vector2i(4, 2) or not victim.burned or victim.hp != victim.max_hp or fire.move_points != fire.base_move:
-		return _fail("Charge did not pass blocker, burn intermediate unit, and preserve move")
+	if not state.try_use_skill(fire.unit_id, "flame_charge", Vector2i(4, 2)) or fire.cell != Vector2i(4, 2) or not victim.burned or victim.hp != victim.max_hp or fire.move_points != 0:
+		return _fail("Charge did not pass blocker, burn intermediate unit, and end the caster's move")
 	state = BattleState.new()
 	fire = state.unit_by_id("ally_fire")
 	fire.cell = Vector2i(2, 2)
@@ -177,8 +177,8 @@ func _enemy_choices() -> bool:
 	state.unit_by_id("wild_c").hp = 0
 	state.phase = "enemy_attack"
 	preload("res://scripts/enemy_ai.gd").new().attack_phase(state, [enemy.unit_id])
-	if not trainer.burned or enemy.cell != Vector2i(2, 2):
-		return _fail("Enemy failed to use safe charge on priority target")
+	if not trainer.burned or trainer.hp != trainer.max_hp - 1 or enemy.cell != Vector2i(4, 2):
+		return _fail("Enemy failed to use flamethrower on priority target")
 	state = BattleState.new()
 	state.unit_by_id("wild_a").hp = 0
 	state.unit_by_id("wild_c").hp = 0
