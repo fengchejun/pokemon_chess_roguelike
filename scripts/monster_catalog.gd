@@ -10,7 +10,7 @@ const SPECIES := {
 	"electric": {"name": "电系怪物", "glyph": "电", "element": "electric", "speed": 2, "move": 3, "skills": ["lightning", "electric_arc"]},
 	"grass": {"name": "草系怪物", "glyph": "草", "element": "grass", "speed": 2, "move": 2, "skills": ["wild_vines", "herbal_heal"]},
 	"ice": {"name": "冰系怪物", "glyph": "冰", "element": "ice", "speed": 2, "move": 2, "skills": ["frozen_ground", "freeze_ray"]},
-	"wind": {"name": "风系怪物", "glyph": "风", "element": "wind", "speed": 3, "move": 3, "skills": ["tailwind", "double_cast"]},
+	"wind": {"name": "风系怪物", "glyph": "风", "element": "wind", "speed": 3, "move": 4, "skills": ["tailwind", "double_cast"]},
 }
 
 const SPECIES_ORDER: Array[String] = ["fire", "water", "rock", "electric", "grass", "ice", "wind"]
