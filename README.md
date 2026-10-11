@@ -46,6 +46,9 @@ Windows 命令行也可运行：
 & 'D:\godot\Godot_v4.6.2-stable_win64_console.exe' --headless --path 'D:\godot\宝可梦战棋肉鸽' --script res://tests/team_turn_lethal.gd
 & 'D:\godot\Godot_v4.6.2-stable_win64_console.exe' --headless --path 'D:\godot\宝可梦战棋肉鸽' --script res://tests/friendly_pass_through.gd
 & 'D:\godot\Godot_v4.6.2-stable_win64_console.exe' --headless --path 'D:\godot\宝可梦战棋肉鸽' --script res://tests/temporary_rock_wall.gd
+& 'D:\godot\Godot_v4.6.2-stable_win64_console.exe' --headless --path 'D:\godot\宝可梦战棋肉鸽' --script res://tests/skill_revision.gd
+& 'D:\godot\Godot_v4.6.2-stable_win64_console.exe' --headless --path 'D:\godot\宝可梦战棋肉鸽' --script res://tests/bottom_action_bar.gd
+& 'D:\godot\Godot_v4.6.2-stable_win64_console.exe' --headless --path 'D:\godot\宝可梦战棋肉鸽' --script res://tests/battle_inspection.gd
 ```
 
 ## 当前结构
