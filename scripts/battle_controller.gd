@@ -451,8 +451,10 @@ func _refresh_enemy_detail() -> void:
 		statuses.append("感电：再次感电将麻痹")
 	if enemy.paralyzed_skip_round > 0:
 		statuses.append("麻痹：第 %d 回合不能行动" % enemy.paralyzed_skip_round)
-	if enemy.frozen or enemy.frozen_skip_round > 0:
-		statuses.append("冻结：首次受伤免伤解冻；第 %d 回合不能行动" % enemy.frozen_skip_round)
+	if enemy.frozen:
+		statuses.append("冻结：持续不能行动，首次受击免伤并解冻")
+	elif enemy.frozen_skip_round > 0:
+		statuses.append("解冻后硬直：第 %d 回合不能行动" % enemy.frozen_skip_round)
 	if enemy.rooted_skip_round > 0:
 		statuses.append("藤蔓束缚：第 %d 回合不能主动移动" % enemy.rooted_skip_round)
 	if state.terrain.is_steam(enemy.cell):

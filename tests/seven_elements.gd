@@ -149,6 +149,32 @@ func _test_ice() -> bool:
 	state.turn_number = 2
 	if not state.can_act_now(victim):
 		return _fail("Frozen action lock lasted more than one eligible phase")
+	state = _state_with(["ice", "fire", "rock"])
+	caster = state.unit_by_id("ally_ice")
+	caster.cell = Vector2i(2, 3)
+	victim = state.unit_by_id("wild_a")
+	victim.cell = Vector2i(4, 3)
+	if not state.try_use_skill(caster.unit_id, "freeze_ray", victim.cell):
+		return _fail("Freeze ray failed in persistence scenario")
+	state.phase = "enemy_attack"
+	for round_number in [1, 2, 3]:
+		state.turn_number = round_number
+		if state.can_act_now(victim):
+			return _fail("Frozen target acted in round %d" % round_number)
+		state._expire_turn_statuses()
+		if not victim.frozen:
+			return _fail("Freeze expired without a hit in round %d" % round_number)
+	victim.acted_round = 3
+	old_hp = victim.hp
+	if state.hit_cell(victim.cell, 1, "测试解冻") or victim.hp != old_hp or victim.frozen or victim.frozen_skip_round != 4:
+		return _fail("Late thaw failed to retain the next action lock")
+	state.turn_number = 4
+	if state.can_act_now(victim):
+		return _fail("Late thaw did not skip the next action")
+	state._expire_turn_statuses()
+	state.turn_number = 5
+	if not state.can_act_now(victim):
+		return _fail("Late thaw action lock did not expire")
 	var vine_cell := Vector2i(3, 2)
 	state.terrain.set_vine(vine_cell)
 	state.terrain.ignite_plant(vine_cell)

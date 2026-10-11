@@ -37,7 +37,7 @@ const SKILLS := {
 	"wild_vines": {"name": "疯狂藤蔓", "element": "grass", "range": 1, "cost": 1, "damage": 0, "description": "指定方向，在前方两格生成可燃藤蔓；入格单位下一次行动不能主动移动"},
 	"herbal_heal": {"name": "药草治疗", "element": "grass", "range": 0, "min_range": 0, "cost": 1, "damage": 0, "description": "以自身为中心 3×3 内所有友军恢复 1 HP"},
 	"frozen_ground": {"name": "冰封大地", "element": "ice", "range": 1, "cost": 1, "damage": 0, "description": "指定方向，紧邻起前方 3×3 生成冰面；可覆盖深水与深坑"},
-	"freeze_ray": {"name": "急冻光线", "element": "ice", "range": 8, "axis": true, "cost": 1, "damage": 0, "description": "直线首个单位若为敌人则冻结；第一次受伤免伤解冻，但下一次行动仍跳过"},
+	"freeze_ray": {"name": "急冻光线", "element": "ice", "range": 8, "axis": true, "cost": 1, "damage": 0, "description": "直线首个敌人永久冻结，直到受击或净化；首次受击免伤解冻，但下一次行动仍跳过"},
 	"tailwind": {"name": "加速", "element": "wind", "range": 1, "cost": 1, "damage": 0, "description": "指定方向，前方宽 3 格、深 2 格的友军本轮移动力 +2"},
 	"double_cast": {"name": "加速2", "element": "wind", "range": 1, "cost": 1, "damage": 0, "description": "正前方一格的友方怪物本轮可施法两次"},
 	"rock_break": {"name": "碎岩", "element": "rock", "range": 2, "cost": 1, "damage": 1, "description": "造成 1 伤；对岩石造成 2 点耐久伤害"},

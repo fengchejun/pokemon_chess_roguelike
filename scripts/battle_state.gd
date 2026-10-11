@@ -467,7 +467,7 @@ func apply_freeze(unit: CombatUnit) -> void:
 		return
 	unit.frozen = true
 	unit.frozen_skip_round = _next_action_round(unit)
-	_log("%s 被冻结：下一次行动跳过；第一次受伤会免伤解冻。" % unit.display_name)
+	_log("%s 被冻结：受到攻击前持续无法行动；第一次受伤会免伤解冻，但仍跳过下一次行动。" % unit.display_name)
 
 
 func apply_root(unit: CombatUnit) -> void:
@@ -685,6 +685,7 @@ func _thaw_on_hit(target: CombatUnit, source_name: String) -> bool:
 	if target == null or not target.is_alive() or not target.frozen:
 		return false
 	target.frozen = false
+	target.frozen_skip_round = _next_action_round(target)
 	_log("%s 命中 %s：冻结抵消本次伤害与附加效果，目标解冻，但仍会失去下一次行动。" % [source_name, target.display_name])
 	return true
 
@@ -861,7 +862,6 @@ func _expire_turn_statuses() -> void:
 			unit.paralyzed_skip_round = 0
 		if unit.frozen_skip_round > 0 and unit.frozen_skip_round <= turn_number:
 			unit.frozen_skip_round = 0
-			unit.frozen = false
 		if unit.rooted_skip_round > 0 and unit.rooted_skip_round <= turn_number:
 			unit.rooted_skip_round = 0
 		if unit.temporary_move_bonus_round == turn_number:
