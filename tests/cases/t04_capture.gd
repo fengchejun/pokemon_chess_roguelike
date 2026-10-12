@@ -111,6 +111,11 @@ func _t_field_join_option(t: TestContext) -> void:
 	t.eq(wild.moved, false, "捕获本轮获得一次移动")
 	t.eq(wild.skill_used, false, "捕获本轮获得一次技能")
 	t.eq(state.alive_enemy_count(), 1, "其他敌人仍可行动")
+	t.eq(state.move_unit(wild, Vector2i(3, 3)), true, "捕获当轮可以实际移动")
+	var rock_entries := state.skill_targets(wild, "rock_create")
+	t.check(not rock_entries.is_empty(), "捕获当轮存在合法技能目标")
+	if not rock_entries.is_empty():
+		t.eq(bool(state.cast_skill(wild, "rock_create", rock_entries[0]).get("ok", false)), true, "捕获当轮可以实际施法")
 	var run := RunState.new_run(77)
 	run.sync_from_battle(state)
 	t.eq(run.pending_captures.size(), 0, "战斗未结束时不提前收入队伍")
