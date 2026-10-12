@@ -2,6 +2,3 @@
 .godot/
 /android/
 artifacts/
-*.import
-.DS_Store
-Thumbs.db
