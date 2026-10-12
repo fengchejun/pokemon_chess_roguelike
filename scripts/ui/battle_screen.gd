@@ -20,7 +20,6 @@ var unit_body: Label = null
 var skill_box: VBoxContainer = null
 var capture_button: Button = null
 var end_turn_button: Button = null
-var evacuate_button: Button = null
 var undo_button: Button = null
 var threat_check: CheckBox = null
 var hint_label: Label = null
@@ -127,10 +126,6 @@ func _action_row() -> Control:
 	end_turn_button.name = "EndTurnButton"
 	end_turn_button.pressed.connect(do_end_turn)
 	row1.add_child(end_turn_button)
-	evacuate_button = UIKit.small_button("主动撤离（返回基地）")
-	evacuate_button.name = "EvacuateButton"
-	evacuate_button.pressed.connect(_ask_evacuate)
-	row1.add_child(evacuate_button)
 	var row2 := UIKit.hbox(6)
 	column.add_child(row2)
 	threat_check = CheckBox.new()
@@ -300,8 +295,6 @@ func _update_action_buttons() -> void:
 		threat_check.set_pressed_no_signal(enabled)
 	if end_turn_button != null:
 		end_turn_button.disabled = busy or state.ended or state.phase != BattleState.PHASE_PLAYER
-	if evacuate_button != null:
-		evacuate_button.disabled = busy or state.ended or state.phase != BattleState.PHASE_PLAYER
 	if undo_button != null:
 		undo_button.disabled = busy or not state.can_undo()
 
@@ -685,14 +678,6 @@ func do_undo() -> bool:
 	return true
 
 
-func do_evacuate() -> void:
-	if busy or state.ended or state.phase != BattleState.PHASE_PLAYER:
-		return
-	state.evacuate()
-	app.sync_and_save(state)
-	refresh_all()
-
-
 func do_end_turn() -> void:
 	if busy or state.ended or state.phase != BattleState.PHASE_PLAYER:
 		return
@@ -754,18 +739,6 @@ func report_end_now() -> void:
 func _report_end() -> void:
 	if state != null and state.ended and is_inside_tree():
 		app.finish_battle(state)
-
-
-func _ask_evacuate() -> void:
-	if busy or state.ended or state.phase != BattleState.PHASE_PLAYER:
-		return
-	var dialog := ConfirmationDialog.new()
-	dialog.name = "EvacuateDialog"
-	dialog.title = "主动撤离（返回基地）"
-	dialog.dialog_text = "主动撤离视为战斗失败：本场不结算经验；出战的宝可梦生命减半（不致死）并返回基地；留守基地的成员回到基地后回满 100% 生命。确认撤离？"
-	add_child(dialog)
-	dialog.confirmed.connect(do_evacuate)
-	dialog.popup_centered()
 
 
 func _on_threat_toggled(pressed: bool) -> void:

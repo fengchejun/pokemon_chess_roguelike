@@ -13,7 +13,6 @@ func run(t: TestContext) -> void:
 	_t_battle_recovery(t)
 	_t_supply(t)
 	_t_capture_resolution(t)
-	_t_evacuate(t)
 	_t_forced_retreat(t)
 	_t_escape_flow(t)
 	_t_faint_and_recover(t)
@@ -56,38 +55,6 @@ func _t_victory_rewards(t: TestContext) -> void:
 	t.eq(run.exp, 2 + Balance.CARRIER_BONUS_EXP, "额外经验已计入本局经验")
 	t.eq(run.in_battle, false, "结算后离开战斗态")
 	t.eq(int(run.stats["victories"]), 1, "统计胜利")
-
-
-func _t_evacuate(t: TestContext) -> void:
-	var run := RunState.new_run(4004)
-	var state := TestScenario.make_state(["fire_starter", "water_starter"], [
-		["grass_wild1", Vector2i(2, 3)],
-		["rock_wild1", Vector2i(6, 5)],
-	])
-	run.mark_deployed([1, 2])
-	state.unit_by_uid(100).hp = 3
-	state.unit_by_uid(1).cell = Vector2i(0, 3)
-	state.cast_skill(state.unit_by_uid(1), "fire_seed", {"type": "cell", "cell": Vector2i(2, 3)})
-	t.eq(state.ended, false, "仍有敌人存活，战斗继续")
-	state.unit_by_uid(1).hp = 4
-	state.unit_by_uid(2).hp = 1
-	run.carried[2]["hp"] = 2
-	state.evacuate()
-	run.sync_from_battle(state)
-	var outcome := run.settle_battle(state)
-	t.eq(state.end_reason, "evacuate", "主动撤离结束")
-	t.eq(int(outcome["exp"]), 0, "主动撤离视为战斗失败：不结算经验")
-	t.eq(run.exp, 0, "经验未累计")
-	t.eq(int(outcome["carrier_exp"]), 0, "主动撤离不结算携带者额外经验")
-	t.eq(bool(outcome["evacuated"]), true, "标记主动撤离")
-	# 出战宝可梦生命减半（不致死），且失败不享受 30% 恢复
-	t.eq(int(run.record_by_uid(1)["hp"]), ceili(float(4) * 0.5), "出战宝可梦生命减半")
-	t.eq(int(run.record_by_uid(2)["hp"]), 1, "低血量减半不致死（下限 1）")
-	t.eq((outcome["flee_penalty"] as Array).size(), 1, "减半明细（1 血不产生变化）")
-	t.eq((outcome["recovery"] as Array).size(), 0, "失败结局不享受出战 30% 恢复")
-	t.eq(int(run.record_by_uid(3)["hp"]), SpeciesDB.hp_of("grass_starter"), "留守基地的成员回满 100%")
-	t.eq((outcome["base_rest"] as Array).size(), 1, "基地休养明细 1 条")
-	t.eq(run.trainer_hp, int(SpeciesDB.get_species("trainer").get("hp", 7)), "训练家回满")
 
 
 func _t_battle_recovery(t: TestContext) -> void:
@@ -198,8 +165,10 @@ func _t_capture_resolution(t: TestContext) -> void:
 
 func _t_forced_retreat(t: TestContext) -> void:
 	var run := RunState.new_run(5005)
+	run.carried[1]["hp"] = 1
+	run.carried[2]["hp"] = 2
 	var state := TestScenario.make_state(["fire_starter"], [["grass_wild1", Vector2i(2, 3)]])
-	run.mark_deployed([1])
+	run.mark_deployed([1, 2])
 	state.unit_by_uid(100).hp = 3
 	state.unit_by_uid(1).cell = Vector2i(0, 3)
 	state.cast_skill(state.unit_by_uid(1), "fire_seed", {"type": "cell", "cell": Vector2i(2, 3)})
@@ -213,12 +182,17 @@ func _t_forced_retreat(t: TestContext) -> void:
 	var outcome := run.settle_battle(state2)
 	t.eq(int(outcome["exp"]), 0, "强制撤退不结算本场经验")
 	t.eq(run.exp, exp_before, "经验不变")
-	t.eq((outcome["flee_penalty"] as Array).size(), 1, "强制撤退同样按失败减半")
+	t.eq((outcome["flee_penalty"] as Array).size(), 1, "强制撤退同样按失败减半（1 血不产生变化）")
 	t.eq(int(run.record_by_uid(1)["hp"]), ceili(float(SpeciesDB.hp_of("fire_starter")) * 0.5), "出战宝可梦生命减半且不享受 30% 恢复")
+	t.eq(int(run.record_by_uid(2)["hp"]), 1, "低血量减半不致死（下限 1）")
+	t.eq((outcome["recovery"] as Array).size(), 0, "失败结局不享受出战 30% 恢复")
+	t.eq(int(run.record_by_uid(3)["hp"]), SpeciesDB.hp_of("grass_starter"), "留守基地的成员回满 100%")
+	t.eq((outcome["base_rest"] as Array).size(), 1, "基地休养明细 1 条")
+	t.eq(run.trainer_hp, int(SpeciesDB.get_species("trainer").get("hp", 7)), "训练家回满")
 
 
 func run2_setup(t: TestContext, state: BattleState, run: RunState) -> void:
-	run.mark_deployed([1])
+	run.mark_deployed([1, 2])
 	t.check(true, "准备强制撤退场景")
 
 

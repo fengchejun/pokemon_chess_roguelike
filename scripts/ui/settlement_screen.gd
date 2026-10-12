@@ -57,8 +57,6 @@ func _result_title() -> String:
 	match String(outcome.get("reason", "")):
 		"victory":
 			return "战斗胜利"
-		"evacuate":
-			return "主动撤离（战斗失败）"
 		"forced_retreat":
 			return "强制撤退（战斗失败）"
 		"escape":
@@ -74,8 +72,6 @@ func _summary_box(run: RunState) -> Control:
 	var lines: Array = []
 	if String(outcome.get("reason", "")) == "forced_retreat":
 		lines.append("本场经验：0（强制撤退不结算本场经验）")
-	elif String(outcome.get("reason", "")) == "evacuate":
-		lines.append("本场经验：0（主动撤离视为战斗失败）")
 	else:
 		lines.append("本场经验：+%d（击败与捕获各 2 点；合计 %d）" % [int(outcome.get("exp", 0)), run.exp])
 	lines.append("击败：%d　捕获：%d" % [battle.enemy_kills.size(), battle.captured.size()])

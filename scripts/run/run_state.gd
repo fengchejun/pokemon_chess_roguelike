@@ -241,12 +241,11 @@ func release_storage(uid: int) -> bool:
 
 
 func settle_battle(battle: BattleState) -> Dictionary:
-	## 结算口径：胜利 / 主动撤离 / 强制撤退（失败） / 野生逃离。
+	## 结算口径：胜利 / 强制撤退（失败） / 野生逃离。
 	var outcome := {
 		"reason": battle.end_reason,
 		"exp": battle.battle_exp(),
 		"carrier_exp": 0,
-		"evacuated": false,
 		"flee_penalty": [],
 		"recovery": [],
 		"base_rest": [],
@@ -258,7 +257,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		if bool(entry.get("by_player", false)):
 			kills += 1
 	stats["kills"] = int(stats["kills"]) + kills
-	var failure := battle.end_reason == "forced_retreat" or battle.end_reason == "evacuate"
+	var failure := battle.end_reason == "forced_retreat"
 	match battle.end_reason:
 		"victory":
 			stats["victories"] = int(stats["victories"]) + 1
@@ -269,11 +268,9 @@ func settle_battle(battle: BattleState) -> Dictionary:
 				exp += Balance.CARRIER_BONUS_EXP
 		"escape":
 			stats["escapes"] = int(stats["escapes"]) + 1
-		"evacuate", "forced_retreat":
-			## 主动撤离与战斗失败同口径：不结算经验、出战宝可梦生命减半（不致死）并退回基地。
+		"forced_retreat":
+			## 战斗失败：不结算经验、出战宝可梦生命减半（不致死）并退回基地。
 			stats["retreats"] = int(stats["retreats"]) + 1
-			if battle.end_reason == "evacuate":
-				outcome["evacuated"] = true
 			var penalty: Array = []
 			for uid in deployed_uids:
 				var record := record_by_uid(int(uid))

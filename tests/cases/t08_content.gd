@@ -2,7 +2,7 @@ extends RefCounted
 
 ## 验收扫描：无反应断言、数据完整性
 
-const BANNED_TERMS := ["导电", "蒸汽", "冰面", "湿地", "焦土", "岩浆化"]
+const BANNED_TERMS := ["导电", "蒸汽", "冰面", "湿地", "焦土", "岩浆化", "主动撤离", "evacuate"]
 
 
 func run(t: TestContext) -> void:
@@ -27,7 +27,7 @@ func _t_no_removed_reactions(t: TestContext) -> void:
 		for term in BANNED_TERMS:
 			if text.contains(term):
 				offenders.append("%s 含「%s」" % [path, term])
-	t.eq(offenders, [], "已删除的元素反应与地形在代码与文案中不存在：%s" % str(offenders))
+	t.eq(offenders, [], "已删除的内容（元素反应、地形、主动撤离）在代码与文案中不存在：%s" % str(offenders))
 
 
 func _collect_files(root: String, suffixes: Array, out: Array) -> void:

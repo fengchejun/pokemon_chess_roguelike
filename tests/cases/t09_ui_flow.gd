@@ -77,10 +77,12 @@ func run(t: TestContext) -> void:
 	t.eq(app.current_screen.name, "BattleScreen", "进入战斗")
 	var battle_screen = app.current_screen
 	t.check(battle_screen.state != null, "战斗状态已建立")
+	t.check(battle_screen.find_child("EvacuateButton", true, false) == null, "战斗界面不再有主动撤离按钮")
 	if battle_screen.state == null:
 		t.finish()
 		return
 	var state: BattleState = battle_screen.state
+	t.check(not state.has_method("evacuate"), "战斗状态不再提供主动撤离接口")
 	var unit: CombatUnit = state.unit_by_uid(1)
 	t.check(unit != null and unit.is_alive(), "出战单位在场")
 	if unit != null:

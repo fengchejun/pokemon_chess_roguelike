@@ -664,21 +664,14 @@ func end_battle(reason: String) -> void:
 	phase = PHASE_ENDED
 	var text: String = {
 		"victory": "全部敌人被击败或捕获，胜利！",
-		"evacuate": "主动撤离：队伍安全返回基地，本场不结算经验。",
 		"forced_retreat": "训练家倒下：强制撤退，视为战斗失败。",
 		"escape": "第 %d 回合结束，野生宝可梦逃离。" % Balance.MAX_ROUNDS,
 	}.get(reason, reason)
 	log_event("战斗结束：" + text)
 
 
-func evacuate() -> void:
-	## 主动撤离：安全返回基地（保留捕获；本场不结算经验）。
-	if phase == PHASE_PLAYER and not ended:
-		end_battle("evacuate")
-
-
 func battle_exp() -> int:
-	if end_reason == "forced_retreat" or end_reason == "evacuate":
+	if end_reason == "forced_retreat":
 		return 0
 	var kills := 0
 	for entry in enemy_kills:
