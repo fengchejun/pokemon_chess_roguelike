@@ -26,7 +26,9 @@ func _ready() -> void:
 
 
 func _fit_to_window() -> void:
-	size = get_viewport_rect().size
+	var target := get_viewport_rect().size
+	if size != target:
+		size = target
 	if current_screen != null:
 		current_screen.size = size
 

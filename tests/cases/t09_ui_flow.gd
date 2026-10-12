@@ -114,13 +114,24 @@ func run(t: TestContext) -> void:
 			if child is Button:
 				(child as Button).pressed.emit()
 				break
+	# 回归：连续两次捕获 —— 第一条入队后仍带 uid，第二条触发处理界面不崩溃
+	app.run.pending_captures.append({"species_id": "fire_wild1", "hp": 4})
+	app.run.pending_captures.append({"species_id": "water_wild1", "hp": 3})
+	settlement._show_next_step()
+	t.eq(app.run.carried.size(), Balance.CARRIED_LIMIT, "第一条捕获直接入队")
+	t.check(app.run.carried[5].has("uid"), "入队记录带 uid")
+	var capture_choice_btn: Button = settlement.find_child("CaptureToStorageButton", true, false)
+	t.check(capture_choice_btn != null, "第二条捕获触发处理界面（不崩溃）")
+	capture_choice_btn.pressed.emit()
+	t.eq(app.run.storage.size(), 1, "第二条放入仓库")
+	t.eq(app.run.pending_captures.size(), 0, "捕获处理完成")
 	t.eq(continue_button.disabled, false, "无待处理事项可直接继续")
 	var index_before: int = app.run.battle_index
 	continue_button.pressed.emit()
 	t.eq(app.run.battle_index, index_before + 1, "进入下一场")
 	t.eq(app.current_screen.name, "PrepScreen", "回到整备界面")
-	t.eq(app.run.carried.size(), 5, "未出战成员保留在名单中（不自动入库）")
-	t.eq(app.run.storage.size(), 0, "仓库保持为空")
+	t.eq(app.run.carried.size(), 6, "名单为 6（含新捕获）")
+	t.eq(app.run.storage.size(), 1, "仓库有 1 只（放入的捕获）")
 	# 第二场：验证战后恢复与直达整备
 	app.show_preview([1, 2, 3])
 	var preview2 = app.current_screen
@@ -129,7 +140,7 @@ func run(t: TestContext) -> void:
 	start2.pressed.emit()
 	var battle2 = app.current_screen
 	t.eq(battle2.name, "BattleScreen", "第二场进入战斗")
-	t.eq(app.run.carried.size(), 5, "名单不受出战选择影响")
+	t.eq(app.run.carried.size(), 6, "名单不受出战选择影响")
 	for enemy in battle2.state.alive_units("enemy"):
 		battle2.state.kill_unit(enemy, "测试清场", "player")
 	battle2.refresh_all()
@@ -137,8 +148,8 @@ func run(t: TestContext) -> void:
 	var settlement2 = app.current_screen
 	t.eq(settlement2.name, "SettlementScreen", "第二场进入结算")
 	# 结算中的捕获处理：名单满员时提供「替换 / 放入仓库」选项
-	app.run._add_capture("fire_wild1", 4)
-	t.eq(app.run.carried.size(), Balance.CARRIED_LIMIT, "名单补满至 6")
+	t.eq(app.run.carried.size(), Balance.CARRIED_LIMIT, "名单已满（6）")
+	var storage_before: int = app.run.storage.size()
 	app.run.pending_captures.append({"species_id": "water_wild1", "hp": 3})
 	settlement2._show_next_step()
 	var settle_continue_btn: Button = settlement2.find_child("ContinueButton", true, false)
@@ -147,7 +158,7 @@ func run(t: TestContext) -> void:
 	t.check(to_storage_button != null, "名单满时提供「放入仓库」选项")
 	to_storage_button.pressed.emit()
 	t.eq(app.run.pending_captures.size(), 0, "捕获处理完成")
-	t.eq(app.run.storage.size(), 1, "捕获进入仓库")
+	t.eq(app.run.storage.size(), storage_before + 1, "捕获进入仓库")
 	if settlement2.upgrade_pending:
 		for child in settlement2.choice_box.get_children():
 			if child is Button:

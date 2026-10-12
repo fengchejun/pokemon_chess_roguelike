@@ -153,11 +153,13 @@ func _t_capture_resolution(t: TestContext) -> void:
 	battle.captured.append({"species_id": "water_wild1", "hp": 3})
 	run.sync_from_battle(battle)
 	t.eq(run.pending_captures.size(), 1, "捕获进入待处理队列")
+	t.check((run.pending_captures[0] as Dictionary).has("uid"), "待处理捕获自带 uid")
 	t.eq(run.carried.size(), 5, "名单暂不变动")
 	# 名单未满：直接入队
 	t.eq(run.capture_join_team(), true, "名单未满时捕获直接入队")
 	t.eq(run.carried.size(), 6, "名单增长到 6")
 	t.eq(int(run.carried[5]["hp"]), 3, "捕获保留剩余生命")
+	t.check(run.carried[5].has("uid"), "入队记录带 uid")
 	# 名单满：替换（被替换者入仓库）
 	run.pending_captures.append({"species_id": "fire_wild1", "hp": 4})
 	var old_uid := int(run.carried[0]["uid"])
@@ -166,6 +168,7 @@ func _t_capture_resolution(t: TestContext) -> void:
 	t.eq(run.record_by_uid(old_uid).is_empty(), true, "被替换者离开名单")
 	t.eq(run.storage.size(), 1, "被替换者进入仓库")
 	t.eq(SpeciesDB.name_of(String(run.carried[5]["species_id"])), "六尾", "捕获进入名单末位")
+	t.check(run.carried[5].has("uid"), "替换进入的记录带 uid")
 	# 名单满：放入仓库
 	run.pending_captures.append({"species_id": "grass_wild1", "hp": 2})
 	t.eq(run.capture_to_storage(), true, "放入仓库成功")
@@ -180,6 +183,17 @@ func _t_capture_resolution(t: TestContext) -> void:
 	var run2 := RunState.new_run(9302)
 	run2.carried = []
 	t.eq(run2.run_lost(), true, "名单为空即本局结束")
+	# 读档修复：历史/异常记录缺少 uid 时自动补齐（修复崩溃来源存档）
+	var data := RunState.new_run(9311).to_dict()
+	(data["carried"] as Array).append({"species_id": "fire_wild1", "hp": 4})
+	data["pending_captures"] = [{"species_id": "water_wild1", "hp": 3}]
+	var repaired := RunState.from_dict(data)
+	var all_have_uid := true
+	for group in [repaired.carried, repaired.storage, repaired.pending_captures]:
+		for record in (group as Array):
+			if not (record as Dictionary).has("uid"):
+				all_have_uid = false
+	t.eq(all_have_uid, true, "读档自动补齐缺失的 uid")
 
 
 func _t_forced_retreat(t: TestContext) -> void:

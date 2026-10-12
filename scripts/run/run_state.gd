@@ -169,7 +169,7 @@ func sync_from_battle(battle: BattleState) -> void:
 		var cap: Dictionary = battle.captured[captured_applied]
 		captured_applied += 1
 		stats["captures"] = int(stats["captures"]) + 1
-		pending_captures.append({"species_id": String(cap["species_id"]), "hp": int(cap["hp"])})
+		pending_captures.append(_make_record(String(cap["species_id"]), int(cap["hp"])))
 
 
 func _add_capture(species_id: String, hp: int) -> void:
@@ -190,14 +190,18 @@ func pending_capture() -> Dictionary:
 func capture_join_team() -> bool:
 	if pending_captures.is_empty() or carried.size() >= Balance.CARRIED_LIMIT:
 		return false
-	carried.append(pending_captures.pop_front())
+	var record: Dictionary = pending_captures.pop_front()
+	_ensure_uid(record)
+	carried.append(record)
 	return true
 
 
 func capture_to_storage() -> bool:
 	if pending_captures.is_empty() or storage.size() >= Balance.STORAGE_LIMIT:
 		return false
-	storage.append(pending_captures.pop_front())
+	var record: Dictionary = pending_captures.pop_front()
+	_ensure_uid(record)
+	storage.append(record)
 	return true
 
 
@@ -209,9 +213,18 @@ func capture_replace(replace_uid: int) -> bool:
 		if int(carried[index]["uid"]) == replace_uid:
 			storage.append(carried[index])
 			carried.remove_at(index)
-			carried.append(pending_captures.pop_front())
+			var incoming: Dictionary = pending_captures.pop_front()
+			_ensure_uid(incoming)
+			carried.append(incoming)
 			return true
 	return false
+
+
+func _ensure_uid(record: Dictionary) -> void:
+	## 兜底：历史/异常来源的记录可能缺少 uid，补发一个保证唯一。
+	if not record.has("uid"):
+		record["uid"] = next_uid
+		next_uid += 1
 
 
 func capture_discard() -> void:
@@ -401,6 +414,10 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.pending_supply = bool(data.get("pending_supply", false))
 	run.options = (data.get("options", {}) as Dictionary).duplicate()
 	run.cards = _sanitize_cards(data.get("cards", []))
+	## 修复历史存档：补齐缺失的 uid（否则名单/仓库相关界面会取键失败）。
+	for group in [run.carried, run.storage, run.pending_captures]:
+		for record in (group as Array):
+			run._ensure_uid(record)
 	return run
 
 
