@@ -49,7 +49,7 @@ var stats := {"kills": 0, "captures": 0, "victories": 0, "escapes": 0, "retreats
 var captured_applied: int = 0
 var deployed_uids: Array = []
 var pending_supply: bool = false
-var options := {"threat_preview": true}
+var options := {"threat_preview": false, "capture_low_hp": false, "capture_field_join": false}
 
 
 static func new_run(seed_value: int = 0) -> RunState:
@@ -167,9 +167,17 @@ func sync_from_battle(battle: BattleState) -> void:
 						break
 	while captured_applied < battle.captured.size():
 		var cap: Dictionary = battle.captured[captured_applied]
+		if bool(cap.get("on_field", false)) and not battle.ended:
+			break
 		captured_applied += 1
 		stats["captures"] = int(stats["captures"]) + 1
-		pending_captures.append(_make_record(String(cap["species_id"]), int(cap["hp"])))
+		if bool(cap.get("on_field", false)):
+			var survivor := battle.unit_by_uid(int(cap.get("uid", -1)))
+			if survivor == null or not survivor.is_alive() or survivor.side != "player":
+				continue
+			pending_captures.append(_make_record(String(cap["species_id"]), survivor.hp))
+		else:
+			pending_captures.append(_make_record(String(cap["species_id"]), int(cap["hp"])))
 
 
 func _add_capture(species_id: String, hp: int) -> void:
@@ -409,7 +417,7 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.captured_applied = int(data.get("captured_applied", 0))
 	run.deployed_uids = (data.get("deployed_uids", []) as Array).duplicate()
 	run.pending_supply = bool(data.get("pending_supply", false))
-	run.options = (data.get("options", {}) as Dictionary).duplicate()
+	run.options.merge((data.get("options", {}) as Dictionary), true)
 	run.cards = _sanitize_cards(data.get("cards", []))
 	## 修复历史存档：补齐缺失的 uid（否则名单/仓库相关界面会取键失败）。
 	for group in [run.carried, run.storage, run.pending_captures]:

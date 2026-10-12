@@ -98,7 +98,7 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 	var cfg := BattleDB.config_for(run.battle_index)
 	var player_units := run.build_deploy_units(deploy_uids)
 	var state := BattleState.new()
-	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, run.effects(), run.upgrades, cfg.get("reinforce", []))
+	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, run.effects(), run.upgrades, cfg.get("reinforce", []), run.options)
 	run.mark_deployed(deploy_uids)
 	autosave()
 	var screen: Control = BattleScreen.new()

@@ -34,6 +34,7 @@ var enemy_kills: Array = []
 var captured: Array = []
 var effects: Dictionary = {}
 var upgrades: Dictionary = {}
+var capture_options: Dictionary = {}
 var reinforcement_pool: Array = []
 var undo_stack: Array = []
 var spawn_rng := RandomNumberGenerator.new()
@@ -45,11 +46,12 @@ var _forecast_cache: Array = []
 var _forecast_signature: String = ""
 
 
-func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_value: int, player_units: Array, effects_value: Dictionary, upgrades_value: Dictionary, pool_value: Array) -> void:
+func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_value: int, player_units: Array, effects_value: Dictionary, upgrades_value: Dictionary, pool_value: Array, capture_options_value: Dictionary = {}) -> void:
 	run_seed = seed_value
 	battle_index = battle_index_value
 	effects = effects_value.duplicate()
 	upgrades = upgrades_value.duplicate()
+	capture_options = capture_options_value.duplicate()
 	reinforcement_pool = pool_value.duplicate()
 	load_map(map_data)
 	deploy_cells = map_data.get("deploy_cells", Balance.DEPLOY_CELLS.duplicate())
@@ -244,8 +246,19 @@ func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "") -> voi
 
 
 func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
-	captured.append({"species_id": species_id, "hp": keep_hp})
-	log_event("%s 被捕获，离开战场。" % unit.display_name)
+	var field_join := bool(capture_options.get("capture_field_join", false))
+	captured.append({"species_id": species_id, "hp": keep_hp, "uid": unit.uid, "on_field": field_join})
+	if field_join:
+		unit.side = "player"
+		unit.hp = keep_hp
+		unit.moved = false
+		unit.skill_used = false
+		unit.capture_used = false
+		unit.fresh_spawn = false
+		log_event("%s 被捕获，原地加入我方，本回合可移动和施法。" % unit.display_name)
+	else:
+		unit.hp = 0
+		log_event("%s 被捕获，离开战场。" % unit.display_name)
 	if reward.get("state", "") == "carried" and int(reward["carrier_uid"]) == unit.uid:
 		reward["state"] = "dropped"
 		reward["cell"] = unit.cell
@@ -733,6 +746,7 @@ func clone() -> BattleState:
 	copy.captured = captured.duplicate(true)
 	copy.effects = effects.duplicate()
 	copy.upgrades = upgrades.duplicate()
+	copy.capture_options = capture_options.duplicate()
 	copy.reinforcement_pool = reinforcement_pool.duplicate()
 	copy.undo_stack = undo_stack.duplicate(true)
 	for unit in units:

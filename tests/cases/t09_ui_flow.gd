@@ -23,6 +23,16 @@ func run(t: TestContext) -> void:
 	new_button.pressed.emit()
 	t.eq(app.current_screen.name, "PrepScreen", "进入编队界面")
 	t.check(app.run != null and app.run.carried.size() == 5, "本局初始队伍建立")
+	var low_hp_option: CheckBox = app.current_screen.find_child("CaptureLowHpOption", true, false)
+	var field_join_option: CheckBox = app.current_screen.find_child("CaptureFieldJoinOption", true, false)
+	t.check(low_hp_option != null and field_join_option != null, "捕获两项设置在整备页可见")
+	if low_hp_option != null and field_join_option != null:
+		t.eq(low_hp_option.button_pressed, false, "低血量选项默认关闭")
+		t.eq(field_join_option.button_pressed, false, "原地转阵营选项默认关闭")
+		low_hp_option.button_pressed = true
+		field_join_option.button_pressed = true
+		t.eq(bool(app.run.options.get("capture_low_hp", false)), true, "整备页低血量设置写入本局")
+		t.eq(bool(app.run.options.get("capture_field_join", false)), true, "整备页原地转阵营设置写入本局")
 	var preview_button: Button = app.current_screen.find_child("PreviewButton", true, false)
 	t.check(preview_button != null, "前往预览按钮存在")
 	preview_button.pressed.emit()
@@ -82,6 +92,8 @@ func run(t: TestContext) -> void:
 		t.finish()
 		return
 	var state: BattleState = battle_screen.state
+	t.eq(bool(state.capture_options.get("capture_low_hp", false)), true, "低血量设置传入战斗")
+	t.eq(bool(state.capture_options.get("capture_field_join", false)), true, "原地转阵营设置传入战斗")
 	t.check(not state.has_method("evacuate"), "战斗状态不再提供主动撤离接口")
 	var unit: CombatUnit = state.unit_by_uid(1)
 	t.check(unit != null and unit.is_alive(), "出战单位在场")

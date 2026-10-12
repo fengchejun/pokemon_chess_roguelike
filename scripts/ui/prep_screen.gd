@@ -60,13 +60,46 @@ func _ready() -> void:
 	var right := UIKit.vbox(10)
 	right.custom_minimum_size = Vector2(440, 0)
 	columns.add_child(right)
-	right.add_child(_archive_box(run))
-	right.add_child(_storage_box(run))
-	right.add_child(_next_box(run))
+	var right_scroll := UIKit.scroll()
+	right_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right.add_child(right_scroll)
+	var right_content := UIKit.vbox(10)
+	right_scroll.add_child(right_content)
+	right_content.add_child(_capture_settings_box(run))
+	right_content.add_child(_archive_box(run))
+	right_content.add_child(_storage_box(run))
+	right_content.add_child(_next_box(run))
 	var start := UIKit.button("前往地图预览", 18)
 	start.name = "PreviewButton"
 	start.pressed.connect(_on_start)
 	right.add_child(start)
+
+
+func _capture_settings_box(run: RunState) -> Control:
+	var box := UIKit.panel(UIKit.PANEL)
+	var column := UIKit.vbox(5)
+	box.add_child(column)
+	column.add_child(UIKit.label("本局捕获设置", 17, UIKit.ACCENT))
+	column.add_child(UIKit.wrapped("训练家周围八格可捕获。下面两项独立选择；关闭时使用 v2 的概率与离场处理。", 13))
+	var low_hp := CheckBox.new()
+	low_hp.name = "CaptureLowHpOption"
+	low_hp.text = "半血以下才可尝试；1 HP 或减益 2 HP 必成"
+	low_hp.button_pressed = bool(run.options.get("capture_low_hp", false))
+	low_hp.toggled.connect(func(value: bool) -> void:
+		run.options["capture_low_hp"] = value
+		app.autosave()
+	)
+	column.add_child(low_hp)
+	var field_join := CheckBox.new()
+	field_join.name = "CaptureFieldJoinOption"
+	field_join.text = "成功后原地转我方，本轮可行动；战中倒下不入队"
+	field_join.button_pressed = bool(run.options.get("capture_field_join", false))
+	field_join.toggled.connect(func(value: bool) -> void:
+		run.options["capture_field_join"] = value
+		app.autosave()
+	)
+	column.add_child(field_join)
+	return box
 
 
 func _team_row(record: Dictionary) -> Control:

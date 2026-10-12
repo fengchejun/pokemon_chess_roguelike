@@ -1,6 +1,6 @@
 extends RefCounted
 
-## 捕获（概率制）：成功率随生命降低而升高、射程 2 格、每回合 1 次、成功即入队
+## 八邻格捕获；低血量保证与原地转阵营分别由设置控制。
 
 
 func run(t: TestContext) -> void:
@@ -8,6 +8,8 @@ func run(t: TestContext) -> void:
 	_t_chance_curve(t)
 	_t_range(t)
 	_t_flow(t)
+	_t_low_hp_option(t)
+	_t_field_join_option(t)
 	t.finish()
 
 
@@ -29,20 +31,20 @@ func _t_chance_curve(t: TestContext) -> void:
 func _t_range(t: TestContext) -> void:
 	var state := TestScenario.make_state([], [["rock_wild1", Vector2i(2, 3)]])
 	var trainer := state.trainer()
-	trainer.cell = Vector2i(0, 3)
+	trainer.cell = Vector2i(1, 3)
 	var wild := state.unit_by_uid(100)
 	wild.cell = Vector2i(2, 3)
-	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "2 格射程内可尝试")
-	trainer.cell = Vector2i(0, 4)
-	wild.cell = Vector2i(3, 4)
-	t.eq(GridSpec.manhattan(trainer.cell, wild.cell), 3, "构造 3 格距离")
-	t.eq(CaptureSystem.can_attempt(state, trainer, wild), false, "3 格外不可尝试")
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "正交相邻可尝试")
+	wild.cell = Vector2i(2, 4)
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "斜角相邻可尝试")
+	wild.cell = Vector2i(3, 3)
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), false, "直线两格不可尝试")
 
 
 func _t_flow(t: TestContext) -> void:
 	var state := TestScenario.make_state([], [["rock_wild1", Vector2i(2, 3)]])
 	var trainer := state.trainer()
-	trainer.cell = Vector2i(0, 3)
+	trainer.cell = Vector2i(1, 3)
 	var wild := state.unit_by_uid(100)
 	wild.cell = Vector2i(2, 3)
 	wild.hp = 1
@@ -55,7 +57,7 @@ func _t_flow(t: TestContext) -> void:
 	t.eq(state.battle_exp(), 2, "捕获经验与击败持平 2 点")
 	var state2 := TestScenario.make_state([], [["rock_wild1", Vector2i(2, 3)]])
 	var trainer2 := state2.trainer()
-	trainer2.cell = Vector2i(0, 3)
+	trainer2.cell = Vector2i(1, 3)
 	var wild2 := state2.unit_by_uid(100)
 	wild2.cell = Vector2i(2, 3)
 	wild2.hp = 1
@@ -66,3 +68,68 @@ func _t_flow(t: TestContext) -> void:
 	state2.start_round()
 	var auto := state2.capture_attempt(trainer2, wild2)
 	t.eq(bool(auto.get("ok", false)), true, "未注入骰值时走战斗内种子随机数")
+
+
+func _t_low_hp_option(t: TestContext) -> void:
+	var state := TestScenario.make_state([], [["rock_wild1", Vector2i(2, 3)]])
+	state.capture_options["capture_low_hp"] = true
+	var trainer := state.trainer()
+	trainer.cell = Vector2i(1, 3)
+	var wild := state.unit_by_uid(100)
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), false, "开启低血量规则后满血不可尝试")
+	wild.hp = 2
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "半血可尝试")
+	t.check(CaptureSystem.capture_chance(wild, true) < 1.0, "2 HP 无减益仍为概率捕获")
+	wild.slow_ticks = 1
+	t.eq(CaptureSystem.chance_percent(wild, true), 100, "带减益的 2 HP 必成")
+	var rng_before := state.capture_rng.state
+	var result := state.capture_attempt(trainer, wild)
+	t.eq(bool(result.get("success", false)), true, "必成不依赖随机值")
+	t.eq(state.capture_rng.state, rng_before, "必成不消耗捕获随机数")
+	var state2 := TestScenario.make_state([], [["rock_wild1", Vector2i(2, 3)]])
+	state2.capture_options["capture_low_hp"] = true
+	state2.trainer().cell = Vector2i(1, 3)
+	var wild2 := state2.unit_by_uid(100)
+	wild2.hp = 1
+	t.eq(CaptureSystem.chance_percent(wild2, true), 100, "1 HP 必成")
+	t.eq(bool(state2.capture_attempt(state2.trainer(), wild2, 0.99).get("success", false)), true, "1 HP 高骰值仍必成")
+
+
+func _t_field_join_option(t: TestContext) -> void:
+	var state := TestScenario.make_state([], [["rock_wild1", Vector2i(2, 3)], ["fire_wild1", Vector2i(6, 3)]])
+	state.capture_options["capture_field_join"] = true
+	var trainer := state.trainer()
+	trainer.cell = Vector2i(1, 3)
+	var wild := state.unit_by_uid(100)
+	wild.hp = 2
+	wild.moved = true
+	wild.skill_used = true
+	t.eq(bool(state.capture_attempt(trainer, wild, 0.01).get("success", false)), true, "开启原地转阵营后捕获成功")
+	t.eq(wild.side, "player", "目标留在原格转为我方")
+	t.eq(wild.cell, Vector2i(2, 3), "保留捕获位置")
+	t.eq(wild.hp, 2, "保留捕获生命")
+	t.eq(wild.moved, false, "捕获本轮获得一次移动")
+	t.eq(wild.skill_used, false, "捕获本轮获得一次技能")
+	t.eq(state.alive_enemy_count(), 1, "其他敌人仍可行动")
+	var run := RunState.new_run(77)
+	run.sync_from_battle(state)
+	t.eq(run.pending_captures.size(), 0, "战斗未结束时不提前收入队伍")
+	state.kill_unit(wild, "捕获后阵亡", "enemy")
+	state.end_battle("victory")
+	run.sync_from_battle(state)
+	t.eq(run.pending_captures.size(), 0, "捕获单位战中阵亡不入队")
+	var survivor_state := TestScenario.make_state([], [["rock_wild1", Vector2i(2, 3)]])
+	survivor_state.capture_options["capture_field_join"] = true
+	survivor_state.trainer().cell = Vector2i(1, 3)
+	var survivor := survivor_state.unit_by_uid(100)
+	survivor.hp = 2
+	survivor_state.capture_attempt(survivor_state.trainer(), survivor, 0.01)
+	var survivor_run := RunState.new_run(78)
+	survivor_run.sync_from_battle(survivor_state)
+	t.eq(survivor_run.pending_captures.size(), 1, "战斗结束时存活的捕获单位进入待处理队列")
+	t.eq(int(survivor_run.pending_captures[0]["hp"]), 2, "战后保留存活单位的剩余生命")
+	var old_data := RunState.new_run(79).to_dict()
+	old_data["options"] = {"threat_preview": true}
+	var old_run := RunState.from_dict(old_data)
+	t.eq(bool(old_run.options.get("capture_low_hp", true)), false, "旧存档新增低血量开关默认关闭")
+	t.eq(bool(old_run.options.get("capture_field_join", true)), false, "旧存档新增原地转阵营开关默认关闭")

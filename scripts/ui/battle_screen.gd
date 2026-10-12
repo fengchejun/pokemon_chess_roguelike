@@ -219,7 +219,10 @@ func _update_unit_card() -> void:
 	else:
 		lines.append("本回合：移动 %s，技能 %s" % ["已用" if unit.moved else "可用", "已用" if unit.skill_used else "可用"])
 	if unit.side == "enemy":
-		lines.append("捕获概率：%d%%（训练家在 2 格内可尝试，目标越残血越高）" % CaptureSystem.chance_percent(unit))
+		var low_hp_rules := bool(state.capture_options.get("capture_low_hp", false))
+		lines.append("捕获概率：%d%%（训练家在周围八格可尝试%s）" % [
+			CaptureSystem.chance_percent(unit, low_hp_rules), "，目标需不高于半血" if low_hp_rules else "",
+		])
 		if unit.fresh_spawn:
 			lines.append("本回合新生成：只移动、不施放技能")
 	for skill_id in unit.skills:
@@ -234,11 +237,11 @@ func _rebuild_skill_buttons() -> void:
 		skill_box.add_child(UIKit.label("选择己方单位后显示技能。", 13, UIKit.TEXT_DIM))
 		return
 	if unit.is_trainer:
-		var trainer_text := "训练家不施放技能；每回合可在 2 格内尝试捕获野生宝可梦一次（概率随目标生命降低而升高）。"
+		var trainer_text := "训练家不施放技能；每回合可在周围八格尝试捕获一次。"
 		skill_box.add_child(UIKit.wrapped(trainer_text, 13))
 	capture_button = null
 	if unit.is_trainer:
-		capture_button = UIKit.small_button("捕获（2 格内目标）")
+		capture_button = UIKit.small_button("捕获（周围八格）")
 		capture_button.name = "CaptureButton"
 		var targets := _capture_targets(unit)
 		capture_button.disabled = unit.capture_used or targets.is_empty()
@@ -458,12 +461,14 @@ func _on_board_hovered(cell: Vector2i) -> void:
 	if capture_mode:
 		var trainer := state.unit_by_uid(selected_uid)
 		var occupant := state.unit_at(cell)
-		if trainer != null and occupant != null and occupant.side == "enemy" and GridSpec.manhattan(trainer.cell, occupant.cell) <= Balance.CAPTURE_RANGE:
+		if trainer != null and occupant != null and CaptureSystem.in_range(trainer, occupant):
 			if trainer.capture_used:
 				hint_label.text = "本回合已尝试过捕获。"
+			elif not CaptureSystem.can_attempt(state, trainer, occupant):
+				hint_label.text = "当前设置要求目标生命不高于一半。"
 			else:
 				hint_label.text = "捕获 %s：成功率 %d%%（生命 %d/%d）" % [
-					occupant.display_name, CaptureSystem.chance_percent(occupant), occupant.hp, occupant.max_hp,
+					occupant.display_name, CaptureSystem.chance_percent(occupant, bool(state.capture_options.get("capture_low_hp", false))), occupant.hp, occupant.max_hp,
 				]
 			hint_label.add_theme_color_override("font_color", UIKit.TEXT)
 		board.queue_redraw()
@@ -567,7 +572,7 @@ func _on_capture_pressed() -> void:
 	board.clear_overlays()
 	for enemy in _capture_targets(trainer):
 		board.attack_cells.append(enemy.cell)
-	hint_label.text = "捕获：点击 2 格内的野生宝可梦（成功率随目标生命降低而升高）。"
+	hint_label.text = "捕获：点击周围八格内的合法目标。"
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	board.queue_redraw()
 
@@ -606,7 +611,7 @@ func _try_cast_at(cell: Vector2i) -> void:
 func _capture_targets(unit: CombatUnit) -> Array:
 	var result: Array = []
 	for enemy in state.alive_units("enemy"):
-		if GridSpec.manhattan(unit.cell, enemy.cell) <= Balance.CAPTURE_RANGE:
+		if CaptureSystem.can_attempt(state, unit, enemy):
 			result.append(enemy)
 	return result
 
@@ -658,7 +663,7 @@ func do_capture(target_uid: int) -> bool:
 		return false
 	var result := state.capture_attempt(trainer, target)
 	if not bool(result.get("ok", false)):
-		hint_label.text = "无法捕获：目标需在 %d 格内且本回合尚未尝试。" % Balance.CAPTURE_RANGE
+		hint_label.text = "无法捕获：目标须在周围八格，本回合尚未尝试，且满足当前生命规则。"
 		hint_label.add_theme_color_override("font_color", UIKit.BAD)
 		return false
 	capture_mode = false

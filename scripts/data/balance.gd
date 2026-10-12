@@ -29,8 +29,7 @@ const DEPLOY_LIMIT := 3
 const STORAGE_LIMIT := 30
 const MOD_POINTS := 2
 
-# 捕获（概率制）：成功率随目标生命值百分比降低而升高；训练家射程 2 格
-const CAPTURE_RANGE := 2
+# 捕获范围统一使用训练家周围八格，由 CaptureSystem.in_range 判定。
 const CAPTURE_CHANCE_BASE := 0.30
 const CAPTURE_CHANCE_SLOPE := 0.55
 const CAPTURE_CHANCE_MIN := 0.05
