@@ -21,6 +21,7 @@ var terrain: Array = []
 var obstacle_durability: Dictionary = {}
 var obstacle_origin: Dictionary = {}
 var obstacle_expire_round: Dictionary = {}
+var burning_cells: Dictionary = {}
 var nest: Dictionary = {}
 var reward: Dictionary = {}
 var fruits: Array = []
@@ -81,6 +82,7 @@ func capture_roll() -> float:
 
 func load_map(map_data: Dictionary) -> void:
 	terrain = map_data["terrain"].duplicate()
+	burning_cells = {}
 	obstacle_durability = {}
 	obstacle_origin = {}
 	obstacle_expire_round = {}
@@ -91,6 +93,7 @@ func load_map(map_data: Dictionary) -> void:
 		"exits": map_data["nest_exits"].duplicate(),
 		"hp": Balance.NEST_DURABILITY,
 		"alive": true,
+		"pending_waves": 0,
 	}
 	reward = {
 		"state": "map",  # map / carried / dropped / gone
@@ -108,6 +111,17 @@ func terrain_at(cell: Vector2i) -> int:
 
 func set_terrain(cell: Vector2i, value: int) -> void:
 	terrain[GridSpec.index(cell)] = value
+	if value == TerrainDB.WATER or value == TerrainDB.DEEP or value == TerrainDB.ICE:
+		burning_cells.erase(cell)
+
+
+func ignite(cell: Vector2i) -> void:
+	if not GridSpec.is_inside(cell):
+		return
+	if terrain_at(cell) != TerrainDB.GRASS and terrain_at(cell) != TerrainDB.VINES:
+		return
+	burning_cells[cell] = 2
+	log_event("(%d,%d) 的可燃物被点燃。" % [cell.x, cell.y])
 
 
 func is_nest_cell(cell: Vector2i) -> bool:
@@ -219,6 +233,9 @@ func log_event(text: String) -> void:
 
 func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "") -> void:
 	if unit.is_trainer:
+		unit.hp = 1
+		log_event("训练家落入致死地形，强制撤退。")
+		end_battle("forced_retreat")
 		return
 	unit.hp = 0
 	if unit.side == "player":
@@ -269,6 +286,11 @@ func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
 
 func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictionary) -> Dictionary:
 	if target == null or not target.is_alive() or base <= 0:
+		return {"amount": 0, "killed": false}
+	if target.frozen:
+		target.frozen = false
+		target.paralyzed_ticks = maxi(target.paralyzed_ticks, 1)
+		log_event("%s 的冰冻被攻击解除，本轮仍无法行动。" % target.display_name)
 		return {"amount": 0, "killed": false}
 	var amount := base
 	var is_lethal_check := true
@@ -330,8 +352,10 @@ func apply_root(target: CombatUnit) -> void:
 
 
 func apply_slow(target: CombatUnit) -> void:
+	if target.element == "water":
+		return
 	target.slow_ticks = 2
-	log_event("%s 被减速 1 回合。" % target.display_name)
+	log_event("%s 获得浸湿：下一轮移动力 -1。" % target.display_name)
 
 
 func damage_obstacle(cell: Vector2i, amount: int) -> bool:
@@ -359,6 +383,7 @@ func damage_nest(amount: int) -> bool:
 		nest["alive"] = false
 		set_terrain(nest["cell"], TerrainDB.PLAIN)
 		log_event("巢穴被摧毁，永久停止生成。")
+		end_battle("victory")
 		return true
 	log_event("巢穴耐久 -%d（剩 %d）。" % [amount, nest["hp"]])
 	return false
@@ -390,7 +415,9 @@ func move_unit(unit: CombatUnit, dest: Vector2i) -> bool:
 	var burn_ticks_before := unit.burn_ticks
 	var burn_source_uid_before := unit.burn_source_uid
 	var burn_source_side_before := unit.burn_source_side
+	var direction_before := unit.last_move_direction
 	for step in path:
+		unit.last_move_direction = step - unit.cell
 		unit.cell = step
 		if terrain_at(step) == TerrainDB.WATER or terrain_at(step) == TerrainDB.DEEP:
 			if unit.burn_ticks > 0:
@@ -404,6 +431,7 @@ func move_unit(unit: CombatUnit, dest: Vector2i) -> bool:
 		"burn_ticks": burn_ticks_before,
 		"burn_source_uid": burn_source_uid_before,
 		"burn_source_side": burn_source_side_before,
+		"direction": direction_before,
 		"fruit_cell": pickup.get("cell", Vector2i(-1, -1)),
 		"fruit_gained": int(pickup.get("gained", 0)),
 	})
@@ -422,6 +450,7 @@ func undo_last_move() -> bool:
 	unit.burn_ticks = int(entry["burn_ticks"])
 	unit.burn_source_uid = int(entry["burn_source_uid"])
 	unit.burn_source_side = String(entry["burn_source_side"])
+	unit.last_move_direction = entry.get("direction", Vector2i.ZERO)
 	var fruit_cell: Vector2i = entry.get("fruit_cell", Vector2i(-1, -1))
 	if fruit_cell != Vector2i(-1, -1):
 		fruits.append(fruit_cell)
@@ -456,9 +485,16 @@ func preview_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary)
 func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) -> Dictionary:
 	if ended or not unit.can_act_skill():
 		return {"ok": false}
+	if skill_id == "fire_burst" and unit.fireball_used:
+		return {"ok": false}
 	var result := SkillResolver.apply(self, unit, skill_id, target_entry, false)
 	if bool(result.get("ok", false)):
-		unit.skill_used = true
+		if skill_id == "fire_burst":
+			unit.fireball_used = true
+		if unit.skill_used and unit.extra_casts > 0:
+			unit.extra_casts -= 1
+		else:
+			unit.skill_used = true
 		commit_actions()
 		check_battle_end()
 	return result
@@ -484,6 +520,9 @@ func start_round() -> void:
 		unit.moved = false
 		unit.skill_used = false
 		unit.capture_used = false
+		unit.extra_casts = 0
+		if unit.paralyzed_ticks > 0:
+			unit.paralyzed_ticks -= 1
 	for unit in units:
 		if unit.move_cancelled:
 			unit.move_cancelled = false
@@ -493,7 +532,11 @@ func start_round() -> void:
 			unit.move_cancelled = true
 			log_event("%s 受到定身影响，本回合无法移动。" % unit.display_name)
 	phase = PHASE_PLAYER
-	if round == 2 or round == 3:
+	if round == 1 or round == 3:
+		log_event("巢穴预警：下回合将尝试产怪。")
+	if round == 2 or round == 4:
+		nest["pending_waves"] = int(nest.get("pending_waves", 0)) + 1
+	if int(nest.get("pending_waves", 0)) > 0:
 		_try_spawn_wave()
 
 
@@ -504,10 +547,6 @@ func _try_spawn_wave() -> void:
 	var candidates: Array = []
 	for exit_cell in nest.get("exits", []):
 		candidates.append(exit_cell)
-	var ring := GridSpec.neighbors8(nest["cell"])
-	ring.sort_custom(func(a, b): return _cell_order(a) < _cell_order(b))
-	for cell in ring:
-		candidates.append(cell)
 	for cell in candidates:
 		if not GridSpec.is_inside(cell):
 			continue
@@ -523,9 +562,10 @@ func _try_spawn_wave() -> void:
 		enemy.fresh_spawn = true
 		enemy.reg_index = units.size()
 		units.append(enemy)
+		nest["pending_waves"] = maxi(0, int(nest.get("pending_waves", 0)) - 1)
 		log_event("巢穴生成 1 只野生宝可梦（%s）。" % enemy.display_name)
 		return
-	log_event("巢穴出口被占，生成被阻止。")
+	log_event("巢穴出口被占，本次产怪排队至下一回合。")
 
 
 func _cell_order(cell: Vector2i) -> int:
@@ -557,6 +597,7 @@ func step_enemy_phase() -> Dictionary:
 		return action
 	var path: Array = action.get("move_path", [])
 	for cell in path:
+		unit.last_move_direction = cell - unit.cell
 		unit.cell = cell
 		if terrain_at(cell) == TerrainDB.WATER or terrain_at(cell) == TerrainDB.DEEP:
 			unit.burn_ticks = 0
@@ -576,6 +617,8 @@ func end_enemy_phase() -> void:
 		return
 	phase = PHASE_SETTLE
 	settle_round()
+	for unit in units:
+		unit.fresh_spawn = false
 	if ended:
 		phase = PHASE_ENDED
 	else:
@@ -583,6 +626,9 @@ func end_enemy_phase() -> void:
 
 
 func settle_round() -> void:
+	_settle_ice_slides()
+	if ended:
+		return
 	# 1. 临时障碍到期（本轮敌方阶段结束）
 	for cell in obstacle_expire_round.keys().duplicate():
 		if int(obstacle_expire_round[cell]) <= round:
@@ -605,10 +651,19 @@ func settle_round() -> void:
 		if unit.burn_ticks > 0:
 			unit.burn_ticks -= 1
 			damage_unit(null, unit, Balance.BURN_DAMAGE, {"no_element": true, "cause": "灼烧", "killer_side": unit.burn_source_side})
+	_settle_burning_cells()
 	# 4. 减速衰减
 	for unit in units:
 		if unit.slow_ticks > 0:
 			unit.slow_ticks = maxi(0, unit.slow_ticks - 1)
+		if unit.shock_ticks > 0:
+			unit.shock_ticks -= 1
+		if unit.vine_ticks > 0:
+			unit.vine_ticks -= 1
+		if unit.haste_ticks > 0:
+			unit.haste_ticks -= 1
+		if unit.is_alive() and terrain_at(unit.cell) == TerrainDB.WATER and unit.element != "water" and not (unit.side == "player" and int(effects.get("water_ignore", 0)) > 0):
+			unit.slow_ticks = maxi(unit.slow_ticks, 2)
 	# 5. 拾取
 	_pickups()
 	# 6. 胜负与时限
@@ -618,6 +673,45 @@ func settle_round() -> void:
 		end_battle("escape")
 		return
 	log_event("环境结算完成。")
+
+
+func _settle_ice_slides() -> void:
+	for unit in units:
+		if not unit.is_alive():
+			unit.last_move_direction = Vector2i.ZERO
+			continue
+		var direction: Vector2i = unit.last_move_direction
+		unit.last_move_direction = Vector2i.ZERO
+		if direction == Vector2i.ZERO or terrain_at(unit.cell) != TerrainDB.ICE:
+			continue
+		var next: Vector2i = unit.cell + direction
+		if not GridSpec.is_inside(next) or unit_at(next) != null or is_nest_cell(next) or terrain_at(next) == TerrainDB.OBSTACLE:
+			continue
+		unit.cell = next
+		log_event("%s 从冰面滑行到 (%d,%d)。" % [unit.display_name, next.x, next.y])
+		if TerrainDB.is_lethal(terrain_at(next)) and (terrain_at(next) != TerrainDB.DEEP or unit.element != "water"):
+			kill_unit(unit, "冰面滑入致死地形")
+		elif terrain_at(next) == TerrainDB.WATER:
+			unit.burn_ticks = 0
+
+
+func _settle_burning_cells() -> void:
+	var current := burning_cells.keys().duplicate()
+	var newly_lit: Array = []
+	for cell in current:
+		for near in GridSpec.neighbors4(cell):
+			if not burning_cells.has(near) and (terrain_at(near) == TerrainDB.GRASS or terrain_at(near) == TerrainDB.VINES):
+				newly_lit.append(near)
+		var occupant := unit_at(cell)
+		if occupant != null:
+			apply_burn(occupant, null)
+		burning_cells[cell] = int(burning_cells[cell]) - 1
+		if int(burning_cells[cell]) <= 0:
+			burning_cells.erase(cell)
+			set_terrain(cell, TerrainDB.PLAIN)
+	for cell in newly_lit:
+		if not burning_cells.has(cell):
+			ignite(cell)
 
 
 func try_pickup_fruit(unit: CombatUnit) -> Dictionary:
@@ -735,6 +829,7 @@ func clone() -> BattleState:
 	copy.obstacle_durability = obstacle_durability.duplicate()
 	copy.obstacle_origin = obstacle_origin.duplicate()
 	copy.obstacle_expire_round = obstacle_expire_round.duplicate()
+	copy.burning_cells = burning_cells.duplicate()
 	copy.nest = nest.duplicate(true)
 	copy.reward = reward.duplicate(true)
 	copy.fruits = fruits.duplicate()

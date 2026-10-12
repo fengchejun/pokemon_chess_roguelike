@@ -134,6 +134,21 @@ func _show_next_step() -> void:
 			choice_box.add_child(_upgrade_choice(String(upgrade_id)))
 		continue_button.disabled = true
 		return
+	if run.environment_reward_pending:
+		step_label.text = "地图构筑卡（三选一，影响后续战场）"
+		for card_id in run.environment_choices():
+			var id := String(card_id)
+			var card := MapCardDB.get_card(id)
+			var button := UIKit.button("%s\n%s" % [card.get("name", id), card.get("desc", "")], 14)
+			button.name = "EnvironmentChoice_%s" % id
+			button.pressed.connect(func() -> void:
+				if app.run.choose_environment_card(id):
+					app.autosave()
+					_show_next_step()
+			)
+			choice_box.add_child(button)
+		continue_button.disabled = true
+		return
 	step_label.text = "全部处理完成，可以进入下一场。"
 	choice_box.add_child(UIKit.wrapped("战斗结算顺序已完成：经验 → 捕获 → 奖励携带者经验 → 濒死记录 → 下一场准备。" , 13))
 	continue_button.disabled = false

@@ -30,7 +30,7 @@ func _t_fire_seed_hit(t: TestContext) -> void:
 	var result := SkillResolver.apply(state, fire, "fire_seed", entry, false)
 	t.check(bool(result["ok"]), "火种施放成功")
 	var wild := state.unit_by_uid(100)
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 3, "火种命中造成 2+1（克制）伤害")
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 2, "旧技能 ID 在七系克制环下不再火克草")
 	t.eq(wild.burn_ticks, Balance.BURN_TICKS, "命中附加灼烧")
 
 
@@ -44,7 +44,7 @@ func _t_fire_seed_splash(t: TestContext) -> void:
 	t.check(bool(result["ok"]), "火种打空施放成功")
 	t.eq(result["hits"].size(), 1, "溅射命中 1 个单位")
 	var wild := state.unit_by_uid(100)
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 2, "溅射 1+1（克制）伤害")
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 1, "旧技能溅射在七系克制环下为 1 伤")
 	t.eq(wild.burn_ticks, 0, "溅射不附加灼烧")
 
 
@@ -234,8 +234,9 @@ func _t_rock_create(t: TestContext) -> void:
 
 
 func _t_attr_modifier(t: TestContext) -> void:
-	t.eq(Elements.modifier("fire", "grass"), 1, "火克草 +1")
-	t.eq(Elements.modifier("grass", "fire"), -1, "草被火克 −1")
+	t.eq(Elements.modifier("fire", "grass"), 0, "七系环中火与草不直接克制")
+	t.eq(Elements.modifier("grass", "fire"), 0, "七系环中草与火不直接克制")
+	t.eq(Elements.modifier("fire", "ice"), 1, "火克冰 +1")
 	t.eq(Elements.modifier("rock", "electric"), 1, "岩克电 +1")
 	t.eq(Elements.modifier("electric", "water"), 1, "电克水 +1")
 	t.eq(Elements.modifier("water", "fire"), 1, "水克火 +1")

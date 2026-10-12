@@ -1,8 +1,7 @@
 class_name MapGenerator
 extends RefCounted
 
-## 生成流程（v2.2）：地貌与卡组无关 —— 骨架与保护格 → 按“簇 / 带 + 散点”生成 →
-## 致死地形预算 → 战前预览与地形改造。种子可复现：同区域、同种子得到同一张地图。
+## 地貌由区域、种子与可选地图构筑卡组共同决定；同配置可复现。
 
 const CENTER_CELLS := [
 	Vector2i(3, 3), Vector2i(4, 3), Vector2i(3, 4), Vector2i(4, 4),
@@ -12,13 +11,13 @@ const CENTER_CELLS := [
 const SPECIAL_BUDGET_RATIO := 0.38
 
 
-static func generate(run_seed: int, battle_index: int, salt: int = 0) -> Dictionary:
+static func generate(run_seed: int, battle_index: int, salt: int = 0, environment_deck: Array = []) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("map:%d:%d:%d" % [run_seed, battle_index, salt])
 	var cfg := BattleDB.config_for(battle_index)
 	var lethal_budget := maxi(0, int(cfg.get("lethal_budget", 2)))
 	for attempt in 12:
-		var result := _attempt(rng, cfg, lethal_budget)
+		var result := _attempt(rng, cfg, lethal_budget, environment_deck)
 		if not result.is_empty():
 			result["region"] = String(cfg.get("region", "?"))
 			result["battle_index"] = battle_index
@@ -27,7 +26,7 @@ static func generate(run_seed: int, battle_index: int, salt: int = 0) -> Diction
 	return _fallback(cfg)
 
 
-static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget: int) -> Dictionary:
+static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget: int, environment_deck: Array) -> Dictionary:
 	var terrain: Array = []
 	for index in GridSpec.W * GridSpec.H:
 		terrain.append(TerrainDB.PLAIN)
@@ -44,8 +43,16 @@ static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget:
 	protected[nest_cell] = true
 	for cell in nest_exits:
 		protected[cell] = true
-	_scatter(terrain, protected, rng, lethal_budget)
+	_scatter(terrain, protected, rng, lethal_budget, MapCardDB.weights(environment_deck))
 	_convert_deep(terrain, protected, rng, lethal_budget)
+	for _fragile in rng.randi_range(1, 3):
+		var candidates: Array = []
+		for cell in GridSpec.all_cells():
+			if cell.x >= 2 and cell.x <= 5 and cell.y >= 2 and cell.y <= 5 and not protected.has(cell) and int(terrain[GridSpec.index(cell)]) == TerrainDB.PLAIN:
+				candidates.append(cell)
+		if not candidates.is_empty():
+			var cell: Vector2i = candidates[rng.randi_range(0, candidates.size() - 1)]
+			terrain[GridSpec.index(cell)] = TerrainDB.FRAGILE
 	var reward := _pick_cell(rng, terrain, protected, func(cell: Vector2i) -> bool:
 		return int(terrain[GridSpec.index(cell)]) == TerrainDB.PLAIN and cell.x >= 3
 	)
@@ -87,19 +94,19 @@ static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget:
 	}
 
 
-static func _scatter(terrain: Array, protected: Dictionary, rng: RandomNumberGenerator, lethal_budget: int) -> void:
+static func _scatter(terrain: Array, protected: Dictionary, rng: RandomNumberGenerator, lethal_budget: int, card_weights: Dictionary) -> void:
 	## 地貌按“簇 / 带”生成并受总量预算约束；簇带之外加低概率散点制造斑驳感。
 	var free_total := 0
 	for cell in GridSpec.all_cells():
 		if not protected.has(cell) and int(terrain[GridSpec.index(cell)]) == TerrainDB.PLAIN:
 			free_total += 1
-	var special_cap := int(free_total * SPECIAL_BUDGET_RATIO)
+	var special_cap := maxi(0, int(free_total * SPECIAL_BUDGET_RATIO) - 3) # 预留中央易碎地块的配额
 	var special_used := 0
-	for _feature in rng.randi_range(1, 2):
+	for _feature in rng.randi_range(1, 2) + int(card_weights.get("water", 0)) / 8:
 		special_used += _grow_blob(terrain, protected, rng, TerrainDB.WATER, rng.randi_range(3, 6), special_cap - special_used, false)
-	for _feature in rng.randi_range(1, 2):
+	for _feature in rng.randi_range(1, 2) + int(card_weights.get("grass", 0)) / 7:
 		special_used += _grow_blob(terrain, protected, rng, TerrainDB.GRASS, rng.randi_range(2, 4), special_cap - special_used, false)
-	for _feature in rng.randi_range(1, 2):
+	for _feature in rng.randi_range(1, 2) + int(card_weights.get("rock", 0)) / 7:
 		special_used += _grow_blob(terrain, protected, rng, TerrainDB.OBSTACLE, rng.randi_range(2, 3), special_cap - special_used, true)
 	for _dot in rng.randi_range(1, 3):
 		special_used += _place_single(terrain, protected, rng, TerrainDB.WATER, special_cap - special_used, false)
@@ -231,7 +238,7 @@ static func _validate(terrain: Array, required_cells: Array) -> bool:
 			if not GridSpec.is_inside(next) or reached.has(next):
 				continue
 			var value := int(terrain[GridSpec.index(next)])
-			if value == TerrainDB.OBSTACLE or value == TerrainDB.LAVA:
+			if value == TerrainDB.OBSTACLE or value == TerrainDB.LAVA or value == TerrainDB.DEEP or value == TerrainDB.FRAGILE or value == TerrainDB.PIT:
 				continue
 			reached[next] = true
 			frontier.append(next)

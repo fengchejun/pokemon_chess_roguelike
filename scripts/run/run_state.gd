@@ -42,6 +42,8 @@ var pending_captures: Array = []
 var next_uid: int = 1
 var exp: int = 0
 var cards: Array = []
+var environment_deck: Array = []
+var environment_reward_pending: bool = false
 var upgrades: Dictionary = {}
 var upgrades_taken: Array = []
 var deaths: Array = []
@@ -49,7 +51,7 @@ var stats := {"kills": 0, "captures": 0, "victories": 0, "escapes": 0, "retreats
 var captured_applied: int = 0
 var deployed_uids: Array = []
 var pending_supply: bool = false
-var options := {"threat_preview": false, "capture_low_hp": false, "capture_field_join": false}
+var options := {"threat_preview": false, "capture_low_hp": false, "capture_field_join": false, "card_mode": "position"}
 
 
 static func new_run(seed_value: int = 0) -> RunState:
@@ -109,7 +111,25 @@ func region_name() -> String:
 
 
 func effects() -> Dictionary:
+	if String(options.get("card_mode", "position")) == "environment":
+		return {}
 	return CardDB.active_effects(cards)
+
+
+func map_deck() -> Array:
+	return environment_deck.duplicate() if String(options.get("card_mode", "position")) == "environment" else []
+
+
+func environment_choices() -> Array:
+	return MapCardDB.offer(environment_deck, hash("environment_reward:%d:%d" % [seed, battle_index]))
+
+
+func choose_environment_card(card_id: String) -> bool:
+	if not environment_reward_pending or not environment_choices().has(card_id):
+		return false
+	environment_deck.append(card_id)
+	environment_reward_pending = false
+	return true
 
 
 func mod_points() -> int:
@@ -327,6 +347,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 	trainer_hp = trainer_max
 	outcome["trainer_to"] = trainer_max
 	in_battle = false
+	environment_reward_pending = String(options.get("card_mode", "position")) == "environment" and not failure
 	return outcome
 
 
@@ -388,6 +409,8 @@ func to_dict() -> Dictionary:
 		"next_uid": next_uid,
 		"exp": exp,
 		"cards": cards.duplicate(),
+		"environment_deck": environment_deck.duplicate(),
+		"environment_reward_pending": environment_reward_pending,
 		"upgrades": upgrades.duplicate(),
 		"upgrades_taken": upgrades_taken.duplicate(),
 		"deaths": deaths.duplicate(true),
@@ -419,6 +442,10 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.pending_supply = bool(data.get("pending_supply", false))
 	run.options.merge((data.get("options", {}) as Dictionary), true)
 	run.cards = _sanitize_cards(data.get("cards", []))
+	run.environment_deck = (data.get("environment_deck", []) as Array).duplicate()
+	run.environment_reward_pending = bool(data.get("environment_reward_pending", false))
+	if String(run.options.get("card_mode", "position")) != "environment":
+		run.options["card_mode"] = "position"
 	## 修复历史存档：补齐缺失的 uid（否则名单/仓库相关界面会取键失败）。
 	for group in [run.carried, run.storage, run.pending_captures]:
 		for record in (group as Array):

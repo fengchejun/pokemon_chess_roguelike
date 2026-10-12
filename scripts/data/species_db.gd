@@ -10,63 +10,79 @@ const SPECIES := {
 	},
 	"fire_starter": {
 		"name": "小火龙", "glyph": "焰", "element": "fire", "hp": 6, "move": 3,
-		"skills": ["fire_seed", "flame_charge"],
+		"skills": ["fire_burst", "flame_jet", "flame_charge"],
 	},
 	"water_starter": {
 		"name": "杰尼龟", "glyph": "泡", "element": "water", "hp": 6, "move": 3,
-		"skills": ["water_flow", "rain_dance"],
+		"skills": ["water_flow", "rain_call"],
 	},
 	"grass_starter": {
 		"name": "妙蛙种子", "glyph": "芽", "element": "grass", "hp": 6, "move": 3,
-		"skills": ["seed_sow", "drain"],
+		"skills": ["wild_vines", "herbal_heal"],
 	},
 	"electric_starter": {
 		"name": "皮卡丘", "glyph": "电", "element": "electric", "hp": 5, "move": 3,
-		"skills": ["discharge", "volt_step"],
+		"skills": ["lightning", "electric_arc", "volt_replace"],
 	},
 	"rock_starter": {
 		"name": "小拳石", "glyph": "石", "element": "rock", "hp": 7, "move": 2,
-		"skills": ["push", "rock_smash", "rock_create"],
+		"skills": ["rock_push", "rock_break", "rock_create"],
+	},
+	"ice_starter": {
+		"name": "雪童子", "glyph": "冰", "element": "ice", "hp": 5, "move": 2,
+		"skills": ["frozen_ground", "freeze_ray"],
+	},
+	"wind_starter": {
+		"name": "波波", "glyph": "风", "element": "wind", "hp": 5, "move": 4,
+		"skills": ["tailwind", "double_cast"],
 	},
 	"fire_wild1": {
 		"name": "六尾", "glyph": "狐", "element": "fire", "hp": 5, "move": 3,
-		"skills": ["fire_seed"],
+		"skills": ["fire_burst", "flame_jet", "flame_charge"],
 	},
 	"fire_wild2": {
 		"name": "卡蒂狗", "glyph": "犬", "element": "fire", "hp": 5, "move": 3,
-		"skills": ["fire_seed", "flame_charge"],
+		"skills": ["fire_burst", "flame_jet", "flame_charge"],
 	},
 	"water_wild1": {
 		"name": "可达鸭", "glyph": "鸭", "element": "water", "hp": 5, "move": 3,
-		"skills": ["water_flow"],
+		"skills": ["water_flow", "rain_call"],
 	},
 	"water_wild2": {
 		"name": "蚊香蝌蚪", "glyph": "蝌", "element": "water", "hp": 5, "move": 3,
-		"skills": ["water_flow", "rain_dance"],
+		"skills": ["water_flow", "rain_call"],
 	},
 	"grass_wild1": {
 		"name": "走路草", "glyph": "草", "element": "grass", "hp": 5, "move": 3,
-		"skills": ["drain", "seed_sow"],
+		"skills": ["wild_vines", "herbal_heal"],
 	},
 	"grass_wild2": {
 		"name": "喇叭芽", "glyph": "花", "element": "grass", "hp": 5, "move": 3,
-		"skills": ["drain"],
+		"skills": ["wild_vines", "herbal_heal"],
 	},
 	"electric_wild1": {
 		"name": "小磁怪", "glyph": "磁", "element": "electric", "hp": 5, "move": 3,
-		"skills": ["discharge"],
+		"skills": ["lightning", "electric_arc", "volt_replace"],
 	},
 	"electric_wild2": {
 		"name": "霹雳电球", "glyph": "球", "element": "electric", "hp": 5, "move": 3,
-		"skills": ["discharge", "volt_step"],
+		"skills": ["lightning", "electric_arc", "volt_replace"],
 	},
 	"rock_wild1": {
 		"name": "大岩蛇", "glyph": "蛇", "element": "rock", "hp": 6, "move": 2,
-		"skills": ["push", "rock_smash"],
+		"skills": ["rock_push", "rock_break", "rock_create"],
 	},
 	"rock_wild2": {
 		"name": "隆隆石", "glyph": "岩", "element": "rock", "hp": 6, "move": 2,
-		"skills": ["rock_smash", "rock_create"],
+		"skills": ["rock_push", "rock_break", "rock_create"],
+	},
+	"ice_wild1": {
+		"name": "野生冰怪", "glyph": "敌冰", "element": "ice", "hp": 4, "move": 2,
+		"skills": ["frozen_ground", "freeze_ray"],
+	},
+	"wind_wild1": {
+		"name": "野生风怪", "glyph": "敌风", "element": "wind", "hp": 4, "move": 4,
+		"skills": ["tailwind", "double_cast"],
 	},
 }
 

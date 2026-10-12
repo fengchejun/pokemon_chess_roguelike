@@ -7,10 +7,10 @@ extends RefCounted
 const GRID_W := 8
 const GRID_H := 8
 
-const MAX_ROUNDS := 8
+const MAX_ROUNDS := 6
 const MOVE_DEFAULT := 3
 const MOVE_ROCK := 2
-const WATER_EXTRA_COST := 1
+const WATER_EXTRA_COST := 0 # 浅水减速在回合结算时改由浸湿状态处理
 
 const COLLISION_DAMAGE := 1
 const PUSH_DAMAGE := 2

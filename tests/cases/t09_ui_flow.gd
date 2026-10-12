@@ -11,6 +11,7 @@ func run(t: TestContext) -> void:
 		t.finish()
 		return
 	var app = main_script.new()
+	app.autosave_enabled = false
 	t.tree.root.add_child(app)
 	t.check(app.current_screen != null, "初始界面存在")
 	if app.current_screen != null:

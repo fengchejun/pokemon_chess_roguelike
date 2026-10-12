@@ -9,6 +9,7 @@ const TILE := 72.0
 
 var terrain: Array = []
 var obstacle_durability: Dictionary = {}
+var burning_cells: Dictionary = {}
 var nest: Dictionary = {}
 var reward: Dictionary = {}
 var fruits: Array = []
@@ -39,6 +40,7 @@ func set_from_state(state: BattleState) -> void:
 		return
 	terrain = state.terrain.duplicate()
 	obstacle_durability = state.obstacle_durability.duplicate()
+	burning_cells = state.burning_cells.duplicate()
 	nest = state.nest.duplicate(true)
 	reward = state.reward.duplicate(true)
 	fruits = state.fruits.duplicate()
@@ -50,6 +52,7 @@ func set_from_state(state: BattleState) -> void:
 func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	terrain = (map.get("terrain", []) as Array).duplicate()
 	obstacle_durability = {}
+	burning_cells = {}
 	for cell in map.get("obstacle_cells", []):
 		obstacle_durability[cell] = Balance.OBSTACLE_DURABILITY
 	nest = {
@@ -114,6 +117,8 @@ func _draw() -> void:
 			var cell := Vector2i(x, y)
 			var rect := Rect2(x * TILE, y * TILE, TILE, TILE)
 			_draw_terrain(rect, terrain[GridSpec.index(cell)])
+			if burning_cells.has(cell):
+				draw_circle(rect.position + Vector2(55, 17), 9.0, Color(1.0, 0.32, 0.08, 0.88))
 	# 覆盖层：移动范围 / 攻击范围 / 区域 / 射线
 	for cell in movement_cells:
 		_draw_fill(cell, Color(0.35, 0.6, 1.0, 0.28))
@@ -203,6 +208,16 @@ func _draw_terrain(rect: Rect2, value: int) -> void:
 			for bubble in 3:
 				var center := rect.position + Vector2(16 + bubble * 20, 24 + (bubble % 2) * 22)
 				draw_circle(center, 5.0, Color(1.0, 0.6, 0.1, 0.9))
+		TerrainDB.FRAGILE:
+			draw_line(rect.position + Vector2(12, 12), rect.position + Vector2(43, 39), Color(0.35, 0.22, 0.16), 3.0)
+			draw_line(rect.position + Vector2(43, 39), rect.position + Vector2(24, 61), Color(0.35, 0.22, 0.16), 3.0)
+		TerrainDB.PIT:
+			draw_rect(Rect2(rect.position + Vector2(8, 8), rect.size - Vector2(16, 16)), Color(0.03, 0.03, 0.06))
+		TerrainDB.ICE:
+			draw_line(rect.position + Vector2(8, 52), rect.position + Vector2(58, 14), Color.WHITE, 3.0)
+		TerrainDB.VINES:
+			for offset in [18, 36, 54]:
+				draw_circle(rect.position + Vector2(offset, 35), 6.0, Color(0.10, 0.38, 0.16))
 
 
 func _draw_objects(font: Font) -> void:

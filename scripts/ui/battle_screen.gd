@@ -210,14 +210,26 @@ func _update_unit_card() -> void:
 	if unit.move_cancelled:
 		statuses.append("本回合被定身")
 	if unit.slow_ticks > 0:
-		statuses.append("减速")
+		statuses.append("浸湿（移动 -1）")
+	if unit.shock_ticks > 0:
+		statuses.append("感电")
+	if unit.paralyzed_ticks > 0:
+		statuses.append("麻痹")
+	if unit.frozen:
+		statuses.append("冰冻")
+	if unit.vine_ticks > 0:
+		statuses.append("藤蔓束缚")
+	if unit.haste_ticks > 0:
+		statuses.append("加速 +2")
+	if unit.extra_casts > 0:
+		statuses.append("额外施法 %d 次" % unit.extra_casts)
 	if statuses.is_empty():
 		statuses.append("无")
 	lines.append("状态：" + "、".join(statuses))
 	if unit.is_trainer:
 		lines.append("本回合捕获机会：%s" % ("已使用" if unit.capture_used else "可用"))
 	else:
-		lines.append("本回合：移动 %s，技能 %s" % ["已用" if unit.moved else "可用", "已用" if unit.skill_used else "可用"])
+		lines.append("本回合：移动 %s，技能 %s" % ["已用" if unit.moved else "可用", "可用" if unit.can_act_skill() else "已用"])
 	if unit.side == "enemy":
 		var low_hp_rules := bool(state.capture_options.get("capture_low_hp", false))
 		lines.append("捕获概率：%d%%（训练家在周围八格可尝试%s）" % [
@@ -256,9 +268,9 @@ func _rebuild_skill_buttons() -> void:
 		button.toggle_mode = true
 		button.button_pressed = aim_skill == id
 		var entries := state.skill_targets(unit, id)
-		if unit.skill_used:
+		if not unit.can_act_skill():
 			button.disabled = true
-			button.tooltip_text += "\n（本回合技能已使用）"
+			button.tooltip_text += "\n（本回合无法施法）"
 		elif entries.is_empty():
 			button.disabled = true
 			button.tooltip_text += "\n（当前没有有效目标）"
@@ -517,7 +529,7 @@ func _show_terrain(cell: Vector2i) -> void:
 	if state.obstacle_durability.has(cell):
 		lines.append("障碍耐久：%d/2" % int(state.obstacle_durability[cell]))
 	if state.is_nest_cell(cell):
-		lines.append("巢穴耐久：%d/3（第 2、3 回合各尝试生成 1 只）" % int(state.nest.get("hp", 3)))
+		lines.append("巢穴耐久：%d/3（第 2、4 回合各尝试生成 1 只；堵口排队）" % int(state.nest.get("hp", 3)))
 	if cell == state.reward.get("cell", Vector2i(-1, -1)):
 		lines.append("奖励格：己方单位停留即拾取，成为奖励携带者；结算时持有可额外获得环境卡。")
 	if state.fruits.has(cell):

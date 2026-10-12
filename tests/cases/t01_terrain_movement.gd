@@ -22,8 +22,8 @@ func _t_cost_model(t: TestContext) -> void:
 	fire.cell = Vector2i(0, 3)
 	water_mon.cell = Vector2i(0, 4)
 	var fire_options := PathFinder.stop_cells(state, fire)
-	t.check(not fire_options.has(Vector2i(3, 3)), "非水系穿越水面少走一格：3 格外不可达")
-	t.check(fire_options.has(Vector2i(2, 3)), "非水系进入水面后可到 2 格（3-1）")
+	t.check(fire_options.has(Vector2i(3, 3)), "浅水入格不立刻消耗额外移动力")
+	t.check(fire_options.has(Vector2i(2, 3)), "非水系仍可经过浅水")
 	var water_options := PathFinder.stop_cells(state, water_mon)
 	t.check(water_options.has(Vector2i(3, 4)), "水系移动不受水面影响")
 
@@ -66,7 +66,7 @@ func _t_grass_conceal(t: TestContext) -> void:
 	for entry in far_entries:
 		if int(entry.get("unit", -1)) == 100:
 			found_far = true
-	t.eq(found_far, false, "草丛中的单位不能被 3 格外的放电选中")
+	t.eq(found_far, true, "草丛不再提供旧版远程隐蔽")
 	pika.cell = Vector2i(1, 3)
 	var near_entries := SkillResolver.targets(state, pika, "discharge")
 	var found_near := false

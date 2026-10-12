@@ -44,7 +44,7 @@ func _t_order(t: TestContext) -> void:
 		for action in plan:
 			var unit := state.unit_by_uid(int(action["uid"]))
 			elements.append(unit.element)
-		t.eq(elements, ["fire", "water", "rock"], "行动顺序按火、水、草、电、岩")
+		t.eq(elements, ["rock", "fire", "water"], "行动顺序按初始部署顺序")
 
 
 func _t_carrier_priority(t: TestContext) -> void:
@@ -117,7 +117,7 @@ func _t_rooted_and_spawn(t: TestContext) -> void:
 	for action in plan:
 		if int(action["uid"]) == rock.uid:
 			t.eq((action["move_path"] as Array).size(), 0, "定身单位计划中没有移动")
-	# 新生成单位只移动不施法
+	# 新生成单位在洞口待机，不进入当轮计划。
 	var spawn_plan := state.forecast()
 	var spawned_seen := false
 	for action in spawn_plan:
@@ -125,4 +125,4 @@ func _t_rooted_and_spawn(t: TestContext) -> void:
 		if unit != null and unit.fresh_spawn:
 			spawned_seen = true
 			t.eq((action["skill"] as Dictionary).is_empty(), true, "新生成单位不施放技能")
-	t.eq(spawned_seen, true, "生成单位出现在计划中")
+	t.eq(spawned_seen, false, "新生成单位当轮不在行动计划中")

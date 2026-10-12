@@ -57,7 +57,7 @@ func _t_burn_cleared_by_water(t: TestContext) -> void:
 
 
 func _t_root_and_slow(t: TestContext) -> void:
-	var state := TestScenario.make_state([], [["water_wild1", Vector2i(4, 3)]])
+	var state := TestScenario.make_state([], [["rock_wild1", Vector2i(4, 3)]])
 	var wild := state.unit_by_uid(100)
 	state.apply_root(wild)
 	t.eq(wild.root_pending, true, "定身标记生效")
@@ -85,11 +85,12 @@ func _t_nest_spawn(t: TestContext) -> void:
 	var spawned := _newest_enemy(state)
 	t.check(spawned != null, "找到生成单位")
 	if spawned != null:
-		t.eq(spawned.fresh_spawn, true, "新生成单位标记为本回合只移动")
+		t.eq(spawned.fresh_spawn, true, "新生成单位本回合在洞口待机")
+		spawned.cell = Vector2i(5, 7)
 		state.start_round()
-		t.eq(state.alive_enemy_count(), 3, "第 3 回合再生成 1 只")
+		t.eq(state.alive_enemy_count(), 2, "第 3 回合不产怪")
 		state.start_round()
-		t.eq(state.alive_enemy_count(), 3, "第 4 回合不再生成")
+		t.eq(state.alive_enemy_count(), 3, "第 4 回合再生成 1 只")
 	# 摧毁巢穴后停止
 	var state2 := TestScenario.make_state([], [["fire_wild1", Vector2i(5, 4)]], [], {}, {}, ["fire_wild1"])
 	state2.nest["hp"] = 1
@@ -199,7 +200,7 @@ func _t_victory(t: TestContext) -> void:
 	var state := TestScenario.make_state(["fire_starter"], [["grass_wild1", Vector2i(2, 3)]])
 	var fire := state.unit_by_uid(1)
 	fire.cell = Vector2i(0, 3)
-	state.unit_by_uid(100).hp = 3
+	state.unit_by_uid(100).hp = 2
 	state.cast_skill(fire, "fire_seed", {"type": "cell", "cell": Vector2i(2, 3)})
 	t.eq(state.unit_by_uid(100).hp <= 0, true, "火种击败野生")
 	t.eq(state.end_reason, "victory", "全部敌人被击败立即胜利")

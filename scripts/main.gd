@@ -15,6 +15,7 @@ var current_screen: Control = null
 var pending_settlement: Dictionary = {}
 var battle_settled := false
 var prep_deploy_preset: Array = []
+var autosave_enabled: bool = true # UI 自动化在挂载场景前设为 false，避免覆盖玩家单槽存档。
 
 
 func _ready() -> void:
@@ -66,7 +67,7 @@ func continue_run() -> void:
 
 
 func autosave() -> void:
-	if run != null:
+	if run != null and autosave_enabled:
 		SaveSystem.save_run(run)
 
 
@@ -151,7 +152,8 @@ func show_run_end() -> void:
 
 
 func end_run_to_menu() -> void:
-	SaveSystem.delete_save()
+	if autosave_enabled:
+		SaveSystem.delete_save()
 	run = null
 	show_menu()
 

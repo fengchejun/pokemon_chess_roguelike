@@ -29,7 +29,7 @@ func _ready() -> void:
 	name = "PreviewScreen"
 	UIKit.fill_background(self)
 	var run: RunState = app.run
-	map = MapGenerator.generate(run.seed, run.battle_index)
+	map = MapGenerator.generate(run.seed, run.battle_index, 0, run.map_deck())
 	base_map = map.duplicate(true)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -52,9 +52,14 @@ func _ready() -> void:
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	columns.add_child(right)
 	right.add_child(UIKit.label("地图预览与改造 · 第 %d 场（%s）" % [run.battle_index + 1, run.region_name()], 22, UIKit.ACCENT))
-	right.add_child(UIKit.wrapped("地貌由区域与种子决定（与卡组无关）；预览后可进行地形改造。开战后地图不再变化。", 13))
-	right.add_child(_enemy_box(run))
-	right.add_child(_cards_box())
+	var scroll := UIKit.scroll()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right.add_child(scroll)
+	var content := UIKit.vbox(8)
+	scroll.add_child(content)
+	content.add_child(UIKit.wrapped("地图构筑模式下，卡组会改变后续地貌生成倾向；站位卡模式下地貌仅由区域与种子决定。开战后地图不再生成。", 13))
+	content.add_child(_enemy_box(run))
+	content.add_child(_cards_box())
 	var mod_box := UIKit.panel(UIKit.PANEL)
 	var mod_column := UIKit.vbox(6)
 	mod_box.add_child(mod_column)
@@ -88,7 +93,7 @@ func _ready() -> void:
 	var reset_button := UIKit.small_button("重置改造")
 	reset_button.pressed.connect(_on_reset)
 	mod_actions.add_child(reset_button)
-	right.add_child(mod_box)
+	content.add_child(mod_box)
 	hint_label = UIKit.label("", 14, UIKit.BAD)
 	right.add_child(hint_label)
 	var actions := UIKit.hbox(8)
@@ -110,7 +115,7 @@ func _legend() -> Control:
 	var box := UIKit.hbox(10)
 	var entries: Array = [
 		[TerrainDB.PLAIN, "平地"], [TerrainDB.WATER, "水面"], [TerrainDB.DEEP, "深水"],
-		[TerrainDB.GRASS, "草丛"], [TerrainDB.OBSTACLE, "障碍"], [TerrainDB.LAVA, "熔岩"],
+		[TerrainDB.GRASS, "草丛"], [TerrainDB.OBSTACLE, "障碍"], [TerrainDB.FRAGILE, "易碎"],
 	]
 	for entry in entries:
 		var swatch := ColorRect.new()
@@ -143,7 +148,7 @@ func _enemy_box(run: RunState) -> Control:
 	var reinforce_names: Array = []
 	for species_id in cfg.get("reinforce", []):
 		reinforce_names.append(SpeciesDB.name_of(String(species_id)))
-	column.add_child(UIKit.wrapped("巢穴增援池：%s（第 2、3 回合各尝试 1 只）" % "、".join(reinforce_names), 13))
+	column.add_child(UIKit.wrapped("巢穴增援池：%s（第 2、4 回合各尝试 1 只；堵口则排队）" % "、".join(reinforce_names), 13))
 	return box
 
 
@@ -152,6 +157,14 @@ func _cards_box() -> Control:
 	var box := UIKit.panel(UIKit.PANEL)
 	var column := UIKit.vbox(6)
 	box.add_child(column)
+	if String(run.options.get("card_mode", "position")) == "environment":
+		column.add_child(UIKit.label("地图构筑卡（整局生效）", 17, UIKit.ACCENT))
+		var lines: Array = []
+		for card_id in run.environment_deck:
+			var card := MapCardDB.get_card(String(card_id))
+			lines.append("%s：%s" % [card.get("name", card_id), card.get("desc", "")])
+		column.add_child(UIKit.wrapped("尚未获得地图构筑卡；战后可三选一。" if lines.is_empty() else "\n".join(lines), 13))
+		return box
 	column.add_child(UIKit.label("出战环境卡（5 张中选 2 张，本场生效）", 17, UIKit.ACCENT))
 	var row := UIKit.hbox(6)
 	column.add_child(row)
@@ -284,7 +297,7 @@ func _preview_units(run: RunState) -> Array:
 
 
 func _on_start() -> void:
-	if app.run.cards.size() != Balance.CARDS_PER_BATTLE:
+	if String(app.run.options.get("card_mode", "position")) == "position" and app.run.cards.size() != Balance.CARDS_PER_BATTLE:
 		hint_label.text = "请先选择 %d 张出战环境卡。" % Balance.CARDS_PER_BATTLE
 		hint_label.add_theme_color_override("font_color", UIKit.BAD)
 		return

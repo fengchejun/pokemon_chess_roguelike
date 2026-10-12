@@ -27,6 +27,14 @@ var slow_ticks: int = 0             # 减速：> 0 时移动上限 −1
 var burn_ticks: int = 0             # 灼烧：回合结束 1 伤害
 var burn_source_uid: int = -1
 var burn_source_side: String = ""
+var shock_ticks: int = 0
+var paralyzed_ticks: int = 0
+var frozen: bool = false
+var vine_ticks: int = 0
+var haste_ticks: int = 0
+var extra_casts: int = 0
+var fireball_used: bool = false
+var last_move_direction: Vector2i = Vector2i.ZERO
 
 # 其他
 var fresh_spawn: bool = false       # 本回合新生成：只移动不施法
@@ -44,15 +52,17 @@ func effective_move() -> int:
 	var value := move_points
 	if slow_ticks > 0:
 		value -= 1
+	if haste_ticks > 0:
+		value += 2
 	return maxi(0, value)
 
 
 func can_act_skill() -> bool:
-	return is_alive() and not skill_used
+	return is_alive() and not frozen and paralyzed_ticks <= 0 and (not skill_used or extra_casts > 0)
 
 
 func can_move_now() -> bool:
-	return is_alive() and not moved and not move_cancelled and effective_move() > 0
+	return is_alive() and not frozen and paralyzed_ticks <= 0 and vine_ticks <= 0 and not moved and not move_cancelled and effective_move() > 0
 
 
 func dup() -> CombatUnit:
@@ -79,6 +89,14 @@ func dup() -> CombatUnit:
 	copy.burn_ticks = burn_ticks
 	copy.burn_source_uid = burn_source_uid
 	copy.burn_source_side = burn_source_side
+	copy.shock_ticks = shock_ticks
+	copy.paralyzed_ticks = paralyzed_ticks
+	copy.frozen = frozen
+	copy.vine_ticks = vine_ticks
+	copy.haste_ticks = haste_ticks
+	copy.extra_casts = extra_casts
+	copy.fireball_used = fireball_used
+	copy.last_move_direction = last_move_direction
 	copy.fresh_spawn = fresh_spawn
 	return copy
 

@@ -65,6 +65,7 @@ func _ready() -> void:
 	right.add_child(right_scroll)
 	var right_content := UIKit.vbox(10)
 	right_scroll.add_child(right_content)
+	right_content.add_child(_card_mode_box(run))
 	right_content.add_child(_capture_settings_box(run))
 	right_content.add_child(_archive_box(run))
 	right_content.add_child(_storage_box(run))
@@ -100,6 +101,31 @@ func _capture_settings_box(run: RunState) -> Control:
 	)
 	column.add_child(field_join)
 	return box
+
+
+func _card_mode_box(run: RunState) -> Control:
+	var box := UIKit.panel(UIKit.PANEL)
+	var column := UIKit.vbox(5)
+	box.add_child(column)
+	column.add_child(UIKit.label("环境卡模式（二选一）", 17, UIKit.ACCENT))
+	var selector := OptionButton.new()
+	selector.name = "CardModeOption"
+	selector.add_item("v2 站位增益卡：每战前五选二")
+	selector.add_item("地图构筑卡：战后选卡，影响后续地图")
+	selector.select(1 if String(run.options.get("card_mode", "position")) == "environment" else 0)
+	selector.item_selected.connect(func(index: int) -> void:
+		run.options["card_mode"] = "environment" if index == 1 else "position"
+		app.autosave()
+		show_prep_after_mode_change()
+	)
+	column.add_child(selector)
+	column.add_child(UIKit.wrapped("默认使用 v2 站位卡：在地图预览页选五张中的两张。切到地图构筑卡后，第一场无卡；每场战斗结算时三选一，已选卡持续影响后续地图。两种模式不会叠加。", 12))
+	return box
+
+
+func show_prep_after_mode_change() -> void:
+	app.prep_deploy_preset = deploy_selection.duplicate()
+	app.show_prep()
 
 
 func _team_row(record: Dictionary) -> Control:
@@ -172,7 +198,7 @@ func _next_box(run: RunState) -> Control:
 	for pair in cfg.get("enemies", []):
 		enemy_names.append(SpeciesDB.name_of(String(pair[0])))
 	column.add_child(UIKit.wrapped("敌方：%s（共 %d 只，另有巢穴增援）" % [", ".join(enemy_names), enemy_names.size()], 14))
-	column.add_child(UIKit.wrapped("巢穴：耐久 3，第 2、3 回合各尝试生成 1 只；摧毁后永久停止。", 13))
+	column.add_child(UIKit.wrapped("巢穴：耐久 3，第 2、4 回合各尝试生成 1 只；堵口则排队，摧毁后立即获胜。", 13))
 	return box
 
 

@@ -42,7 +42,7 @@ func _t_victory_rewards(t: TestContext) -> void:
 	var run := RunState.new_run(3003)
 	var state := TestScenario.make_state(["fire_starter"], [["grass_wild1", Vector2i(2, 3)]])
 	run.mark_deployed([1])
-	state.unit_by_uid(100).hp = 3
+	state.unit_by_uid(100).hp = 2
 	state.unit_by_uid(1).cell = Vector2i(0, 3)
 	state.cast_skill(state.unit_by_uid(1), "fire_seed", {"type": "cell", "cell": Vector2i(2, 3)})
 	state.reward["state"] = "carried"
@@ -169,7 +169,7 @@ func _t_forced_retreat(t: TestContext) -> void:
 	run.carried[2]["hp"] = 2
 	var state := TestScenario.make_state(["fire_starter"], [["grass_wild1", Vector2i(2, 3)]])
 	run.mark_deployed([1, 2])
-	state.unit_by_uid(100).hp = 3
+	state.unit_by_uid(100).hp = 2
 	state.unit_by_uid(1).cell = Vector2i(0, 3)
 	state.cast_skill(state.unit_by_uid(1), "fire_seed", {"type": "cell", "cell": Vector2i(2, 3)})
 	# 敌人已死则战斗结束；改用一个新敌人避免干扰

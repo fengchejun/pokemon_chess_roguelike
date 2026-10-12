@@ -28,19 +28,9 @@ static func plan(state: BattleState) -> Array:
 static func _action_order(state: BattleState) -> Array:
 	var enemies: Array = []
 	for unit in state.units:
-		if unit.side == "enemy" and unit.is_alive():
+		if unit.side == "enemy" and unit.is_alive() and not unit.fresh_spawn:
 			enemies.append(unit)
-	enemies.sort_custom(func(a: CombatUnit, b: CombatUnit) -> bool:
-		var a_spawn := 1 if a.fresh_spawn else 0
-		var b_spawn := 1 if b.fresh_spawn else 0
-		if a_spawn != b_spawn:
-			return a_spawn < b_spawn
-		var a_elem := Elements.order_index(a.element)
-		var b_elem := Elements.order_index(b.element)
-		if a_elem != b_elem:
-			return a_elem < b_elem
-		return a.reg_index < b.reg_index
-	)
+	enemies.sort_custom(func(a: CombatUnit, b: CombatUnit) -> bool: return a.reg_index < b.reg_index)
 	var order: Array = []
 	for unit in enemies:
 		order.append(unit.uid)
@@ -104,7 +94,7 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 static func _dedupe_entries(state: BattleState, unit: CombatUnit, skill_id: String) -> Array:
 	## 射线类只保留“最近命中”和“最远落点”两个代表性选项，避免重复克隆。
 	var entries := SkillResolver.targets(state, unit, skill_id)
-	if SkillDB.kind_of(skill_id) != "ray":
+	if SkillDB.kind_of(skill_id) != "ray" or skill_id == "fire_burst":
 		return entries
 	var by_dir: Dictionary = {}
 	for entry in entries:
@@ -144,6 +134,14 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 				total += 6
 			if later.burn_ticks > unit.burn_ticks:
 				total += 6
+			if later.frozen and not unit.frozen:
+				total += 24
+			if later.shock_ticks > unit.shock_ticks:
+				total += 7
+			if later.paralyzed_ticks > unit.paralyzed_ticks:
+				total += 16
+			if later.vine_ticks > unit.vine_ticks:
+				total += 8
 	var actor_before := before.unit_by_uid(actor_uid)
 	var actor_after := after.unit_by_uid(actor_uid)
 	if actor_before != null and actor_before.is_alive():
@@ -159,6 +157,12 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 			total -= 500
 		elif later.hp < unit.hp:
 			total -= (unit.hp - later.hp) * 10
+		elif later.hp > unit.hp:
+			total += (later.hp - unit.hp) * 8
+		if later != null and later.haste_ticks > unit.haste_ticks:
+			total += 5
+		if later != null and later.extra_casts > unit.extra_casts:
+			total += 7
 	return {"total": total, "kills": kills}
 
 
@@ -239,6 +243,7 @@ static func _execute_on(work: BattleState, action: Dictionary) -> void:
 	if unit == null or not unit.is_alive():
 		return
 	for cell in action.get("move_path", []):
+		unit.last_move_direction = cell - unit.cell
 		unit.cell = cell
 		if work.terrain_at(cell) == TerrainDB.WATER or work.terrain_at(cell) == TerrainDB.DEEP:
 			unit.burn_ticks = 0

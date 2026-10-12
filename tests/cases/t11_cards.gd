@@ -26,11 +26,16 @@ func _t_water_ignore(t: TestContext) -> void:
 	var fire := state.unit_by_uid(1)
 	fire.cell = Vector2i(0, 3)
 	t.check(PathFinder.stop_cells(state, fire).has(Vector2i(3, 3)), "溪流：我方非水系穿水不减速（可达 3 格）")
+	fire.cell = Vector2i(1, 3)
+	state.settle_round()
+	t.eq(fire.slow_ticks, 0, "溪流：我方留在浅水不获得浸湿")
 	var state2 := TestScenario.make_state([], [["rock_wild1", Vector2i(0, 3)]], terrain, {"water_ignore": 1})
 	state2.trainer().cell = Vector2i(0, 7)
 	var enemy := state2.unit_by_uid(100)
 	enemy.cell = Vector2i(0, 3)
-	t.eq(PathFinder.stop_cells(state2, enemy).has(Vector2i(2, 3)), false, "溪流：敌方仍受水面减速影响")
+	enemy.cell = Vector2i(1, 3)
+	state2.settle_round()
+	t.eq(enemy.slow_ticks, 2, "溪流：敌方留在浅水于回合结算获得浸湿")
 
 
 func _t_water_range(t: TestContext) -> void:
@@ -83,12 +88,12 @@ func _t_grass_duel(t: TestContext) -> void:
 	var fire := state3.unit_by_uid(1)
 	fire.cell = Vector2i(0, 3)
 	SkillResolver.apply(state3, fire, "fire_seed", {"type": "cell", "cell": Vector2i(4, 3)}, false)
-	t.eq(state3.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 4, "密林：草丛中的我方单位伤害 +1（2+1+1=4）")
+	t.eq(state3.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 3, "密林：草丛中的我方单位伤害 +1（2+1=3）")
 	var state4 := TestScenario.make_state(["fire_starter"], [["grass_wild1", Vector2i(4, 3)]], [], effects)
 	var fire4 := state4.unit_by_uid(1)
 	fire4.cell = Vector2i(0, 3)
 	SkillResolver.apply(state4, fire4, "fire_seed", {"type": "cell", "cell": Vector2i(4, 3)}, false)
-	t.eq(state4.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 3, "密林：不在草丛时无 +1")
+	t.eq(state4.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 2, "密林：不在草丛时无 +1")
 	# 敌方站在草丛中不享受增益
 	var terrain5 := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[Vector2i(0, 3), TerrainDB.GRASS],
@@ -194,7 +199,7 @@ func _t_hazard_guards(t: TestContext) -> void:
 	var terrain5 := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[Vector2i(3, 3), TerrainDB.DEEP],
 	])
-	var state5 := TestScenario.make_state(["rock_starter"], [["water_wild1", Vector2i(2, 3)]], terrain5, {"deep_guard": 1})
+	var state5 := TestScenario.make_state(["rock_starter"], [["fire_wild1", Vector2i(2, 3)]], terrain5, {"deep_guard": 1})
 	var rock := state5.unit_by_uid(1)
 	rock.cell = Vector2i(1, 3)
 	SkillResolver.apply(state5, rock, "push", {"type": "unit", "unit": 100, "cell": Vector2i(2, 3)}, false)

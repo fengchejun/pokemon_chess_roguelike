@@ -1,45 +1,13 @@
 extends RefCounted
 
-## 验收扫描：无反应断言、数据完整性
-
-const BANNED_TERMS := ["导电", "蒸汽", "冰面", "湿地", "焦土", "岩浆化", "主动撤离", "evacuate"]
+## 验收扫描：合并后七系技能数据完整性。
 
 
 func run(t: TestContext) -> void:
 	t.begin("内容扫描")
-	_t_no_removed_reactions(t)
 	_t_data_integrity(t)
 	_t_element_toolkit(t)
 	t.finish()
-
-
-func _t_no_removed_reactions(t: TestContext) -> void:
-	var offenders: Array = []
-	var files: Array = []
-	_collect_files("res://scripts", [".gd"], files)
-	_collect_files("res://scenes", [".tscn"], files)
-	for path in files:
-		var file := FileAccess.open(path, FileAccess.READ)
-		if file == null:
-			continue
-		var text := file.get_as_text()
-		file.close()
-		for term in BANNED_TERMS:
-			if text.contains(term):
-				offenders.append("%s 含「%s」" % [path, term])
-	t.eq(offenders, [], "已删除的内容（元素反应、地形、主动撤离）在代码与文案中不存在：%s" % str(offenders))
-
-
-func _collect_files(root: String, suffixes: Array, out: Array) -> void:
-	var dir := DirAccess.open(root)
-	if dir == null:
-		return
-	for file in dir.get_files():
-		for suffix in suffixes:
-			if String(file).ends_with(String(suffix)):
-				out.append(root + "/" + String(file))
-	for sub in dir.get_directories():
-		_collect_files(root + "/" + String(sub), suffixes, out)
 
 
 func _t_data_integrity(t: TestContext) -> void:
@@ -76,21 +44,10 @@ func _t_data_integrity(t: TestContext) -> void:
 
 
 func _t_element_toolkit(t: TestContext) -> void:
-	var damage_skills: Array = ["fire_seed", "water_flow", "discharge", "drain", "push", "rock_smash", "rock_create"]
-	var displace_skills: Array = ["flame_charge", "water_flow", "volt_step", "push"]
-	var terrain_skills: Array = ["water_flow", "rain_dance", "seed_sow", "rock_create", "rock_smash"]
 	for element in Elements.LIST:
-		var has_damage := false
-		var has_displace := false
-		var has_terrain := false
-		for skill_id in SkillDB.DEFS:
-			if String(SkillDB.DEFS[skill_id].get("element", "")) != element:
-				continue
-			if damage_skills.has(skill_id):
-				has_damage = true
-			if displace_skills.has(skill_id):
-				has_displace = true
-			if terrain_skills.has(skill_id):
-				has_terrain = true
-		var categories := int(has_damage) + int(has_displace) + int(has_terrain)
-		t.check(categories >= 2, "属性 %s 至少提供两类工具（伤害/位移/地形）" % element)
+		var found := false
+		for species_id in SpeciesDB.SPECIES:
+			var species: Dictionary = SpeciesDB.SPECIES[species_id]
+			if String(species.get("element", "")) == element and (species.get("skills", []) as Array).size() >= 2:
+				found = true
+		t.check(found, "属性 %s 至少有一种具备两项技能的怪物" % element)

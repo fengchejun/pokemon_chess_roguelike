@@ -10,7 +10,7 @@ const CARDS := {
 		"name": "溪流",
 		"element": "water",
 		"anchor": "水面",
-		"effect": "我方单位进入水面不额外消耗移动力（穿流而行）",
+		"effect": "我方单位站在浅水上不获得浸湿（穿流而行）",
 		"extra": "",
 		"risk": "",
 		"effect_types": {"water_ignore": 1},

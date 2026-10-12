@@ -12,6 +12,7 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://artifacts"))
 	var main_script = load("res://scripts/main.gd")
 	var app = main_script.new()
+	app.autosave_enabled = false
 	root.add_child(app)
 	app.set_anchors_preset(Control.PRESET_FULL_RECT)
 	await process_frame
@@ -43,7 +44,7 @@ func _run() -> void:
 	battle.select_unit(1)
 	await process_frame
 	await _shot("06_battle_select")
-	battle._on_skill_pressed("fire_seed")
+	battle._on_skill_pressed("fire_burst")
 	await process_frame
 	await _shot("07_battle_aim")
 	battle._on_board_hovered(Vector2i(6, 2))
