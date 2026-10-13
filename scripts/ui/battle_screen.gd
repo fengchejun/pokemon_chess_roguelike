@@ -25,6 +25,8 @@ var threat_check: CheckBox = null
 var hint_label: Label = null
 var forecast_list: VBoxContainer = null
 var log_label: RichTextLabel = null
+var reward_layer: Control = null
+var reward_choices: VBoxContainer = null
 
 
 func _ready() -> void:
@@ -76,8 +78,55 @@ func _ready() -> void:
 	log_label.custom_minimum_size = Vector2(220, 0)
 	log_label.add_theme_font_size_override("normal_font_size", 12)
 	log_scroll.add_child(log_label)
+	_build_reward_choice()
 	board.set_from_state(state)
 	refresh_all()
+
+
+func _build_reward_choice() -> void:
+	reward_layer = Control.new()
+	reward_layer.name = "RewardChoiceLayer"
+	reward_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	reward_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	reward_layer.visible = false
+	add_child(reward_layer)
+	var shade := ColorRect.new()
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.02, 0.04, 0.07, 0.72)
+	reward_layer.add_child(shade)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	reward_layer.add_child(center)
+	var panel := UIKit.panel(UIKit.PANEL)
+	panel.custom_minimum_size = Vector2(420, 0)
+	center.add_child(panel)
+	reward_choices = UIKit.vbox(10)
+	panel.add_child(reward_choices)
+
+
+func _refresh_reward_choice() -> void:
+	var pending := state.phase == BattleState.PHASE_REWARD and not state.ended
+	reward_layer.visible = pending
+	if not pending:
+		return
+	UIKit.clear_children(reward_choices)
+	var owner := state.reward_owner()
+	reward_choices.add_child(UIKit.label("战场奖励 · 选择本场 Buff", 19, UIKit.ACCENT))
+	reward_choices.add_child(UIKit.wrapped("%s 守住奖励格。请选择一项；选定后继续回合结算。" % (owner.display_name if owner != null else "我方单位"), 13))
+	for option in state.reward.get("options", []):
+		var id := String(option)
+		var button := UIKit.small_button("%s｜%s" % [BattleBuffDB.name_of(id), BattleBuffDB.desc_of(id)])
+		button.name = "RewardBuff_%s" % id
+		button.pressed.connect(_on_reward_choice.bind(id))
+		reward_choices.add_child(button)
+
+
+func _on_reward_choice(id: String) -> void:
+	if not state.resolve_reward_choice(id):
+		return
+	app.sync_and_save(state)
+	refresh_all()
+	hint_label.text = "已选择「%s」，进入第 %d 回合。" % [BattleBuffDB.name_of(id), state.round]
 
 
 func _header_box() -> Control:
@@ -167,24 +216,27 @@ func refresh_all() -> void:
 	_update_forecast()
 	_update_log()
 	_update_selection_overlay()
+	_refresh_reward_choice()
 	if state.ended and not settled_reported:
 		settled_reported = true
 		call_deferred("_report_end")
 
 
 func _update_header() -> void:
-	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
+	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "reward": "选择奖励", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
 	round_label.text = "第 %d/%d 回合 · %s" % [maxi(1, state.round), Balance.MAX_ROUNDS, phase_text]
-	var carrier_text := ""
-	var carrier := state.unit_by_uid(state.carrier_uid())
-	if carrier != null:
-		carrier_text = "　奖励携带者：%s" % carrier.display_name
-	elif String(state.reward.get("state", "")) == "map":
-		carrier_text = "　奖励待拾取"
-	elif String(state.reward.get("state", "")) == "dropped":
-		carrier_text = "　奖励已掉落"
+	var reward_text := ""
+	match String(state.reward.get("state", "")):
+		"map":
+			reward_text = "　奖励待守点%s" % ("（末轮我方不再领奖）" if state.round >= Balance.MAX_ROUNDS else "")
+		"pending":
+			reward_text = "　奖励待选择"
+		"claimed":
+			reward_text = "　奖励：%s" % BattleBuffDB.name_of(String(state.reward.get("buff_id", "")))
+		"destroyed":
+			reward_text = "　奖励已摧毁"
 	status_label.text = "敌人剩余 %d｜已击败 %d｜已捕获 %d｜经验 %d%s" % [
-		state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), state.battle_exp(), carrier_text,
+		state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), state.battle_exp(), reward_text,
 	]
 
 
@@ -224,6 +276,8 @@ func _update_unit_card() -> void:
 		statuses.append("加速 +2")
 	if unit.extra_casts > 0:
 		statuses.append("额外施法 %d 次" % unit.extra_casts)
+	for buff_id in unit.battle_buffs:
+		statuses.append("本场 Buff：%s" % BattleBuffDB.name_of(String(buff_id)))
 	if statuses.is_empty():
 		statuses.append("无")
 	lines.append("状态：" + "、".join(statuses))
@@ -546,7 +600,7 @@ func _show_terrain(cell: Vector2i) -> void:
 	if state.is_nest_cell(cell):
 		lines.append("巢穴耐久：%d/3（第 2、4 回合各尝试生成 1 只；堵口排队）" % int(state.nest.get("hp", 3)))
 	if cell == state.reward.get("cell", Vector2i(-1, -1)):
-		lines.append("奖励格：己方单位停留即拾取，成为奖励携带者；结算时持有可额外获得环境卡。")
+		lines.append("奖励格：敌人守到我方阶段结束会自动选 Buff；我方守到敌方阶段结束可二选一。领取前受伤会毁坏；第 6 回合敌方阶段结束后不再发放。")
 	if state.fruits.has(cell):
 		lines.append("恢复果实：拾取回复 2 生命。")
 	unit_title.text = "地块信息"
@@ -744,7 +798,10 @@ func _enemy_phase() -> void:
 			selected_uid = 0
 	board.clear_overlays()
 	refresh_all()
-	hint_label.text = "已进入第 %d 回合（我方行动）。" % maxi(1, state.round)
+	if state.phase == BattleState.PHASE_REWARD:
+		hint_label.text = "奖励已守住，请选择一项本场 Buff。"
+	else:
+		hint_label.text = "已进入第 %d 回合（我方行动）。" % maxi(1, state.round)
 	hint_label.add_theme_color_override("font_color", UIKit.TEXT_DIM)
 
 

@@ -4,7 +4,6 @@ extends RefCounted
 ## 确定性敌方 AI：固定行动顺序（火、水、草、电、岩、增援），
 ## 先移动后技能；威胁预告与实际执行使用同一份计划。
 
-const PRIORITY_CARRIER := 300
 const PRIORITY_TRAINER := 150
 const PRIORITY_POKEMON := 100
 
@@ -54,6 +53,10 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 		for cell in sorted_cells:
 			positions.append(cell)
 			paths[cell] = options[cell]["path"]
+	var reward_cell: Vector2i = work.reward.get("cell", Vector2i(-1, -1))
+	var claim_reward := String(work.reward.get("state", "")) == "map" and positions.has(reward_cell) and (work.unit_at(reward_cell) == null or work.unit_at(reward_cell) == unit)
+	if claim_reward:
+		positions = [reward_cell]
 	for position in positions:
 		var base := work.clone()
 		var base_unit := base.unit_by_uid(unit.uid)
@@ -75,11 +78,13 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 					if not bool(result.get("ok", false)):
 						continue
 					var score := _score(base, sim, unit.uid)
+					if claim_reward and sim_unit.cell != reward_cell:
+						continue
 					var candidate := {
 						"uid": unit.uid,
 						"move_path": path,
 						"skill": {"id": skill_id, "target": entry},
-						"score": score["total"],
+						"score": score["total"] + (100 if claim_reward else 0),
 						"meta": result,
 						"lethal": score["kills"],
 					}
@@ -87,6 +92,8 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 						best = candidate
 	if not best.is_empty() and int(best["score"]) > 0:
 		return best
+	if claim_reward:
+		return {"uid": unit.uid, "move_path": paths[reward_cell], "skill": {}}
 	# 没有可得分攻击：向最近的己方单位接近。
 	return _approach_action(work, unit, positions, paths)
 
@@ -169,14 +176,10 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 static func _priority(state: BattleState, unit: CombatUnit) -> int:
 	if unit.is_trainer:
 		return PRIORITY_TRAINER
-	if state.carrier_uid() == unit.uid:
-		return PRIORITY_CARRIER
 	return PRIORITY_POKEMON
 
 
 static func _damage_priority(state: BattleState, unit: CombatUnit) -> int:
-	if state.carrier_uid() == unit.uid:
-		return 40
 	if unit.is_trainer:
 		return 20
 	return 10
@@ -227,7 +230,7 @@ static func _approach_action(work: BattleState, unit: CombatUnit, positions: Arr
 	for position in ordered:
 		var distance := 1 << 30
 		for target in targets:
-			var value := PathFinder.path_distance(work, position, target.cell, unit.element)
+			var value := PathFinder.path_distance(work, position, target.cell, unit.element, unit.has_buff("flight"))
 			distance = mini(distance, value)
 		var cost: int = (paths[position] as Array).size()
 		if distance < best_distance or (distance == best_distance and cost < best_cost):
@@ -245,7 +248,7 @@ static func _execute_on(work: BattleState, action: Dictionary) -> void:
 	for cell in action.get("move_path", []):
 		unit.last_move_direction = cell - unit.cell
 		unit.cell = cell
-		if work.terrain_at(cell) == TerrainDB.WATER or work.terrain_at(cell) == TerrainDB.DEEP:
+		if not unit.has_buff("flight") and (work.terrain_at(cell) == TerrainDB.WATER or work.terrain_at(cell) == TerrainDB.DEEP):
 			unit.burn_ticks = 0
 	if not action.get("move_path", []).is_empty():
 		unit.moved = true

@@ -128,17 +128,14 @@ func _t_pickups(t: TestContext) -> void:
 	var state := TestScenario.make_state(["fire_starter"], [])
 	var fire := state.unit_by_uid(1)
 	fire.cell = state.reward["cell"]
-	state.settle_round()
-	t.eq(state.reward["state"], "carried", "停留在奖励格拾取奖励")
-	t.eq(state.carrier_uid(), fire.uid, "拾取者成为携带者")
-	state.kill_unit(fire, "测试死亡", "enemy")
-	t.eq(state.reward["state"], "dropped", "携带者阵亡奖励掉落")
-	var water_mon := CombatUnit.make("water_starter", "player", 2)
-	state.units.append(water_mon)
-	water_mon.cell = state.reward["cell"]
-	state.settle_round()
-	t.eq(state.reward["state"], "carried", "掉落奖励可以再次拾取")
-	t.eq(state.carrier_uid(), water_mon.uid, "新携带者生效")
+	state.phase = BattleState.PHASE_ENEMY
+	state.end_enemy_phase()
+	t.eq(state.reward["state"], "pending", "敌方阶段结束后守点进入选择")
+	t.eq(state.reward_owner().uid, fire.uid, "守点者获得选择权")
+	var buff_id := String(state.reward["options"][0])
+	t.check(state.resolve_reward_choice(buff_id), "选择 Buff 后继续回合")
+	t.eq(state.reward["state"], "claimed", "奖励每场只领取一次")
+	t.check(fire.has_buff(buff_id), "Buff 只附于守点者")
 	# 恢复果实
 	var fruits_state := TestScenario.make_state(["fire_starter"], [])
 	var fmon := fruits_state.unit_by_uid(1)

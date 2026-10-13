@@ -53,9 +53,6 @@ const TRAINER_UID := 900000
 # 部署格：第 0 格为训练家，其余为宝可梦。
 const DEPLOY_CELLS := [Vector2i(0, 3), Vector2i(0, 2), Vector2i(0, 4), Vector2i(1, 3)]
 
-# 奖励携带者存活至结算：额外经验（环境卡改为战前自选后，奖励格改用经验结算）
-const CARRIER_BONUS_EXP := 2
-
 # 局内强化（只卖新解法）
 const UPGRADE_THRESHOLDS := [10, 20, 30, 40]
 

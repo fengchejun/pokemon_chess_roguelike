@@ -34,6 +34,7 @@ var vine_ticks: int = 0
 var haste_ticks: int = 0
 var extra_casts: int = 0
 var battle_skill_uses: Dictionary = {}
+var battle_buffs: Dictionary = {}
 var last_move_direction: Vector2i = Vector2i.ZERO
 
 # 其他
@@ -50,11 +51,17 @@ func hp_ratio() -> float:
 
 func effective_move() -> int:
 	var value := move_points
-	if slow_ticks > 0:
+	if slow_ticks > 0 and not has_buff("status_immune"):
 		value -= 1
 	if haste_ticks > 0:
 		value += 2
+	if has_buff("move_plus"):
+		value += 1
 	return maxi(0, value)
+
+
+func has_buff(id: String) -> bool:
+	return bool(battle_buffs.get(id, false))
 
 
 func can_act_skill() -> bool:
@@ -101,6 +108,7 @@ func dup() -> CombatUnit:
 	copy.haste_ticks = haste_ticks
 	copy.extra_casts = extra_casts
 	copy.battle_skill_uses = battle_skill_uses.duplicate()
+	copy.battle_buffs = battle_buffs.duplicate()
 	copy.last_move_direction = last_move_direction
 	copy.fresh_spawn = fresh_spawn
 	return copy

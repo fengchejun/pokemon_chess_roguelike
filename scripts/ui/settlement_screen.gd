@@ -86,8 +86,6 @@ func _summary_box(run: RunState) -> Control:
 		for entry in flee_penalty:
 			punished.append("%s %d→%d" % [entry["name"], int(entry["from"]), int(entry["to"])])
 		lines.append("失败惩罚（出战宝可梦生命减半）：" + "；".join(punished))
-	if int(outcome.get("carrier_exp", 0)) > 0:
-		lines.append("奖励携带者存活至结算：额外 +%d 经验" % int(outcome["carrier_exp"]))
 	var recovery: Array = outcome.get("recovery", [])
 	if not recovery.is_empty():
 		var parts: Array = []
@@ -150,7 +148,7 @@ func _show_next_step() -> void:
 		continue_button.disabled = true
 		return
 	step_label.text = "全部处理完成，可以进入下一场。"
-	choice_box.add_child(UIKit.wrapped("战斗结算顺序已完成：经验 → 捕获 → 奖励携带者经验 → 濒死记录 → 下一场准备。" , 13))
+	choice_box.add_child(UIKit.wrapped("战斗结算顺序已完成：经验 → 捕获 → 濒死记录 → 下一场准备。战场奖励 Buff 已在战斗结束时清除。", 13))
 	continue_button.disabled = false
 
 

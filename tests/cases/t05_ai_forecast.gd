@@ -7,7 +7,7 @@ func run(t: TestContext) -> void:
 	t.begin("AI 与威胁预告")
 	_t_determinism(t)
 	_t_order(t)
-	_t_carrier_priority(t)
+	_t_reward_approach(t)
 	_t_execution_matches(t)
 	_t_rooted_and_spawn(t)
 	t.finish()
@@ -47,26 +47,26 @@ func _t_order(t: TestContext) -> void:
 		t.eq(elements, ["rock", "fire", "water"], "行动顺序按初始部署顺序")
 
 
-func _t_carrier_priority(t: TestContext) -> void:
+func _t_reward_approach(t: TestContext) -> void:
 	var state := TestScenario.make_state(["fire_starter", "water_starter"], [
 		["electric_wild1", Vector2i(0, 4)],
 	])
-	var carrier := state.unit_by_uid(1)
-	carrier.cell = Vector2i(2, 3)
-	carrier.hp = 2
+	var player := state.unit_by_uid(1)
+	state.trainer().cell = Vector2i(0, 0)
+	player.cell = Vector2i(2, 3)
+	player.hp = 2
 	var other := state.unit_by_uid(2)
 	other.cell = Vector2i(0, 6)
-	state.reward["state"] = "carried"
-	state.reward["carrier_uid"] = carrier.uid
+	state.reward["cell"] = Vector2i(0, 3)
 	var plan := state.forecast()
 	t.check(plan.size() >= 1, "敌人有行动计划")
 	if plan.size() >= 1:
 		var action: Dictionary = plan[0]
 		var skill: Dictionary = action.get("skill", {})
-		t.check(not skill.is_empty(), "选择施放技能")
-		if not skill.is_empty():
-			var target: Dictionary = skill["target"]
-			t.eq(int(target.get("unit", -1)), carrier.uid, "优先攻击奖励携带者")
+		var path: Array = action.get("move_path", [])
+		t.check(not path.is_empty(), "可一步抢点时敌人移动")
+		if not path.is_empty():
+			t.eq(path.back(), Vector2i(0, 3), "敌人优先到达奖励格")
 
 
 func _t_execution_matches(t: TestContext) -> void:

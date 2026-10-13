@@ -98,6 +98,8 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 				entries.append({"type": "cell", "cell": cell})
 			elif state.is_nest_cell(cell):
 				entries.append({"type": "nest", "cell": cell})
+			elif skill_id == "rock_break" and unit.has_buff("rock_break") and state.terrain_at(cell) == TerrainDB.FRAGILE:
+				entries.append({"type": "cell", "cell": cell})
 
 
 static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
@@ -295,6 +297,7 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 		"element": String(def.get("element", "")),
 		"ranged": SkillDB.is_ranged(skill_id),
 		"cause": SkillDB.name_of(skill_id),
+		"conductive": skill_id == "electric_arc",
 	})
 	return {
 		"uid": target.uid,
@@ -379,7 +382,7 @@ static func _apply_water_flow(state: BattleState, caster: CombatUnit, entry: Dic
 		if hit_unit.is_alive():
 			state.apply_slow(hit_unit)
 			(hit["statuses"] as Array).append("减速")
-			var push_distance := 1 + (int(state.upgrades.get("water_flow_push", 0)) if caster.side == "player" else 0)
+			var push_distance := 1 + (int(state.upgrades.get("water_flow_push", 0)) if caster.side == "player" else 0) + (1 if caster.has_buff("water_flow") else 0)
 			var push_result := PushResolver.push(state, hit_unit, dir, push_distance, 0, "水流击退", caster.side)
 			hit["push"] = push_result
 		summary["hits"].append(hit)
@@ -395,6 +398,7 @@ static func _apply_water_flow(state: BattleState, caster: CombatUnit, entry: Dic
 		state.damage_nest(1)
 		summary["text"] = "水流击中巢穴，造成 1 点伤害"
 	else:
+		state.damage_reward_at(hit_cell)
 		if _convert_to_water(state, target_cell, summary):
 			summary["text"] = "水流在目标格生成水面"
 		else:
@@ -411,7 +415,7 @@ static func _convert_to_water(state: BattleState, cell: Vector2i, summary: Dicti
 	summary["terrain_changes"].append({"cell": cell, "from": terrain, "to": TerrainDB.WATER})
 	state.log_event("(%d,%d) 变为水面。" % [cell.x, cell.y])
 	var occupant := state.unit_at(cell)
-	if occupant != null and occupant.burn_ticks > 0:
+	if occupant != null and not occupant.has_buff("flight") and occupant.burn_ticks > 0:
 		occupant.burn_ticks = 0
 		state.log_event("%s 的灼烧被水熄灭。" % occupant.display_name)
 	return true
@@ -422,15 +426,18 @@ static func _apply_flame_charge(state: BattleState, caster: CombatUnit, entry: D
 	var dir := Vector2i((dest.x - caster.cell.x) / 2, (dest.y - caster.cell.y) / 2)
 	var mid: Vector2i = caster.cell + dir
 	var crossed := state.unit_at(mid)
+	if crossed != null and caster.has_buff("flame_charge"):
+		summary["hits"].append(_hit_entry(state, caster, "flame_charge", crossed, 1))
 	if crossed != null and crossed.element != "fire":
-		state.apply_burn(crossed, caster)
+		if crossed.is_alive():
+			state.apply_burn(crossed, caster)
 	caster.cell = dest
 	caster.last_move_direction = dir
 	summary["self_move"] = dest
 	var terrain := state.terrain_at(dest)
-	if terrain == TerrainDB.WATER or terrain == TerrainDB.DEEP:
+	if not caster.has_buff("flight") and (terrain == TerrainDB.WATER or terrain == TerrainDB.DEEP):
 		caster.burn_ticks = 0
-	if TerrainDB.is_lethal(terrain):
+	if TerrainDB.is_lethal(terrain) and not caster.has_buff("flight"):
 		summary["self_death"] = true
 		state.log_event("%s 冲入%s。" % [caster.display_name, TerrainDB.name_of(terrain)])
 		state.kill_unit(caster, "闪焰冲锋落入" + TerrainDB.name_of(terrain), caster.side)
@@ -522,7 +529,7 @@ static func _apply_push(state: BattleState, caster: CombatUnit, entry: Dictionar
 	var skill_id := "rock_push" if caster.skills.has("rock_push") else "push"
 	var hit := _hit_entry(state, caster, skill_id, target, int(SkillDB.get_def(skill_id).get("damage", 2)) + bonus_damage)
 	if target.is_alive():
-		var push_distance := int(state.upgrades.get("push_distance", Balance.PUSH_DISTANCE)) if caster.side == "player" else Balance.PUSH_DISTANCE
+		var push_distance := (int(state.upgrades.get("push_distance", Balance.PUSH_DISTANCE)) if caster.side == "player" else Balance.PUSH_DISTANCE) + (1 if caster.has_buff("rock_push") else 0)
 		var collision_bonus := 0
 		if caster.side == "player":
 			collision_bonus = int(state.effects.get("push_collision", 0))
@@ -558,6 +565,7 @@ static func _apply_rock_smash(state: BattleState, caster: CombatUnit, entry: Dic
 		return
 	var destroyed := state.damage_obstacle(cell, 2)
 	if state.terrain_at(cell) == TerrainDB.FRAGILE:
+		state.damage_reward_at(cell)
 		state.set_terrain(cell, TerrainDB.PIT)
 		summary["terrain_changes"].append({"cell": cell, "from": TerrainDB.FRAGILE, "to": TerrainDB.PIT})
 		var occupant := state.unit_at(cell)
@@ -579,9 +587,13 @@ static func _apply_rain_dance(state: BattleState, caster: CombatUnit, entry: Dic
 			state.set_terrain(cell, TerrainDB.WATER)
 			summary["terrain_changes"].append({"cell": cell, "from": terrain, "to": TerrainDB.WATER})
 			var occupant := state.unit_at(cell)
-			if occupant != null and occupant.burn_ticks > 0:
+			if occupant != null and not occupant.has_buff("flight") and occupant.burn_ticks > 0:
 				occupant.burn_ticks = 0
 				state.log_event("%s 的灼烧被雨水熄灭。" % occupant.display_name)
+		if caster.has_buff("rain_call"):
+			var wet_target := state.unit_at(cell)
+			if wet_target != null:
+				state.apply_slow(wet_target)
 	summary["text"] = "造雨术：%d 格变为水面" % summary["terrain_changes"].size()
 	state.log_event(summary["text"] + "。")
 
@@ -592,7 +604,7 @@ static func _apply_rock_create(state: BattleState, caster: CombatUnit, entry: Di
 	var offsets: Array = [-1, 0, 1] if width <= 3 else [-1, 0, 1, 2]
 	var perpendicular := Vector2i(dir.y, dir.x)
 	var base: Vector2i = caster.cell + dir
-	var expire_round := state.round if caster.side == "player" else state.round + 1
+	var expire_round := (state.round if caster.side == "player" else state.round + 1) + (1 if caster.has_buff("rock_create") else 0)
 	var made := 0
 	for offset in offsets:
 		var cell: Vector2i = base + perpendicular * int(offset)
@@ -600,6 +612,7 @@ static func _apply_rock_create(state: BattleState, caster: CombatUnit, entry: Di
 			continue
 		summary["area_cells"].append(cell)
 		if state.terrain_at(cell) == TerrainDB.FRAGILE:
+			state.damage_reward_at(cell)
 			state.set_terrain(cell, TerrainDB.PIT)
 			summary["terrain_changes"].append({"cell": cell, "from": TerrainDB.FRAGILE, "to": TerrainDB.PIT})
 			var fallen := state.unit_at(cell)
@@ -613,7 +626,7 @@ static func _apply_rock_create(state: BattleState, caster: CombatUnit, entry: Di
 			continue
 		if state.obstacle_durability.has(cell) or state.is_nest_cell(cell):
 			continue
-		if cell == state.reward["cell"] or state.fruits.has(cell):
+		if (String(state.reward.get("state", "")) == "map" and cell == state.reward["cell"]) or state.fruits.has(cell):
 			continue
 		var terrain := state.terrain_at(cell)
 		if terrain != TerrainDB.PLAIN and terrain != TerrainDB.GRASS and terrain != TerrainDB.WATER:
@@ -646,6 +659,7 @@ static func _apply_fire_burst(state: BattleState, caster: CombatUnit, entry: Dic
 		cells.append(cell)
 	for cell in cells:
 		summary["area_cells"].append(cell)
+		state.damage_reward_at(cell)
 		state.ignite(cell)
 		if state.terrain_at(cell) == TerrainDB.FRAGILE:
 			state.set_terrain(cell, TerrainDB.PIT)
@@ -658,6 +672,8 @@ static func _apply_fire_burst(state: BattleState, caster: CombatUnit, entry: Dic
 			var center_bonus := int(state.upgrades.get("fireball_damage", 0)) if caster.side == "player" and cell == center else 0
 			var hit := _hit_entry(state, caster, "fire_burst", target, (2 if cell == center else 1) + center_bonus)
 			summary["hits"].append(hit)
+			if cell != center and target.is_alive() and caster.has_buff("fire_burst"):
+				state.apply_burn(target, caster)
 		if state.obstacle_durability.has(cell):
 			state.damage_obstacle(cell, 1)
 		if state.is_nest_cell(cell):
@@ -681,6 +697,7 @@ static func _apply_line(state: BattleState, caster: CombatUnit, skill_id: String
 					state.damage_obstacle(cell, 1)
 			break
 		if skill_id == "flame_jet":
+			state.damage_reward_at(cell)
 			state.ignite(cell)
 		var target := state.unit_at(cell)
 		if target == null:
@@ -774,6 +791,10 @@ static func _apply_electric_arc(state: BattleState, caster: CombatUnit, entry: D
 		if affected:
 				var bonus := int(state.upgrades.get("electric_arc_damage", 0)) if caster.side == "player" else 0
 				summary["hits"].append(_hit_entry(state, caster, "electric_arc", target, 1 + bonus))
+				if target.is_alive() and caster.has_buff("electric_arc"):
+					state.apply_slow(target)
+	for cell in visited:
+		state.damage_reward_at(cell)
 	summary["area_cells"] = visited.keys()
 	summary["text"] = "放电传导命中 %d 个单位。" % summary["hits"].size()
 
@@ -789,7 +810,7 @@ static func _apply_swap(state: BattleState, caster: CombatUnit, entry: Dictionar
 	caster.last_move_direction = direction
 	target.last_move_direction = -direction
 	for unit in [caster, target]:
-		if TerrainDB.is_lethal(state.terrain_at(unit.cell)) and (state.terrain_at(unit.cell) != TerrainDB.DEEP or unit.element != "water"):
+		if not unit.has_buff("flight") and TerrainDB.is_lethal(state.terrain_at(unit.cell)) and (state.terrain_at(unit.cell) != TerrainDB.DEEP or unit.element != "water"):
 			state.kill_unit(unit, "伏特替换落入致死地形", caster.side)
 	summary["self_move"] = caster.cell
 	summary["text"] = "伏特替换：与 %s 交换位置。" % target.display_name

@@ -1,8 +1,8 @@
 class_name PathFinder
 extends RefCounted
 
-## 主动移动寻路：Dijkstra。中途可穿过己方单位，不能停在其格上；
-## 敌方单位、障碍与巢穴一律阻挡；深水仅水系可进；熔岩不可进。
+## 主动移动寻路：Dijkstra。地面单位中途可穿过己方单位，不能停在其格上；
+## 飞行可越过单位、障碍与致死地形，但终点仍需空置且非障碍、非巢穴。
 
 
 static func reachable(state, unit: CombatUnit) -> Dictionary:
@@ -27,10 +27,10 @@ static func reachable(state, unit: CombatUnit) -> Dictionary:
 			var next: Vector2i = current + dir
 			if not GridSpec.is_inside(next):
 				continue
-			if state.is_nest_cell(next) or state.terrain_at(next) == TerrainDB.OBSTACLE:
+			if not unit.has_buff("flight") and (state.is_nest_cell(next) or state.terrain_at(next) == TerrainDB.OBSTACLE):
 				continue
 			var occupant: CombatUnit = state.unit_at(next)
-			if occupant != null and occupant.side != unit.side:
+			if not unit.has_buff("flight") and occupant != null and occupant.side != unit.side:
 				continue
 			var cost: int = state.move_cost_for(unit, next)
 			if cost < 0:
@@ -53,7 +53,7 @@ static func stop_cells(state, unit: CombatUnit) -> Dictionary:
 	var cells := {}
 	var options := reachable(state, unit)
 	for cell in options:
-		if state.unit_at(cell) == null and not state.is_nest_cell(cell):
+		if state.unit_at(cell) == null and not state.is_nest_cell(cell) and state.terrain_at(cell) != TerrainDB.OBSTACLE:
 			cells[cell] = options[cell]
 	return cells
 
@@ -64,7 +64,7 @@ static func _before(a: Vector2i, b: Vector2i) -> bool:
 	return a.x < b.x
 
 
-static func path_distance(state, from_cell: Vector2i, to_cell: Vector2i, element: String) -> int:
+static func path_distance(state, from_cell: Vector2i, to_cell: Vector2i, element: String, flying: bool = false) -> int:
 	## 忽略单位占位的距离场，用于 AI 的接近度量。
 	var best := {from_cell: 0}
 	var frontier: Array = [from_cell]
@@ -77,9 +77,9 @@ static func path_distance(state, from_cell: Vector2i, to_cell: Vector2i, element
 			var next: Vector2i = current + dir
 			if not GridSpec.is_inside(next):
 				continue
-			if state.terrain_at(next) == TerrainDB.OBSTACLE or state.is_nest_cell(next):
+			if not flying and (state.terrain_at(next) == TerrainDB.OBSTACLE or state.is_nest_cell(next)):
 				continue
-			var cost := TerrainDB.move_cost(state.terrain_at(next), element)
+			var cost := 1 if flying else TerrainDB.move_cost(state.terrain_at(next), element)
 			if cost < 0:
 				continue
 			var total := current_cost + cost

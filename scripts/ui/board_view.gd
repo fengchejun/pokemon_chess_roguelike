@@ -61,7 +61,7 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 		"hp": Balance.NEST_DURABILITY,
 		"alive": true,
 	}
-	reward = {"state": "map", "cell": map.get("reward_cell", Vector2i(-1, -1)), "carrier_uid": -1}
+	reward = {"state": "map", "cell": map.get("reward_cell", Vector2i(-1, -1)), "owner_uid": -1}
 	fruits = map.get("fruit_cells", []).duplicate()
 	units = preview_units
 	deploy_cells = map.get("deploy_cells", Balance.DEPLOY_CELLS.duplicate())
@@ -234,7 +234,7 @@ func _draw_objects(font: Font) -> void:
 		draw_string(font, center + Vector2(-20, -26), "耐久 %d/3" % int(nest.get("hp", 3)), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.9, 0.8, 1.0))
 	if not reward.is_empty():
 		var state_name := String(reward.get("state", ""))
-		if state_name == "map" or state_name == "dropped":
+		if state_name == "map" or state_name == "pending":
 			_draw_star(reward["cell"])
 	for fruit_cell in fruits:
 		var center := cell_center(fruit_cell)
@@ -293,8 +293,8 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		draw_string(font, center + Vector2(20, 32), "捕", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.8, 0.9))
 	if unit.fresh_spawn:
 		draw_string(font, center + Vector2(-30, -18), "新", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.95, 0.8, 0.4))
-	if not reward.is_empty() and String(reward.get("state", "")) == "carried" and int(reward.get("carrier_uid", -1)) == unit.uid:
-		_draw_star(unit.cell)
+	if not unit.battle_buffs.is_empty():
+		draw_string(font, center + Vector2(19, 32), "增", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1.0, 0.88, 0.3))
 
 
 func _border_color(unit: CombatUnit) -> Color:

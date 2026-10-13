@@ -45,14 +45,12 @@ func _t_victory_rewards(t: TestContext) -> void:
 	state.unit_by_uid(100).hp = 2
 	state.unit_by_uid(1).cell = Vector2i(0, 3)
 	state.cast_skill(state.unit_by_uid(1), "fire_seed", {"type": "cell", "cell": Vector2i(2, 3)})
-	state.reward["state"] = "carried"
-	state.reward["carrier_uid"] = 1
 	run.sync_from_battle(state)
 	var outcome := run.settle_battle(state)
 	t.eq(state.end_reason, "victory", "胜利结束")
 	t.eq(int(outcome["exp"]), 2, "击败经验 2")
-	t.eq(int(outcome["carrier_exp"]), Balance.CARRIER_BONUS_EXP, "携带者存活至结算：额外经验")
-	t.eq(run.exp, 2 + Balance.CARRIER_BONUS_EXP, "额外经验已计入本局经验")
+	t.eq(outcome.has("carrier_exp"), false, "局内 Buff 不再提供携带者经验")
+	t.eq(run.exp, 2, "胜利经验只包含击败奖励")
 	t.eq(run.in_battle, false, "结算后离开战斗态")
 	t.eq(int(run.stats["victories"]), 1, "统计胜利")
 
@@ -205,7 +203,7 @@ func _t_escape_flow(t: TestContext) -> void:
 	t.eq(state.end_reason, "escape", "野生逃离结束")
 	var outcome := run.settle_battle(state)
 	t.eq(run.cards.size(), Balance.CARDS_PER_BATTLE, "逃离不改变出战卡选择")
-	t.eq(int(outcome["carrier_exp"]), 0, "逃离不结算携带者额外经验")
+	t.eq(outcome.has("carrier_exp"), false, "逃离也不结算旧携带者经验")
 
 
 func _t_faint_and_recover(t: TestContext) -> void:

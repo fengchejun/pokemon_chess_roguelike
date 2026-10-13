@@ -28,7 +28,7 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 			summary["collisions"].append({"kind": "edge", "cell": next})
 			break
 		var terrain: int = state.terrain_at(next)
-		if TerrainDB.is_lethal(terrain) and (terrain != TerrainDB.DEEP or target.element != "water"):
+		if not target.has_buff("flight") and TerrainDB.is_lethal(terrain) and (terrain != TerrainDB.DEEP or target.element != "water"):
 			target.last_move_direction = direction
 			target.cell = next
 			state.log_event("%s 被推入%s。" % [target.display_name, TerrainDB.name_of(terrain)])
@@ -51,7 +51,7 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 		target.last_move_direction = direction
 		summary["moved"] = true
 		summary["to"] = next
-		if terrain == TerrainDB.WATER or terrain == TerrainDB.DEEP:
+		if not target.has_buff("flight") and (terrain == TerrainDB.WATER or terrain == TerrainDB.DEEP):
 			target.burn_ticks = 0
 	return summary
 

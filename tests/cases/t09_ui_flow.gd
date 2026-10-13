@@ -107,6 +107,19 @@ func run(t: TestContext) -> void:
 	t.check(not state.has_method("evacuate"), "战斗状态不再提供主动撤离接口")
 	var unit: CombatUnit = state.unit_by_uid(1)
 	t.check(unit != null and unit.is_alive(), "出战单位在场")
+	state.reward["state"] = "pending"
+	state.reward["owner_uid"] = unit.uid
+	state.reward["options"] = ["move_plus", "flight"]
+	state.phase = BattleState.PHASE_REWARD
+	battle_screen.refresh_all()
+	var reward_layer: Control = battle_screen.find_child("RewardChoiceLayer", true, false)
+	t.check(reward_layer != null and reward_layer.visible, "战场奖励选择层可见")
+	var reward_button: Button = battle_screen.find_child("RewardBuff_move_plus", true, false)
+	t.check(reward_button != null, "二选一强化按钮可点击")
+	if reward_button != null:
+		reward_button.pressed.emit()
+		t.check(unit.has_buff("move_plus"), "选择后本场 Buff 生效")
+		t.eq(state.phase, BattleState.PHASE_PLAYER, "选择后继续下一轮玩家阶段")
 	if unit != null:
 		battle_screen.select_unit(unit.uid)
 		var from_cell := unit.cell

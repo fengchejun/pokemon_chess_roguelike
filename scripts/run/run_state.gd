@@ -291,7 +291,6 @@ func settle_battle(battle: BattleState) -> Dictionary:
 	var outcome := {
 		"reason": battle.end_reason,
 		"exp": battle.battle_exp(),
-		"carrier_exp": 0,
 		"flee_penalty": [],
 		"recovery": [],
 		"base_rest": [],
@@ -307,11 +306,6 @@ func settle_battle(battle: BattleState) -> Dictionary:
 	match battle.end_reason:
 		"victory":
 			stats["victories"] = int(stats["victories"]) + 1
-			var carrier := battle.carrier_uid()
-			var carrier_unit := battle.unit_by_uid(carrier)
-			if carrier >= 0 and carrier_unit != null and carrier_unit.is_alive():
-				outcome["carrier_exp"] = Balance.CARRIER_BONUS_EXP
-				exp += Balance.CARRIER_BONUS_EXP
 		"escape":
 			stats["escapes"] = int(stats["escapes"]) + 1
 		"forced_retreat":
