@@ -495,12 +495,10 @@ func preview_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary)
 func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) -> Dictionary:
 	if ended or not unit.can_act_skill():
 		return {"ok": false}
-	if skill_id == "fire_burst" and unit.fireball_used:
+	if not unit.can_use_in_battle(skill_id):
 		return {"ok": false}
 	var result := SkillResolver.apply(self, unit, skill_id, target_entry, false)
 	if bool(result.get("ok", false)):
-		if skill_id == "fire_burst":
-			unit.fireball_used = true
 		if unit.skill_used and unit.extra_casts > 0:
 			unit.extra_casts -= 1
 		else:

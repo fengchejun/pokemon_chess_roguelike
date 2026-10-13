@@ -33,7 +33,7 @@ var frozen: bool = false
 var vine_ticks: int = 0
 var haste_ticks: int = 0
 var extra_casts: int = 0
-var fireball_used: bool = false
+var battle_skill_uses: Dictionary = {}
 var last_move_direction: Vector2i = Vector2i.ZERO
 
 # 其他
@@ -59,6 +59,11 @@ func effective_move() -> int:
 
 func can_act_skill() -> bool:
 	return is_alive() and not frozen and paralyzed_ticks <= 0 and (not skill_used or extra_casts > 0)
+
+
+func can_use_in_battle(skill_id: String) -> bool:
+	var limit := SkillDB.battle_limit_of(skill_id)
+	return limit <= 0 or int(battle_skill_uses.get(skill_id, 0)) < limit
 
 
 func can_move_now() -> bool:
@@ -95,7 +100,7 @@ func dup() -> CombatUnit:
 	copy.vine_ticks = vine_ticks
 	copy.haste_ticks = haste_ticks
 	copy.extra_casts = extra_casts
-	copy.fireball_used = fireball_used
+	copy.battle_skill_uses = battle_skill_uses.duplicate()
 	copy.last_move_direction = last_move_direction
 	copy.fresh_spawn = fresh_spawn
 	return copy

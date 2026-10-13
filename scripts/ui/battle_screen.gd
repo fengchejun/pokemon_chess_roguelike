@@ -239,7 +239,9 @@ func _update_unit_card() -> void:
 		if unit.fresh_spawn:
 			lines.append("本回合新生成：只移动、不施放技能")
 	for skill_id in unit.skills:
-		lines.append("· %s：%s" % [SkillDB.name_of(String(skill_id)), SkillDB.get_def(String(skill_id)).get("desc", "")])
+		var id := String(skill_id)
+		var used_text := "（本场已用尽）" if not unit.can_use_in_battle(id) else ""
+		lines.append("· %s%s：%s" % [SkillDB.name_of(id), used_text, SkillDB.get_def(id).get("desc", "")])
 	unit_body.text = "\n".join(lines)
 
 
@@ -263,7 +265,10 @@ func _rebuild_skill_buttons() -> void:
 	for skill_id in unit.skills:
 		var id := String(skill_id)
 		var def := SkillDB.get_def(id)
-		var button := UIKit.small_button("%s（%s）" % [def.get("name", id), _skill_tag(id)])
+		var button_text := "%s（%s）" % [def.get("name", id), _skill_tag(id)]
+		if not unit.can_use_in_battle(id):
+			button_text += "·本场已用"
+		var button := UIKit.small_button(button_text)
 		button.name = "SkillButton_%s" % id
 		button.tooltip_text = String(def.get("desc", ""))
 		button.toggle_mode = true
@@ -272,6 +277,9 @@ func _rebuild_skill_buttons() -> void:
 		if not unit.can_act_skill():
 			button.disabled = true
 			button.tooltip_text += "\n（本回合无法施法）"
+		elif not unit.can_use_in_battle(id):
+			button.disabled = true
+			button.tooltip_text += "\n（本场使用次数已耗尽）"
 		elif entries.is_empty():
 			button.disabled = true
 			button.tooltip_text += "\n（当前没有有效目标）"
@@ -561,7 +569,7 @@ func _on_skill_pressed(skill_id: String) -> void:
 	if busy or state.ended:
 		return
 	var unit := state.unit_by_uid(selected_uid)
-	if unit == null or not unit.can_act_skill():
+	if unit == null or not unit.can_act_skill() or not unit.can_use_in_battle(skill_id):
 		return
 	if aim_skill == skill_id:
 		_clear_aim()

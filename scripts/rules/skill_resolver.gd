@@ -10,7 +10,7 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 	var entries: Array = []
 	if def.is_empty() or unit == null or not unit.is_alive():
 		return entries
-	if skill_id == "fire_burst" and unit.fireball_used:
+	if not unit.can_use_in_battle(skill_id):
 		return entries
 	match String(def.get("kind", "")):
 		"ray":
@@ -189,7 +189,7 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 		return {"ok": false}
 	if target_entry.is_empty():
 		return {"ok": false}
-	if skill_id == "fire_burst" and caster.fireball_used:
+	if not caster.can_use_in_battle(skill_id):
 		return {"ok": false}
 	if not _entry_valid(state, caster, skill_id, target_entry):
 		return {"ok": false}
@@ -258,8 +258,8 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 					_apply_rock_create(state, caster, target_entry, summary)
 		"self":
 			_apply_heal(state, caster, target_entry, summary)
-	if skill_id == "fire_burst":
-		caster.fireball_used = true
+	if SkillDB.battle_limit_of(skill_id) > 0:
+		caster.battle_skill_uses[skill_id] = int(caster.battle_skill_uses.get(skill_id, 0)) + 1
 	return summary
 
 

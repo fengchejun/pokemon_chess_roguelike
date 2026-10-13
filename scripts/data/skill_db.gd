@@ -10,12 +10,12 @@ extends RefCounted
 ##  direction 造岩：选择方向
 
 const DEFS := {
-	"fire_burst": {"name": "火球术", "element": "fire", "kind": "ray", "min_range": 2, "max_range": 8, "damage": 2, "ranged": true, "desc": "越过障碍，中心 2 伤、十字邻格 1 伤；击碎易碎地面，点燃可燃地形。每场限用一次。"},
+	"fire_burst": {"name": "火球术", "element": "fire", "kind": "ray", "min_range": 2, "max_range": 8, "damage": 2, "ranged": true, "battle_limit": 1, "desc": "越过障碍，中心 2 伤、十字邻格 1 伤；击碎易碎地面，点燃可燃地形。每场限用一次。"},
 	"flame_jet": {"name": "喷射火焰", "element": "fire", "kind": "direction", "damage": 1, "ranged": true, "desc": "沿选定方向喷射 3 格；障碍截断；命中单位受到 1 伤并灼烧。"},
 	"rain_call": {"name": "造雨术", "element": "water", "kind": "cell", "range": 5, "damage": 0, "ranged": false, "desc": "指定 5 格内中心，周围 3×3 格化为浅水；障碍与深坑不变。"},
 	"rock_push": {"name": "推击", "element": "rock", "kind": "unit", "range": 1, "damage": 2, "ranged": false, "desc": "对相邻单位造成 2 伤并推开一格。"},
 	"rock_break": {"name": "碎岩", "element": "rock", "kind": "unit", "range": 2, "damage": 1, "ranged": true, "desc": "攻击单位或摧毁障碍。"},
-	"lightning": {"name": "闪电", "element": "electric", "kind": "unit", "range": 99, "damage": 2, "ranged": true, "desc": "攻击场上任意单位并施加感电；重复感电使目标麻痹一轮。"},
+	"lightning": {"name": "闪电", "element": "electric", "kind": "unit", "range": 99, "damage": 2, "ranged": true, "battle_limit": 1, "desc": "攻击场上任意单位并施加感电；重复感电使目标麻痹一轮。每场限用一次。"},
 	"electric_arc": {"name": "放电", "element": "electric", "kind": "cell", "range": 2, "damage": 1, "ranged": true, "desc": "指定两格内水域，沿整片连通水域传导，伤及水中及相邻浸湿单位。"},
 	"volt_replace": {"name": "伏特替换", "element": "electric", "kind": "unit", "range": 2, "damage": 0, "ranged": false, "desc": "与相隔恰好两格的单位交换位置。"},
 	"wild_vines": {"name": "疯狂藤蔓", "element": "grass", "kind": "direction", "damage": 0, "ranged": false, "desc": "在前方两格生成藤蔓；障碍阻挡生成，脚下单位一轮不能移动。"},
@@ -150,3 +150,7 @@ static func kind_of(skill_id: String) -> String:
 
 static func damage_of(skill_id: String) -> int:
 	return int(get_def(skill_id).get("damage", 0))
+
+
+static func battle_limit_of(skill_id: String) -> int:
+	return int(get_def(skill_id).get("battle_limit", 0))
