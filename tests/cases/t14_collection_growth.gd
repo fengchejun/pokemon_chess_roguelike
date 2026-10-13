@@ -81,6 +81,8 @@ func _test_upgrades(t: TestContext) -> void:
 	focused.take_upgrade("team_move")
 	t.eq(focused.build_deploy_units([1])[1].move_points, SpeciesDB.move_of("fire_starter") + 1, "机动训练改变实际出战移动力")
 	t.eq(Elements.counter_hint("ice").contains("火"), true, "单位界面可显示冰被火克制")
+	t.check(Elements.counter_hint("fire").contains("冰、草"), "火系详情列出两个优势属性")
+	t.check(Elements.counter_hint("grass").contains("风、火"), "草系详情列出两个弱点")
 	var fire := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(3, 2)]], [], {}, {"fireball_damage": 1})
 	fire.unit_by_uid(1).cell = Vector2i(0, 2)
 	var fire_hit := SkillResolver.apply(fire, fire.unit_by_uid(1), "fire_burst", {"type": "cell", "cell": Vector2i(3, 2)}, false)

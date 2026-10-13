@@ -88,12 +88,12 @@ func _t_grass_duel(t: TestContext) -> void:
 	var fire := state3.unit_by_uid(1)
 	fire.cell = Vector2i(0, 3)
 	SkillResolver.apply(state3, fire, "fire_seed", {"type": "cell", "cell": Vector2i(4, 3)}, false)
-	t.eq(state3.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 3, "密林：草丛中的我方单位伤害 +1（2+1=3）")
+	t.eq(state3.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 4, "密林：火种 2 + 火克草 1 + 草丛增伤 1")
 	var state4 := TestScenario.make_state(["fire_starter"], [["grass_wild1", Vector2i(4, 3)]], [], effects)
 	var fire4 := state4.unit_by_uid(1)
 	fire4.cell = Vector2i(0, 3)
 	SkillResolver.apply(state4, fire4, "fire_seed", {"type": "cell", "cell": Vector2i(4, 3)}, false)
-	t.eq(state4.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 2, "密林：不在草丛时无 +1")
+	t.eq(state4.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 3, "密林：不在草丛时只有火克草 +1")
 	# 敌方站在草丛中不享受增益
 	var terrain5 := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[Vector2i(0, 3), TerrainDB.GRASS],

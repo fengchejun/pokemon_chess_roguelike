@@ -295,9 +295,11 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		return {"amount": 0, "killed": false}
 	var amount := base
 	var is_lethal_check := true
+	var matchup_modifier := 0
 	if not bool(opts.get("no_element", false)):
 		var skill_element: String = opts.get("element", "")
-		amount = maxi(1, amount + Elements.modifier(skill_element, target.element))
+		matchup_modifier = Elements.modifier(skill_element, target.element)
+		amount = maxi(1, amount + matchup_modifier)
 		if skill_element == "fire" and int(effects.get("fire_bonus", 0)) > 0:
 			if source != null and source.side == "player":
 				amount += int(effects["fire_bonus"])
@@ -323,7 +325,12 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var previous_hp := target.hp
 	target.hp -= amount
 	var source_name := source.display_name if source != null else "环境"
-	log_event("%s 对 %s 造成 %d 伤害。" % [source_name, target.display_name, amount])
+	var matchup_text := ""
+	if matchup_modifier > 0:
+		matchup_text = "（属性克制 +1）"
+	elif matchup_modifier < 0:
+		matchup_text = "（属性逆克制 -1；最低 1 伤）"
+	log_event("%s 对 %s 造成 %d 伤害%s。" % [source_name, target.display_name, amount, matchup_text])
 	var killed := false
 	if target.is_trainer and target.hp <= 0:
 		target.hp = 1

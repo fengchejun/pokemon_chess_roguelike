@@ -1,7 +1,7 @@
 class_name Elements
 extends RefCounted
 
-## 七属性克制环：风 → 草 → 岩 → 电 → 水 → 火 → 冰 → 风。
+## 七属性主环：风 → 草 → 岩 → 电 → 水 → 火 → 冰 → 风；额外火克草。
 
 const LIST := ["wind", "grass", "rock", "electric", "water", "fire", "ice"]
 
@@ -37,22 +37,22 @@ const COLORS := {
 }
 
 const BEATS := {
-	"wind": "grass",
-	"grass": "rock",
-	"rock": "electric",
-	"electric": "water",
-	"water": "fire",
-	"fire": "ice",
-	"ice": "wind",
+	"wind": ["grass"],
+	"grass": ["rock"],
+	"rock": ["electric"],
+	"electric": ["water"],
+	"water": ["fire"],
+	"fire": ["ice", "grass"],
+	"ice": ["wind"],
 }
 
 
 static func modifier(attacker: String, defender: String) -> int:
 	if attacker == "" or defender == "" or not BEATS.has(attacker) or not BEATS.has(defender):
 		return 0
-	if BEATS[attacker] == defender:
+	if BEATS[attacker].has(defender):
 		return 1
-	if BEATS[defender] == attacker:
+	if BEATS[defender].has(attacker):
 		return -1
 	return 0
 
@@ -64,13 +64,14 @@ static func name_of(element: String) -> String:
 static func counter_hint(element: String) -> String:
 	if not BEATS.has(element):
 		return "无属性克制"
-	var prey := String(BEATS[element])
-	var predator := ""
-	for attacker in BEATS:
-		if String(BEATS[attacker]) == element:
-			predator = String(attacker)
-			break
-	return "克制：%s（直接伤害 +1）；被克：%s（直接伤害 -1）" % [name_of(prey), name_of(predator)]
+	var prey_names: PackedStringArray = []
+	var predator_names: PackedStringArray = []
+	for prey in BEATS[element]:
+		prey_names.append(name_of(String(prey)))
+	for attacker in LIST:
+		if BEATS[attacker].has(element):
+			predator_names.append(name_of(attacker))
+	return "克制：%s（直接伤害 +1）；被克：%s（直接伤害 -1）" % ["、".join(prey_names), "、".join(predator_names)]
 
 
 static func color_of(element: String) -> Color:
@@ -85,5 +86,6 @@ static func order_index(element: String) -> int:
 static func counter_pairs() -> Array:
 	var pairs: Array = []
 	for attacker in LIST:
-		pairs.append([attacker, BEATS[attacker]])
+		for defender in BEATS[attacker]:
+			pairs.append([attacker, defender])
 	return pairs
