@@ -22,8 +22,17 @@ func run(t: TestContext) -> void:
 		t.finish()
 		return
 	new_button.pressed.emit()
+	t.eq(app.current_screen.name, "CollectionScreen", "进入跨局收藏选择")
+	for id in [1, 2, 3]:
+		var choice: CheckBox = app.current_screen.find_child("Collection_%d" % id, true, false)
+		t.check(choice != null, "初始收藏可选 %d" % id)
+		if choice != null:
+			choice.button_pressed = true
+	var collection_start: Button = app.current_screen.find_child("StartFromCollectionButton", true, false)
+	t.check(collection_start != null and not collection_start.disabled, "选三只后可开始本局")
+	collection_start.pressed.emit()
 	t.eq(app.current_screen.name, "PrepScreen", "进入编队界面")
-	t.check(app.run != null and app.run.carried.size() == 5, "本局初始队伍建立")
+	t.check(app.run != null and app.run.carried.size() == 3, "本局由永久收藏选三只开局")
 	var low_hp_option: CheckBox = app.current_screen.find_child("CaptureLowHpOption", true, false)
 	var field_join_option: CheckBox = app.current_screen.find_child("CaptureFieldJoinOption", true, false)
 	t.check(low_hp_option != null and field_join_option != null, "捕获两项设置在整备页可见")
@@ -129,6 +138,9 @@ func run(t: TestContext) -> void:
 			if child is Button:
 				(child as Button).pressed.emit()
 				break
+	# 本局三只开局；补齐到五只，专门验证随后满员捕获处理。
+	app.run.carried.append(app.run._make_record("ice_starter"))
+	app.run.carried.append(app.run._make_record("wind_starter"))
 	# 回归：连续两次捕获 —— 第一条入队后仍带 uid，第二条触发处理界面不崩溃
 	app.run.pending_captures.append({"species_id": "fire_wild1", "hp": 4})
 	app.run.pending_captures.append({"species_id": "water_wild1", "hp": 3})
@@ -185,7 +197,7 @@ func run(t: TestContext) -> void:
 	settle_continue.pressed.emit()
 	t.eq(app.current_screen.name, "SupplyScreen", "完成两场后进入补给点")
 	t.eq(app.run.battle_index, 2, "已进入第三场准备")
-	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
+	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7)) + int(app.run.upgrades.get("trainer_hp", 0))
 	var supply_amount := maxi(1, roundi(float(trainer_max) * Balance.SUPPLY_TRAINER_RECOVERY_RATIO))
 	t.eq(app.run.trainer_hp, 1 + supply_amount, "补给点：训练家恢复 50%% 上限")
 	var leave_supply: Button = app.current_screen.find_child("LeaveSupplyButton", true, false)

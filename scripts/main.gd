@@ -3,6 +3,7 @@ extends Control
 ## 应用路由：主菜单 → 编队 → 地图预览与改造 → 战斗 → 战后结算 → 下一场 / 本局结束。
 
 const MenuScreen = preload("res://scripts/ui/menu_screen.gd")
+const CollectionScreen = preload("res://scripts/ui/collection_screen.gd")
 const PrepScreen = preload("res://scripts/ui/prep_screen.gd")
 const PreviewScreen = preload("res://scripts/ui/preview_screen.gd")
 const BattleScreen = preload("res://scripts/ui/battle_screen.gd")
@@ -11,6 +12,7 @@ const SupplyScreen = preload("res://scripts/ui/supply_screen.gd")
 const RunEndScreen = preload("res://scripts/ui/run_end_screen.gd")
 
 var run: RunState = null
+var collection: CollectionState = null
 var current_screen: Control = null
 var pending_settlement: Dictionary = {}
 var battle_settled := false
@@ -19,6 +21,7 @@ var autosave_enabled: bool = true # UI 自动化在挂载场景前设为 false�
 
 
 func _ready() -> void:
+	collection = CollectionState.load_profile() if autosave_enabled else CollectionState.defaults()
 	_fit_to_window()
 	if not get_window().size_changed.is_connected(_fit_to_window):
 		get_window().size_changed.connect(_fit_to_window)
@@ -49,7 +52,19 @@ func show_menu() -> void:
 
 
 func start_new_run() -> void:
-	run = RunState.new_run()
+	## 主菜单放弃旧存档时，先登记身上与仓库的成员，避免覆盖单槽本局存档后丢失已收容的怪物。
+	if autosave_enabled and SaveSystem.has_save():
+		var previous := SaveSystem.load_run()
+		if previous != null:
+			collection.absorb_run(previous)
+			collection.save()
+	_switch(CollectionScreen.new())
+
+
+func begin_new_run_with_collection(chosen: Array) -> void:
+	if chosen.size() != Balance.DEPLOY_LIMIT:
+		return
+	run = RunState.new_run(0, chosen)
 	autosave()
 	show_prep()
 
@@ -148,6 +163,11 @@ func leave_supply() -> void:
 
 
 func show_run_end() -> void:
+	if run != null and collection != null:
+		collection.absorb_run(run)
+		if autosave_enabled:
+			collection.save()
+			autosave()
 	_switch(RunEndScreen.new())
 
 

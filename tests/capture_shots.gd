@@ -21,6 +21,14 @@ func _run() -> void:
 	app.start_new_run()
 	await process_frame
 	await process_frame
+	await _shot("02_collection")
+	for id in [1, 2, 3]:
+		var collection_box: CheckBox = app.current_screen.find_child("Collection_%d" % id, true, false)
+		collection_box.button_pressed = true
+	var collection_start: Button = app.current_screen.find_child("StartFromCollectionButton", true, false)
+	collection_start.pressed.emit()
+	await process_frame
+	await process_frame
 	for uid in [1, 2, 3]:
 		var deploy_box: CheckBox = app.current_screen.find_child("Deploy_%d" % int(uid), true, false)
 		if deploy_box != null:

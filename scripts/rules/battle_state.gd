@@ -268,6 +268,7 @@ func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
 	if field_join:
 		unit.side = "player"
 		unit.hp = keep_hp
+		unit.move_points += int(upgrades.get("team_move", 0))
 		unit.moved = false
 		unit.skill_used = false
 		unit.capture_used = false
@@ -315,6 +316,8 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		if not bool(opts.get("no_element", false)):
 			if GridSpec.is_inside(source.cell) and terrain_at(source.cell) == TerrainDB.GRASS:
 				amount += int(effects["grass_strike"])
+	if target.side == "player" and target_in_grass and not bool(opts.get("no_element", false)):
+		amount = maxi(0, amount - int(upgrades.get("grass_resilience", 0)))
 	amount = maxi(0, amount)
 	var cause: String = opts.get("cause", "伤害")
 	var previous_hp := target.hp

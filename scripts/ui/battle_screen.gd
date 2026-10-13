@@ -202,6 +202,7 @@ func _update_unit_card() -> void:
 	unit_title.text = "%s（%s · %s）" % [unit.display_name, side_text, Elements.FULL_NAMES.get(unit.element, "无属性")]
 	var lines: Array = []
 	lines.append("生命 %d/%d　移动 %d（基础 %d）" % [unit.hp, unit.max_hp, state.move_budget_for(unit), unit.move_points])
+	lines.append(Elements.counter_hint(unit.element))
 	var statuses: Array = []
 	if unit.burn_ticks > 0:
 		statuses.append("灼烧 %d 回合" % unit.burn_ticks)
@@ -367,6 +368,8 @@ func _action_detail(action: Dictionary) -> String:
 	var parts: Array = []
 	for hit in meta.get("hits", []):
 		var text := "%s 受伤 %d" % [hit.get("name", "?"), int(hit.get("damage", 0))]
+		if int(hit.get("modifier", 0)) != 0:
+			text += "（%s）" % ("克制 +1" if int(hit["modifier"]) > 0 else "逆克制 -1")
 		if bool(hit.get("killed", false)):
 			text += "（致死）"
 		if hit.get("push") != null and bool(hit["push"].get("death", false)):
@@ -461,7 +464,11 @@ func _on_board_hovered(cell: Vector2i) -> void:
 		if unit != null and not entry.is_empty():
 			var preview := state.preview_skill(unit, aim_skill, entry)
 			if bool(preview.get("ok", false)):
-				hint_label.text = "%s：%s" % [SkillDB.name_of(aim_skill), preview.get("text", "")]
+				var matchup: Array = []
+				for hit in preview.get("hits", []):
+					if int(hit.get("modifier", 0)) != 0:
+						matchup.append("%s %s" % [hit.get("name", "?"), "克制 +1" if int(hit["modifier"]) > 0 else "逆克制 -1"])
+				hint_label.text = "%s：%s%s" % [SkillDB.name_of(aim_skill), preview.get("text", ""), "｜" + "、".join(matchup) if not matchup.is_empty() else ""]
 				hint_label.add_theme_color_override("font_color", UIKit.TEXT)
 				_preview_overlays(preview)
 				board.queue_redraw()

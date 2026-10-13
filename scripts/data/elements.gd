@@ -61,6 +61,18 @@ static func name_of(element: String) -> String:
 	return NAMES.get(element, "无")
 
 
+static func counter_hint(element: String) -> String:
+	if not BEATS.has(element):
+		return "无属性克制"
+	var prey := String(BEATS[element])
+	var predator := ""
+	for attacker in BEATS:
+		if String(BEATS[attacker]) == element:
+			predator = String(attacker)
+			break
+	return "克制：%s（直接伤害 +1）；被克：%s（直接伤害 -1）" % [name_of(prey), name_of(predator)]
+
+
 static func color_of(element: String) -> Color:
 	return COLORS.get(element, COLORS[""])
 

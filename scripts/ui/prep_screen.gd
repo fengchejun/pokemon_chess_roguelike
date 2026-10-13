@@ -26,7 +26,7 @@ func _ready() -> void:
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	columns.add_child(left)
 	left.add_child(UIKit.label("整备 · 第 %d 场（%s）" % [run.battle_index + 1, run.region_name()], 24, UIKit.ACCENT))
-	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
+	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7)) + int(run.upgrades.get("trainer_hp", 0))
 	left.add_child(UIKit.label("训练家生命：%d / %d（每次冒险前回满）　经验：%d　出战宝可梦冒险结束恢复 30%%，留守基地的成员在冒险结束时回满 100%%。" % [run.trainer_hp, trainer_max, run.exp], 14, UIKit.TEXT_DIM))
 	var upgrade_names: Array = []
 	for upgrade_id in run.upgrades_taken:
@@ -156,6 +156,7 @@ func _team_row(record: Dictionary) -> Control:
 	for skill_id in SpeciesDB.skills_of(species_id):
 		skill_names.append(SkillDB.name_of(String(skill_id)))
 	info.add_child(UIKit.wrapped("技能：" + "、".join(skill_names), 13))
+	info.add_child(UIKit.wrapped(Elements.counter_hint(SpeciesDB.element_of(species_id)), 12))
 	return row
 
 
@@ -196,7 +197,8 @@ func _next_box(run: RunState) -> Control:
 	column.add_child(UIKit.label("下一场：%s" % run.region_name(), 18, UIKit.ACCENT))
 	var enemy_names: Array = []
 	for pair in cfg.get("enemies", []):
-		enemy_names.append(SpeciesDB.name_of(String(pair[0])))
+		var species_id := String(pair[0])
+		enemy_names.append("%s【%s】" % [SpeciesDB.name_of(species_id), Elements.name_of(SpeciesDB.element_of(species_id))])
 	column.add_child(UIKit.wrapped("敌方：%s（共 %d 只，另有巢穴增援）" % [", ".join(enemy_names), enemy_names.size()], 14))
 	column.add_child(UIKit.wrapped("巢穴：耐久 3，第 2、4 回合各尝试生成 1 只；堵口则排队，摧毁后立即获胜。", 13))
 	return box

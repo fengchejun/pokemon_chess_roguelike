@@ -64,11 +64,15 @@ static func _ray_targets(state: BattleState, unit: CombatUnit, skill_id: String,
 
 static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
 	var skill_range := int(def.get("range", 1))
+	if unit.side == "player" and skill_id == "drain":
+		skill_range += int(state.upgrades.get("drain_range", 0))
 	for other in state.units:
 		if other.uid == unit.uid or not other.is_alive():
 			continue
 		var distance := GridSpec.manhattan(unit.cell, other.cell)
 		if skill_id == "volt_replace" and distance != 2:
+			continue
+		if skill_id == "wind_gust" and other.cell.x != unit.cell.x and other.cell.y != unit.cell.y:
 			continue
 		if skill_id == "lightning" and other.side == unit.side:
 			continue
@@ -106,7 +110,7 @@ static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String
 			if state.terrain_at(cell) == TerrainDB.PLAIN:
 				entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "rain_dance" or skill_id == "rain_call":
-			if _rain_would_change(state, cell):
+			if _rain_would_change(state, unit, cell):
 				entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "herbal_heal":
 			entries.append({"type": "cell", "cell": cell})
@@ -138,8 +142,8 @@ static func _concealed(state: BattleState, skill_id: String, distance: int, targ
 	return false
 
 
-static func _rain_would_change(state: BattleState, center: Vector2i) -> bool:
-	var radius := 1 + int(state.upgrades.get("rain_radius_bonus", 0))
+static func _rain_would_change(state: BattleState, caster: CombatUnit, center: Vector2i) -> bool:
+	var radius := 1 + (int(state.upgrades.get("rain_radius_bonus", 0)) if caster.side == "player" else 0)
 	for cell in GridSpec.all_cells():
 		if absi(center.x - cell.x) > radius or absi(center.y - cell.y) > radius:
 			continue
@@ -229,6 +233,10 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 					_apply_discharge(state, caster, target_entry, summary)
 				"drain":
 					_apply_drain(state, caster, target_entry, summary)
+				"ice_shard":
+					_apply_ice_shard(state, caster, target_entry, summary)
+				"wind_gust":
+					_apply_wind_gust(state, caster, target_entry, summary)
 				"push", "rock_push":
 					_apply_push(state, caster, target_entry, summary)
 				"rock_smash", "rock_break":
@@ -282,6 +290,7 @@ static func _entry_key(entry: Dictionary) -> String:
 
 static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String, target: CombatUnit, base: int) -> Dictionary:
 	var def := SkillDB.get_def(skill_id)
+	var modifier := Elements.modifier(String(def.get("element", "")), target.element) if base > 0 else 0
 	var result := state.damage_unit(caster, target, base, {
 		"element": String(def.get("element", "")),
 		"ranged": SkillDB.is_ranged(skill_id),
@@ -292,6 +301,7 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 		"name": target.display_name,
 		"cell": target.cell,
 		"damage": int(result.get("amount", 0)),
+		"modifier": modifier if int(result.get("amount", 0)) > 0 else 0,
 		"killed": bool(result.get("killed", false)),
 		"statuses": [],
 		"push": null,
@@ -369,7 +379,8 @@ static func _apply_water_flow(state: BattleState, caster: CombatUnit, entry: Dic
 		if hit_unit.is_alive():
 			state.apply_slow(hit_unit)
 			(hit["statuses"] as Array).append("减速")
-			var push_result := PushResolver.push(state, hit_unit, dir, 1, 0, "水流击退", caster.side)
+			var push_distance := 1 + (int(state.upgrades.get("water_flow_push", 0)) if caster.side == "player" else 0)
+			var push_result := PushResolver.push(state, hit_unit, dir, push_distance, 0, "水流击退", caster.side)
 			hit["push"] = push_result
 		summary["hits"].append(hit)
 		summary["text"] = "水流命中 %s：%d 伤害，击退并减速" % [hit["name"], hit["damage"]]
@@ -479,6 +490,27 @@ static func _apply_drain(state: BattleState, caster: CombatUnit, entry: Dictiona
 	summary["text"] = "吸取：对 %s 造成 %d 伤害，自身回复 %d" % [hit["name"], hit["damage"], int(summary["heal"]["amount"]) if summary["heal"] != null else 0]
 
 
+static func _apply_ice_shard(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var target := state.unit_by_uid(int(entry["unit"]))
+	if target == null:
+		return
+	var bonus := int(state.upgrades.get("ice_shard_damage", 0)) if caster.side == "player" else 0
+	var hit := _hit_entry(state, caster, "ice_shard", target, 1 + bonus)
+	summary["hits"].append(hit)
+	summary["text"] = "冰锥命中 %s：%d 伤害。" % [hit["name"], hit["damage"]]
+
+
+static func _apply_wind_gust(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var target := state.unit_by_uid(int(entry["unit"]))
+	if target == null:
+		return
+	var direction := Vector2i(signi(target.cell.x - caster.cell.x), signi(target.cell.y - caster.cell.y))
+	var distance := 1 + (int(state.upgrades.get("wind_gust_distance", 0)) if caster.side == "player" else 0)
+	var result := PushResolver.push(state, target, direction, distance, 0, "推风", caster.side)
+	summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": 0, "killed": not target.is_alive(), "statuses": [], "push": result})
+	summary["text"] = "推风：%s%s。" % [target.display_name, "被推离" if result["moved"] else "受阻"]
+
+
 static func _apply_push(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var target := state.unit_by_uid(int(entry["unit"]))
 	if target == null:
@@ -490,7 +522,7 @@ static func _apply_push(state: BattleState, caster: CombatUnit, entry: Dictionar
 	var skill_id := "rock_push" if caster.skills.has("rock_push") else "push"
 	var hit := _hit_entry(state, caster, skill_id, target, int(SkillDB.get_def(skill_id).get("damage", 2)) + bonus_damage)
 	if target.is_alive():
-		var push_distance := int(state.upgrades.get("push_distance", Balance.PUSH_DISTANCE))
+		var push_distance := int(state.upgrades.get("push_distance", Balance.PUSH_DISTANCE)) if caster.side == "player" else Balance.PUSH_DISTANCE
 		var collision_bonus := 0
 		if caster.side == "player":
 			collision_bonus = int(state.effects.get("push_collision", 0))
@@ -537,7 +569,7 @@ static func _apply_rock_smash(state: BattleState, caster: CombatUnit, entry: Dic
 
 static func _apply_rain_dance(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var center: Vector2i = entry["cell"]
-	var radius := 1 + int(state.upgrades.get("rain_radius_bonus", 0))
+	var radius := 1 + (int(state.upgrades.get("rain_radius_bonus", 0)) if caster.side == "player" else 0)
 	for cell in GridSpec.all_cells():
 		if absi(center.x - cell.x) > radius or absi(center.y - cell.y) > radius:
 			continue
@@ -556,7 +588,7 @@ static func _apply_rain_dance(state: BattleState, caster: CombatUnit, entry: Dic
 
 static func _apply_rock_create(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var dir: Vector2i = entry["dir"]
-	var width := int(state.upgrades.get("rock_create_width", 3))
+	var width := int(state.upgrades.get("rock_create_width", 3)) if caster.side == "player" else 3
 	var offsets: Array = [-1, 0, 1] if width <= 3 else [-1, 0, 1, 2]
 	var perpendicular := Vector2i(dir.y, dir.x)
 	var base: Vector2i = caster.cell + dir
@@ -623,7 +655,8 @@ static func _apply_fire_burst(state: BattleState, caster: CombatUnit, entry: Dic
 				state.kill_unit(fallen, "地面塌陷", caster.side)
 		var target := state.unit_at(cell)
 		if target != null:
-			var hit := _hit_entry(state, caster, "fire_burst", target, 2 if cell == center else 1)
+			var center_bonus := int(state.upgrades.get("fireball_damage", 0)) if caster.side == "player" and cell == center else 0
+			var hit := _hit_entry(state, caster, "fire_burst", target, (2 if cell == center else 1) + center_bonus)
 			summary["hits"].append(hit)
 		if state.obstacle_durability.has(cell):
 			state.damage_obstacle(cell, 1)
@@ -634,7 +667,7 @@ static func _apply_fire_burst(state: BattleState, caster: CombatUnit, entry: Dic
 
 static func _apply_line(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary, summary: Dictionary) -> void:
 	var dir := _axis_dir(caster.cell, entry["cell"])
-	var max_steps := 3 if skill_id == "flame_jet" else GridSpec.manhattan(caster.cell, entry["cell"])
+	var max_steps := (3 + (int(state.upgrades.get("flame_jet_length", 0)) if caster.side == "player" else 0)) if skill_id == "flame_jet" else GridSpec.manhattan(caster.cell, entry["cell"])
 	for step in range(1, max_steps + 1):
 		var cell: Vector2i = caster.cell + dir * step
 		if not GridSpec.is_inside(cell):
@@ -685,7 +718,8 @@ static func _apply_directional(state: BattleState, caster: CombatUnit, skill_id:
 			if target != null:
 				target.vine_ticks = 2
 	elif skill_id == "frozen_ground":
-		for distance in [1, 2, 3]:
+		var reach := 3 + (int(state.upgrades.get("ice_ground_reach", 0)) if caster.side == "player" else 0)
+		for distance in range(1, reach + 1):
 			for offset in [-1, 0, 1]:
 				var cell: Vector2i = caster.cell + dir * distance + perpendicular * offset
 				if not GridSpec.is_inside(cell) or state.terrain_at(cell) == TerrainDB.OBSTACLE or state.is_nest_cell(cell):
@@ -738,7 +772,8 @@ static func _apply_electric_arc(state: BattleState, caster: CombatUnit, entry: D
 					affected = true
 					break
 		if affected:
-			summary["hits"].append(_hit_entry(state, caster, "electric_arc", target, 1))
+				var bonus := int(state.upgrades.get("electric_arc_damage", 0)) if caster.side == "player" else 0
+				summary["hits"].append(_hit_entry(state, caster, "electric_arc", target, 1 + bonus))
 	summary["area_cells"] = visited.keys()
 	summary["text"] = "放电传导命中 %d 个单位。" % summary["hits"].size()
 
@@ -762,10 +797,12 @@ static func _apply_swap(state: BattleState, caster: CombatUnit, entry: Dictionar
 
 static func _apply_heal(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var center: Vector2i = caster.cell
+	var amount := 1 + (int(state.upgrades.get("herbal_heal_amount", 0)) if caster.side == "player" else 0)
 	for target in state.alive_units(caster.side):
 		if absi(target.cell.x - center.x) <= 1 and absi(target.cell.y - center.y) <= 1 and target.hp < target.max_hp:
-			target.hp += 1
-			summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": -1})
+			var healed := mini(amount, target.max_hp - target.hp)
+			target.hp += healed
+			summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": -healed})
 	summary["text"] = "药草治疗恢复 %d 个友军。" % summary["hits"].size()
 
 

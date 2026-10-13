@@ -22,8 +22,10 @@ const DEFS := {
 	"herbal_heal": {"name": "药草治疗", "element": "grass", "kind": "self", "damage": 0, "ranged": false, "desc": "自身周围 3×3 范围内所有己方单位回复 1 HP。"},
 	"frozen_ground": {"name": "冰封大地", "element": "ice", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 3×3 地形生成冰面，可覆盖深水和深坑。"},
 	"freeze_ray": {"name": "急冻光线", "element": "ice", "kind": "ray", "min_range": 1, "max_range": 8, "damage": 0, "ranged": true, "desc": "冻结射线命中的第一个敌人；受攻击解除，冻结期间不能行动。"},
+	"ice_shard": {"name": "冰锥", "element": "ice", "kind": "unit", "range": 3, "damage": 1, "ranged": true, "desc": "对 3 格内一个敌人造成 1 点直接伤害。"},
 	"tailwind": {"name": "加速", "element": "wind", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 2×3 的友军本轮移动力 +2。"},
 	"double_cast": {"name": "加速2", "element": "wind", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "相邻友军本轮获得一次额外技能机会。"},
+	"wind_gust": {"name": "推风", "element": "wind", "kind": "unit", "range": 2, "damage": 0, "ranged": true, "desc": "推动 2 格内一个敌人 1 格；撞击与落入危险地形照常结算。"},
 	"fire_seed": {
 		"name": "火种",
 		"element": "fire",

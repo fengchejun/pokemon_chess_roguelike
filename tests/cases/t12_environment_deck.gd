@@ -38,6 +38,11 @@ func _test_ui_flow(t: TestContext) -> void:
 	app.autosave_enabled = false
 	t.tree.root.add_child(app)
 	app.start_new_run()
+	for id in [1, 2, 3]:
+		var choice: CheckBox = app.current_screen.find_child("Collection_%d" % id, true, false)
+		choice.button_pressed = true
+	var collection_start: Button = app.current_screen.find_child("StartFromCollectionButton", true, false)
+	collection_start.pressed.emit()
 	var selector: OptionButton = app.current_screen.find_child("CardModeOption", true, false)
 	t.check(selector != null, "整备页能找到环境卡模式选择")
 	if selector == null:

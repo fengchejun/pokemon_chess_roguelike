@@ -11,25 +11,34 @@ const UPGRADES := {
 		"desc": "推击额外推开 1 格，中途碰撞照常结算。",
 		"key": "push_distance",
 		"value": 2,
+		"requires_skill": "rock_push",
 	},
 	"rock_create_width": {
 		"name": "造岩扩建",
 		"desc": "造岩横排由 3 格扩为 4 格。",
 		"key": "rock_create_width",
 		"value": 4,
+		"requires_skill": "rock_create",
 	},
 	"rain_radius": {
 		"name": "造雨扩张",
 		"desc": "造雨术范围由 3×3 扩为 5×5。",
 		"key": "rain_radius_bonus",
 		"value": 1,
+		"requires_skill": "rain_call",
 	},
-	"volt_step": {
-		"name": "电光步距离 +1",
-		"desc": "电光步瞬移最多 3 格。",
-		"key": "volt_step_bonus",
-		"value": 1,
-	},
+	"fireball_damage": {"name": "炽烈火球", "desc": "我方火球术中心直接伤害 +1。", "key": "fireball_damage", "value": 1, "requires_skill": "fire_burst"},
+	"flame_jet_length": {"name": "长焰", "desc": "我方喷射火焰直线长度由 3 格增至 4 格。", "key": "flame_jet_length", "value": 1, "requires_skill": "flame_jet"},
+	"water_flow_push": {"name": "急流", "desc": "我方水流击退距离由 1 格增至 2 格。", "key": "water_flow_push", "value": 1, "requires_skill": "water_flow"},
+	"drain_range": {"name": "蔓延吸取", "desc": "我方吸取射程由 2 格增至 3 格。", "key": "drain_range", "value": 1, "requires_skill": "drain"},
+	"herbal_heal_amount": {"name": "丰茂药草", "desc": "我方药草治疗每个目标回复 2 点生命。", "key": "herbal_heal_amount", "value": 1, "requires_skill": "herbal_heal"},
+	"ice_shard_damage": {"name": "尖锐冰锥", "desc": "我方冰锥基础伤害 +1。", "key": "ice_shard_damage", "value": 1, "requires_skill": "ice_shard"},
+	"ice_ground_reach": {"name": "冰面延展", "desc": "我方冰封大地向前延展至第 4 排。", "key": "ice_ground_reach", "value": 1, "requires_skill": "frozen_ground"},
+	"wind_gust_distance": {"name": "强劲推风", "desc": "我方推风击退距离由 1 格增至 2 格。", "key": "wind_gust_distance", "value": 1, "requires_skill": "wind_gust"},
+	"electric_arc_damage": {"name": "高压传导", "desc": "我方放电传导基础伤害 +1。", "key": "electric_arc_damage", "value": 1, "requires_skill": "electric_arc"},
+	"team_move": {"name": "机动训练", "desc": "本局我方怪物基础移动力 +1。", "key": "team_move", "value": 1},
+	"trainer_hp": {"name": "训练家防护", "desc": "本局训练家最大生命与当前生命 +2。", "key": "trainer_hp", "value": 2},
+	"grass_resilience": {"name": "草木韧性", "desc": "我方处于草丛时受到的技能直接伤害 -1。", "key": "grass_resilience", "value": 1},
 }
 
 var seed: int = 0
@@ -54,12 +63,19 @@ var pending_supply: bool = false
 var options := {"threat_preview": false, "capture_low_hp": false, "capture_field_join": false, "card_mode": "position"}
 
 
-static func new_run(seed_value: int = 0) -> RunState:
+static func new_run(seed_value: int = 0, starting_collection: Array = []) -> RunState:
 	var run := RunState.new()
-	run.seed = seed_value if seed_value != 0 else int(Time.get_unix_time_from_system())
+	run.seed = seed_value if seed_value != 0 else int(Time.get_unix_time_from_system() * 1000000.0)
 	run.trainer_hp = int(SpeciesDB.get_species("trainer").get("hp", 6))
-	for species_id in SpeciesDB.STARTER_TEAM:
-		run.carried.append(run._make_record(species_id))
+	if starting_collection.is_empty():
+		## 兼容旧代码与旧存档；实际新局由收藏界面传入三只。
+		for species_id in SpeciesDB.STARTER_TEAM:
+			run.carried.append(run._make_record(String(species_id)))
+	else:
+		for source in starting_collection:
+			var record := run._make_record(String(source["species_id"]))
+			record["collection_id"] = int(source["id"])
+			run.carried.append(record)
 	run.cards = default_card_selection()
 	return run
 
@@ -78,7 +94,7 @@ func supply_due() -> bool:
 
 func apply_supply_recovery() -> Dictionary:
 	## 补给点：训练家恢复 50% 生命上限（四舍五入，至少 1 点）。
-	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
+	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7)) + int(upgrades.get("trainer_hp", 0))
 	var before := trainer_hp
 	var amount := maxi(1, roundi(float(trainer_max) * Balance.SUPPLY_TRAINER_RECOVERY_RATIO))
 	trainer_hp = mini(trainer_max, trainer_hp + amount)
@@ -145,6 +161,7 @@ func build_deploy_units(deploy_uids: Array) -> Array:
 	var units: Array = []
 	var trainer := CombatUnit.make("trainer", "player", Balance.TRAINER_UID)
 	trainer.hp = trainer_hp
+	trainer.max_hp += int(upgrades.get("trainer_hp", 0))
 	units.append(trainer)
 	for uid in deploy_uids:
 		var record := record_by_uid(int(uid))
@@ -152,6 +169,7 @@ func build_deploy_units(deploy_uids: Array) -> Array:
 			continue
 		var unit := CombatUnit.make(String(record["species_id"]), "player", int(record["uid"]))
 		unit.hp = int(record["hp"])
+		unit.move_points += int(upgrades.get("team_move", 0))
 		units.append(unit)
 	return units
 
@@ -342,7 +360,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 			storage_healed += 1
 		record["hp"] = max_hp
 	outcome["storage_rest"] = storage_healed
-	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
+	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7)) + int(upgrades.get("trainer_hp", 0))
 	outcome["trainer_from"] = trainer_hp
 	trainer_hp = trainer_max
 	outcome["trainer_to"] = trainer_max
@@ -372,14 +390,26 @@ func pending_upgrades() -> bool:
 	for threshold in Balance.UPGRADE_THRESHOLDS:
 		if exp >= int(threshold):
 			eligible += 1
-	return eligible > upgrades_taken.size() and upgrades_taken.size() < UPGRADES.size()
+	return eligible > upgrades_taken.size() and not available_upgrades().is_empty()
+
+
+func available_upgrades() -> Array:
+	var learned := {}
+	for record in carried:
+		for skill_id in SpeciesDB.skills_of(String(record["species_id"])):
+			learned[String(skill_id)] = true
+	var pool: Array = []
+	for upgrade_id in UPGRADES:
+		if upgrades_taken.has(upgrade_id):
+			continue
+		var required := String(UPGRADES[upgrade_id].get("requires_skill", ""))
+		if required == "" or learned.has(required):
+			pool.append(upgrade_id)
+	return pool
 
 
 func upgrade_choices(rng: RandomNumberGenerator) -> Array:
-	var pool: Array = []
-	for upgrade_id in UPGRADES:
-		if not upgrades_taken.has(upgrade_id):
-			pool.append(upgrade_id)
+	var pool := available_upgrades()
 	var choices: Array = []
 	while choices.size() < 3 and not pool.is_empty():
 		var pick := rng.randi_range(0, pool.size() - 1)
@@ -390,10 +420,12 @@ func upgrade_choices(rng: RandomNumberGenerator) -> Array:
 
 func take_upgrade(upgrade_id: String) -> void:
 	var info: Dictionary = UPGRADES.get(upgrade_id, {})
-	if info.is_empty():
+	if info.is_empty() or not available_upgrades().has(upgrade_id):
 		return
 	upgrades[String(info["key"])] = int(info["value"])
 	upgrades_taken.append(upgrade_id)
+	if upgrade_id == "trainer_hp":
+		trainer_hp += int(info["value"])
 
 
 func to_dict() -> Dictionary:
