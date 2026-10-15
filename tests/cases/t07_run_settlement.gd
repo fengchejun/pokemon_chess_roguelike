@@ -10,6 +10,10 @@ func run(t: TestContext) -> void:
 	_t_new_run(t)
 	_t_sustained_damage(t)
 	_t_victory_rewards(t)
+	_t_bonus_reward_credit(t)
+	_t_monster_experience(t)
+	_t_attributed_and_shared_kills(t)
+	_t_capture_nest_and_reward_xp(t)
 	_t_battle_recovery(t)
 	_t_supply(t)
 	_t_capture_resolution(t)
@@ -25,7 +29,9 @@ func _t_new_run(t: TestContext) -> void:
 	t.eq(run.carried.size(), 5, "初始队伍 5 只")
 	t.eq(run.trainer_hp, int(SpeciesDB.get_species("trainer").get("hp", 7)), "训练家满生命")
 	t.eq(run.supply_due(), false, "开局不进入补给点")
-	t.eq(run.cards.size(), Balance.CARDS_PER_BATTLE, "初始默认已选 2 张环境卡")
+	t.eq(run.cards.size(), 0, "新局不再免费获得站位卡")
+	t.eq(run.reward_inventory.size(), 0, "新局奖励背包为空")
+	t.eq(run.mod_points(), 0, "未使用改造工具时无免费地形改造")
 	t.eq(run.exp, 0, "初始经验 0")
 
 
@@ -44,15 +50,110 @@ func _t_victory_rewards(t: TestContext) -> void:
 	run.mark_deployed([1])
 	state.unit_by_uid(100).hp = 2
 	state.unit_by_uid(1).cell = Vector2i(0, 3)
+	state.unit_by_uid(1).skills.append("fire_seed")
 	state.cast_skill(state.unit_by_uid(1), "fire_seed", {"type": "cell", "cell": Vector2i(2, 3)})
 	run.sync_from_battle(state)
 	var outcome := run.settle_battle(state)
 	t.eq(state.end_reason, "victory", "胜利结束")
 	t.eq(int(outcome["exp"]), 2, "击败经验 2")
 	t.eq(outcome.has("carrier_exp"), false, "局内 Buff 不再提供携带者经验")
-	t.eq(run.exp, 2, "胜利经验只包含击败奖励")
+	t.eq(run.exp, 0, "废弃的全队经验不再累积")
+	t.eq(run.pending_reward_choices, 1, "正常结算获得一次战后奖励三选一")
+	t.eq(int(run.record_by_uid(1)["xp"]), 2, "实际击败者获得本局经验")
+	t.eq(int(run.record_by_uid(1)["affinity"]), 1, "出战怪物完成非失败战斗获得永久亲密度")
 	t.eq(run.in_battle, false, "结算后离开战斗态")
 	t.eq(int(run.stats["victories"]), 1, "统计胜利")
+
+
+func _t_bonus_reward_credit(t: TestContext) -> void:
+	var run := RunState.new_run(3004)
+	var state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	var holder := state.unit_by_uid(1)
+	holder.cell = state.reward["cell"]
+	state.begin_enemy_phase()
+	state.end_enemy_phase()
+	state.end_battle("victory")
+	var outcome := run.settle_battle(state)
+	t.check(bool(outcome.get("bonus_choice_earned", false)), "守点者存活到战后，记录一次额外选择")
+	t.eq(run.pending_reward_choices, 2, "常规一次加守点一次，战后共可选择两次")
+	t.eq(run.pending_bonus_choices, 0, "守点额外奖励在本场战后兑现")
+	var repeated := run.settle_battle(state)
+	t.eq(repeated, outcome, "同一场战斗重复结算复用原结果")
+	t.eq(run.pending_reward_choices, 2, "重复结算不再增加奖励次数")
+	var save_path := "res://.test_bonus_reward_save.json"
+	t.check(SaveSystem.save_run(run, save_path), "待领战后奖励可写入本局存档")
+	var loaded := SaveSystem.load_run(save_path)
+	t.check(loaded != null and loaded.pending_reward_choices == 2, "读档恢复两次待领奖励")
+	SaveSystem.delete_save(save_path)
+	var legacy := RunState.from_dict({"version": RunState.SAVE_VERSION})
+	t.eq(legacy.pending_reward_choices, 0, "旧存档缺少奖励字段时默认为零")
+
+
+func _t_monster_experience(t: TestContext) -> void:
+	var run := RunState.new_run(3005)
+	var battle := TestScenario.make_state(["fire_starter", "water_starter", "grass_starter"], [
+		["fire_wild1", Vector2i(5, 2)], ["water_wild1", Vector2i(6, 3)],
+	])
+	run.mark_deployed([1, 2, 3])
+	battle.kill_unit(battle.unit_by_uid(2), "测试濒死", "enemy")
+	for enemy in battle.alive_units("enemy"):
+		battle.kill_unit(enemy, "测试击败", "player")
+	battle.check_battle_end()
+	run.sync_from_battle(battle)
+	var outcome := run.settle_battle(battle)
+	t.eq(int(outcome["exp"]), 6, "两次无归属击败让原出战三怪各得两点经验")
+	t.eq(int(run.record_by_uid(1)["xp"]), 2, "首位出战怪物获得共享击败经验")
+	t.eq(int(run.record_by_uid(2)["xp"]), 2, "濒死的原出战怪物仍获得共享击败经验")
+	t.eq(int(run.record_by_uid(3)["xp"]), 2, "第三只出战怪物获得相同共享经验")
+	t.eq(int(run.record_by_uid(2)["hp"]), 0, "获得经验不会立即救活濒死怪物")
+	t.eq((outcome["monster_exp"] as Array).size(), 3, "战后报告列出每只出战怪物的经验")
+	for uid in [1, 2, 3]:
+		t.eq(int(run.record_by_uid(uid)["affinity"]), 1, "原出战怪物 %d 均增加亲密度，濒死也计" % uid)
+	run.settle_battle(battle)
+	t.eq(int(run.record_by_uid(2)["xp"]), 2, "重复结算不重复发放怪物经验")
+	t.eq(int(run.record_by_uid(2)["affinity"]), 1, "重复结算不重复发放亲密度")
+
+
+func _t_attributed_and_shared_kills(t: TestContext) -> void:
+	var run := RunState.new_run(3011)
+	var battle := TestScenario.make_state(["fire_starter", "water_starter", "grass_starter"], [
+		["fire_wild1", Vector2i(5, 2)], ["water_wild1", Vector2i(6, 3)],
+	])
+	run.mark_deployed([1, 2, 3])
+	battle.kill_unit(battle.unit_by_uid(100), "测试直接击败", "player", 1)
+	battle.kill_unit(battle.unit_by_uid(101), "测试共享击败", "player", -1)
+	battle.end_battle("victory")
+	var outcome := run.settle_battle(battle)
+	t.eq(int(run.record_by_uid(1)["xp"]), 3, "归属击败者得两点，另获共享一点")
+	t.eq(int(run.record_by_uid(2)["xp"]), 1, "其他原出战怪物仅获共享一点")
+	t.eq(int(run.record_by_uid(3)["xp"]), 1, "第三只原出战怪物仅获共享一点")
+	t.eq(int(outcome["exp"]), 5, "结算经验汇总以个人实际所得为准")
+	t.eq((outcome["monster_exp"] as Array).size(), 3, "结算明细按原出战实例记录")
+
+
+func _t_capture_nest_and_reward_xp(t: TestContext) -> void:
+	var run := RunState.new_run(3012)
+	var battle := TestScenario.make_state(["fire_starter", "water_starter", "grass_starter"], [
+		["rock_wild1", Vector2i(6, 6)],
+	])
+	run.mark_deployed([1, 2, 3])
+	battle.kill_unit(battle.unit_by_uid(2), "测试濒死", "enemy")
+	battle.captured.append({"species_id": "rock_wild1", "hp": 1, "uid": 100, "on_field": false})
+	battle.nest["destroyed_by_player"] = true
+	battle.reward["state"] = "carried"
+	battle.reward["owner_uid"] = 1
+	battle.end_battle("victory")
+	run.sync_from_battle(battle)
+	var outcome := run.settle_battle(battle)
+	t.eq(int(run.record_by_uid(1)["xp"]), 6, "存活原出战怪物获得捕获2、毁巢3、奖励1经验")
+	t.eq(int(run.record_by_uid(2)["xp"]), 0, "濒死原出战怪物不获得三项存活共享奖励")
+	t.eq(int(run.record_by_uid(3)["xp"]), 6, "另一存活原出战怪物同得共享经验")
+	t.eq(int(outcome["exp"]), 12, "三项共享奖励按实际存活人数汇总")
+	t.eq(run.pending_captures.size(), 1, "捕获怪物进入待收容队列")
+	t.eq(int(run.pending_captures[0]["xp"]), 0, "新捕获怪物不追溯领取本场经验")
+	for uid in [1, 2, 3]:
+		t.eq(int(run.record_by_uid(uid)["affinity"]), 1, "原出战怪物 %d 在非失败结算仍增加亲密度" % uid)
+	t.eq(int(run.pending_captures[0]["affinity"]), 0, "本场新捕获怪物不追溯增加亲密度")
 
 
 func _t_battle_recovery(t: TestContext) -> void:
@@ -72,7 +173,9 @@ func _t_battle_recovery(t: TestContext) -> void:
 	t.eq((outcome["base_rest"] as Array).size(), 2, "基地休养明细 2 条")
 	# 出战成员的 30% 恢复（非失败结局）
 	run.carried[0]["hp"] = 3
-	var outcome2 := run.settle_battle(battle)
+	var next_battle := TestScenario.make_state(["fire_starter"], [])
+	run.mark_deployed([1])
+	var outcome2 := run.settle_battle(next_battle)
 	var fire_max := SpeciesDB.hp_of("fire_starter")
 	t.eq(int(run.carried[0]["hp"]), mini(fire_max, 3 + RunState.recovery_amount(fire_max)), "出战成员战后恢复 30%")
 	t.eq((outcome2["recovery"] as Array).size(), 1, "出战恢复明细 1 条")
@@ -169,6 +272,7 @@ func _t_forced_retreat(t: TestContext) -> void:
 	run.mark_deployed([1, 2])
 	state.unit_by_uid(100).hp = 2
 	state.unit_by_uid(1).cell = Vector2i(0, 3)
+	state.unit_by_uid(1).skills.append("fire_seed")
 	state.cast_skill(state.unit_by_uid(1), "fire_seed", {"type": "cell", "cell": Vector2i(2, 3)})
 	# 敌人已死则战斗结束；改用一个新敌人避免干扰
 	var state2 := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(5, 3)]])
@@ -202,7 +306,7 @@ func _t_escape_flow(t: TestContext) -> void:
 	state.settle_round()
 	t.eq(state.end_reason, "escape", "野生逃离结束")
 	var outcome := run.settle_battle(state)
-	t.eq(run.cards.size(), Balance.CARDS_PER_BATTLE, "逃离不改变出战卡选择")
+	t.eq(run.pending_reward_choices, 1, "野生逃离仍获得一次常规战后奖励选择")
 	t.eq(outcome.has("carrier_exp"), false, "逃离也不结算旧携带者经验")
 
 

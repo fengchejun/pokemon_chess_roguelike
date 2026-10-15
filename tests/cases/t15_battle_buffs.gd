@@ -2,55 +2,73 @@ extends RefCounted
 
 
 func run(t: TestContext) -> void:
-	t.begin("战场奖励 Buff")
-	_t_claims(t)
+	t.begin("战场奖励守点与旧 Buff 效果")
+	_t_reward_credit(t)
 	_t_flight_and_defense(t)
 	_t_skill_buffs(t)
 	t.finish()
 
 
-func _t_claims(t: TestContext) -> void:
+func _t_reward_credit(t: TestContext) -> void:
 	var state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
 	var fire := state.unit_by_uid(1)
 	fire.cell = state.reward["cell"]
-	state.phase = BattleState.PHASE_ENEMY
+	t.eq(state.reward["state"], "map", "站上奖励点不会立即领取")
+	state.begin_enemy_phase()
+	t.eq(state.reward["state"], "guarding", "结束我方行动后开始守点")
+	state.damage_unit(state.unit_by_uid(100), fire, 1, {"no_element": true, "cause": "测试"})
+	t.check(fire.is_alive() and state.reward["state"] == "guarding", "守点者受伤但存活，奖励仍可领取")
 	state.end_enemy_phase()
-	t.eq(state.phase, BattleState.PHASE_REWARD, "我方守点在敌方阶段结束后暂停结算")
-	t.eq(state.reward["state"], "pending", "奖励等待我方二选一")
-	var options: Array = state.reward["options"]
-	t.eq(options.size(), 2, "提供两个不同 Buff")
-	t.check(options[0] != options[1], "两个选项不重复")
-	t.eq(options, BattleBuffDB.offer(fire, state.run_seed, state.battle_index), "同一种子选项稳定")
-	t.eq(state.round, 1, "选择前不进入下一回合")
-	t.eq(state.resolve_reward_choice("invalid"), false, "不能选择未提供的 Buff")
-	var chosen := String(options[0])
-	t.check(state.resolve_reward_choice(chosen), "选择有效 Buff 继续结算")
-	t.eq(state.reward["state"], "claimed", "一次领取后奖励格消失")
-	t.check(fire.has_buff(chosen), "Buff 附于实际守点单位")
-	t.eq(TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]]).unit_by_uid(1).battle_buffs.size(), 0, "下一场新单位不继承本场 Buff")
-	t.eq(state.resolve_reward_choice(chosen), false, "奖励不可重复领取")
+	t.eq(state.reward["state"], "carried", "敌方行动结束后由原守点者领取")
+	t.eq(state.reward_owner().uid, fire.uid, "战场奖励记在守点者身上")
+	t.eq(fire.battle_buffs.size(), 0, "奖励点不再立即提供本场 Buff")
+	fire.cell = Vector2i(5, 4)
+	state.end_battle("victory")
+	t.check(state.reward_bonus_earned(), "领取后可以离开，存活到战斗结束即可获得额外选择次数")
+	var early := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	early.unit_by_uid(1).cell = early.reward["cell"]
+	early.end_battle("victory")
+	t.check(not early.reward_bonus_earned(), "尚未守满敌方阶段时提前获胜不会领取")
+	var interrupted := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	var defender := interrupted.unit_by_uid(1)
+	defender.cell = interrupted.reward["cell"]
+	interrupted.begin_enemy_phase()
+	defender.cell = Vector2i(5, 4)
+	interrupted._refresh_reward_guard()
+	defender.cell = interrupted.reward["cell"]
+	interrupted.end_enemy_phase()
+	t.eq(interrupted.reward["state"], "map", "被迫离开后即使回到格上，本轮守点仍告中断")
+	var guard_death := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	var guarding := guard_death.unit_by_uid(1)
+	guarding.cell = guard_death.reward["cell"]
+	guard_death.begin_enemy_phase()
+	guard_death.damage_unit(guard_death.unit_by_uid(100), guarding, 99, {"no_element": true, "cause": "测试"})
+	t.eq(guard_death.reward["state"], "destroyed", "守点者死亡则奖励被毁")
 	var enemy_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 4)]])
 	enemy_state.reward["cell"] = Vector2i(6, 4)
 	enemy_state.begin_enemy_phase()
-	t.eq(enemy_state.reward["state"], "claimed", "敌人守到我方阶段结束自动领取")
-	t.check(not enemy_state.unit_by_uid(100).battle_buffs.is_empty(), "敌方领取的 Buff 当即生效")
-	var enemy_repeat := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 4)]])
-	enemy_repeat.reward["cell"] = Vector2i(6, 4)
-	enemy_repeat.begin_enemy_phase()
-	t.eq(enemy_state.reward["buff_id"], enemy_repeat.reward["buff_id"], "敌方自动选择可由本场种子复现")
+	t.eq(enemy_state.reward["state"], "map", "敌人占点只会阻挡，不领取我方奖励")
 	var damage_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(7, 6)]])
 	damage_state.reward["cell"] = Vector2i(4, 3)
 	damage_state.unit_by_uid(1).cell = Vector2i(0, 3)
-	SkillResolver.apply(damage_state, damage_state.unit_by_uid(1), "fire_burst", {"type": "cell", "cell": Vector2i(4, 3)}, false)
+	SkillResolver.resolve_channel(damage_state, damage_state.unit_by_uid(1), "fire_burst", [Vector2i(4, 3)])
 	t.eq(damage_state.reward["state"], "destroyed", "空奖励格被火球伤害摧毁")
+	var fallen := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	var carrier := fallen.unit_by_uid(1)
+	carrier.cell = fallen.reward["cell"]
+	fallen.begin_enemy_phase()
+	fallen.end_enemy_phase()
+	fallen.damage_unit(fallen.unit_by_uid(100), carrier, 99, {"no_element": true, "cause": "测试"})
+	t.eq(fallen.reward["state"], "lost", "持有者倒下则失去奖励")
+	fallen.end_battle("victory")
+	t.check(not fallen.reward_bonus_earned(), "持有者死亡不发额外战后奖励")
 	var final_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
 	final_state.unit_by_uid(1).cell = final_state.reward["cell"]
 	final_state.round = Balance.MAX_ROUNDS
-	final_state.phase = BattleState.PHASE_ENEMY
+	final_state.begin_enemy_phase()
 	final_state.end_enemy_phase()
-	t.eq(final_state.reward["state"], "map", "第六回合敌方结束后不再发放 Buff")
-	var trainer := CombatUnit.make("trainer", "player", 5)
-	t.eq(BattleBuffDB.eligible(trainer).size(), 4, "训练家只抽到四种通用 Buff")
+	t.eq(final_state.reward["state"], "carried", "第八回合敌方结束后仍可领取战后奖励")
+	t.check(final_state.reward_bonus_earned(), "第八回合逃离结算也记录奖励")
 
 
 func _t_flight_and_defense(t: TestContext) -> void:
@@ -84,9 +102,9 @@ func _t_flight_and_defense(t: TestContext) -> void:
 	immune.slow_ticks = 2
 	var immune_state := TestScenario.make_state([], [["rock_wild1", Vector2i(6, 6)]])
 	immune_state.units.append(immune)
-	immune_state.reward = {"state": "pending", "cell": Vector2i(5, 5), "owner_uid": immune.uid, "options": ["status_immune", "move_plus"], "buff_id": ""}
-	immune_state.phase = BattleState.PHASE_REWARD
-	t.check(immune_state.resolve_reward_choice("status_immune"), "免疫 Buff 可正常领取")
+	immune.battle_buffs["status_immune"] = true
+	immune.burn_ticks = 0
+	immune.slow_ticks = 0
 	t.eq(immune.burn_ticks + immune.slow_ticks, 0, "取得免疫立即清除灼烧浸湿")
 	immune_state.apply_burn(immune, null)
 	immune_state.apply_slow(immune)
@@ -113,7 +131,7 @@ func _t_skill_buffs(t: TestContext) -> void:
 	var fire := fire_state.unit_by_uid(1)
 	fire.cell = Vector2i(0, 3)
 	fire.battle_buffs["fire_burst"] = true
-	SkillResolver.apply(fire_state, fire, "fire_burst", {"type": "cell", "cell": Vector2i(4, 3)}, false)
+	SkillResolver.resolve_channel(fire_state, fire, "fire_burst", [Vector2i(4, 3)])
 	t.check(fire_state.unit_by_uid(100).burn_ticks > 0, "强化火球外围附灼烧")
 	var charge_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(1, 3)]])
 	var charger := charge_state.unit_by_uid(1)

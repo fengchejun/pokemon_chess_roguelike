@@ -20,9 +20,6 @@ var board: BoardView = null
 var hint_label: Label = null
 var mod_count_label: Label = null
 var mod_buttons: Dictionary = {}
-var card_toggles: Dictionary = {}
-var card_hint: Label = null
-var card_detail: Label = null
 
 
 func _ready() -> void:
@@ -57,7 +54,7 @@ func _ready() -> void:
 	right.add_child(scroll)
 	var content := UIKit.vbox(8)
 	scroll.add_child(content)
-	content.add_child(UIKit.wrapped("地图构筑模式下，卡组会改变后续地貌生成倾向；站位卡模式下地貌仅由区域与种子决定。开战后地图不再生成。", 13))
+	content.add_child(UIKit.wrapped("本场地图由区域、种子与已选地貌卡生成；卡只影响生成倾向。开战后不再重新生成地形，所选消耗卡在开战时消耗。", 13))
 	content.add_child(_enemy_box(run))
 	content.add_child(_cards_box())
 	var mod_box := UIKit.panel(UIKit.PANEL)
@@ -76,6 +73,7 @@ func _ready() -> void:
 		button.name = "ModButton_%s" % id
 		button.toggle_mode = true
 		button.button_pressed = id == mod_kind
+		button.disabled = run.mod_points() <= 0
 		button.tooltip_text = "%s：%s → %s" % [
 			rule["name"], TerrainDB.name_of(int(rule["ok_from"])), TerrainDB.name_of(int(rule["to"])),
 		]
@@ -148,7 +146,7 @@ func _enemy_box(run: RunState) -> Control:
 	var reinforce_names: Array = []
 	for species_id in cfg.get("reinforce", []):
 		reinforce_names.append(SpeciesDB.name_of(String(species_id)))
-	column.add_child(UIKit.wrapped("巢穴增援池：%s（第 2、4 回合各尝试 1 只；堵口则排队）" % "、".join(reinforce_names), 13))
+	column.add_child(UIKit.wrapped("巢穴增援池：%s（第 2、4、6 回合各尝试 1 只；堵口则排队）" % "、".join(reinforce_names), 13))
 	return box
 
 
@@ -157,62 +155,12 @@ func _cards_box() -> Control:
 	var box := UIKit.panel(UIKit.PANEL)
 	var column := UIKit.vbox(6)
 	box.add_child(column)
-	if String(run.options.get("card_mode", "position")) == "environment":
-		column.add_child(UIKit.label("地图构筑卡（整局生效）", 17, UIKit.ACCENT))
-		var lines: Array = []
-		for card_id in run.environment_deck:
-			var card := MapCardDB.get_card(String(card_id))
-			lines.append("%s：%s" % [card.get("name", card_id), card.get("desc", "")])
-		column.add_child(UIKit.wrapped("尚未获得地图构筑卡；战后可三选一。" if lines.is_empty() else "\n".join(lines), 13))
-		return box
-	column.add_child(UIKit.label("出战环境卡（5 张中选 2 张，本场生效）", 17, UIKit.ACCENT))
-	var row := UIKit.hbox(6)
-	column.add_child(row)
-	for card_id in CardDB.ALL_IDS:
-		var id := String(card_id)
-		var card := CardDB.get_card(id)
-		var button := UIKit.small_button(String(card.get("name", id)))
-		button.name = "CardToggle_%s" % id
-		button.toggle_mode = true
-		button.button_pressed = run.cards.has(id)
-		button.tooltip_text = "%s：%s" % [card.get("anchor", ""), card.get("effect", "")]
-		button.pressed.connect(func() -> void: _on_card_toggle(id))
-		row.add_child(button)
-		card_toggles[id] = button
-	card_hint = UIKit.label("", 13, UIKit.BAD)
-	column.add_child(card_hint)
-	card_detail = UIKit.wrapped("", 13)
-	column.add_child(card_detail)
-	_refresh_card_detail()
-	return box
-
-
-func _on_card_toggle(card_id: String) -> void:
-	var run: RunState = app.run
-	var button: Button = card_toggles[card_id]
-	if button.button_pressed:
-		if run.cards.size() >= Balance.CARDS_PER_BATTLE:
-			button.set_pressed_no_signal(false)
-			card_hint.text = "最多选择 %d 张；先取消一张再更换。" % Balance.CARDS_PER_BATTLE
-			return
-		if not run.cards.has(card_id):
-			run.cards.append(card_id)
+	column.add_child(UIKit.label("本场消耗卡", 17, UIKit.ACCENT))
+	if run.selected_reward_item == "":
+		column.add_child(UIKit.wrapped("未使用卡牌。可返回整备页从背包选择；不选也能开战。", 13))
 	else:
-		run.cards.erase(card_id)
-	card_hint.text = ""
-	app.autosave()
-	_refresh_card_detail()
-
-
-func _refresh_card_detail() -> void:
-	var run: RunState = app.run
-	var lines: Array = []
-	for card_id in run.cards:
-		var card := CardDB.get_card(String(card_id))
-		lines.append("【%s】%s：%s" % [card.get("name", card_id), card.get("anchor", ""), card.get("effect", "")])
-	if lines.is_empty():
-		lines.append("尚未选择环境卡。")
-	card_detail.text = "\n".join(lines)
+		column.add_child(UIKit.wrapped("%s：%s" % [RewardDB.name_of(run.selected_reward_item), RewardDB.description_of(run.selected_reward_item)], 13))
+	return box
 
 
 func _set_mod_kind(kind: String) -> void:
@@ -226,7 +174,7 @@ func _set_mod_kind(kind: String) -> void:
 func _on_cell_clicked(cell: Vector2i) -> void:
 	var run: RunState = app.run
 	if mod_used >= run.mod_points():
-		hint_label.text = "改造次数已用尽（共 %d 次）。" % run.mod_points()
+		hint_label.text = "未使用地形改造工具，或本场改造次数已用尽。"
 		return
 	if MapGenerator.mod_protected(map, cell):
 		hint_label.text = "部署区、巢穴与奖励格受保护，不能改造。"
@@ -251,6 +199,8 @@ func _mod_hover_text(cell: Vector2i) -> String:
 	var run: RunState = app.run
 	var rule: Dictionary = MOD_RULES.get(mod_kind, {})
 	var tool_name := String(rule.get("name", mod_kind))
+	if (map.get("nest_exits", []) as Array).has(cell):
+		return "巢穴唯一出口：第 2、4、6 回合尝试产怪；出生轮在出口待机，不能移动或施法。堵住后排队，移开后下回合继续尝试。敌方守口时 1 点伤害无效，2 点以上命中只掉 1 耐久。"
 	if MapGenerator.mod_protected(map, cell):
 		return "【%s】该格受保护（部署区 / 巢穴 / 奖励 / 果实），不能改造。" % tool_name
 	var terrain := int(map["terrain"][GridSpec.index(cell)])
@@ -261,7 +211,7 @@ func _mod_hover_text(cell: Vector2i) -> String:
 			tool_name, TerrainDB.name_of(from_terrain), TerrainDB.name_of(terrain),
 		]
 	if mod_used >= run.mod_points():
-		return "【%s】%s → %s：改造次数已用尽。" % [tool_name, TerrainDB.name_of(from_terrain), TerrainDB.name_of(to_terrain)]
+		return "【%s】%s → %s：未使用改造工具，或次数已用尽。" % [tool_name, TerrainDB.name_of(from_terrain), TerrainDB.name_of(to_terrain)]
 	return "【%s】%s → %s：点击应用，消耗 1 次（剩余 %d 次）。" % [
 		tool_name, TerrainDB.name_of(from_terrain), TerrainDB.name_of(to_terrain),
 		run.mod_points() - mod_used,
@@ -297,8 +247,4 @@ func _preview_units(run: RunState) -> Array:
 
 
 func _on_start() -> void:
-	if String(app.run.options.get("card_mode", "position")) == "position" and app.run.cards.size() != Balance.CARDS_PER_BATTLE:
-		hint_label.text = "请先选择 %d 张出战环境卡。" % Balance.CARDS_PER_BATTLE
-		hint_label.add_theme_color_override("font_color", UIKit.BAD)
-		return
 	app.begin_battle(deploy_uids, map)

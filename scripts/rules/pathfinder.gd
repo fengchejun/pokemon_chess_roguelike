@@ -27,7 +27,7 @@ static func reachable(state, unit: CombatUnit) -> Dictionary:
 			var next: Vector2i = current + dir
 			if not GridSpec.is_inside(next):
 				continue
-			if not unit.has_buff("flight") and (state.is_nest_cell(next) or state.terrain_at(next) == TerrainDB.OBSTACLE):
+			if not unit.has_buff("flight") and (state.is_nest_cell(next) or TerrainDB.blocks_move(state.terrain_at(next))):
 				continue
 			var occupant: CombatUnit = state.unit_at(next)
 			if not unit.has_buff("flight") and occupant != null and occupant.side != unit.side:
@@ -53,7 +53,7 @@ static func stop_cells(state, unit: CombatUnit) -> Dictionary:
 	var cells := {}
 	var options := reachable(state, unit)
 	for cell in options:
-		if state.unit_at(cell) == null and not state.is_nest_cell(cell) and state.terrain_at(cell) != TerrainDB.OBSTACLE:
+		if state.unit_at(cell) == null and not state.is_nest_cell(cell) and not TerrainDB.blocks_move(state.terrain_at(cell)):
 			cells[cell] = options[cell]
 	return cells
 
@@ -77,7 +77,7 @@ static func path_distance(state, from_cell: Vector2i, to_cell: Vector2i, element
 			var next: Vector2i = current + dir
 			if not GridSpec.is_inside(next):
 				continue
-			if not flying and (state.terrain_at(next) == TerrainDB.OBSTACLE or state.is_nest_cell(next)):
+			if not flying and (TerrainDB.blocks_move(state.terrain_at(next)) or state.is_nest_cell(next)):
 				continue
 			var cost := 1 if flying else TerrainDB.move_cost(state.terrain_at(next), element)
 			if cost < 0:

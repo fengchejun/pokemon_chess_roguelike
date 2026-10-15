@@ -1,7 +1,7 @@
 extends RefCounted
 
-## 环境卡（v2.2 站位增益）：水域穿行、草丛伏击、障碍掩体、
-## 必死格邻位庇护、平地机动、熔脉火伤、卡池规则
+## 站位卡效果及其战前消耗：水域穿行、草丛伏击、障碍掩体、
+## 必死格邻位庇护、平地机动、熔脉火伤。
 
 
 func run(t: TestContext) -> void:
@@ -27,15 +27,16 @@ func _t_water_ignore(t: TestContext) -> void:
 	fire.cell = Vector2i(0, 3)
 	t.check(PathFinder.stop_cells(state, fire).has(Vector2i(3, 3)), "溪流：我方非水系穿水不减速（可达 3 格）")
 	fire.cell = Vector2i(1, 3)
-	state.settle_round()
+	state.phase = BattleState.PHASE_ENEMY
+	state.end_enemy_phase()
 	t.eq(fire.slow_ticks, 0, "溪流：我方留在浅水不获得浸湿")
 	var state2 := TestScenario.make_state([], [["rock_wild1", Vector2i(0, 3)]], terrain, {"water_ignore": 1})
 	state2.trainer().cell = Vector2i(0, 7)
 	var enemy := state2.unit_by_uid(100)
 	enemy.cell = Vector2i(0, 3)
 	enemy.cell = Vector2i(1, 3)
-	state2.settle_round()
-	t.eq(enemy.slow_ticks, 2, "溪流：敌方留在浅水于回合结算获得浸湿")
+	state2.begin_enemy_phase()
+	t.eq(enemy.slow_ticks, 1, "溪流：敌方留在浅水于我方阶段结束获得浸湿")
 
 
 func _t_water_range(t: TestContext) -> void:
@@ -45,9 +46,9 @@ func _t_water_range(t: TestContext) -> void:
 	var entries := SkillResolver.targets(state, player_water, "rain_dance")
 	var found_far := false
 	for entry in entries:
-		if entry.get("cell", Vector2i(-1, -1)) == Vector2i(6, 2):
+		if entry.get("cell", Vector2i(-1, -1)) == Vector2i(5, 2):
 			found_far = true
-	t.eq(found_far, true, "潮汐：我方可施放距离 +1 的落点（5→6）")
+	t.eq(found_far, true, "潮汐：我方可施放距离 +1 的落点（4→5）")
 	var enemy_water := state.unit_by_uid(100)
 	enemy_water.cell = Vector2i(6, 3)
 	var enemy_entries := SkillResolver.targets(state, enemy_water, "rain_dance")
@@ -56,7 +57,7 @@ func _t_water_range(t: TestContext) -> void:
 	for entry in enemy_entries:
 		if entry.get("cell", Vector2i(-1, -1)) == Vector2i(0, 3):
 			enemy_far = true
-		if entry.get("cell", Vector2i(-1, -1)) == Vector2i(1, 3):
+		if entry.get("cell", Vector2i(-1, -1)) == Vector2i(2, 3):
 			enemy_base = true
 	t.eq(enemy_far, false, "潮汐：敌方射程不受益（增益仅我方）")
 	t.eq(enemy_base, true, "潮汐：敌方保持基础射程")
@@ -88,12 +89,12 @@ func _t_grass_duel(t: TestContext) -> void:
 	var fire := state3.unit_by_uid(1)
 	fire.cell = Vector2i(0, 3)
 	SkillResolver.apply(state3, fire, "fire_seed", {"type": "cell", "cell": Vector2i(4, 3)}, false)
-	t.eq(state3.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 4, "密林：火种 2 + 火克草 1 + 草丛增伤 1")
+	t.eq(state3.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 3, "密林：火种 2 + 草丛增伤 1")
 	var state4 := TestScenario.make_state(["fire_starter"], [["grass_wild1", Vector2i(4, 3)]], [], effects)
 	var fire4 := state4.unit_by_uid(1)
 	fire4.cell = Vector2i(0, 3)
 	SkillResolver.apply(state4, fire4, "fire_seed", {"type": "cell", "cell": Vector2i(4, 3)}, false)
-	t.eq(state4.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 3, "密林：不在草丛时只有火克草 +1")
+	t.eq(state4.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 2, "密林：不在草丛时仅基础伤害")
 	# 敌方站在草丛中不享受增益
 	var terrain5 := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[Vector2i(0, 3), TerrainDB.GRASS],
@@ -217,24 +218,32 @@ func _t_fire_bonus(t: TestContext) -> void:
 	var target := state2.unit_by_uid(1)
 	target.cell = Vector2i(0, 3)
 	SkillResolver.apply(state2, state2.unit_by_uid(100), "fire_seed", {"type": "cell", "cell": Vector2i(0, 3)}, false)
-	t.eq(target.hp, SpeciesDB.hp_of("water_starter") - 1, "熔脉：敌方火系无加成（逆克制后最低 1）")
+	t.eq(target.hp, SpeciesDB.hp_of("water_starter") - 2, "熔脉：敌方火系不享受卡牌加成")
 
 
 func _t_card_selection(t: TestContext) -> void:
 	var run := RunState.new_run(999)
-	t.eq(run.cards.size(), Balance.CARDS_PER_BATTLE, "开局默认已选 2 张出战卡")
-	for card_id in run.cards:
-		t.check(CardDB.CARDS.has(String(card_id)), "所选卡有效：%s" % card_id)
-	t.eq(run.effects(), CardDB.active_effects(run.cards), "实际生效与所选一致")
-	run.cards = ["magma", "tide"]
-	t.eq(int(run.effects().get("fire_bonus", 0)), 1, "换卡后火系 +1 生效")
-	t.eq(int(run.effects().get("lava_guard", 0)), 1, "换卡后熔脉庇护生效")
+	t.eq(run.effects().is_empty(), true, "未选消耗卡时没有站位增益")
+	t.eq(run.select_reward_item("position:magma"), false, "背包里没有的站位卡不能凭空使用")
+	run.reward_inventory = ["position:magma", "position:magma", "position:tide"]
+	t.eq(run.select_reward_item("position:magma"), true, "可从背包选择一张站位卡")
+	t.eq(int(run.effects().get("fire_bonus", 0)), 1, "所选熔脉卡提供火系加伤")
+	t.eq(int(run.effects().get("lava_guard", 0)), 1, "所选熔脉卡提供致死地形庇护")
+	t.eq(run.select_reward_item("position:tide"), true, "战前可切换另一张卡")
+	t.eq(int(run.effects().get("fire_bonus", 0)), 0, "同场只生效一张卡，旧卡效果清除")
+	t.eq(run.select_reward_item(""), true, "也可选择本场不使用卡")
+	t.eq(run.reward_inventory.size(), 3, "只选择或取消不会消耗卡")
+	t.eq(run.select_reward_item("position:magma"), true, "再次选中熔脉卡")
+	t.eq(run.consume_selected_reward_item(), "position:magma", "开战消耗所选卡")
+	t.eq(run.reward_inventory.size(), 2, "背包只移除一张同名卡")
+	t.eq(run.selected_reward_item, "", "消耗后清除本场选择")
+	t.eq(run.effects().is_empty(), true, "消耗后不会持续影响之后的战斗")
 	var data := run.to_dict()
 	data["cards"] = ["stream", "forest", "ridge", "magma"]
+	data["environment_deck"] = ["water", "electric"]
+	data["options"]["card_mode"] = "environment"
 	var loaded := RunState.from_dict(data)
-	t.eq(loaded.cards.size(), Balance.CARDS_PER_BATTLE, "读档后出战卡固定为 2 张")
-	t.eq(loaded.cards.has("ridge"), false, "超出的选择被裁掉")
-	var data2 := run.to_dict()
-	data2["cards"] = ["not_a_card"]
-	var loaded2 := RunState.from_dict(data2)
-	t.eq(loaded2.cards.size(), Balance.CARDS_PER_BATTLE, "非法卡名回退补齐为 2 张")
+	t.eq(loaded.cards, [], "旧存档的免费站位卡按玩家决定清除")
+	t.eq(loaded.environment_deck, [], "旧存档的永久地貌卡按玩家决定清除")
+	t.eq(loaded.options.has("card_mode"), false, "旧卡模式开关不再参与战前选择")
+	t.eq(loaded.reward_inventory.size(), 2, "新背包里的消耗卡仍正常恢复")

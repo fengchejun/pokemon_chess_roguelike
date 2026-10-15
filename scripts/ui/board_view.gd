@@ -10,7 +10,10 @@ const TILE := 72.0
 var terrain: Array = []
 var obstacle_durability: Dictionary = {}
 var burning_cells: Dictionary = {}
+var steam_cells: Dictionary = {}
 var nest: Dictionary = {}
+var pending_casts: Array = []
+var battle_round: int = 0
 var reward: Dictionary = {}
 var fruits: Array = []
 var units: Array = []
@@ -41,7 +44,10 @@ func set_from_state(state: BattleState) -> void:
 	terrain = state.terrain.duplicate()
 	obstacle_durability = state.obstacle_durability.duplicate()
 	burning_cells = state.burning_cells.duplicate()
+	steam_cells = state.steam_cells.duplicate()
 	nest = state.nest.duplicate(true)
+	pending_casts = state.pending_casts.duplicate(true)
+	battle_round = state.round
 	reward = state.reward.duplicate(true)
 	fruits = state.fruits.duplicate()
 	units = state.units.duplicate()
@@ -53,14 +59,17 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	terrain = (map.get("terrain", []) as Array).duplicate()
 	obstacle_durability = {}
 	burning_cells = {}
+	steam_cells = map.get("steam_cells", {}).duplicate()
 	for cell in map.get("obstacle_cells", []):
-		obstacle_durability[cell] = Balance.OBSTACLE_DURABILITY
+		obstacle_durability[cell] = Balance.TREE_DURABILITY if terrain[GridSpec.index(cell)] == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
 	nest = {
 		"cell": map.get("nest_cell", Vector2i(-1, -1)),
 		"exits": map.get("nest_exits", []).duplicate(),
 		"hp": Balance.NEST_DURABILITY,
 		"alive": true,
 	}
+	pending_casts = []
+	battle_round = 0
 	reward = {"state": "map", "cell": map.get("reward_cell", Vector2i(-1, -1)), "owner_uid": -1}
 	fruits = map.get("fruit_cells", []).duplicate()
 	units = preview_units
@@ -119,6 +128,9 @@ func _draw() -> void:
 			_draw_terrain(rect, terrain[GridSpec.index(cell)])
 			if burning_cells.has(cell):
 				draw_circle(rect.position + Vector2(55, 17), 9.0, Color(1.0, 0.32, 0.08, 0.88))
+			if steam_cells.has(cell):
+				draw_circle(rect.position + Vector2(28, 25), 17.0, Color(0.92, 0.94, 0.96, 0.38))
+				draw_circle(rect.position + Vector2(46, 42), 13.0, Color(0.92, 0.94, 0.96, 0.33))
 	# 覆盖层：移动范围 / 攻击范围 / 区域 / 射线
 	for cell in movement_cells:
 		_draw_fill(cell, Color(0.35, 0.6, 1.0, 0.28))
@@ -158,6 +170,8 @@ func _draw() -> void:
 	for unit in units:
 		if unit.is_alive():
 			_draw_unit(font, unit)
+	_draw_pending_casts(font)
+	_draw_nest_exit(font)
 	# 标记与箭头
 	for arrow in arrows:
 		_draw_arrow(arrow)
@@ -203,6 +217,9 @@ func _draw_terrain(rect: Rect2, value: int) -> void:
 			draw_rect(Rect2(rect.position + Vector2(8, 8), rect.size - Vector2(16, 16)), Color(0.30, 0.26, 0.23))
 			draw_rect(Rect2(rect.position + Vector2(8, 8), rect.size - Vector2(16, 16)), Color(0.55, 0.49, 0.44), false, 3.0)
 			draw_line(rect.position + Vector2(18, 50), rect.position + Vector2(34, 22), Color(0.6, 0.54, 0.48), 2.0)
+		TerrainDB.TREE:
+			draw_rect(Rect2(rect.position + Vector2(32, 42), Vector2(9, 24)), Color(0.35, 0.22, 0.12))
+			draw_circle(rect.position + Vector2(36, 29), 22.0, Color(0.13, 0.36, 0.16))
 		TerrainDB.LAVA:
 			draw_rect(rect, Color(0.78, 0.22, 0.08))
 			for bubble in 3:
@@ -234,12 +251,66 @@ func _draw_objects(font: Font) -> void:
 		draw_string(font, center + Vector2(-20, -26), "耐久 %d/3" % int(nest.get("hp", 3)), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.9, 0.8, 1.0))
 	if not reward.is_empty():
 		var state_name := String(reward.get("state", ""))
-		if state_name == "map" or state_name == "pending":
+		if state_name == "map" or state_name == "guarding":
 			_draw_star(reward["cell"])
 	for fruit_cell in fruits:
 		var center := cell_center(fruit_cell)
 		draw_circle(center + Vector2(0, -2), 8.0, Color(0.9, 0.25, 0.35))
 		draw_circle(center + Vector2(0, -26), 4.0, Color(0.3, 0.75, 0.35))
+
+
+func _draw_nest_exit(font: Font) -> void:
+	if not bool(nest.get("alive", false)):
+		return
+	for cell in nest.get("exits", []):
+		if not GridSpec.is_inside(cell):
+			continue
+		var occupant: CombatUnit = null
+		for unit in units:
+			if unit.is_alive() and unit.cell == cell:
+				occupant = unit
+				break
+		var color := Color(0.95, 0.75, 0.25)
+		if occupant != null:
+			color = Color(1.0, 0.35, 0.36) if occupant.side == "enemy" else Color(0.4, 0.85, 1.0)
+		elif int(nest.get("pending_waves", 0)) > 0 or Balance.nest_warning_due(battle_round):
+			color = Color(1.0, 0.5, 0.18)
+		var rect := Rect2(cell.x * TILE + 3, cell.y * TILE + 3, TILE - 6, TILE - 6)
+		draw_rect(rect, color, false, 4.0)
+		# 单位占据出口时，角标仍绘制在其上方。
+		draw_rect(Rect2(rect.position + Vector2(2, 2), Vector2(35, 16)), Color(0.08, 0.10, 0.13, 0.92))
+		draw_string(font, rect.position + Vector2(4, 15), "出口", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+
+
+func _draw_pending_casts(font: Font) -> void:
+	var marked := {}
+	for cast in pending_casts:
+		var color := Color(0.35, 0.88, 1.0) if String(cast["side"]) == "player" else Color(1.0, 0.32, 0.32)
+		for center in cast["cells"]:
+			var cells: Array = [center]
+			if String(cast["skill_id"]) == "fire_burst":
+				cells = []
+				for dx in range(-1, 2):
+					for dy in range(-1, 2):
+						var area: Vector2i = center + Vector2i(dx, dy)
+						if GridSpec.is_inside(area):
+							cells.append(area)
+			for cell in cells:
+				var rect := Rect2(cell.x * TILE + 5, cell.y * TILE + 5, TILE - 10, TILE - 10)
+				draw_rect(rect, color, false, 3.0)
+				marked[cell] = int(marked.get(cell, 0)) + 1
+		var caster: CombatUnit = null
+		for unit in units:
+			if unit.uid == int(cast["uid"]) and unit.is_alive():
+				caster = unit
+				break
+		if caster != null:
+			draw_string(font, cell_center(caster.cell) + Vector2(15, 30), "吟", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, color)
+	for cell in marked:
+		var count := int(marked[cell])
+		var label := "蓄%d" % count if count > 1 else "蓄"
+		draw_rect(Rect2(cell.x * TILE + 2, cell.y * TILE + 2, 32 if count > 1 else 20, 17), Color(0.08, 0.10, 0.13, 0.92))
+		draw_string(font, Vector2(cell.x * TILE + 4, cell.y * TILE + 15), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 
 
 func _draw_star(cell: Vector2i) -> void:
@@ -293,6 +364,8 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		draw_string(font, center + Vector2(20, 32), "捕", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.8, 0.9))
 	if unit.fresh_spawn:
 		draw_string(font, center + Vector2(-30, -18), "新", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.95, 0.8, 0.4))
+	if String(reward.get("state", "")) == "carried" and int(reward.get("owner_uid", -1)) == unit.uid:
+		draw_string(font, center + Vector2(-31, 33), "奖", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1.0, 0.85, 0.2))
 	if not unit.battle_buffs.is_empty():
 		draw_string(font, center + Vector2(19, 32), "增", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1.0, 0.88, 0.3))
 

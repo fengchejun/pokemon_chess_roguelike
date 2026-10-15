@@ -30,7 +30,7 @@ func _t_fire_seed_hit(t: TestContext) -> void:
 	var result := SkillResolver.apply(state, fire, "fire_seed", entry, false)
 	t.check(bool(result["ok"]), "火种施放成功")
 	var wild := state.unit_by_uid(100)
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 3, "旧技能中心命中草系：基础 2 + 火克草 1")
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 2, "属性克制停用后，火种中心造成基础 2 伤")
 	t.eq(wild.burn_ticks, Balance.BURN_TICKS, "命中附加灼烧")
 
 
@@ -44,7 +44,7 @@ func _t_fire_seed_splash(t: TestContext) -> void:
 	t.check(bool(result["ok"]), "火种打空施放成功")
 	t.eq(result["hits"].size(), 1, "溅射命中 1 个单位")
 	var wild := state.unit_by_uid(100)
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 2, "旧技能溅射草系：基础 1 + 火克草 1")
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 1, "属性克制停用后，火种溅射造成基础 1 伤")
 	t.eq(wild.burn_ticks, 0, "溅射不附加灼烧")
 
 
@@ -132,7 +132,7 @@ func _t_discharge_root(t: TestContext) -> void:
 	var result := SkillResolver.apply(state, pika, "discharge", {"type": "unit", "unit": 100, "cell": Vector2i(2, 3)}, false)
 	t.check(bool(result["ok"]), "放电施放成功")
 	var wild := state.unit_by_uid(100)
-	t.eq(wild.hp, SpeciesDB.hp_of("water_wild1") - 3, "放电 2+1（克制）伤害")
+	t.eq(wild.hp, SpeciesDB.hp_of("water_wild1") - 2, "放电造成基础 2 伤")
 	t.eq(wild.root_pending, true, "命中附加定身")
 
 
@@ -177,7 +177,7 @@ func _t_drain(t: TestContext) -> void:
 	grass_mon.hp = 3
 	var result := SkillResolver.apply(state, grass_mon, "drain", {"type": "unit", "unit": 100, "cell": Vector2i(2, 3)}, false)
 	t.check(bool(result["ok"]), "吸取施放成功")
-	t.eq(state.unit_by_uid(100).hp, SpeciesDB.hp_of("rock_wild1") - 2, "吸取 1 伤害 +1 克制（草克岩）")
+	t.eq(state.unit_by_uid(100).hp, SpeciesDB.hp_of("rock_wild1") - 1, "吸取造成基础 1 伤")
 	t.eq(grass_mon.hp, 4, "自身回复 1 生命")
 
 
@@ -234,11 +234,8 @@ func _t_rock_create(t: TestContext) -> void:
 
 
 func _t_attr_modifier(t: TestContext) -> void:
-	t.eq(Elements.modifier("fire", "grass"), 1, "新增火克草 +1")
-	t.eq(Elements.modifier("grass", "fire"), -1, "草攻火逆克制 -1")
-	t.eq(Elements.modifier("fire", "ice"), 1, "火克冰 +1")
-	t.eq(Elements.modifier("rock", "electric"), 1, "岩克电 +1")
-	t.eq(Elements.modifier("electric", "water"), 1, "电克水 +1")
-	t.eq(Elements.modifier("water", "fire"), 1, "水克火 +1")
+	for pair in [["fire", "grass"], ["grass", "fire"], ["fire", "ice"], ["rock", "electric"], ["electric", "water"], ["water", "fire"]]:
+		t.eq(Elements.modifier(pair[0], pair[1]), 0, "%s 对 %s 无属性修正" % pair)
 	t.eq(Elements.modifier("fire", "fire"), 0, "同属性无修正")
 	t.eq(Elements.modifier("", "fire"), 0, "无属性不参与克制")
+	t.eq(Elements.counter_pairs().size(), 0, "对局不暴露克制配对")

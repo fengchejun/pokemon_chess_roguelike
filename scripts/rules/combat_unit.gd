@@ -34,11 +34,13 @@ var vine_ticks: int = 0
 var haste_ticks: int = 0
 var extra_casts: int = 0
 var battle_skill_uses: Dictionary = {}
+var channel_lock_round: int = 0
 var battle_buffs: Dictionary = {}
+var upgrades: Dictionary = {} # 仅此怪物本局取得的强化；敌人默认为空。
 var last_move_direction: Vector2i = Vector2i.ZERO
 
 # 其他
-var fresh_spawn: bool = false       # 本回合新生成：只移动不施法
+var fresh_spawn: bool = false       # 本回合新生成：在出口待机，不能移动或施法
 
 
 func is_alive() -> bool:
@@ -108,7 +110,9 @@ func dup() -> CombatUnit:
 	copy.haste_ticks = haste_ticks
 	copy.extra_casts = extra_casts
 	copy.battle_skill_uses = battle_skill_uses.duplicate()
+	copy.channel_lock_round = channel_lock_round
 	copy.battle_buffs = battle_buffs.duplicate()
+	copy.upgrades = upgrades.duplicate()
 	copy.last_move_direction = last_move_direction
 	copy.fresh_spawn = fresh_spawn
 	return copy

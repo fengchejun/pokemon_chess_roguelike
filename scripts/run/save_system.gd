@@ -32,7 +32,7 @@ static func load_run(path: String = DEFAULT_PATH) -> RunState:
 	if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
 		return null
 	var data: Dictionary = parsed
-	if int(data.get("version", -1)) != RunState.SAVE_VERSION:
+	if not [1, 2, RunState.SAVE_VERSION].has(int(data.get("version", -1))):
 		return null
 	return RunState.from_dict(data)
 

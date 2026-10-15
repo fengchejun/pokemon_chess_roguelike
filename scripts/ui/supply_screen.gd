@@ -37,7 +37,13 @@ func _ready() -> void:
 		var species_id := String(record["species_id"])
 		line.add_child(UIKit.label(SpeciesDB.name_of(species_id), 16))
 		line.add_child(UIKit.element_chip(SpeciesDB.element_of(species_id)))
-		line.add_child(UIKit.label("生命 %d/%d" % [int(record["hp"]), SpeciesDB.hp_of(species_id)], 14, UIKit.TEXT_DIM))
+		var level := int(record.get("level", 1))
+		var progress := UIKit.label("本局 Lv.%d · 经验 %d/%d · 生命 %d/%d · 亲密度 %d" % [
+			level, int(record.get("xp", 0)), MonsterProgression.threshold_for_level(level + 1),
+			int(record["hp"]), run.monster_max_hp(record), int(record.get("affinity", 0)),
+		], 14, UIKit.TEXT_DIM)
+		progress.name = "SupplyGrowth_%d" % int(record["uid"])
+		line.add_child(progress)
 		team_box.add_child(row)
 	if run.carried.is_empty():
 		team_box.add_child(UIKit.label("没有可出战的宝可梦。", 16, UIKit.BAD))

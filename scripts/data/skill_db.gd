@@ -6,24 +6,25 @@ extends RefCounted
 ##  charge    闪焰冲锋：正交恰 2 格落点
 ##  unit      单体选中
 ##  cell      指定落点
+##  multi_cell 跨回合闪电：依次锁定三个不同落点
 ##  teleport  自身瞬移
 ##  direction 造岩：选择方向
 
 const DEFS := {
-	"fire_burst": {"name": "火球术", "element": "fire", "kind": "ray", "min_range": 2, "max_range": 8, "damage": 2, "ranged": true, "battle_limit": 1, "desc": "越过障碍，中心 2 伤、十字邻格 1 伤；击碎易碎地面，点燃可燃地形。每场限用一次。"},
+	"fire_burst": {"name": "火球术", "element": "fire", "kind": "ray", "min_range": 2, "max_range": 4, "damage": 4, "ranged": true, "channel": true, "desc": "锁定射程 2–4 的格子，下次本方阶段开始落下；九宫格内各受 4 伤。吟唱后下一阶段不能行动，可被死亡、冻结或麻痹打断。"},
 	"flame_jet": {"name": "喷射火焰", "element": "fire", "kind": "direction", "damage": 1, "ranged": true, "desc": "沿选定方向喷射 3 格；障碍截断；命中单位受到 1 伤并灼烧。"},
-	"rain_call": {"name": "造雨术", "element": "water", "kind": "cell", "range": 5, "damage": 0, "ranged": false, "desc": "指定 5 格内中心，周围 3×3 格化为浅水；障碍与深坑不变。"},
+	"rain_call": {"name": "造雨术", "element": "water", "kind": "cell", "range": 4, "damage": 0, "ranged": false, "desc": "指定曼哈顿距离 4 格内中心，周围 3×3 格化为浅水；障碍与深坑不变。"},
 	"rock_push": {"name": "推击", "element": "rock", "kind": "unit", "range": 1, "damage": 2, "ranged": false, "desc": "对相邻单位造成 2 伤并推开一格。"},
 	"rock_break": {"name": "碎岩", "element": "rock", "kind": "unit", "range": 2, "damage": 1, "ranged": true, "desc": "攻击单位或摧毁障碍。"},
-	"lightning": {"name": "闪电", "element": "electric", "kind": "unit", "range": 99, "damage": 2, "ranged": true, "battle_limit": 1, "desc": "攻击场上任意单位并施加感电；重复感电使目标麻痹一轮。每场限用一次。"},
+	"lightning": {"name": "闪电", "element": "electric", "kind": "multi_cell", "range": 5, "damage": 4, "ranged": true, "channel": true, "desc": "选取距自身曼哈顿 5 格内三个不同格，下次本方阶段开始各落下 4 伤并感电。吟唱后下一阶段不能行动。"},
 	"electric_arc": {"name": "放电", "element": "electric", "kind": "cell", "range": 2, "damage": 1, "ranged": true, "desc": "指定两格内水域，沿整片连通水域传导，伤及水中及相邻浸湿单位。"},
 	"volt_replace": {"name": "伏特替换", "element": "electric", "kind": "unit", "range": 2, "damage": 0, "ranged": false, "desc": "与相隔恰好两格的单位交换位置。"},
-	"wild_vines": {"name": "疯狂藤蔓", "element": "grass", "kind": "direction", "damage": 0, "ranged": false, "desc": "在前方两格生成藤蔓；障碍阻挡生成，脚下单位一轮不能移动。"},
+	"wild_vines": {"name": "疯狂藤蔓", "element": "grass", "kind": "direction", "damage": 0, "ranged": false, "desc": "在前方两格生成藤蔓；障碍阻挡生成。生成时或后来停在藤蔓上的地面单位，下一次移动机会受阻。"},
 	"herbal_heal": {"name": "药草治疗", "element": "grass", "kind": "self", "damage": 0, "ranged": false, "desc": "自身周围 3×3 范围内所有己方单位回复 1 HP。"},
 	"frozen_ground": {"name": "冰封大地", "element": "ice", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 3×3 地形生成冰面，可覆盖深水和深坑。"},
-	"freeze_ray": {"name": "急冻光线", "element": "ice", "kind": "ray", "min_range": 1, "max_range": 8, "damage": 0, "ranged": true, "desc": "冻结射线命中的第一个敌人；受攻击解除，冻结期间不能行动。"},
+	"freeze_ray": {"name": "急冻光线", "element": "ice", "kind": "ray", "min_range": 1, "max_range": 4, "damage": 0, "ranged": true, "desc": "射程 4；树木与岩障截断射线。冻结命中的第一个敌人；受攻击解除。"},
 	"ice_shard": {"name": "冰锥", "element": "ice", "kind": "unit", "range": 3, "damage": 1, "ranged": true, "desc": "对 3 格内一个敌人造成 1 点直接伤害。"},
-	"tailwind": {"name": "加速", "element": "wind", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 2×3 的友军本轮移动力 +2。"},
+	"tailwind": {"name": "加速", "element": "wind", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 2×3 的友军下一次可用移动机会，移动力 +2。"},
 	"double_cast": {"name": "加速2", "element": "wind", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "相邻友军本轮获得一次额外技能机会。"},
 	"wind_gust": {"name": "推风", "element": "wind", "kind": "unit", "range": 2, "damage": 0, "ranged": true, "desc": "推动 2 格内一个敌人 1 格；撞击与落入危险地形照常结算。"},
 	"fire_seed": {
@@ -31,10 +32,10 @@ const DEFS := {
 		"element": "fire",
 		"kind": "ray",
 		"min_range": 2,
-		"max_range": 8,
+		"max_range": 6,
 		"damage": 2,
 		"ranged": true,
-		"desc": "沿行列 2 至 8 格射出；命中首个单位造成 2 伤害并附加灼烧；未命中任何单位时，终点格相邻 4 格各受 1 伤害。",
+		"desc": "沿行列 2 至 6 格射出，树木与岩障截断；命中首个单位造成 2 伤害并附加灼烧；未命中单位时，终点相邻 4 格各受 1 伤害。",
 	},
 	"flame_charge": {
 		"name": "闪焰冲锋",
@@ -50,19 +51,19 @@ const DEFS := {
 		"element": "water",
 		"kind": "ray",
 		"min_range": 1,
-		"max_range": 8,
+		"max_range": 4,
 		"damage": 1,
 		"ranged": true,
-		"desc": "沿行列射出；命中单位造成 1 伤害、击退 1 格并减速 1 回合；命中障碍时在其前一格生成水面；命中空地时在该格生成水面。",
+		"desc": "沿行列射程 4，树木与岩障截断；命中单位造成 1 伤害、击退 1 格并减速；命中障碍时在其前一格生成水面。",
 	},
 	"rain_dance": {
 		"name": "造雨术",
 		"element": "water",
 		"kind": "cell",
-		"range": 5,
+		"range": 4,
 		"damage": 0,
 		"ranged": false,
-		"desc": "曼哈顿距离 5 格内的 3×3 区域：平地与草丛转为水面；跳过障碍、深水与熔岩；可对单位所在格施放。",
+		"desc": "曼哈顿距离 4 格内的 3×3 区域：平地与草丛转为水面；跳过障碍、深水与熔岩；可对单位所在格施放。",
 	},
 	"discharge": {
 		"name": "放电",
@@ -129,7 +130,27 @@ const DEFS := {
 }
 
 static func get_def(skill_id: String) -> Dictionary:
+	if is_placeholder(skill_id):
+		var parts := skill_id.split("_")
+		var numeral := "Ⅰ" if parts[2] == "1" else "Ⅱ"
+		return {
+			"name": "%s元素试招%s" % [Elements.name_of(parts[1]), numeral],
+			"element": parts[1], "kind": "unit", "range": 2,
+			"damage": 1, "ranged": true, "placeholder": true,
+			"desc": "临时占位技能：射程 2，单体造成 1 点直接伤害，无状态或地形效果；强化后射程 3。正式技能尚待设计。",
+		}
 	return DEFS.get(skill_id, {})
+
+
+static func placeholder_ids_for(element: String) -> Array:
+	if not ["fire", "water", "grass", "electric", "rock", "ice", "wind"].has(element):
+		return []
+	return ["trial_%s_1" % element, "trial_%s_2" % element]
+
+
+static func is_placeholder(skill_id: String) -> bool:
+	var parts := skill_id.split("_")
+	return parts.size() == 3 and parts[0] == "trial" and ["fire", "water", "grass", "electric", "rock", "ice", "wind"].has(parts[1]) and ["1", "2"].has(parts[2])
 
 
 static func name_of(skill_id: String) -> String:

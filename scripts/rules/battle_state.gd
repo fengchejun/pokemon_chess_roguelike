@@ -8,7 +8,6 @@ extends RefCounted
 const PHASE_PLAYER := "player"
 const PHASE_ENEMY := "enemy"
 const PHASE_SETTLE := "settle"
-const PHASE_REWARD := "reward"
 const PHASE_ENDED := "ended"
 
 var run_seed: int = 0
@@ -23,6 +22,7 @@ var obstacle_durability: Dictionary = {}
 var obstacle_origin: Dictionary = {}
 var obstacle_expire_round: Dictionary = {}
 var burning_cells: Dictionary = {}
+var steam_cells: Dictionary = {}
 var nest: Dictionary = {}
 var reward: Dictionary = {}
 var fruits: Array = []
@@ -39,6 +39,7 @@ var upgrades: Dictionary = {}
 var capture_options: Dictionary = {}
 var reinforcement_pool: Array = []
 var undo_stack: Array = []
+var pending_casts: Array = [] # {uid, side, skill_id, cells, due_round}
 var spawn_rng := RandomNumberGenerator.new()
 var capture_rng := RandomNumberGenerator.new()
 
@@ -84,11 +85,12 @@ func capture_roll() -> float:
 func load_map(map_data: Dictionary) -> void:
 	terrain = map_data["terrain"].duplicate()
 	burning_cells = {}
+	steam_cells = map_data.get("steam_cells", {}).duplicate()
 	obstacle_durability = {}
 	obstacle_origin = {}
 	obstacle_expire_round = {}
 	for cell in map_data.get("obstacle_cells", []):
-		obstacle_durability[cell] = Balance.OBSTACLE_DURABILITY
+		obstacle_durability[cell] = Balance.TREE_DURABILITY if terrain_at(cell) == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
 	nest = {
 		"cell": map_data["nest_cell"],
 		"exits": map_data["nest_exits"].duplicate(),
@@ -97,11 +99,10 @@ func load_map(map_data: Dictionary) -> void:
 		"pending_waves": 0,
 	}
 	reward = {
-		"state": "map",  # map / pending / claimed / destroyed
+		"state": "map",  # map / guarding / carried / lost / destroyed
 		"cell": map_data["reward_cell"],
 		"owner_uid": -1,
-		"options": [],
-		"buff_id": "",
+		"guard_uid": -1,
 	}
 	fruits = map_data.get("fruit_cells", []).duplicate()
 
@@ -113,18 +114,35 @@ func terrain_at(cell: Vector2i) -> int:
 
 
 func set_terrain(cell: Vector2i, value: int) -> void:
+	var was_vines := terrain_at(cell) == TerrainDB.VINES
 	terrain[GridSpec.index(cell)] = value
+	if was_vines and value != TerrainDB.VINES:
+		var occupant := unit_at(cell)
+		if occupant != null and occupant.vine_ticks > 0:
+			occupant.vine_ticks = 0
+			log_event("%s 脚下的藤蔓消失，束缚解除。" % occupant.display_name)
 	if value == TerrainDB.WATER or value == TerrainDB.DEEP or value == TerrainDB.ICE:
 		burning_cells.erase(cell)
+	if value == TerrainDB.ICE or value == TerrainDB.PIT:
+		steam_cells.erase(cell)
+	if value == TerrainDB.VINES:
+		apply_vine_on_landing(unit_at(cell))
 
 
 func ignite(cell: Vector2i) -> void:
 	if not GridSpec.is_inside(cell):
 		return
-	if terrain_at(cell) != TerrainDB.GRASS and terrain_at(cell) != TerrainDB.VINES:
+	if terrain_at(cell) != TerrainDB.GRASS and terrain_at(cell) != TerrainDB.VINES and terrain_at(cell) != TerrainDB.TREE:
 		return
 	burning_cells[cell] = 2
 	log_event("(%d,%d) 的可燃物被点燃。" % [cell.x, cell.y])
+
+
+func add_steam(cell: Vector2i) -> void:
+	if not GridSpec.is_inside(cell):
+		return
+	steam_cells[cell] = 2
+	log_event("(%d,%d) 产生蒸汽；站在雾中不能施法。" % [cell.x, cell.y])
 
 
 func is_nest_cell(cell: Vector2i) -> bool:
@@ -165,57 +183,57 @@ func reward_owner() -> CombatUnit:
 
 
 func damage_reward_at(cell: Vector2i) -> void:
-	if String(reward.get("state", "")) != "map" or reward.get("cell", Vector2i(-1, -1)) != cell:
+	if not ["map", "guarding"].has(String(reward.get("state", ""))) or reward.get("cell", Vector2i(-1, -1)) != cell:
+		return
+	var holder := unit_at(cell)
+	if holder != null and holder.side == "player":
 		return
 	reward["state"] = "destroyed"
 	log_event("奖励格受到伤害，奖励被摧毁。")
 
 
-func _claim_reward(side: String) -> void:
+func _begin_reward_guard() -> void:
 	if String(reward.get("state", "")) != "map":
 		return
 	var unit := unit_at(reward["cell"])
-	if unit == null or unit.side != side:
+	if unit == null or unit.side != "player":
 		return
-	var options := BattleBuffDB.offer(unit, run_seed, battle_index)
-	reward["owner_uid"] = unit.uid
-	reward["options"] = options
-	if side == "enemy":
-		var rng := RandomNumberGenerator.new()
-		rng.seed = hash("enemy_buff:%d:%d:%d" % [run_seed, battle_index, unit.uid])
-		choose_reward_buff(String(options[rng.randi_range(0, options.size() - 1)]))
+	reward["state"] = "guarding"
+	reward["guard_uid"] = unit.uid
+	log_event("%s 开始守住奖励点；敌方行动结束时仍存活并站在此处即可取得战后奖励。" % unit.display_name)
+
+
+func _finish_reward_guard() -> void:
+	if String(reward.get("state", "")) != "guarding":
+		return
+	var unit := unit_by_uid(int(reward.get("guard_uid", -1)))
+	if unit != null and unit.is_alive() and unit.side == "player" and unit.cell == reward["cell"]:
+		reward["state"] = "carried"
+		reward["owner_uid"] = unit.uid
+		log_event("%s 取得战场奖励；若存活到战斗结束，获得一次额外的战后三选一。" % unit.display_name)
 	else:
-		reward["state"] = "pending"
-		phase = PHASE_REWARD
-		log_event("%s 守住奖励格，请选择一项本场强化。" % unit.display_name)
+		reward["state"] = "map"
+		reward["guard_uid"] = -1
+		log_event("奖励点未被守住，可在下回合重新尝试。")
 
 
-func choose_reward_buff(buff_id: String) -> bool:
-	if not (reward.get("options", []) as Array).has(buff_id) or String(reward.get("state", "")) == "claimed":
-		return false
+func _refresh_reward_guard() -> void:
+	if String(reward.get("state", "")) != "guarding":
+		return
+	var unit := unit_by_uid(int(reward.get("guard_uid", -1)))
+	if unit == null or not unit.is_alive() or unit.cell != reward["cell"] or unit.side != "player":
+		reward["state"] = "map"
+		reward["guard_uid"] = -1
+		log_event("守点者离开奖励格，本次守点中断。")
+
+
+func reward_bonus_earned() -> bool:
 	var unit := reward_owner()
-	if unit == null or not unit.is_alive() or not BattleBuffDB.eligible(unit).has(buff_id):
-		return false
-	unit.battle_buffs[buff_id] = true
-	if buff_id == "status_immune":
-		unit.burn_ticks = 0
-		unit.slow_ticks = 0
-	reward["state"] = "claimed"
-	reward["buff_id"] = buff_id
-	reward["options"] = []
-	log_event("%s 获得本场强化「%s」。" % [unit.display_name, BattleBuffDB.name_of(buff_id)])
-	return true
-
-
-func resolve_reward_choice(buff_id: String) -> bool:
-	if phase != PHASE_REWARD or not choose_reward_buff(buff_id):
-		return false
-	_finish_round()
-	return true
+	return ended and end_reason != "forced_retreat" and String(reward.get("state", "")) == "carried" and unit != null and unit.is_alive() and unit.side == "player"
 
 
 func is_blocking_ray(cell: Vector2i) -> bool:
-	if terrain_at(cell) == TerrainDB.OBSTACLE:
+	if terrain_at(cell) == TerrainDB.OBSTACLE or terrain_at(cell) == TerrainDB.TREE:
 		return true
 	if is_nest_cell(cell):
 		return true
@@ -284,7 +302,14 @@ func log_event(text: String) -> void:
 	events.append("[第%d回合·%s] %s" % [maxi(1, round), tag, text])
 
 
-func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "") -> void:
+func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "", killer_uid: int = -1) -> void:
+	cancel_channel(unit, "施法者倒下")
+	if int(reward.get("guard_uid", -1)) == unit.uid and String(reward.get("state", "")) == "guarding":
+		reward["state"] = "destroyed"
+		log_event("守点单位倒下，战场奖励失去。")
+	if int(reward.get("owner_uid", -1)) == unit.uid and String(reward.get("state", "")) == "carried":
+		reward["state"] = "lost"
+		log_event("奖励持有者倒下，战后额外奖励失去。")
 	if unit.is_trainer:
 		unit.hp = 1
 		log_event("训练家落入致死地形，强制撤退。")
@@ -305,18 +330,20 @@ func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "") -> voi
 		enemy_kills.append({
 			"species_id": unit.species_id,
 			"by_player": killer_side == "player",
+			"killer_side": killer_side,
+			"killer_uid": killer_uid if killer_side == "player" else -1,
 			"cause": cause,
 		})
 		log_event("野生 %s 被击败（%s）。" % [unit.display_name, cause])
 
 
 func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
+	cancel_channel(unit, "阵营改变")
 	var field_join := bool(capture_options.get("capture_field_join", false))
 	captured.append({"species_id": species_id, "hp": keep_hp, "uid": unit.uid, "on_field": field_join})
 	if field_join:
 		unit.side = "player"
 		unit.hp = keep_hp
-		unit.move_points += int(upgrades.get("team_move", 0))
 		unit.moved = false
 		unit.skill_used = false
 		unit.capture_used = false
@@ -333,6 +360,7 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	if target == null or not target.is_alive() or base <= 0:
 		return {"amount": 0, "killed": false}
 	if target.frozen:
+		cancel_channel(target, "无法行动")
 		if source != null:
 			damage_reward_at(target.cell)
 		target.frozen = false
@@ -364,13 +392,12 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		if not bool(opts.get("no_element", false)):
 			if GridSpec.is_inside(source.cell) and terrain_at(source.cell) == TerrainDB.GRASS:
 				amount += int(effects["grass_strike"])
-	if target.side == "player" and target_in_grass and not bool(opts.get("no_element", false)):
-		amount = maxi(0, amount - int(upgrades.get("grass_resilience", 0)))
 	amount = maxi(0, amount)
 	if amount > 0:
-		damage_reward_at(target.cell)
 		if source != null and not bool(opts.get("no_element", false)) and target.has_buff("direct_guard") and not bool(opts.get("conductive", false)):
 			amount = maxi(0, amount - 1)
+		if amount > 0:
+			damage_reward_at(target.cell)
 	var cause: String = opts.get("cause", "伤害")
 	var previous_hp := target.hp
 	target.hp -= amount
@@ -390,7 +417,7 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	if target.hp <= 0:
 		killed = true
 		var killer_side: String = source.side if source != null else String(opts.get("killer_side", ""))
-		kill_unit(target, cause, killer_side)
+		kill_unit(target, cause, killer_side, source.uid if source != null else int(opts.get("killer_uid", -1)))
 	return {"amount": amount, "killed": killed, "previous_hp": previous_hp, "hp": target.hp}
 
 
@@ -417,7 +444,63 @@ func apply_slow(target: CombatUnit) -> void:
 	if target.element == "water" or target.has_buff("status_immune"):
 		return
 	target.slow_ticks = 2
-	log_event("%s 获得浸湿：下一轮移动力 -1。" % target.display_name)
+	log_event("%s 获得浸湿：下一次移动力 -1。" % target.display_name)
+
+
+func _apply_shallow_wet(side: String, ticks: int) -> void:
+	# 阶段交接时只检查即将行动的一方；我方在敌方阶段结束后检查。
+	# 整轮结算仍会衰减一次，因此敌方使用 1、我方使用 2，
+	# 使离水后的减速恰好覆盖各自下一次移动机会。
+	for unit in alive_units(side):
+		_apply_shallow_wet_to_unit(unit, ticks)
+
+
+func _apply_shallow_wet_to_unit(unit: CombatUnit, ticks: int) -> void:
+	if unit == null or not unit.is_alive() or unit.element == "water" or unit.has_buff("flight") or unit.has_buff("status_immune"):
+		return
+	if unit.side == "player" and int(effects.get("water_ignore", 0)) > 0:
+		return
+	if terrain_at(unit.cell) != TerrainDB.WATER:
+		return
+	if unit.slow_ticks == 0:
+		log_event("%s 站在浅水中，获得浸湿（下一次移动力 -1）。" % unit.display_name)
+	unit.slow_ticks = maxi(unit.slow_ticks, ticks)
+
+
+func _movement_effect_ticks(unit: CombatUnit) -> int:
+	# 己方阶段内还可移动，效果覆盖本次机会；已经移动则保留到下次机会。
+	# 在对方阶段或整轮结算获得效果时，下一次己方阶段就是目标机会。
+	if phase != unit.side:
+		return 1
+	if unit.moved or unit.frozen or unit.paralyzed_ticks > 0 or unit.move_cancelled or unit.vine_ticks > 0:
+		return 2
+	return 1
+
+
+func apply_vine_bind(unit: CombatUnit) -> void:
+	if unit == null or not unit.is_alive() or unit.has_buff("flight"):
+		return
+	unit.vine_ticks = maxi(unit.vine_ticks, _movement_effect_ticks(unit))
+	log_event("%s 被藤蔓束缚，下一次移动机会受阻。" % unit.display_name)
+
+
+func apply_vine_on_landing(unit: CombatUnit) -> void:
+	if unit != null and GridSpec.is_inside(unit.cell) and terrain_at(unit.cell) == TerrainDB.VINES:
+		apply_vine_bind(unit)
+
+
+func apply_haste(unit: CombatUnit) -> void:
+	if unit == null or not unit.is_alive():
+		return
+	unit.haste_ticks = maxi(unit.haste_ticks, _movement_effect_ticks(unit))
+
+
+func _finish_movement_effects(side: String) -> void:
+	for unit in units:
+		if unit.side != side:
+			continue
+		unit.vine_ticks = maxi(0, unit.vine_ticks - 1)
+		unit.haste_ticks = maxi(0, unit.haste_ticks - 1)
 
 
 func damage_obstacle(cell: Vector2i, amount: int) -> bool:
@@ -426,6 +509,7 @@ func damage_obstacle(cell: Vector2i, amount: int) -> bool:
 	var left := int(obstacle_durability[cell]) - amount
 	if left <= 0:
 		obstacle_durability.erase(cell)
+		burning_cells.erase(cell)
 		var origin := int(obstacle_origin.get(cell, TerrainDB.PLAIN))
 		obstacle_origin.erase(cell)
 		obstacle_expire_round.erase(cell)
@@ -437,17 +521,34 @@ func damage_obstacle(cell: Vector2i, amount: int) -> bool:
 	return false
 
 
-func damage_nest(amount: int) -> bool:
+func damage_nest(amount: int, source_side: String = "") -> bool:
 	if not bool(nest.get("alive", false)):
 		return false
-	nest["hp"] = int(nest["hp"]) - amount
+	if amount <= 0:
+		return false
+	if nest_exit_guarded() and amount == 1:
+		log_event("敌方守住巢穴出口，抵消了 %d 点伤害。" % amount)
+		return false
+	# 守口只决定这次命中能否破防；巢穴每次命中最多损失 1 点耐久。
+	nest["hp"] = maxi(0, int(nest["hp"]) - 1)
 	if int(nest["hp"]) <= 0:
 		nest["alive"] = false
+		nest["destroyed_by_player"] = source_side == "player"
 		set_terrain(nest["cell"], TerrainDB.PLAIN)
 		log_event("巢穴被摧毁，永久停止生成。")
 		end_battle("victory")
 		return true
-	log_event("巢穴耐久 -%d（剩 %d）。" % [amount, nest["hp"]])
+	log_event("巢穴耐久 -1（剩 %d）。" % nest["hp"])
+	return false
+
+
+func nest_exit_guarded() -> bool:
+	if not bool(nest.get("alive", false)):
+		return false
+	for cell in nest.get("exits", []):
+		var occupant := unit_at(cell)
+		if occupant != null and occupant.side == "enemy":
+			return true
 	return false
 
 
@@ -478,6 +579,7 @@ func move_unit(unit: CombatUnit, dest: Vector2i) -> bool:
 	var burn_source_uid_before := unit.burn_source_uid
 	var burn_source_side_before := unit.burn_source_side
 	var direction_before := unit.last_move_direction
+	var vine_ticks_before := unit.vine_ticks
 	for step in path:
 		unit.last_move_direction = step - unit.cell
 		unit.cell = step
@@ -486,6 +588,7 @@ func move_unit(unit: CombatUnit, dest: Vector2i) -> bool:
 				log_event("%s 进入水域，灼烧解除。" % unit.display_name)
 			unit.burn_ticks = 0
 	unit.moved = true
+	apply_vine_on_landing(unit)
 	var pickup := try_pickup_fruit(unit)
 	undo_stack.append({
 		"uid": unit.uid,
@@ -494,6 +597,7 @@ func move_unit(unit: CombatUnit, dest: Vector2i) -> bool:
 		"burn_source_uid": burn_source_uid_before,
 		"burn_source_side": burn_source_side_before,
 		"direction": direction_before,
+		"vine_ticks": vine_ticks_before,
 		"fruit_cell": pickup.get("cell", Vector2i(-1, -1)),
 		"fruit_gained": int(pickup.get("gained", 0)),
 	})
@@ -513,6 +617,7 @@ func undo_last_move() -> bool:
 	unit.burn_source_uid = int(entry["burn_source_uid"])
 	unit.burn_source_side = String(entry["burn_source_side"])
 	unit.last_move_direction = entry.get("direction", Vector2i.ZERO)
+	unit.vine_ticks = int(entry.get("vine_ticks", 0))
 	var fruit_cell: Vector2i = entry.get("fruit_cell", Vector2i(-1, -1))
 	if fruit_cell != Vector2i(-1, -1):
 		fruits.append(fruit_cell)
@@ -533,10 +638,14 @@ func can_undo() -> bool:
 # ---------------------------------------------------------------- 技能与捕获
 
 func skill_targets(unit: CombatUnit, skill_id: String) -> Array:
+	if unit == null or not unit.skills.has(skill_id) or steam_cells.has(unit.cell):
+		return []
 	return SkillResolver.targets(self, unit, skill_id)
 
 
 func preview_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) -> Dictionary:
+	if unit == null or not unit.skills.has(skill_id):
+		return {"ok": false}
 	var clone := clone()
 	var clone_unit := clone.unit_by_uid(unit.uid)
 	if clone_unit == null:
@@ -545,7 +654,9 @@ func preview_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary)
 
 
 func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) -> Dictionary:
-	if ended or not unit.can_act_skill():
+	if unit == null or ended or not unit.can_act_skill() or not unit.skills.has(skill_id):
+		return {"ok": false}
+	if steam_cells.has(unit.cell):
 		return {"ok": false}
 	if not unit.can_use_in_battle(skill_id):
 		return {"ok": false}
@@ -558,6 +669,45 @@ func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) ->
 		commit_actions()
 		check_battle_end()
 	return result
+
+
+func begin_channel(caster: CombatUnit, skill_id: String, cells: Array) -> void:
+	pending_casts.append({"uid": caster.uid, "side": caster.side, "skill_id": skill_id,
+		"cells": cells.duplicate(), "due_round": round + 1})
+	caster.channel_lock_round = round + 1
+	caster.moved = true
+	caster.skill_used = true
+	caster.extra_casts = 0
+	log_event("%s 开始吟唱%s，落点已标记；下次本方阶段不能行动。" % [caster.display_name, SkillDB.name_of(skill_id)])
+
+
+func cancel_channel(unit: CombatUnit, reason: String) -> void:
+	for index in range(pending_casts.size() - 1, -1, -1):
+		if int(pending_casts[index]["uid"]) == unit.uid:
+			pending_casts.remove_at(index)
+			log_event("%s 的吟唱中断：%s；下次本方阶段仍无法行动。" % [unit.display_name, reason])
+
+
+func _resolve_due_channels(side: String) -> void:
+	var due: Array = []
+	for entry in pending_casts.duplicate(true):
+		if String(entry["side"]) == side and int(entry["due_round"]) <= round:
+			due.append(entry)
+	due.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var left := unit_by_uid(int(a["uid"]))
+		var right := unit_by_uid(int(b["uid"]))
+		return int(left.reg_index if left != null else 9999) < int(right.reg_index if right != null else 9999)
+	)
+	for entry in due:
+		if ended:
+			break
+		pending_casts.erase(entry)
+		var caster := unit_by_uid(int(entry["uid"]))
+		if caster == null or not caster.is_alive() or caster.side != side:
+			continue
+		var result := SkillResolver.resolve_channel(self, caster, String(entry["skill_id"]), entry["cells"])
+		log_event("%s 吟唱完成：%s" % [caster.display_name, String(result.get("text", ""))])
+		check_battle_end()
 
 
 func capture_attempt(trainer_unit: CombatUnit, target: CombatUnit, forced_roll: float = -1.0) -> Dictionary:
@@ -581,6 +731,10 @@ func start_round() -> void:
 		unit.skill_used = false
 		unit.capture_used = false
 		unit.extra_casts = 0
+		if unit.channel_lock_round == round:
+			unit.moved = true
+			unit.skill_used = true
+			unit.capture_used = true
 		if unit.paralyzed_ticks > 0:
 			unit.paralyzed_ticks -= 1
 	for unit in units:
@@ -592,12 +746,13 @@ func start_round() -> void:
 			unit.move_cancelled = true
 			log_event("%s 受到定身影响，本回合无法移动。" % unit.display_name)
 	phase = PHASE_PLAYER
-	if round == 1 or round == 3:
+	if Balance.nest_warning_due(round):
 		log_event("巢穴预警：下回合将尝试产怪。")
-	if round == 2 or round == 4:
+	if Balance.nest_wave_due(round):
 		nest["pending_waves"] = int(nest.get("pending_waves", 0)) + 1
 	if int(nest.get("pending_waves", 0)) > 0:
 		_try_spawn_wave()
+	_resolve_due_channels("player")
 
 
 func _try_spawn_wave() -> void:
@@ -610,7 +765,7 @@ func _try_spawn_wave() -> void:
 	for cell in candidates:
 		if not GridSpec.is_inside(cell):
 			continue
-		if is_nest_cell(cell) or terrain_at(cell) == TerrainDB.OBSTACLE:
+		if is_nest_cell(cell) or TerrainDB.blocks_move(terrain_at(cell)):
 			continue
 		if unit_at(cell) != null:
 			continue
@@ -623,7 +778,8 @@ func _try_spawn_wave() -> void:
 		enemy.reg_index = units.size()
 		units.append(enemy)
 		nest["pending_waves"] = maxi(0, int(nest.get("pending_waves", 0)) - 1)
-		log_event("巢穴生成 1 只野生宝可梦（%s）。" % enemy.display_name)
+		apply_vine_on_landing(enemy)
+		log_event("巢穴生成 1 只野生宝可梦（%s）；出生轮在出口待机，下一回合才能行动。" % enemy.display_name)
 		return
 	log_event("巢穴出口被占，本次产怪排队至下一回合。")
 
@@ -636,8 +792,16 @@ func begin_enemy_phase() -> Array:
 	if ended or phase != PHASE_PLAYER:
 		return []
 	commit_actions()
-	_claim_reward("enemy")
+	_begin_reward_guard()
+	_finish_movement_effects("player")
+	_apply_shallow_wet("enemy", 1)
 	phase = PHASE_ENEMY
+	_resolve_due_channels("enemy")
+	_refresh_reward_guard()
+	if ended:
+		_pending_actions = []
+		_pending_index = 0
+		return []
 	_pending_actions = EnemyAI.plan(self)
 	_pending_index = 0
 	log_event("敌方开始行动（%d 个动作）。" % _pending_actions.size())
@@ -645,7 +809,7 @@ func begin_enemy_phase() -> Array:
 
 
 func enemy_phase_finished() -> bool:
-	return _pending_index >= _pending_actions.size()
+	return ended or _pending_index >= _pending_actions.size()
 
 
 func step_enemy_phase() -> Dictionary:
@@ -663,12 +827,19 @@ func step_enemy_phase() -> Dictionary:
 		if not unit.has_buff("flight") and (terrain_at(cell) == TerrainDB.WATER or terrain_at(cell) == TerrainDB.DEEP):
 			unit.burn_ticks = 0
 	if not path.is_empty():
+		unit.moved = true
+		apply_vine_on_landing(unit)
 		log_event("%s 移动 %d 格。" % [unit.display_name, path.size()])
 	var skill: Dictionary = action.get("skill", {})
 	if not skill.is_empty() and unit.can_act_skill() and not ended:
-		SkillResolver.apply(self, unit, String(skill["id"]), skill["target"], false)
-		unit.skill_used = true
+		var result := SkillResolver.apply(self, unit, String(skill["id"]), skill["target"], false)
+		if bool(result.get("ok", false)):
+			if unit.skill_used and unit.extra_casts > 0:
+				unit.extra_casts -= 1
+			else:
+				unit.skill_used = true
 	unit.fresh_spawn = false
+	_refresh_reward_guard()
 	check_battle_end()
 	return action
 
@@ -676,10 +847,9 @@ func step_enemy_phase() -> Dictionary:
 func end_enemy_phase() -> void:
 	if ended:
 		return
-	if round < Balance.MAX_ROUNDS:
-		_claim_reward("player")
-		if phase == PHASE_REWARD:
-			return
+	_finish_movement_effects("enemy")
+	_apply_shallow_wet("player", 2)
+	_finish_reward_guard()
 	_finish_round()
 
 
@@ -721,18 +891,16 @@ func settle_round() -> void:
 			unit.burn_ticks -= 1
 			damage_unit(null, unit, Balance.BURN_DAMAGE, {"no_element": true, "cause": "灼烧", "killer_side": unit.burn_source_side})
 	_settle_burning_cells()
+	for cell in steam_cells.keys().duplicate():
+		steam_cells[cell] = int(steam_cells[cell]) - 1
+		if int(steam_cells[cell]) <= 0:
+			steam_cells.erase(cell)
 	# 4. 减速衰减
 	for unit in units:
 		if unit.slow_ticks > 0:
 			unit.slow_ticks = maxi(0, unit.slow_ticks - 1)
 		if unit.shock_ticks > 0:
 			unit.shock_ticks -= 1
-		if unit.vine_ticks > 0:
-			unit.vine_ticks -= 1
-		if unit.haste_ticks > 0:
-			unit.haste_ticks -= 1
-		if unit.is_alive() and not unit.has_buff("flight") and not unit.has_buff("status_immune") and terrain_at(unit.cell) == TerrainDB.WATER and unit.element != "water" and not (unit.side == "player" and int(effects.get("water_ignore", 0)) > 0):
-			unit.slow_ticks = maxi(unit.slow_ticks, 2)
 	# 5. 恢复果实
 	_pickups()
 	# 6. 胜负与时限
@@ -754,7 +922,7 @@ func _settle_ice_slides() -> void:
 		if direction == Vector2i.ZERO or terrain_at(unit.cell) != TerrainDB.ICE or unit.has_buff("flight"):
 			continue
 		var next: Vector2i = unit.cell + direction
-		if not GridSpec.is_inside(next) or unit_at(next) != null or is_nest_cell(next) or terrain_at(next) == TerrainDB.OBSTACLE:
+		if not GridSpec.is_inside(next) or unit_at(next) != null or is_nest_cell(next) or TerrainDB.blocks_move(terrain_at(next)):
 			continue
 		unit.cell = next
 		log_event("%s 从冰面滑行到 (%d,%d)。" % [unit.display_name, next.x, next.y])
@@ -762,6 +930,10 @@ func _settle_ice_slides() -> void:
 			kill_unit(unit, "冰面滑入致死地形")
 		elif terrain_at(next) == TerrainDB.WATER and not unit.has_buff("flight"):
 			unit.burn_ticks = 0
+			# 浅水阶段检查已发生；滑行入水仍须影响下一次移动。
+			_apply_shallow_wet_to_unit(unit, 2)
+		elif terrain_at(next) == TerrainDB.VINES:
+			apply_vine_on_landing(unit)
 
 
 func _settle_burning_cells() -> void:
@@ -769,7 +941,7 @@ func _settle_burning_cells() -> void:
 	var newly_lit: Array = []
 	for cell in current:
 		for near in GridSpec.neighbors4(cell):
-			if not burning_cells.has(near) and (terrain_at(near) == TerrainDB.GRASS or terrain_at(near) == TerrainDB.VINES):
+			if not burning_cells.has(near) and (terrain_at(near) == TerrainDB.GRASS or terrain_at(near) == TerrainDB.VINES or terrain_at(near) == TerrainDB.TREE):
 				newly_lit.append(near)
 		var occupant := unit_at(cell)
 		if occupant != null and not occupant.has_buff("flight"):
@@ -777,6 +949,7 @@ func _settle_burning_cells() -> void:
 		burning_cells[cell] = int(burning_cells[cell]) - 1
 		if int(burning_cells[cell]) <= 0:
 			burning_cells.erase(cell)
+			obstacle_durability.erase(cell)
 			set_terrain(cell, TerrainDB.PLAIN)
 	for cell in newly_lit:
 		if not burning_cells.has(cell):
@@ -829,6 +1002,7 @@ func end_battle(reason: String) -> void:
 	if ended:
 		return
 	ended = true
+	pending_casts.clear()
 	end_reason = reason
 	phase = PHASE_ENDED
 	var text: String = {
@@ -852,7 +1026,11 @@ func battle_exp() -> int:
 func forecast() -> Array:
 	var signature := _signature()
 	if signature != _forecast_signature:
-		_forecast_cache = EnemyAI.plan(clone())
+		var preview := clone()
+		if phase == PHASE_PLAYER:
+			preview._finish_movement_effects("player")
+			preview._apply_shallow_wet("enemy", 1)
+		_forecast_cache = EnemyAI.plan(preview)
 		_forecast_signature = signature
 	return _forecast_cache
 
@@ -863,6 +1041,10 @@ func _signature() -> String:
 	for value in terrain:
 		terrain_text += str(int(value))
 	parts.append(terrain_text)
+	var fog_keys: Array = steam_cells.keys().duplicate()
+	fog_keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
+	for cell in fog_keys:
+		parts.append("fog:%d,%d:%d" % [cell.x, cell.y, int(steam_cells[cell])])
 	for unit in units:
 		parts.append("%d:%d,%d:%d:%s:%s:%s:%d:%d:%s" % [
 			unit.uid, unit.cell.x, unit.cell.y, unit.hp, unit.side,
@@ -871,9 +1053,11 @@ func _signature() -> String:
 			unit.slow_ticks, unit.burn_ticks,
 			"1" if unit.fresh_spawn else "0",
 		])
-	parts.append("%s:%s:%d:%s" % [str(reward.get("state", "")), str(reward.get("cell", Vector2i.ZERO)), int(reward.get("owner_uid", -1)), str(reward.get("buff_id", ""))])
+	parts.append("%s:%s:%d:%d" % [str(reward.get("state", "")), str(reward.get("cell", Vector2i.ZERO)), int(reward.get("owner_uid", -1)), int(reward.get("guard_uid", -1))])
 	for unit in units:
 		parts.append("buff:%d:%s" % [unit.uid, str(unit.battle_buffs)])
+		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
+	parts.append("pending:%s" % str(pending_casts))
 	var obstacle_keys: Array = obstacle_durability.keys().duplicate()
 	obstacle_keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
 	for cell in obstacle_keys:
@@ -894,6 +1078,7 @@ func clone() -> BattleState:
 	copy.obstacle_origin = obstacle_origin.duplicate()
 	copy.obstacle_expire_round = obstacle_expire_round.duplicate()
 	copy.burning_cells = burning_cells.duplicate()
+	copy.steam_cells = steam_cells.duplicate()
 	copy.nest = nest.duplicate(true)
 	copy.reward = reward.duplicate(true)
 	copy.fruits = fruits.duplicate()
@@ -908,6 +1093,7 @@ func clone() -> BattleState:
 	copy.capture_options = capture_options.duplicate()
 	copy.reinforcement_pool = reinforcement_pool.duplicate()
 	copy.undo_stack = undo_stack.duplicate(true)
+	copy.pending_casts = pending_casts.duplicate(true)
 	for unit in units:
 		copy.units.append(unit.dup())
 	copy.spawn_rng.seed = spawn_rng.seed

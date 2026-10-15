@@ -10,10 +10,12 @@ const BattleScreen = preload("res://scripts/ui/battle_screen.gd")
 const SettlementScreen = preload("res://scripts/ui/settlement_screen.gd")
 const SupplyScreen = preload("res://scripts/ui/supply_screen.gd")
 const RunEndScreen = preload("res://scripts/ui/run_end_screen.gd")
+const MusicDirectorScript = preload("res://scripts/ui/music_director.gd")
 
 var run: RunState = null
 var collection: CollectionState = null
 var current_screen: Control = null
+var music_director: MusicDirector = null
 var pending_settlement: Dictionary = {}
 var battle_settled := false
 var prep_deploy_preset: Array = []
@@ -22,6 +24,8 @@ var autosave_enabled: bool = true # UI 自动化在挂载场景前设为 false�
 
 func _ready() -> void:
 	collection = CollectionState.load_profile() if autosave_enabled else CollectionState.defaults()
+	music_director = MusicDirectorScript.new()
+	add_child(music_director)
 	_fit_to_window()
 	if not get_window().size_changed.is_connected(_fit_to_window):
 		get_window().size_changed.connect(_fit_to_window)
@@ -45,6 +49,16 @@ func _switch(screen: Control) -> void:
 	add_child(screen)
 	screen.size = size
 	current_screen = screen
+	if music_director != null:
+		music_director.play_track(_track_for_screen(screen.name))
+
+
+func _track_for_screen(screen_name: String) -> String:
+	if screen_name == "MenuScreen":
+		return "title"
+	if screen_name == "BattleScreen":
+		return "battle"
+	return "prep"
 
 
 func show_menu() -> void:
@@ -75,7 +89,11 @@ func continue_run() -> void:
 		show_menu()
 		return
 	run = loaded
-	if run.pending_supply and not run.run_lost():
+	if run.settlement_pending:
+		pending_settlement = {"battle": null, "outcome": run.last_settlement.duplicate(true)}
+		battle_settled = true
+		_switch(SettlementScreen.new())
+	elif run.pending_supply and not run.run_lost():
 		show_supply()
 	else:
 		show_prep()
@@ -114,7 +132,9 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 	var cfg := BattleDB.config_for(run.battle_index)
 	var player_units := run.build_deploy_units(deploy_uids)
 	var state := BattleState.new()
-	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, run.effects(), run.upgrades, cfg.get("reinforce", []), run.options)
+	var card_effects := run.effects()
+	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, card_effects, {}, cfg.get("reinforce", []), run.options)
+	run.consume_selected_reward_item()
 	run.mark_deployed(deploy_uids)
 	autosave()
 	var screen: Control = BattleScreen.new()
@@ -139,6 +159,12 @@ func continue_after_settlement() -> void:
 	if run == null:
 		show_menu()
 		return
+	if not run.pending_captures.is_empty() or run.pending_upgrades() or run.pending_reward_choices > 0:
+		return
+	if collection != null:
+		collection.absorb_run(run)
+		if autosave_enabled:
+			collection.save()
 	run.advance_battle()
 	autosave()
 	if run.run_finished() or run.run_lost():

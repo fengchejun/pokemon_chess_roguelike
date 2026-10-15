@@ -1,14 +1,14 @@
 class_name MapCardDB
 extends RefCounted
 
-## 持续整局的地图倾向卡，与 v2 的战前站位增益卡分开保存。
+## 战前使用一张的消耗性地貌卡；只改变本场地图生成倾向。
 
 const CARDS := {
-	"water": {"name": "水脉", "desc": "提高后续战场的浅水生成倾向；与火、电、岩有组合。", "water": 8},
-	"fire": {"name": "火种", "desc": "提高可燃草丛生成倾向；与水组合更易出现湿润草地。", "grass": 7},
-	"rock": {"name": "岩脊", "desc": "提高障碍生成倾向；与水组合更易形成水岩相邻地形。", "rock": 7},
-	"electric": {"name": "电潮", "desc": "提高水域生成倾向；与水组合更易出现连通水面。", "water": 4},
-	"steam_focus": {"name": "雾泉", "desc": "同时提高浅水与可燃草丛倾向。", "water": 3, "grass": 3},
+	"water": {"name": "水脉", "desc": "提高本场浅水生成倾向。", "water": 8},
+	"fire": {"name": "火种", "desc": "提高本场可燃草丛生成倾向。", "grass": 7},
+	"rock": {"name": "岩脊", "desc": "提高本场障碍生成倾向。", "rock": 7},
+	"electric": {"name": "电潮", "desc": "小幅提高本场水域生成倾向。", "water": 4},
+	"steam_focus": {"name": "雾泉", "desc": "同时提高本场浅水与可燃草丛倾向，并提高水面蒸汽生成率。", "water": 3, "grass": 3},
 }
 
 const ALL_IDS := ["water", "fire", "rock", "electric", "steam_focus"]
@@ -34,10 +34,4 @@ static func weights(deck: Array) -> Dictionary:
 		var card := get_card(String(card_id))
 		for key in result:
 			result[key] += int(card.get(key, 0))
-	if deck.has("water") and deck.has("electric"):
-		result["water"] += 5
-	if deck.has("water") and deck.has("fire"):
-		result["grass"] += 3
-	if deck.has("water") and deck.has("rock"):
-		result["rock"] += 2
 	return result

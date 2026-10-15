@@ -9,6 +9,7 @@ var selected_uid: int = 0
 var viewed_enemy_uid: int = 0
 var aim_skill: String = ""
 var aim_entries: Array = []
+var aim_cells: Array = []
 var capture_mode := false
 var busy := false
 var settled_reported := false
@@ -25,8 +26,6 @@ var threat_check: CheckBox = null
 var hint_label: Label = null
 var forecast_list: VBoxContainer = null
 var log_label: RichTextLabel = null
-var reward_layer: Control = null
-var reward_choices: VBoxContainer = null
 
 
 func _ready() -> void:
@@ -78,55 +77,8 @@ func _ready() -> void:
 	log_label.custom_minimum_size = Vector2(220, 0)
 	log_label.add_theme_font_size_override("normal_font_size", 12)
 	log_scroll.add_child(log_label)
-	_build_reward_choice()
 	board.set_from_state(state)
 	refresh_all()
-
-
-func _build_reward_choice() -> void:
-	reward_layer = Control.new()
-	reward_layer.name = "RewardChoiceLayer"
-	reward_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
-	reward_layer.mouse_filter = Control.MOUSE_FILTER_STOP
-	reward_layer.visible = false
-	add_child(reward_layer)
-	var shade := ColorRect.new()
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.color = Color(0.02, 0.04, 0.07, 0.72)
-	reward_layer.add_child(shade)
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	reward_layer.add_child(center)
-	var panel := UIKit.panel(UIKit.PANEL)
-	panel.custom_minimum_size = Vector2(420, 0)
-	center.add_child(panel)
-	reward_choices = UIKit.vbox(10)
-	panel.add_child(reward_choices)
-
-
-func _refresh_reward_choice() -> void:
-	var pending := state.phase == BattleState.PHASE_REWARD and not state.ended
-	reward_layer.visible = pending
-	if not pending:
-		return
-	UIKit.clear_children(reward_choices)
-	var owner := state.reward_owner()
-	reward_choices.add_child(UIKit.label("战场奖励 · 选择本场 Buff", 19, UIKit.ACCENT))
-	reward_choices.add_child(UIKit.wrapped("%s 守住奖励格。请选择一项；选定后继续回合结算。" % (owner.display_name if owner != null else "我方单位"), 13))
-	for option in state.reward.get("options", []):
-		var id := String(option)
-		var button := UIKit.small_button("%s｜%s" % [BattleBuffDB.name_of(id), BattleBuffDB.desc_of(id)])
-		button.name = "RewardBuff_%s" % id
-		button.pressed.connect(_on_reward_choice.bind(id))
-		reward_choices.add_child(button)
-
-
-func _on_reward_choice(id: String) -> void:
-	if not state.resolve_reward_choice(id):
-		return
-	app.sync_and_save(state)
-	refresh_all()
-	hint_label.text = "已选择「%s」，进入第 %d 回合。" % [BattleBuffDB.name_of(id), state.round]
 
 
 func _header_box() -> Control:
@@ -216,27 +168,28 @@ func refresh_all() -> void:
 	_update_forecast()
 	_update_log()
 	_update_selection_overlay()
-	_refresh_reward_choice()
 	if state.ended and not settled_reported:
 		settled_reported = true
 		call_deferred("_report_end")
 
 
 func _update_header() -> void:
-	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "reward": "选择奖励", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
+	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
 	round_label.text = "第 %d/%d 回合 · %s" % [maxi(1, state.round), Balance.MAX_ROUNDS, phase_text]
 	var reward_text := ""
 	match String(state.reward.get("state", "")):
 		"map":
-			reward_text = "　奖励待守点%s" % ("（末轮我方不再领奖）" if state.round >= Balance.MAX_ROUNDS else "")
-		"pending":
-			reward_text = "　奖励待选择"
-		"claimed":
-			reward_text = "　奖励：%s" % BattleBuffDB.name_of(String(state.reward.get("buff_id", "")))
+			reward_text = "　奖励待守点"
+		"guarding":
+			reward_text = "　奖励守点中"
+		"carried":
+			reward_text = "　奖励已持有（守护持有者）"
+		"lost":
+			reward_text = "　奖励因持有者倒下而失去"
 		"destroyed":
 			reward_text = "　奖励已摧毁"
-	status_label.text = "敌人剩余 %d｜已击败 %d｜已捕获 %d｜经验 %d%s" % [
-		state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), state.battle_exp(), reward_text,
+	status_label.text = "敌人剩余 %d｜已击败 %d｜已捕获 %d%s" % [
+		state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text,
 	]
 
 
@@ -254,7 +207,8 @@ func _update_unit_card() -> void:
 	unit_title.text = "%s（%s · %s）" % [unit.display_name, side_text, Elements.FULL_NAMES.get(unit.element, "无属性")]
 	var lines: Array = []
 	lines.append("生命 %d/%d　移动 %d（基础 %d）" % [unit.hp, unit.max_hp, state.move_budget_for(unit), unit.move_points])
-	lines.append(Elements.counter_hint(unit.element))
+	if Elements.MATCHUPS_ENABLED:
+		lines.append(Elements.counter_hint(unit.element))
 	var statuses: Array = []
 	if unit.burn_ticks > 0:
 		statuses.append("灼烧 %d 回合" % unit.burn_ticks)
@@ -270,6 +224,10 @@ func _update_unit_card() -> void:
 		statuses.append("麻痹")
 	if unit.frozen:
 		statuses.append("冰冻")
+	if unit.channel_lock_round > state.round:
+		statuses.append("吟唱中：第 %d 回合本方阶段结算，届时不能行动" % unit.channel_lock_round)
+	elif unit.channel_lock_round == state.round:
+		statuses.append("吟唱代价：本阶段不能行动")
 	if unit.vine_ticks > 0:
 		statuses.append("藤蔓束缚")
 	if unit.haste_ticks > 0:
@@ -278,25 +236,46 @@ func _update_unit_card() -> void:
 		statuses.append("额外施法 %d 次" % unit.extra_casts)
 	for buff_id in unit.battle_buffs:
 		statuses.append("本场 Buff：%s" % BattleBuffDB.name_of(String(buff_id)))
+	if String(state.reward.get("state", "")) == "carried" and int(state.reward.get("owner_uid", -1)) == unit.uid:
+		statuses.append("持有战场奖励：战斗结束前须存活")
 	if statuses.is_empty():
 		statuses.append("无")
 	lines.append("状态：" + "、".join(statuses))
+	lines.append("本回合移动：%s" % _move_status(unit))
 	if unit.is_trainer:
 		lines.append("本回合捕获机会：%s" % ("已使用" if unit.capture_used else "可用"))
 	else:
-		lines.append("本回合：移动 %s，技能 %s" % ["已用" if unit.moved else "可用", "可用" if unit.can_act_skill() else "已用"])
+		lines.append("本回合技能：%s" % ("可用" if unit.can_act_skill() else "已用或受限"))
 	if unit.side == "enemy":
 		var low_hp_rules := bool(state.capture_options.get("capture_low_hp", false))
 		lines.append("捕获概率：%d%%（训练家在周围八格可尝试%s）" % [
 			CaptureSystem.chance_percent(unit, low_hp_rules), "，目标需不高于半血" if low_hp_rules else "",
 		])
 		if unit.fresh_spawn:
-			lines.append("本回合新生成：只移动、不施放技能")
+			lines.append("本回合新生成：在巢穴出口待机，不能移动或施法")
 	for skill_id in unit.skills:
 		var id := String(skill_id)
 		var used_text := "（本场已用尽）" if not unit.can_use_in_battle(id) else ""
 		lines.append("· %s%s：%s" % [SkillDB.name_of(id), used_text, SkillDB.get_def(id).get("desc", "")])
 	unit_body.text = "\n".join(lines)
+
+
+func _move_status(unit: CombatUnit) -> String:
+	if not unit.is_alive():
+		return "无法移动（已倒下）"
+	if unit.moved:
+		return "已用"
+	if unit.frozen:
+		return "无法移动（冰冻）"
+	if unit.paralyzed_ticks > 0:
+		return "无法移动（麻痹）"
+	if unit.vine_ticks > 0:
+		return "无法移动（藤蔓束缚）"
+	if unit.move_cancelled:
+		return "无法移动（本回合被定身或施法锁定）"
+	if unit.effective_move() <= 0:
+		return "无法移动（移动力为 0）"
+	return "可用"
 
 
 func _rebuild_skill_buttons() -> void:
@@ -319,12 +298,14 @@ func _rebuild_skill_buttons() -> void:
 	for skill_id in unit.skills:
 		var id := String(skill_id)
 		var def := SkillDB.get_def(id)
-		var button_text := "%s（%s）" % [def.get("name", id), _skill_tag(id)]
+		var button_text := "%s（%s）" % [def.get("name", id), _skill_tag(id, unit)]
 		if not unit.can_use_in_battle(id):
 			button_text += "·本场已用"
 		var button := UIKit.small_button(button_text)
 		button.name = "SkillButton_%s" % id
 		button.tooltip_text = String(def.get("desc", ""))
+		if state.round >= Balance.MAX_ROUNDS and (id == "fire_burst" or id == "lightning"):
+			button.tooltip_text += "\n第 %d 回合开始吟唱无法在本场结算。" % Balance.MAX_ROUNDS
 		button.toggle_mode = true
 		button.button_pressed = aim_skill == id
 		var entries := state.skill_targets(unit, id)
@@ -336,12 +317,12 @@ func _rebuild_skill_buttons() -> void:
 			button.tooltip_text += "\n（本场使用次数已耗尽）"
 		elif entries.is_empty():
 			button.disabled = true
-			button.tooltip_text += "\n（当前没有有效目标）"
+			button.tooltip_text += "\n（蒸汽中无法施法）" if state.steam_cells.has(unit.cell) else "\n（当前没有有效目标）"
 		button.pressed.connect(func() -> void: _on_skill_pressed(id))
 		skill_box.add_child(button)
 
 
-func _skill_tag(skill_id: String) -> String:
+func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	var def := SkillDB.get_def(skill_id)
 	var parts: Array = []
 	var damage := int(def.get("damage", 0))
@@ -350,8 +331,15 @@ func _skill_tag(skill_id: String) -> String:
 	var kind := String(def.get("kind", ""))
 	if kind == "ray":
 		parts.append("射线 %d-%d" % [int(def.get("min_range", 1)), int(def.get("max_range", 8))])
+	elif kind == "multi_cell":
+		parts.append("选 3 格 · 距离 ≤%d" % int(def.get("range", 5)))
 	elif kind == "unit":
-		parts.append("射程 %d" % int(def.get("range", 1)))
+		var actual_range := int(def.get("range", 1))
+		if SkillDB.is_placeholder(skill_id):
+			actual_range += int(unit.upgrades.get(skill_id + "_range", 0))
+		elif skill_id == "rock_break" or skill_id == "double_cast":
+			actual_range += int(unit.upgrades.get(skill_id + "_range", 0))
+		parts.append("射程 %d" % actual_range)
 	elif kind == "cell":
 		parts.append("落点 %d" % int(def.get("range", 3)))
 	elif kind == "charge":
@@ -399,8 +387,15 @@ func _update_forecast() -> void:
 	var enabled := true
 	if app != null and app.run != null:
 		enabled = bool(app.run.options.get("threat_preview", true))
+	for cast in state.pending_casts:
+		var caster := state.unit_by_uid(int(cast["uid"]))
+		var caster_name := caster.display_name if caster != null else "?"
+		forecast_list.add_child(UIKit.wrapped("蓄力警示：%s 的%s，第 %d 回合%s阶段命中 %s" % [
+			caster_name, SkillDB.name_of(String(cast["skill_id"])), int(cast["due_round"]),
+			"我方" if String(cast["side"]) == "player" else "敌方", str(cast["cells"]),
+		], 12, UIKit.BAD))
 	if not enabled:
-		forecast_list.add_child(UIKit.label("已在设置中关闭。", 12, UIKit.TEXT_DIM))
+		forecast_list.add_child(UIKit.label("普通威胁预告已关闭；蓄力警示始终显示。", 12, UIKit.TEXT_DIM))
 		return
 	if state.ended:
 		forecast_list.add_child(UIKit.label("战斗已结束。", 12, UIKit.TEXT_DIM))
@@ -523,6 +518,14 @@ func _on_board_hovered(cell: Vector2i) -> void:
 	if aim_skill != "":
 		var unit := state.unit_by_uid(selected_uid)
 		var entry := _find_entry(cell)
+		if aim_skill == "lightning":
+			if not entry.is_empty() and not aim_cells.has(cell):
+				hint_label.text = "闪电落点 %d/3：选中 (%d,%d)；已锁定 %s" % [aim_cells.size() + 1, cell.x, cell.y, str(aim_cells)]
+				board.area_cells = aim_cells + [cell]
+			else:
+				hint_label.text = "闪电需选三个不同且距施法者不超过 5 格的落点。"
+			board.queue_redraw()
+			return
 		if unit != null and not entry.is_empty():
 			var preview := state.preview_skill(unit, aim_skill, entry)
 			if bool(preview.get("ok", false)):
@@ -554,6 +557,13 @@ func _on_board_hovered(cell: Vector2i) -> void:
 			hint_label.add_theme_color_override("font_color", UIKit.TEXT)
 		board.queue_redraw()
 		return
+	if bool(state.nest.get("alive", false)) and (state.nest.get("exits", []) as Array).has(cell):
+		var occupant := state.unit_at(cell)
+		var detail := "空置" if occupant == null else "敌方守口：1 点伤害无效，2 点以上命中掉 1 耐久" if occupant.side == "enemy" else "我方堵口，产怪排队"
+		if occupant == null and (Balance.nest_warning_due(state.round) or int(state.nest.get("pending_waves", 0)) > 0):
+			detail += "；%s" % ("末轮仍有积压，本场不再产怪" if state.round >= Balance.MAX_ROUNDS else "下回合将尝试产怪")
+		hint_label.text = "巢穴唯一出口：%s。" % detail
+		hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	var unit := state.unit_by_uid(selected_uid)
 	if unit != null and unit.can_move_now():
 		var options := state.move_options(unit)
@@ -596,11 +606,31 @@ func _show_terrain(cell: Vector2i) -> void:
 	var value := state.terrain_at(cell)
 	var lines: Array = ["地块 (%d,%d)：%s" % [cell.x, cell.y, TerrainDB.name_of(value)], TerrainDB.DESCRIPTIONS.get(value, "")]
 	if state.obstacle_durability.has(cell):
-		lines.append("障碍耐久：%d/2" % int(state.obstacle_durability[cell]))
+		var max_hp := Balance.TREE_DURABILITY if value == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
+		lines.append("障碍耐久：%d/%d；树木和岩障会截断射线。" % [int(state.obstacle_durability[cell]), max_hp])
+	if state.steam_cells.has(cell):
+		lines.append("蒸汽：剩余 %d 次整轮结算；站在其中不能施放技能。" % int(state.steam_cells[cell]))
 	if state.is_nest_cell(cell):
-		lines.append("巢穴耐久：%d/3（第 2、4 回合各尝试生成 1 只；堵口排队）" % int(state.nest.get("hp", 3)))
+		lines.append("巢穴耐久：%d/3（第 2、4、6 回合各尝试生成 1 只；堵口排队）" % int(state.nest.get("hp", 3)))
+		lines.append("敌人守住出口时，单次 1 点伤害无效；2 点以上命中仍只掉 1 耐久。我方堵口不提供防御。")
+	if bool(state.nest.get("alive", false)) and (state.nest.get("exits", []) as Array).has(cell):
+		var holder := state.unit_at(cell)
+		var status := "空置"
+		if holder != null:
+			status = "敌方守口：1 伤无效" if holder.side == "enemy" else "我方堵口：延迟产怪"
+		elif int(state.nest.get("pending_waves", 0)) > 0:
+			status = "待产怪：末轮无法继续补产" if state.round >= Balance.MAX_ROUNDS else "待产怪：下回合尝试出现"
+		elif Balance.nest_warning_due(state.round):
+			status = "预警：下回合将产怪"
+		lines.append("巢穴唯一出口：%s。积压 %d 只。" % [status, int(state.nest.get("pending_waves", 0))])
 	if cell == state.reward.get("cell", Vector2i(-1, -1)):
-		lines.append("奖励格：敌人守到我方阶段结束会自动选 Buff；我方守到敌方阶段结束可二选一。领取前受伤会毁坏；第 6 回合敌方阶段结束后不再发放。")
+		match String(state.reward.get("state", "")):
+			"map", "guarding":
+				lines.append("奖励格：我方在结束行动时站上去，敌方行动结束时仍活着且站在此格即可取得奖励。受伤但存活不妨碍守点；持有者须活到战斗结束。")
+			"carried":
+				lines.append("奖励已由我方持有；持有者活到战斗结束可记录一次额外战后三选一。")
+			"lost", "destroyed":
+				lines.append("本场奖励已失去。")
 	if state.fruits.has(cell):
 		lines.append("恢复果实：拾取回复 2 生命。")
 	unit_title.text = "地块信息"
@@ -629,6 +659,7 @@ func _on_skill_pressed(skill_id: String) -> void:
 		_clear_aim()
 		return
 	aim_skill = skill_id
+	aim_cells = []
 	capture_mode = false
 	aim_entries = state.skill_targets(unit, skill_id)
 	board.clear_overlays()
@@ -636,7 +667,9 @@ func _on_skill_pressed(skill_id: String) -> void:
 		var cell: Vector2i = entry.get("cell", Vector2i(-1, -1))
 		if GridSpec.is_inside(cell):
 			board.attack_cells.append(cell)
-	hint_label.text = "瞄准：%s。点击金色格施放；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
+	hint_label.text = "瞄准：%s。%s右键或 Esc 取消。" % [SkillDB.name_of(skill_id), "依次点击三个不同金色格；" if skill_id == "lightning" else "点击金色格；"]
+	if state.round >= Balance.MAX_ROUNDS and (skill_id == "fire_burst" or skill_id == "lightning"):
+		hint_label.text += " 第 %d 回合开始吟唱将不会在本场结算。" % Balance.MAX_ROUNDS
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_rebuild_skill_buttons()
 	board.queue_redraw()
@@ -650,6 +683,7 @@ func _on_capture_pressed() -> void:
 		return
 	capture_mode = true
 	aim_skill = ""
+	aim_cells = []
 	board.clear_overlays()
 	for enemy in _capture_targets(trainer):
 		board.attack_cells.append(enemy.cell)
@@ -662,6 +696,7 @@ func _clear_aim() -> void:
 	if aim_skill == "" and not capture_mode:
 		return
 	aim_skill = ""
+	aim_cells = []
 	capture_mode = false
 	aim_entries = []
 	board.clear_overlays()
@@ -685,6 +720,20 @@ func _try_cast_at(cell: Vector2i) -> void:
 	if entry.is_empty():
 		hint_label.text = "该格不在技能有效范围内。"
 		hint_label.add_theme_color_override("font_color", UIKit.BAD)
+		return
+	if aim_skill == "lightning":
+		if aim_cells.has(cell):
+			hint_label.text = "闪电三个落点不能重复。"
+			return
+		aim_cells.append(cell)
+		board.area_cells = aim_cells.duplicate()
+		if aim_cells.size() < 3:
+			hint_label.text = "闪电已选 %d/3 格；右键或 Esc 可取消。" % aim_cells.size()
+			board.queue_redraw()
+			return
+		var chosen := aim_cells.duplicate()
+		if not do_cast("lightning", {"type": "multi", "cells": chosen}):
+			aim_cells = chosen.slice(0, 2)
 		return
 	do_cast(aim_skill, entry)
 
@@ -728,6 +777,7 @@ func do_cast(skill_id: String, entry: Dictionary) -> bool:
 		return false
 	aim_skill = ""
 	aim_entries = []
+	aim_cells = []
 	capture_mode = false
 	app.sync_and_save(state)
 	board.clear_overlays()
@@ -798,10 +848,7 @@ func _enemy_phase() -> void:
 			selected_uid = 0
 	board.clear_overlays()
 	refresh_all()
-	if state.phase == BattleState.PHASE_REWARD:
-		hint_label.text = "奖励已守住，请选择一项本场 Buff。"
-	else:
-		hint_label.text = "已进入第 %d 回合（我方行动）。" % maxi(1, state.round)
+	hint_label.text = "已进入第 %d 回合（我方行动）。" % maxi(1, state.round)
 	hint_label.add_theme_color_override("font_color", UIKit.TEXT_DIM)
 
 

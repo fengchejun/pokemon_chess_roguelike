@@ -26,13 +26,8 @@ func _ready() -> void:
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	columns.add_child(left)
 	left.add_child(UIKit.label("整备 · 第 %d 场（%s）" % [run.battle_index + 1, run.region_name()], 24, UIKit.ACCENT))
-	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7)) + int(run.upgrades.get("trainer_hp", 0))
-	left.add_child(UIKit.label("训练家生命：%d / %d（每次冒险前回满）　经验：%d　出战宝可梦冒险结束恢复 30%%，留守基地的成员在冒险结束时回满 100%%。" % [run.trainer_hp, trainer_max, run.exp], 14, UIKit.TEXT_DIM))
-	var upgrade_names: Array = []
-	for upgrade_id in run.upgrades_taken:
-		upgrade_names.append(String(RunState.UPGRADES[upgrade_id]["name"]))
-	if not upgrade_names.is_empty():
-		left.add_child(UIKit.label("局内强化：" + "、".join(upgrade_names), 13, UIKit.TEXT_DIM))
+	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
+	left.add_child(UIKit.wrapped("训练家生命：%d / %d（每次冒险前回满）。每只怪物独立累计本局经验；击败、捕获与战场目标按实际贡献结算。等级与强化在新局重置，出战宝可梦冒险结束恢复 30%%，留守基地成员回满。" % [run.trainer_hp, trainer_max], 14, UIKit.TEXT_DIM))
 	left.add_child(UIKit.label("出战名单（%d/%d）——每场最多勾选 %d 只出战；其余留守基地（冒险结束时回满）；濒死成员需留守一个冒险周期：" % [run.carried.size(), Balance.CARRIED_LIMIT, MAX_DEPLOY], 16))
 	var team_scroll := UIKit.scroll()
 	left.add_child(team_scroll)
@@ -65,7 +60,7 @@ func _ready() -> void:
 	right.add_child(right_scroll)
 	var right_content := UIKit.vbox(10)
 	right_scroll.add_child(right_content)
-	right_content.add_child(_card_mode_box(run))
+	right_content.add_child(_reward_inventory_box(run))
 	right_content.add_child(_capture_settings_box(run))
 	right_content.add_child(_archive_box(run))
 	right_content.add_child(_storage_box(run))
@@ -103,23 +98,33 @@ func _capture_settings_box(run: RunState) -> Control:
 	return box
 
 
-func _card_mode_box(run: RunState) -> Control:
+func _reward_inventory_box(run: RunState) -> Control:
 	var box := UIKit.panel(UIKit.PANEL)
 	var column := UIKit.vbox(5)
 	box.add_child(column)
-	column.add_child(UIKit.label("环境卡模式（二选一）", 17, UIKit.ACCENT))
+	column.add_child(UIKit.label("战后奖励背包（%d 张）" % run.reward_inventory.size(), 17, UIKit.ACCENT))
 	var selector := OptionButton.new()
-	selector.name = "CardModeOption"
-	selector.add_item("v2 站位增益卡：每战前五选二")
-	selector.add_item("地图构筑卡：战后选卡，影响后续地图")
-	selector.select(1 if String(run.options.get("card_mode", "position")) == "environment" else 0)
+	selector.name = "RewardItemOption"
+	selector.add_item("本场不使用消耗卡")
+	var selected_index := 0
+	for reward_id in run.reward_inventory:
+		var id := String(reward_id)
+		selector.add_item(RewardDB.name_of(id))
+		if id == run.selected_reward_item and selected_index == 0:
+			selected_index = selector.item_count - 1
+	selector.select(selected_index)
 	selector.item_selected.connect(func(index: int) -> void:
-		run.options["card_mode"] = "environment" if index == 1 else "position"
-		app.autosave()
-		show_prep_after_mode_change()
+		var id := "" if index == 0 else String(run.reward_inventory[index - 1])
+		if run.select_reward_item(id):
+			app.autosave()
+			show_prep_after_mode_change()
 	)
 	column.add_child(selector)
-	column.add_child(UIKit.wrapped("默认使用 v2 站位卡：在地图预览页选五张中的两张。切到地图构筑卡后，第一场无卡；每场战斗结算时三选一，已选卡持续影响后续地图。两种模式不会叠加。", 12))
+	column.add_child(UIKit.wrapped("每场战斗前最多使用一张，开战时才消耗。站位卡作用于本场战斗；地貌卡改变本场地图生成倾向；改造工具允许预览时改造两格。未选中的卡会留在本局背包。", 12))
+	if run.selected_reward_item != "":
+		column.add_child(UIKit.wrapped("已选：%s\n%s" % [RewardDB.name_of(run.selected_reward_item), RewardDB.description_of(run.selected_reward_item)], 12, UIKit.ACCENT))
+	if run.pending_bonus_choices > 0:
+		column.add_child(UIKit.wrapped("旧存档待领额外奖励 %d 次：将在下一次战后结算中兑现。" % run.pending_bonus_choices, 12, UIKit.ACCENT))
 	return box
 
 
@@ -148,15 +153,51 @@ func _team_row(record: Dictionary) -> Control:
 	info.add_child(title_line)
 	title_line.add_child(UIKit.label(SpeciesDB.name_of(species_id), 17))
 	title_line.add_child(UIKit.element_chip(SpeciesDB.element_of(species_id)))
-	title_line.add_child(UIKit.label("生命 %d/%d" % [int(record["hp"]), SpeciesDB.hp_of(species_id)], 14, UIKit.TEXT_DIM))
+	info.add_child(UIKit.wrapped("本局 Lv.%d · 经验 %d/%d · 生命 %d/%d · 基础移动 %d · 亲密度 %d（永久，暂无效果）" % [
+		int(record.get("level", 1)), int(record.get("xp", 0)), MonsterProgression.threshold_for_level(int(record.get("level", 1)) + 1),
+		int(record["hp"]), app.run.monster_max_hp(record), SpeciesDB.move_of(species_id), int(record.get("affinity", 0)),
+	], 13, UIKit.TEXT_DIM))
 	if int(record["hp"]) <= 0:
 		title_line.add_child(UIKit.label("濒死（休养中）", 13, UIKit.BAD))
-	title_line.add_child(UIKit.label("移动 %d" % SpeciesDB.move_of(species_id), 14, UIKit.TEXT_DIM))
-	var skill_names: Array = []
-	for skill_id in SpeciesDB.skills_of(species_id):
-		skill_names.append(SkillDB.name_of(String(skill_id)))
-	info.add_child(UIKit.wrapped("技能：" + "、".join(skill_names), 13))
-	info.add_child(UIKit.wrapped(Elements.counter_hint(SpeciesDB.element_of(species_id)), 12))
+	var upgrade_names: Array = []
+	for upgrade_id in record.get("upgrades_taken", []):
+		var info_entry: Dictionary = RunState.upgrade_info(String(upgrade_id))
+		if not info_entry.is_empty():
+			upgrade_names.append(String(info_entry.get("name", upgrade_id)))
+	info.add_child(UIKit.wrapped("本局强化：%s" % ("、".join(upgrade_names) if not upgrade_names.is_empty() else "尚无"), 12, UIKit.TEXT_DIM))
+	var known: Array = record.get("known_skills", SpeciesDB.skills_of(species_id))
+	var equipped: Array = record.get("equipped_skills", SpeciesDB.skills_of(species_id))
+	var library_names: Array = []
+	for skill_id in known:
+		var id := String(skill_id)
+		var enhanced := (record.get("upgrades_taken", []) as Array).has(RunState.upgrade_id_for_skill(id))
+		library_names.append("%s%s%s" % [SkillDB.name_of(id), "★" if enhanced else "", "（占位）" if SkillDB.is_placeholder(id) else ""])
+	info.add_child(UIKit.wrapped("本局招式库：" + "、".join(library_names), 12, UIKit.TEXT_DIM))
+	for slot in range(RunState.MAX_EQUIPPED_SKILLS):
+		var selector := OptionButton.new()
+		selector.name = "SkillSlot_%d_%d" % [int(record["uid"]), slot]
+		selector.add_item("装备位 %d：空" % (slot + 1))
+		selector.set_item_metadata(0, "")
+		var selected_index := 0
+		for skill_id in known:
+			var id := String(skill_id)
+			if equipped.has(id) and (slot >= equipped.size() or String(equipped[slot]) != id):
+				continue
+			var enhanced := (record.get("upgrades_taken", []) as Array).has(RunState.upgrade_id_for_skill(id))
+			selector.add_item("装备位 %d：%s%s" % [slot + 1, SkillDB.name_of(id), " ★" if enhanced else ""])
+			selector.set_item_metadata(selector.item_count - 1, id)
+			if slot < equipped.size() and String(equipped[slot]) == id:
+				selected_index = selector.item_count - 1
+		selector.select(selected_index)
+		selector.item_selected.connect(func(index: int) -> void:
+			var id := String(selector.get_item_metadata(index))
+			if app.run.equip_monster_skill(int(record["uid"]), slot, id):
+				app.autosave()
+				show_prep_after_mode_change()
+		)
+		info.add_child(selector)
+	if Elements.MATCHUPS_ENABLED:
+		info.add_child(UIKit.wrapped(Elements.counter_hint(SpeciesDB.element_of(species_id)), 12))
 	return row
 
 
@@ -200,7 +241,7 @@ func _next_box(run: RunState) -> Control:
 		var species_id := String(pair[0])
 		enemy_names.append("%s【%s】" % [SpeciesDB.name_of(species_id), Elements.name_of(SpeciesDB.element_of(species_id))])
 	column.add_child(UIKit.wrapped("敌方：%s（共 %d 只，另有巢穴增援）" % [", ".join(enemy_names), enemy_names.size()], 14))
-	column.add_child(UIKit.wrapped("巢穴：耐久 3，第 2、4 回合各尝试生成 1 只；堵口则排队，摧毁后立即获胜。", 13))
+	column.add_child(UIKit.wrapped("巢穴：耐久 3，第 2、4、6 回合各尝试生成 1 只；堵口则排队，摧毁后立即获胜。", 13))
 	return box
 
 

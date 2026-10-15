@@ -1,21 +1,30 @@
 class_name Balance
 extends RefCounted
 
-## v2.0 定稿数值集中于此。调整平衡时优先动威胁预算（battle_db）与克制修正，
-## 最后再动基础伤害。
+## 原型数值集中于此；属性克制暂时停用，地图密度由区域权重决定。
 
 const GRID_W := 8
 const GRID_H := 8
 
-const MAX_ROUNDS := 6
+const MAX_ROUNDS := 8
+const NEST_SPAWN_INTERVAL := 2
+
+static func nest_wave_due(battle_round: int) -> bool:
+	return battle_round > 0 and battle_round < MAX_ROUNDS and battle_round % NEST_SPAWN_INTERVAL == 0
+
+
+static func nest_warning_due(battle_round: int) -> bool:
+	return nest_wave_due(battle_round + 1)
+
 const MOVE_DEFAULT := 3
 const MOVE_ROCK := 2
-const WATER_EXTRA_COST := 0 # 浅水减速在回合结算时改由浸湿状态处理
+const WATER_EXTRA_COST := 0 # 浅水在阶段交接时赋予浸湿；冰面滑入浅水在整轮结算时补发
 
 const COLLISION_DAMAGE := 1
 const PUSH_DAMAGE := 2
 const PUSH_DISTANCE := 1
 const OBSTACLE_DURABILITY := 2
+const TREE_DURABILITY := 1
 const NEST_DURABILITY := 3
 
 const BURN_DAMAGE := 1
@@ -44,9 +53,6 @@ const BATTLE_RECOVERY_RATIO := 0.30
 const SUPPLY_INTERVAL := 2
 const SUPPLY_TRAINER_RECOVERY_RATIO := 0.5
 
-# 环境卡：在地图预览界面从卡表中自选 CARDS_PER_BATTLE 张（仅该界面出现）
-const CARDS_PER_BATTLE := 2
-
 # 训练家使用固定实例号，避免与“未选择”哨兵值 0 冲突。
 const TRAINER_UID := 900000
 
@@ -54,7 +60,6 @@ const TRAINER_UID := 900000
 const DEPLOY_CELLS := [Vector2i(0, 3), Vector2i(0, 2), Vector2i(0, 4), Vector2i(1, 3)]
 
 # 局内强化（只卖新解法）
-const UPGRADE_THRESHOLDS := [10, 20, 30, 40]
 
 const FRUITS_PER_BATTLE := 2
 const FRUIT_HEAL := 2

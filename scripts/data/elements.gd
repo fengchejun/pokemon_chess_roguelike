@@ -1,7 +1,9 @@
 class_name Elements
 extends RefCounted
 
-## 七属性主环：风 → 草 → 岩 → 电 → 水 → 火 → 冰 → 风；额外火克草。
+## 七种元素继续用于技能与环境互动；属性伤害克制暂时关闭。
+
+const MATCHUPS_ENABLED := false
 
 const LIST := ["wind", "grass", "rock", "electric", "water", "fire", "ice"]
 
@@ -48,6 +50,8 @@ const BEATS := {
 
 
 static func modifier(attacker: String, defender: String) -> int:
+	if not MATCHUPS_ENABLED:
+		return 0
 	if attacker == "" or defender == "" or not BEATS.has(attacker) or not BEATS.has(defender):
 		return 0
 	if BEATS[attacker].has(defender):
@@ -62,6 +66,8 @@ static func name_of(element: String) -> String:
 
 
 static func counter_hint(element: String) -> String:
+	if not MATCHUPS_ENABLED:
+		return ""
 	if not BEATS.has(element):
 		return "无属性克制"
 	var prey_names: PackedStringArray = []
@@ -84,6 +90,8 @@ static func order_index(element: String) -> int:
 
 
 static func counter_pairs() -> Array:
+	if not MATCHUPS_ENABLED:
+		return []
 	var pairs: Array = []
 	for attacker in LIST:
 		for defender in BEATS[attacker]:

@@ -19,7 +19,7 @@ static func with_cells(terrain: Array, entries: Array) -> Array:
 static func obstacles_from(terrain: Array) -> Array:
 	var cells: Array = []
 	for cell in GridSpec.all_cells():
-		if int(terrain[GridSpec.index(cell)]) == TerrainDB.OBSTACLE:
+		if TerrainDB.blocks_move(int(terrain[GridSpec.index(cell)])):
 			cells.append(cell)
 	return cells
 

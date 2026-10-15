@@ -20,7 +20,7 @@ func _ready() -> void:
 	var column := UIKit.vbox(10)
 	margin.add_child(column)
 	column.add_child(UIKit.title("选择新一局的三只怪物", 30))
-	column.add_child(UIKit.wrapped("永久收藏会保留捕获后进入携带队伍或仓库的怪物，包括濒死成员。开局从收藏中选三只，恢复满生命；局内强化不会继承。", 15))
+	column.add_child(UIKit.wrapped("永久收藏会保留携带队伍和仓库的怪物，包括濒死成员。开局选三只，恢复满生命；亲密度会继承，当前暂不提供数值效果。本局等级、经验与怪物强化在新局重置。", 15))
 	var scroll := UIKit.scroll()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_child(scroll)
@@ -61,7 +61,9 @@ func _collection_row(record: Dictionary) -> Control:
 	line.add_child(box)
 	line.add_child(UIKit.label(SpeciesDB.name_of(species_id), 17))
 	line.add_child(UIKit.element_chip(SpeciesDB.element_of(species_id)))
-	line.add_child(UIKit.label("生命 %d · 移动 %d" % [SpeciesDB.hp_of(species_id), SpeciesDB.move_of(species_id)], 14, UIKit.TEXT_DIM))
+	line.add_child(UIKit.label("亲密度 %d（永久，暂无效果） · 基础生命 %d · 基础移动 %d" % [
+		int(record.get("affinity", 0)), SpeciesDB.hp_of(species_id), SpeciesDB.move_of(species_id),
+	], 14, UIKit.TEXT_DIM))
 	var skills: Array = []
 	for skill_id in SpeciesDB.skills_of(species_id):
 		skills.append(SkillDB.name_of(String(skill_id)))
