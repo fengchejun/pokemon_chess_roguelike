@@ -36,7 +36,7 @@ func _t_water_ignore(t: TestContext) -> void:
 	enemy.cell = Vector2i(0, 3)
 	enemy.cell = Vector2i(1, 3)
 	state2.begin_enemy_phase()
-	t.eq(enemy.slow_ticks, 1, "溪流：敌方留在浅水于我方阶段结束获得浸湿")
+	t.eq(ElementAttachmentResolver.stack_count(enemy, "water"), 1, "溪流：敌方留在浅水于我方阶段结束获得水附着")
 
 
 func _t_water_range(t: TestContext) -> void:

@@ -132,7 +132,7 @@ func _t_skill_buffs(t: TestContext) -> void:
 	fire.cell = Vector2i(0, 3)
 	fire.battle_buffs["fire_burst"] = true
 	SkillResolver.resolve_channel(fire_state, fire, "fire_burst", [Vector2i(4, 3)])
-	t.check(fire_state.unit_by_uid(100).burn_ticks > 0, "强化火球外围附灼烧")
+	t.eq(ElementAttachmentResolver.stack_count(fire_state.unit_by_uid(100), "fire"), 2, "强化火球外围多附一层火")
 	var charge_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(1, 3)]])
 	var charger := charge_state.unit_by_uid(1)
 	charger.cell = Vector2i(0, 3)
@@ -151,14 +151,14 @@ func _t_skill_buffs(t: TestContext) -> void:
 	rain.cell = Vector2i(0, 3)
 	rain.battle_buffs["rain_call"] = true
 	SkillResolver.apply(rain_state, rain, "rain_call", {"type": "cell", "cell": Vector2i(2, 3)}, false)
-	t.check(rain_state.unit_by_uid(100).slow_ticks > 0, "强化造雨立即浸湿单位")
+	t.eq(ElementAttachmentResolver.stack_count(rain_state.unit_by_uid(100), "water"), 2, "强化造雨给范围内单位额外水附着")
 	var electric_terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(2, 3), TerrainDB.WATER], [Vector2i(3, 3), TerrainDB.WATER]])
 	var electric_state := TestScenario.make_state(["electric_starter"], [["rock_wild1", Vector2i(3, 3)]], electric_terrain)
 	var electric := electric_state.unit_by_uid(1)
 	electric.cell = Vector2i(1, 3)
 	electric.battle_buffs["electric_arc"] = true
 	SkillResolver.apply(electric_state, electric, "electric_arc", {"type": "cell", "cell": Vector2i(2, 3)}, false)
-	t.check(electric_state.unit_by_uid(100).slow_ticks > 0, "强化放电命中附浸湿")
+	t.check(electric_state.events.any(func(event: String) -> bool: return event.contains("导电")), "强化放电先铺水附着，再以电命中触发导电")
 	var rock_terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(2, 3), TerrainDB.FRAGILE]])
 	var break_state := TestScenario.make_state(["rock_starter"], [["fire_wild1", Vector2i(6, 6)]], rock_terrain)
 	var breaker := break_state.unit_by_uid(1)

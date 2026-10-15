@@ -31,7 +31,7 @@ func _t_fire_seed_hit(t: TestContext) -> void:
 	t.check(bool(result["ok"]), "火种施放成功")
 	var wild := state.unit_by_uid(100)
 	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 2, "属性克制停用后，火种中心造成基础 2 伤")
-	t.eq(wild.burn_ticks, Balance.BURN_TICKS, "命中附加灼烧")
+	t.eq(ElementAttachmentResolver.stack_count(wild, "fire"), 1, "命中附加火附着，整轮末才转灼烧")
 
 
 func _t_fire_seed_splash(t: TestContext) -> void:
@@ -45,7 +45,7 @@ func _t_fire_seed_splash(t: TestContext) -> void:
 	t.eq(result["hits"].size(), 1, "溅射命中 1 个单位")
 	var wild := state.unit_by_uid(100)
 	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 1, "属性克制停用后，火种溅射造成基础 1 伤")
-	t.eq(wild.burn_ticks, 0, "溅射不附加灼烧")
+	t.eq(ElementAttachmentResolver.stack_count(wild, "fire"), 1, "溅射命中也附加一层火附着")
 
 
 func _t_flame_charge(t: TestContext) -> void:
@@ -62,7 +62,7 @@ func _t_flame_charge(t: TestContext) -> void:
 	t.check(bool(result["self_death"]), "落点为深水死亡")
 	t.eq(fire.hp, 0, "冲锋者死亡")
 	t.eq(state.deaths.size(), 1, "倒下写入战损记录")
-	# 跨过水面单位获得灼烧
+	# 跨过单位获得火附着
 	var terrain2 := TestScenario.plain_terrain()
 	var state2 := TestScenario.make_state([], [["grass_wild1", Vector2i(1, 3)]], terrain2)
 	var fire2 := CombatUnit.make("fire_starter", "player", 50)
@@ -70,7 +70,7 @@ func _t_flame_charge(t: TestContext) -> void:
 	fire2.cell = Vector2i(0, 3)
 	var result2 := SkillResolver.apply(state2, fire2, "flame_charge", {"type": "cell", "cell": Vector2i(2, 3)}, false)
 	t.check(bool(result2["ok"]), "闪焰冲锋跨过单位")
-	t.eq(state2.unit_by_uid(100).burn_ticks, Balance.BURN_TICKS, "被跨过的非火系单位灼烧")
+	t.eq(ElementAttachmentResolver.stack_count(state2.unit_by_uid(100), "fire"), 1, "被跨过的单位获得火附着")
 	t.eq(fire2.cell, Vector2i(2, 3), "冲锋后位置更新")
 
 
@@ -84,7 +84,7 @@ func _t_water_flow(t: TestContext) -> void:
 	var wild := state.unit_by_uid(100)
 	t.eq(wild.hp, SpeciesDB.hp_of("rock_wild1") - 1, "水流不受克制影响：1 伤害")
 	t.eq(wild.cell, Vector2i(3, 3), "命中后击退 1 格")
-	t.eq(wild.slow_ticks, 2, "命中后减速")
+	t.eq(ElementAttachmentResolver.stack_count(wild, "water"), 1, "命中后附加水附着，暂不减速")
 	# 命中障碍在前方造水
 	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[Vector2i(2, 3), TerrainDB.OBSTACLE],
@@ -133,7 +133,7 @@ func _t_discharge_root(t: TestContext) -> void:
 	t.check(bool(result["ok"]), "放电施放成功")
 	var wild := state.unit_by_uid(100)
 	t.eq(wild.hp, SpeciesDB.hp_of("water_wild1") - 2, "放电造成基础 2 伤")
-	t.eq(wild.root_pending, true, "命中附加定身")
+	t.eq(ElementAttachmentResolver.stack_count(wild, "electric"), 1, "命中附加电附着，两层才麻痹")
 
 
 func _t_volt_step(t: TestContext) -> void:

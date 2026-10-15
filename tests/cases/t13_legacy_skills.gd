@@ -38,7 +38,7 @@ func _fire(t: TestContext) -> void:
 	jet_fire.cell = Vector2i(0, 3)
 	var jet := SkillResolver.apply(jet_state, jet_fire, "flame_jet", {"type": "dir", "dir": Vector2i(1, 0), "cell": Vector2i(1, 3)}, false)
 	t.check(bool(jet.get("ok", false)), "喷射火焰按方向施放")
-	t.check(jet_state.unit_by_uid(100).burn_ticks > 0, "喷射火焰附加灼烧")
+	t.check(ElementAttachmentResolver.stack_count(jet_state.unit_by_uid(100), "fire") > 0, "喷射火焰附加火附着")
 
 
 func _water(t: TestContext) -> void:
@@ -47,7 +47,7 @@ func _water(t: TestContext) -> void:
 	water.cell = Vector2i(0, 3)
 	var result := SkillResolver.apply(state, water, "water_flow", {"type": "cell", "cell": Vector2i(3, 3)}, false)
 	t.check(bool(result.get("ok", false)), "水流可施放")
-	t.check(state.unit_by_uid(100).slow_ticks > 0, "水流命中单位施加浸湿")
+	t.check(ElementAttachmentResolver.stack_count(state.unit_by_uid(100), "water") > 0, "水流命中单位施加水附着")
 	t.eq(state.terrain_at(Vector2i(3, 3)), TerrainDB.PLAIN, "水流命中单位不造水")
 	var rain := SkillResolver.apply(state, water, "rain_call", {"type": "cell", "cell": Vector2i(2, 4)}, false)
 	t.check(bool(rain.get("ok", false)), "造雨术可施放")
@@ -67,7 +67,7 @@ func _electric(t: TestContext) -> void:
 	t.eq(target.hp, target.max_hp, "闪电宣告后目标暂不受伤")
 	state.round = 2
 	state._resolve_due_channels("player")
-	t.check(target.shock_ticks > 0, "闪电施加感电")
+	t.check(ElementAttachmentResolver.stack_count(target, "electric") > 0, "闪电施加电附着")
 	t.eq(int(caster.battle_skill_uses.get("lightning", 0)), 0, "闪电不再消耗每场次数")
 	t.check(caster.can_use_in_battle("lightning"), "下一回合仍可再次吟唱闪电")
 	t.check(caster.can_use_in_battle("electric_arc"), "放电不受闪电次数限制")

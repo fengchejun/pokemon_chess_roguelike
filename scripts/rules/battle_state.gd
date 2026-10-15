@@ -373,7 +373,7 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	if not bool(opts.get("no_element", false)):
 		var skill_element: String = opts.get("element", "")
 		matchup_modifier = Elements.modifier(skill_element, target.element)
-		amount = maxi(1, amount + matchup_modifier)
+		amount = maxi(1, amount + matchup_modifier + int(opts.get("reaction_bonus", 0)))
 		if skill_element == "fire" and int(effects.get("fire_bonus", 0)) > 0:
 			if source != null and source.side == "player":
 				amount += int(effects["fire_bonus"])
@@ -396,11 +396,19 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	if amount > 0:
 		if source != null and not bool(opts.get("no_element", false)) and target.has_buff("direct_guard") and not bool(opts.get("conductive", false)):
 			amount = maxi(0, amount - 1)
+		if bool(opts.get("skill_hit", false)) and target.rock_guard_until_round >= round:
+			amount = maxi(0, amount - 1)
 		if amount > 0:
 			damage_reward_at(target.cell)
 	var cause: String = opts.get("cause", "伤害")
 	var previous_hp := target.hp
 	target.hp -= amount
+	if source != null and source.is_alive() and bool(opts.get("skill_hit", false)) and target.parasite_until_round >= round and amount > 0:
+		var actual_damage := mini(amount, previous_hp - (1 if target.is_trainer else 0))
+		var healed := mini(maxi(0, actual_damage), source.max_hp - source.hp)
+		if healed > 0:
+			source.hp += healed
+			log_event("%s 从寄生目标吸取 %d 生命。" % [source.display_name, healed])
 	var source_name := source.display_name if source != null else "环境"
 	var matchup_text := ""
 	if matchup_modifier > 0:
@@ -419,6 +427,80 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		var killer_side: String = source.side if source != null else String(opts.get("killer_side", ""))
 		kill_unit(target, cause, killer_side, source.uid if source != null else int(opts.get("killer_uid", -1)))
 	return {"amount": amount, "killed": killed, "previous_hp": previous_hp, "hp": target.hp}
+
+
+func add_attachment(target: CombatUnit, element: String, source: CombatUnit = null, direct_hit: bool = false) -> Dictionary:
+	return ElementAttachmentResolver.add(self, target, element, source, direct_hit)
+
+
+func resolve_attachment_effect(target: CombatUnit, result: Dictionary, source: CombatUnit = null) -> void:
+	if String(result.get("reaction", "")) == "" or target == null:
+		return
+	match String(result.get("effect", "")):
+		"parasite":
+			if target.is_alive() and target.element != "grass":
+				target.parasite_until_round = maxi(target.parasite_until_round, round + 2)
+				log_event("%s 被寄生：技能攻击者按实际伤害回复生命。" % target.display_name)
+		"paralyze":
+			if target.is_alive() and target.element != "electric":
+				# 敌人在我方阶段中招时，本轮敌方行动就是被跳过的一次机会。
+				var ticks := 1 if phase == PHASE_PLAYER and target.side == "enemy" else 2
+				target.paralyzed_ticks = maxi(target.paralyzed_ticks, ticks)
+				cancel_channel(target, "麻痹")
+				log_event("%s 麻痹，下一轮无法行动。" % target.display_name)
+		"freeze":
+			if target.is_alive() and target.element != "ice":
+				target.frozen = true
+				cancel_channel(target, "冻结")
+				log_event("%s 被冻结，受到攻击才会解除。" % target.display_name)
+		"rock_guard":
+			if target.is_alive():
+				target.rock_guard_until_round = maxi(target.rock_guard_until_round, round + 1)
+				log_event("%s 获得岩护：技能直接伤害 −1。" % target.display_name)
+		"overload":
+			var center: Vector2i = result.get("cell", target.cell)
+			for cell in [center] + GridSpec.neighbors4(center):
+				if not GridSpec.is_inside(cell):
+					continue
+				var victim := unit_at(cell)
+				if victim != null:
+					damage_unit(source, victim, 1, {"no_element": true, "cause": "过载", "killer_side": source.side if source != null else ""})
+
+
+func _apply_terrain_attachments() -> void:
+	# 阶段结束时检查全场站位；飞行单位不接触地表。
+	for unit in alive_units():
+		if unit.has_buff("flight"):
+			continue
+		var element := ""
+		var tile := terrain_at(unit.cell)
+		if burning_cells.has(unit.cell):
+			element = "fire"
+		elif tile == TerrainDB.WATER or tile == TerrainDB.DEEP:
+			element = "water"
+		elif tile == TerrainDB.VINES:
+			element = "grass"
+		elif tile == TerrainDB.ICE:
+			element = "ice"
+		if element != "":
+			var reaction := add_attachment(unit, element)
+			resolve_attachment_effect(unit, reaction)
+
+
+func _settle_attachments() -> void:
+	# 火/水附着在完整回合结束转化，异常从下一回合起产生作用。
+	for unit in alive_units():
+		if ElementAttachmentResolver.consume_all(unit, "fire") > 0:
+			apply_burn(unit, null)
+		if ElementAttachmentResolver.consume_all(unit, "water") > 0 and unit.element != "water" and not unit.has_buff("status_immune") and not (unit.side == "player" and int(effects.get("water_ignore", 0)) > 0):
+			unit.slow_ticks = maxi(unit.slow_ticks, 1)
+			log_event("%s 的水附着转为浸湿，下次移动力 −1。" % unit.display_name)
+	for unit in units:
+		ElementAttachmentResolver.clear_expired(unit, round)
+		if unit.parasite_until_round <= round:
+			unit.parasite_until_round = 0
+		if unit.rock_guard_until_round <= round:
+			unit.rock_guard_until_round = 0
 
 
 func apply_burn(target: CombatUnit, source: CombatUnit) -> void:
@@ -445,26 +527,6 @@ func apply_slow(target: CombatUnit) -> void:
 		return
 	target.slow_ticks = 2
 	log_event("%s 获得浸湿：下一次移动力 -1。" % target.display_name)
-
-
-func _apply_shallow_wet(side: String, ticks: int) -> void:
-	# 阶段交接时只检查即将行动的一方；我方在敌方阶段结束后检查。
-	# 整轮结算仍会衰减一次，因此敌方使用 1、我方使用 2，
-	# 使离水后的减速恰好覆盖各自下一次移动机会。
-	for unit in alive_units(side):
-		_apply_shallow_wet_to_unit(unit, ticks)
-
-
-func _apply_shallow_wet_to_unit(unit: CombatUnit, ticks: int) -> void:
-	if unit == null or not unit.is_alive() or unit.element == "water" or unit.has_buff("flight") or unit.has_buff("status_immune"):
-		return
-	if unit.side == "player" and int(effects.get("water_ignore", 0)) > 0:
-		return
-	if terrain_at(unit.cell) != TerrainDB.WATER:
-		return
-	if unit.slow_ticks == 0:
-		log_event("%s 站在浅水中，获得浸湿（下一次移动力 -1）。" % unit.display_name)
-	unit.slow_ticks = maxi(unit.slow_ticks, ticks)
 
 
 func _movement_effect_ticks(unit: CombatUnit) -> int:
@@ -794,7 +856,7 @@ func begin_enemy_phase() -> Array:
 	commit_actions()
 	_begin_reward_guard()
 	_finish_movement_effects("player")
-	_apply_shallow_wet("enemy", 1)
+	_apply_terrain_attachments()
 	phase = PHASE_ENEMY
 	_resolve_due_channels("enemy")
 	_refresh_reward_guard()
@@ -848,7 +910,7 @@ func end_enemy_phase() -> void:
 	if ended:
 		return
 	_finish_movement_effects("enemy")
-	_apply_shallow_wet("player", 2)
+	_apply_terrain_attachments()
 	_finish_reward_guard()
 	_finish_round()
 
@@ -901,6 +963,7 @@ func settle_round() -> void:
 			unit.slow_ticks = maxi(0, unit.slow_ticks - 1)
 		if unit.shock_ticks > 0:
 			unit.shock_ticks -= 1
+	_settle_attachments()
 	# 5. 恢复果实
 	_pickups()
 	# 6. 胜负与时限
@@ -930,8 +993,7 @@ func _settle_ice_slides() -> void:
 			kill_unit(unit, "冰面滑入致死地形")
 		elif terrain_at(next) == TerrainDB.WATER and not unit.has_buff("flight"):
 			unit.burn_ticks = 0
-			# 浅水阶段检查已发生；滑行入水仍须影响下一次移动。
-			_apply_shallow_wet_to_unit(unit, 2)
+			# 滑行后将在下一次阶段结束获得水附着。
 		elif terrain_at(next) == TerrainDB.VINES:
 			apply_vine_on_landing(unit)
 
@@ -943,9 +1005,6 @@ func _settle_burning_cells() -> void:
 		for near in GridSpec.neighbors4(cell):
 			if not burning_cells.has(near) and (terrain_at(near) == TerrainDB.GRASS or terrain_at(near) == TerrainDB.VINES or terrain_at(near) == TerrainDB.TREE):
 				newly_lit.append(near)
-		var occupant := unit_at(cell)
-		if occupant != null and not occupant.has_buff("flight"):
-			apply_burn(occupant, null)
 		burning_cells[cell] = int(burning_cells[cell]) - 1
 		if int(burning_cells[cell]) <= 0:
 			burning_cells.erase(cell)
@@ -1029,7 +1088,7 @@ func forecast() -> Array:
 		var preview := clone()
 		if phase == PHASE_PLAYER:
 			preview._finish_movement_effects("player")
-			preview._apply_shallow_wet("enemy", 1)
+			preview._apply_terrain_attachments()
 		_forecast_cache = EnemyAI.plan(preview)
 		_forecast_signature = signature
 	return _forecast_cache
@@ -1057,6 +1116,7 @@ func _signature() -> String:
 	for unit in units:
 		parts.append("buff:%d:%s" % [unit.uid, str(unit.battle_buffs)])
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
+		parts.append("aura:%d:%s:%d:%d" % [unit.uid, str(unit.attachments), unit.parasite_until_round, unit.rock_guard_until_round])
 	parts.append("pending:%s" % str(pending_casts))
 	var obstacle_keys: Array = obstacle_durability.keys().duplicate()
 	obstacle_keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)

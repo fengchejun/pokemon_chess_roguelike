@@ -52,6 +52,11 @@ func _run() -> void:
 	battle.select_unit(1)
 	await process_frame
 	await _shot("06_battle_select")
+	battle.state.add_attachment(battle.state.unit_by_uid(1), "water")
+	battle.state.add_attachment(battle.state.unit_by_uid(1), "rock")
+	battle.state.add_attachment(battle.state.unit_by_uid(100), "electric")
+	battle.refresh_all()
+	await _shot("06_battle_attachments")
 	battle._on_skill_pressed("fire_burst")
 	await process_frame
 	await _shot("07_battle_aim")
