@@ -30,7 +30,11 @@ static func add(state: BattleState, target: CombatUnit, element: String, source:
 	if target == null or not target.is_alive() or element == "" or element == "wind" or not Elements.LIST.has(element):
 		return result
 	var layers: Array = (target.attachments.get(element, []) as Array).duplicate()
-	layers.append(state.round + 2)
+	# 敌方施法者自身的火/水附着留给下一次我方阶段反制；
+	# 命中目标及地形附着仍在本轮末转化，保持原有异常时点。
+	var self_cast := source != null and source.uid == target.uid
+	var conversion_delay := 1 if self_cast and (element == "fire" or element == "water") and state.phase == BattleState.PHASE_ENEMY else 0
+	layers.append(state.round + 2 + conversion_delay)
 	target.attachments[element] = layers
 	state.log_event("%s 获得 1 层%s附着（现有 %d 层）。" % [target.display_name, Elements.name_of(element), layers.size()])
 	var others: Array = target.attachments.keys()
@@ -68,10 +72,20 @@ static func _consume_one(unit: CombatUnit, element: String) -> void:
 		unit.attachments[element] = layers
 
 
-static func consume_all(unit: CombatUnit, element: String) -> int:
-	var count := stack_count(unit, element)
-	unit.attachments.erase(element)
-	return count
+static func consume_ready(unit: CombatUnit, element: String, settled_round: int) -> int:
+	var layers: Array = unit.attachments.get(element, [])
+	var remaining: Array = []
+	var consumed := 0
+	for expiry in layers:
+		if int(expiry) <= settled_round + 2:
+			consumed += 1
+		else:
+			remaining.append(expiry)
+	if remaining.is_empty():
+		unit.attachments.erase(element)
+	else:
+		unit.attachments[element] = remaining
+	return consumed
 
 
 static func clear_expired(unit: CombatUnit, settled_round: int) -> void:

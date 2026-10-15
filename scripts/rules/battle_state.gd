@@ -490,9 +490,9 @@ func _apply_terrain_attachments() -> void:
 func _settle_attachments() -> void:
 	# 火/水附着在完整回合结束转化，异常从下一回合起产生作用。
 	for unit in alive_units():
-		if ElementAttachmentResolver.consume_all(unit, "fire") > 0:
+		if ElementAttachmentResolver.consume_ready(unit, "fire", round) > 0:
 			apply_burn(unit, null)
-		if ElementAttachmentResolver.consume_all(unit, "water") > 0 and unit.element != "water" and not unit.has_buff("status_immune") and not (unit.side == "player" and int(effects.get("water_ignore", 0)) > 0):
+		if ElementAttachmentResolver.consume_ready(unit, "water", round) > 0 and unit.element != "water" and not unit.has_buff("status_immune") and not (unit.side == "player" and int(effects.get("water_ignore", 0)) > 0):
 			unit.slow_ticks = maxi(unit.slow_ticks, 1)
 			log_event("%s 的水附着转为浸湿，下次移动力 −1。" % unit.display_name)
 	for unit in units:
