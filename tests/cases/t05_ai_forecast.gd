@@ -84,11 +84,10 @@ func _t_skill_choice(t: TestContext) -> void:
 	var freeze := TestScenario.make_state([], [["ice_wild1", Vector2i(4, 4)]])
 	freeze.trainer().cell = Vector2i(4, 2)
 	freeze.unit_by_uid(100).moved = true
-	freeze.add_attachment(freeze.trainer(), "ice")
 	var freeze_plan := EnemyAI.plan(freeze)
 	t.check(not freeze_plan.is_empty(), "冰怪可规划行动")
 	if not freeze_plan.is_empty():
-		t.eq(String(freeze_plan[0]["skill"].get("id", "")), "ice_shard", "目标已有一层冰附着时，AI 用兼具直伤与第二层冰的冰锥")
+		t.eq(String(freeze_plan[0]["skill"].get("id", "")), "freeze_ray", "冻结高威胁目标比单次 1 点伤害更有价值")
 
 	var rain := TestScenario.make_state(["fire_starter"], [["water_wild1", Vector2i(5, 5)]])
 	rain.trainer().cell = Vector2i(0, 0)

@@ -210,15 +210,6 @@ func _update_unit_card() -> void:
 	if Elements.MATCHUPS_ENABLED:
 		lines.append(Elements.counter_hint(unit.element))
 	var statuses: Array = []
-	var aura_names: Array = []
-	for aura_element in unit.attachments.keys():
-		aura_names.append("%s×%d" % [Elements.name_of(String(aura_element)), (unit.attachments[aura_element] as Array).size()])
-	if not aura_names.is_empty():
-		statuses.append("附着：" + "、".join(aura_names))
-	if unit.parasite_until_round >= state.round:
-		statuses.append("寄生：技能命中时攻击者按实际伤害回复")
-	if unit.rock_guard_until_round >= state.round:
-		statuses.append("岩护：技能直伤 −1")
 	if unit.burn_ticks > 0:
 		statuses.append("灼烧 %d 回合" % unit.burn_ticks)
 	if unit.root_pending:
@@ -542,8 +533,6 @@ func _on_board_hovered(cell: Vector2i) -> void:
 				for hit in preview.get("hits", []):
 					if int(hit.get("modifier", 0)) != 0:
 						matchup.append("%s %s" % [hit.get("name", "?"), "克制 +1" if int(hit["modifier"]) > 0 else "逆克制 -1"])
-					if String(hit.get("reaction", "")) != "":
-						matchup.append("%s 触发%s" % [hit.get("name", "?"), hit["reaction"]])
 				hint_label.text = "%s：%s%s" % [SkillDB.name_of(aim_skill), preview.get("text", ""), "｜" + "、".join(matchup) if not matchup.is_empty() else ""]
 				hint_label.add_theme_color_override("font_color", UIKit.TEXT)
 				_preview_overlays(preview)

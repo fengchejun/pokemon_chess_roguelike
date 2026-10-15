@@ -349,7 +349,7 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	elif ratio <= 0.67:
 		hp_color = Color(0.95, 0.75, 0.3)
 	draw_rect(Rect2(bar_rect.position, Vector2(bar_rect.size.x * ratio, bar_rect.size.y)), hp_color)
-	draw_string(font, center + Vector2(-34, -7), "%d/%d" % [unit.hp, unit.max_hp], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+	draw_string(font, center + Vector2(-34, -24), "%d/%d" % [unit.hp, unit.max_hp], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 	# 状态徽章
 	var badges_text := ""
 	if unit.burn_ticks > 0:
@@ -359,17 +359,7 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	if unit.slow_ticks > 0:
 		badges_text += "缓"
 	if badges_text != "":
-		draw_string(font, center + Vector2(20, -3), badges_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 0.6, 0.3))
-	if not unit.attachments.is_empty():
-		var aura_text := ""
-		var aura_keys: Array = unit.attachments.keys()
-		aura_keys.sort_custom(func(a: String, b: String) -> bool: return Elements.order_index(a) < Elements.order_index(b))
-		for aura_element in aura_keys.slice(0, 2):
-			aura_text += "%s%d" % [Elements.name_of(String(aura_element)), (unit.attachments[aura_element] as Array).size()]
-		if aura_keys.size() > 2:
-			aura_text += "+%d" % (aura_keys.size() - 2)
-		draw_rect(Rect2(center + Vector2(-34, -35), Vector2(68, 16)), Color(0.09, 0.12, 0.14, 0.85))
-		draw_string(font, center + Vector2(-31, -22), aura_text, HORIZONTAL_ALIGNMENT_LEFT, 64, 11, Color(1.0, 0.95, 0.45))
+		draw_string(font, center + Vector2(20, -18), badges_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 0.6, 0.3))
 	if unit.capture_used:
 		draw_string(font, center + Vector2(20, 32), "捕", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.8, 0.9))
 	if unit.fresh_spawn:

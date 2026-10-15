@@ -204,13 +204,6 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 		elif later.hp < unit.hp:
 			total += (unit.hp - later.hp) * 10 + _damage_priority(before, unit)
 		if later != null and later.is_alive():
-			var aura_gain := _attachment_layers(later) - _attachment_layers(unit)
-			if aura_gain > 0:
-				total += aura_gain * 6
-			if later.parasite_until_round > unit.parasite_until_round:
-				total += 20
-			if later.rock_guard_until_round > unit.rock_guard_until_round:
-				total -= 10
 			if later.root_pending and not unit.root_pending:
 				total += 14
 			if later.slow_ticks > unit.slow_ticks:
@@ -250,19 +243,8 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 			total += 12 if not unit.moved and unit.effective_move() > 0 else 3
 		if later != null and later.extra_casts > unit.extra_casts and _bonus_cast_available(before, actor_before, unit):
 			total += 23
-		if later != null and _attachment_layers(later) > _attachment_layers(unit):
-			total -= (_attachment_layers(later) - _attachment_layers(unit)) * 3
-		if later != null and later.rock_guard_until_round > unit.rock_guard_until_round:
-			total += 10
 	total += _terrain_setup_score(before, after)
 	return {"total": total, "kills": kills}
-
-
-static func _attachment_layers(unit: CombatUnit) -> int:
-	var count := 0
-	for element in unit.attachments:
-		count += ElementAttachmentResolver.stack_count(unit, String(element))
-	return count
 
 
 static func _bonus_cast_available(state: BattleState, actor: CombatUnit, target: CombatUnit) -> bool:
@@ -283,7 +265,7 @@ static func _heal_score(before_unit: CombatUnit, after_unit: CombatUnit, state: 
 	if before_unit.hp <= 2:
 		for threat in state.alive_units("player"):
 			if GridSpec.manhattan(before_unit.cell, threat.cell) <= 3:
-				return score + 40
+				return score + 14
 	return score
 
 
