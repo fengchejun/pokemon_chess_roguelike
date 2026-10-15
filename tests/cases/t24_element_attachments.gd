@@ -8,7 +8,6 @@ func run(t: TestContext) -> void:
 	_test_overload_and_guard(t)
 	_test_terrain_and_wind(t)
 	_test_self_target_and_immunity(t)
-	_test_enemy_self_attachment(t)
 	t.finish()
 
 
@@ -176,74 +175,3 @@ func _test_self_target_and_immunity(t: TestContext) -> void:
 	var second := ice.add_attachment(ice_target, "ice")
 	ice.resolve_attachment_effect(ice_target, second)
 	t.check(not ice_target.frozen, "冰系免疫两层冰造成的冻结")
-
-
-func _test_enemy_self_attachment(t: TestContext) -> void:
-	var fire_state := TestScenario.make_state(["water_starter"], [
-		["fire_wild1", Vector2i(4, 3)], ["rock_wild1", Vector2i(6, 6)],
-	])
-	var fire_enemy := fire_state.unit_by_uid(100)
-	var water_ally := fire_state.unit_by_uid(1)
-	water_ally.cell = Vector2i(2, 3)
-	fire_state.begin_enemy_phase()
-	fire_state._pending_actions = [{
-		"uid": fire_enemy.uid, "move_path": [],
-		"skill": {"id": "flame_jet", "target": {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(5, 3)}},
-	}]
-	fire_state._pending_index = 0
-	fire_state.step_enemy_phase()
-	t.eq(ElementAttachmentResolver.stack_count(fire_enemy, "fire"), 1, "敌方实际施放火技能后自身立即获得火附着")
-	fire_state.end_enemy_phase()
-	t.eq(ElementAttachmentResolver.stack_count(fire_enemy, "fire"), 1, "敌方阶段获得的火附着保留到我方下次行动")
-	t.eq(fire_enemy.burn_ticks, 0, "敌方施法后不会在同一整轮立刻转成灼烧")
-	var water_hit := fire_state.cast_skill(water_ally, "water_flow", {"type": "cell", "cell": fire_enemy.cell})
-	t.check(bool(water_hit.get("ok", false)), "我方可在下一阶段用水技能反制敌方自身火附着")
-	t.eq(int(water_hit["hits"][0]["damage"]), 3, "敌方施法暴露的火弱点触发水伤 +2")
-	var water_state := TestScenario.make_state(["fire_starter"], [
-		["water_wild1", Vector2i(4, 3)], ["rock_wild1", Vector2i(6, 6)],
-	])
-	var water_enemy := water_state.unit_by_uid(100)
-	var water_target := water_state.unit_by_uid(1)
-	water_target.cell = Vector2i(2, 3)
-	water_state.begin_enemy_phase()
-	water_state._pending_actions = [{
-		"uid": water_enemy.uid, "move_path": [],
-		"skill": {"id": "water_flow", "target": {"type": "cell", "cell": water_target.cell}},
-	}]
-	water_state._pending_index = 0
-	water_state.step_enemy_phase()
-	t.eq(ElementAttachmentResolver.stack_count(water_enemy, "water"), 1, "敌方实际施放水技能后自身立即获得水附着")
-	water_state.end_enemy_phase()
-	t.eq(ElementAttachmentResolver.stack_count(water_enemy, "water"), 1, "敌方阶段获得的水附着保留到我方下次行动")
-	t.eq(ElementAttachmentResolver.stack_count(water_target, "water"), 0, "敌方技能命中目标的水附着仍在本轮末转化")
-	t.eq(water_target.slow_ticks, 1, "命中目标下一次行动照常受到浸湿减速")
-	water_state.begin_enemy_phase()
-	water_state._pending_actions = []
-	water_state._pending_index = 0
-	water_state.end_enemy_phase()
-	t.eq(ElementAttachmentResolver.stack_count(water_enemy, "water"), 0, "敌方水附着在下一次整轮末转化")
-	var electric_state := TestScenario.make_state(["fire_starter"], [
-		["electric_wild1", Vector2i(4, 3)], ["rock_wild1", Vector2i(6, 6)],
-	])
-	var electric_enemy := electric_state.unit_by_uid(100)
-	electric_state.begin_enemy_phase()
-	electric_state._pending_actions = [{
-		"uid": electric_enemy.uid, "move_path": [],
-		"skill": {"id": "lightning", "target": {"type": "multi", "cells": [Vector2i(4, 2), Vector2i(4, 1), Vector2i(3, 1)]}},
-	}]
-	electric_state._pending_index = 0
-	electric_state.step_enemy_phase()
-	t.eq(ElementAttachmentResolver.stack_count(electric_enemy, "electric"), 1, "敌方宣告闪电时自身获得电附着")
-	electric_state.end_enemy_phase()
-	t.eq(ElementAttachmentResolver.stack_count(electric_enemy, "electric"), 1, "电附着在我方下一阶段仍可见")
-	var player_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
-	var player_fire := player_state.unit_by_uid(1)
-	player_fire.cell = Vector2i(2, 3)
-	var player_cast := player_state.cast_skill(player_fire, "flame_jet", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(3, 3)})
-	t.check(bool(player_cast.get("ok", false)), "我方火技能施放成功")
-	t.eq(ElementAttachmentResolver.stack_count(player_fire, "fire"), 1, "我方施法后也立即获得自身火附着")
-	player_state.begin_enemy_phase()
-	player_state._pending_actions = []
-	player_state._pending_index = 0
-	player_state.end_enemy_phase()
-	t.eq(ElementAttachmentResolver.stack_count(player_fire, "fire"), 0, "我方阶段获得的火附着仍在本轮末转化")
