@@ -30,7 +30,87 @@ static func generate(run_seed: int, battle_index: int, salt: int = 0, environmen
 			result["battle_index"] = battle_index
 			result["attempt"] = attempt
 			return result
-	return _fallback(cfg)
+	var fallback := _fallback(cfg)
+	fallback["battle_index"] = battle_index
+	return fallback
+
+
+static func terrain_counts(map: Dictionary) -> Dictionary:
+	var counts := {"water": 0, "grass": 0, "rock": 0, "steam": 0}
+	for value in map.get("terrain", []):
+		match int(value):
+			TerrainDB.WATER: counts["water"] += 1
+			TerrainDB.GRASS: counts["grass"] += 1
+			TerrainDB.OBSTACLE: counts["rock"] += 1
+	counts["steam"] = (map.get("steam_cells", {}) as Dictionary).size()
+	return counts
+
+
+static func card_targets(card_id: String) -> Array:
+	match card_id:
+		"water", "electric": return ["water"]
+		"fire": return ["grass"]
+		"rock": return ["rock"]
+		"steam_focus": return ["water", "grass", "steam"]
+	return []
+
+
+static func generate_card_preview(run_seed: int, battle_index: int, card_id: String, previous: Dictionary) -> Dictionary:
+	## 卡仍先改变区域权重；再用可复现的安全补足保证预览地形严格增加。
+	var before := terrain_counts(previous)
+	var targets := card_targets(card_id)
+	var best: Dictionary = {}
+	var best_gap := 999
+	for salt in range(1, 49):
+		var candidate := generate(run_seed, battle_index, salt, [card_id])
+		var after := terrain_counts(candidate)
+		var gap := 0
+		for key in targets:
+			gap += maxi(0, int(before[key]) + 1 - int(after[key]))
+		if gap == 0:
+			return {"map": candidate, "before": before, "after": after, "guaranteed": true}
+		if gap < best_gap:
+			best_gap = gap
+			best = candidate
+	var fixed := best.duplicate(true)
+	for key in targets:
+		while int(terrain_counts(fixed)[key]) <= int(before[key]):
+			if not _add_card_terrain(fixed, String(key)):
+				break
+	var after := terrain_counts(fixed)
+	var guaranteed := true
+	for key in targets:
+		if int(after[key]) <= int(before[key]):
+			guaranteed = false
+	return {"map": fixed, "before": before, "after": after, "guaranteed": guaranteed}
+
+
+static func _add_card_terrain(map: Dictionary, kind: String) -> bool:
+	if kind == "steam":
+		for cell in GridSpec.all_cells():
+			if int(map["terrain"][GridSpec.index(cell)]) == TerrainDB.WATER and not (map["steam_cells"] as Dictionary).has(cell):
+				map["steam_cells"][cell] = 2
+				return true
+		return false
+	var new_value := TerrainDB.WATER if kind == "water" else TerrainDB.GRASS if kind == "grass" else TerrainDB.OBSTACLE
+	var required: Array = []
+	for pair in BattleDB.config_for(int(map.get("battle_index", 0))).get("enemies", []):
+		required.append(pair[1])
+	required.append(map["reward_cell"])
+	required.append_array(map.get("fruit_cells", []))
+	for cell in GridSpec.all_cells():
+		if mod_protected(map, cell):
+			continue
+		var index := GridSpec.index(cell)
+		if int(map["terrain"][index]) != TerrainDB.PLAIN:
+			continue
+		map["terrain"][index] = new_value
+		if kind != "rock" or _validate(map["terrain"], required):
+			if kind == "rock":
+				(map["obstacle_cells"] as Array).append(cell)
+			return true
+		map["terrain"][index] = TerrainDB.PLAIN
+	return false
 
 
 static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget: int, environment_deck: Array) -> Dictionary:

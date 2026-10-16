@@ -10,6 +10,7 @@ const BattleScreen = preload("res://scripts/ui/battle_screen.gd")
 const SettlementScreen = preload("res://scripts/ui/settlement_screen.gd")
 const SupplyScreen = preload("res://scripts/ui/supply_screen.gd")
 const RunEndScreen = preload("res://scripts/ui/run_end_screen.gd")
+const SkillStatsScreen = preload("res://scripts/ui/skill_stats_screen.gd")
 const MusicDirectorScript = preload("res://scripts/ui/music_director.gd")
 
 var run: RunState = null
@@ -65,6 +66,10 @@ func show_menu() -> void:
 	_switch(MenuScreen.new())
 
 
+func show_skill_stats() -> void:
+	_switch(SkillStatsScreen.new())
+
+
 func start_new_run() -> void:
 	## 主菜单放弃旧存档时，先登记身上与仓库的成员，避免覆盖单槽本局存档后丢失已收容的怪物。
 	if autosave_enabled and SaveSystem.has_save():
@@ -89,7 +94,9 @@ func continue_run() -> void:
 		show_menu()
 		return
 	run = loaded
-	if run.settlement_pending:
+	if run.run_failed:
+		show_run_end()
+	elif run.settlement_pending:
 		pending_settlement = {"battle": null, "outcome": run.last_settlement.duplicate(true)}
 		battle_settled = true
 		_switch(SettlementScreen.new())
@@ -134,7 +141,8 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 	var state := BattleState.new()
 	var card_effects := run.effects()
 	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, card_effects, {}, cfg.get("reinforce", []), run.options)
-	run.consume_selected_reward_item()
+	## 消耗品已经在预览页使用时扣除；开战不再二次扣卡。
+	run.selected_reward_item = ""
 	run.mark_deployed(deploy_uids)
 	autosave()
 	var screen: Control = BattleScreen.new()
@@ -149,8 +157,13 @@ func finish_battle(battle: BattleState) -> void:
 	battle_settled = true
 	run.sync_from_battle(battle)
 	var outcome := run.settle_battle(battle)
+	if collection != null and collection.record_battle_skill_usage(battle) and autosave_enabled:
+		collection.save()
 	pending_settlement = {"battle": battle, "outcome": outcome}
 	autosave()
+	if run.run_failed:
+		show_run_end()
+		return
 	var screen: Control = SettlementScreen.new()
 	_switch(screen)
 

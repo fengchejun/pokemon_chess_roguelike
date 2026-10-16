@@ -11,6 +11,8 @@ var terrain: Array = []
 var obstacle_durability: Dictionary = {}
 var burning_cells: Dictionary = {}
 var steam_cells: Dictionary = {}
+var vine_origin: Dictionary = {}
+var vine_expire_round: Dictionary = {}
 var nest: Dictionary = {}
 var pending_casts: Array = []
 var battle_round: int = 0
@@ -18,6 +20,7 @@ var reward: Dictionary = {}
 var fruits: Array = []
 var units: Array = []
 var deploy_cells: Array = []
+var ice_slides: Array = []
 
 var movement_cells: Dictionary = {}
 var enemy_cells_view: Array = []
@@ -45,6 +48,8 @@ func set_from_state(state: BattleState) -> void:
 	obstacle_durability = state.obstacle_durability.duplicate()
 	burning_cells = state.burning_cells.duplicate()
 	steam_cells = state.steam_cells.duplicate()
+	vine_origin = state.vine_origin.duplicate()
+	vine_expire_round = state.vine_expire_round.duplicate()
 	nest = state.nest.duplicate(true)
 	pending_casts = state.pending_casts.duplicate(true)
 	battle_round = state.round
@@ -52,6 +57,12 @@ func set_from_state(state: BattleState) -> void:
 	fruits = state.fruits.duplicate()
 	units = state.units.duplicate()
 	deploy_cells = state.deploy_cells.duplicate()
+	ice_slides = []
+	if not state.ended:
+		for unit in state.units:
+			var slide := state.ice_slide_outcome(unit)
+			if not slide.is_empty():
+				ice_slides.append(slide)
 	queue_redraw()
 
 
@@ -60,6 +71,8 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	obstacle_durability = {}
 	burning_cells = {}
 	steam_cells = map.get("steam_cells", {}).duplicate()
+	vine_origin = {}
+	vine_expire_round = {}
 	for cell in map.get("obstacle_cells", []):
 		obstacle_durability[cell] = Balance.TREE_DURABILITY if terrain[GridSpec.index(cell)] == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
 	nest = {
@@ -74,6 +87,7 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	fruits = map.get("fruit_cells", []).duplicate()
 	units = preview_units
 	deploy_cells = map.get("deploy_cells", Balance.DEPLOY_CELLS.duplicate())
+	ice_slides = []
 	queue_redraw()
 
 
@@ -135,7 +149,7 @@ func _draw() -> void:
 	for cell in movement_cells:
 		_draw_fill(cell, Color(0.35, 0.6, 1.0, 0.28))
 		var cost := int(movement_cells[cell]["cost"])
-		draw_string(font, cell_center(cell) + Vector2(20, 28), str(cost), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.9, 1.0, 0.9))
+		draw_string(font, cell_center(cell) + Vector2(20, 28), "∞" if bool(movement_cells[cell].get("terrain_travel", false)) else str(cost), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.9, 1.0, 0.9))
 	for cell in enemy_cells_view:
 		_draw_fill(cell, Color(1.0, 0.35, 0.3, 0.20))
 	for cell in area_cells:
@@ -170,6 +184,16 @@ func _draw() -> void:
 	for unit in units:
 		if unit.is_alive():
 			_draw_unit(font, unit)
+	for slide in ice_slides:
+		_draw_ice_slide_arrow(slide)
+	for cell in vine_expire_round:
+		if not GridSpec.is_inside(cell):
+			continue
+		var base := int(vine_origin.get(cell, TerrainDB.PLAIN))
+		var color := Color(1.0, 0.35, 0.25, 0.95) if TerrainDB.is_lethal(base) else Color(0.9, 0.95, 0.45, 0.8)
+		draw_rect(Rect2(cell.x * TILE + 3, cell.y * TILE + 3, TILE - 6, TILE - 6), color, false, 3.0)
+		if TerrainDB.is_lethal(base):
+			draw_string(font, Vector2(cell.x * TILE + 6, cell.y * TILE + 16), "危", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
 	_draw_pending_casts(font)
 	_draw_nest_exit(font)
 	# 标记与箭头
@@ -284,8 +308,11 @@ func _draw_nest_exit(font: Font) -> void:
 
 func _draw_pending_casts(font: Font) -> void:
 	var marked := {}
+	var labels := {}
 	for cast in pending_casts:
 		var color := Color(0.35, 0.88, 1.0) if String(cast["side"]) == "player" else Color(1.0, 0.32, 0.32)
+		var is_tsunami := String(cast["skill_id"]) == "tsunami"
+		var first_cell: Vector2i = cast["cells"][0] if not cast["cells"].is_empty() else Vector2i(-1, -1)
 		for center in cast["cells"]:
 			var cells: Array = [center]
 			if String(cast["skill_id"]) == "fire_burst":
@@ -299,6 +326,8 @@ func _draw_pending_casts(font: Font) -> void:
 				var rect := Rect2(cell.x * TILE + 5, cell.y * TILE + 5, TILE - 10, TILE - 10)
 				draw_rect(rect, color, false, 3.0)
 				marked[cell] = int(marked.get(cell, 0)) + 1
+				if not is_tsunami or cell == first_cell:
+					labels[cell] = "海啸" if is_tsunami else ""
 		var caster: CombatUnit = null
 		for unit in units:
 			if unit.uid == int(cast["uid"]) and unit.is_alive():
@@ -307,9 +336,11 @@ func _draw_pending_casts(font: Font) -> void:
 		if caster != null:
 			draw_string(font, cell_center(caster.cell) + Vector2(15, 30), "吟", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, color)
 	for cell in marked:
+		if not labels.has(cell):
+			continue
 		var count := int(marked[cell])
-		var label := "蓄%d" % count if count > 1 else "蓄"
-		draw_rect(Rect2(cell.x * TILE + 2, cell.y * TILE + 2, 32 if count > 1 else 20, 17), Color(0.08, 0.10, 0.13, 0.92))
+		var label := String(labels[cell]) if String(labels[cell]) != "" else ("蓄%d" % count if count > 1 else "蓄")
+		draw_rect(Rect2(cell.x * TILE + 2, cell.y * TILE + 2, 36 if label == "海啸" else (32 if count > 1 else 20), 17), Color(0.08, 0.10, 0.13, 0.92))
 		draw_string(font, Vector2(cell.x * TILE + 4, cell.y * TILE + 15), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 
 
@@ -354,6 +385,10 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	var badges_text := ""
 	if unit.burn_ticks > 0:
 		badges_text += "灼"
+	if unit.parasite_source_uid >= 0:
+		badges_text += "寄"
+	if unit.fire_amp_stacks > 0:
+		badges_text += "增"
 	if unit.root_pending or unit.move_cancelled:
 		badges_text += "定"
 	if unit.slow_ticks > 0:
@@ -385,6 +420,27 @@ func _draw_arrow(arrow: Dictionary) -> void:
 	var left := to - dir.rotated(0.5) * 16.0
 	var right := to - dir.rotated(-0.5) * 16.0
 	draw_colored_polygon(PackedVector2Array([to, left, right]), color)
+
+
+func _draw_ice_slide_arrow(slide: Dictionary) -> void:
+	var from: Vector2i = slide["from"]
+	var dir := Vector2(slide["direction"])
+	var center := cell_center(from)
+	var start := center + dir * 27.0
+	var tip := center + dir * (32.0 if bool(slide["blocked"]) else 49.0)
+	var color := Color(0.64, 0.79, 0.86, 0.95) if bool(slide["blocked"]) else Color(1.0, 0.35, 0.24, 0.98) if bool(slide["lethal"]) else Color(0.12, 0.89, 1.0, 0.98)
+	if bool(slide["blocked"]):
+		var across := Vector2(-dir.y, dir.x) * 7.0
+		draw_line(center + dir * 19.0, tip, Color(0.08, 0.13, 0.18, 0.95), 6.0)
+		draw_line(center + dir * 19.0, tip, color, 3.0)
+		draw_line(tip - across - dir * 5.0, tip + across - dir * 5.0, Color(0.08, 0.13, 0.18, 0.95), 5.0)
+		draw_line(tip - across - dir * 5.0, tip + across - dir * 5.0, color, 2.5)
+		return
+	draw_line(start, tip, Color(0.05, 0.11, 0.16, 0.95), 7.0)
+	draw_line(start, tip, color, 4.0)
+	var left := tip - dir.rotated(0.55) * 11.0
+	var right := tip - dir.rotated(-0.55) * 11.0
+	draw_colored_polygon(PackedVector2Array([tip, left, right]), color)
 
 
 func _draw_marker(font: Font, marker: Dictionary) -> void:

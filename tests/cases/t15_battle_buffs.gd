@@ -139,7 +139,7 @@ func _t_skill_buffs(t: TestContext) -> void:
 	charger.battle_buffs["flame_charge"] = true
 	var hp := charge_state.unit_by_uid(100).hp
 	SkillResolver.apply(charge_state, charger, "flame_charge", {"type": "cell", "cell": Vector2i(2, 3)}, false)
-	t.eq(charge_state.unit_by_uid(100).hp, hp - 1, "强化冲锋沿途直伤一")
+	t.eq(charge_state.unit_by_uid(100).hp, hp - 2, "强化冲锋撞击造成两点直伤")
 	var water_state := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(2, 3)]])
 	var water := water_state.unit_by_uid(1)
 	water.cell = Vector2i(0, 3)

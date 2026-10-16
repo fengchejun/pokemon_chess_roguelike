@@ -39,6 +39,15 @@ func _fire(t: TestContext) -> void:
 	var jet := SkillResolver.apply(jet_state, jet_fire, "flame_jet", {"type": "dir", "dir": Vector2i(1, 0), "cell": Vector2i(1, 3)}, false)
 	t.check(bool(jet.get("ok", false)), "喷射火焰按方向施放")
 	t.check(jet_state.unit_by_uid(100).burn_ticks > 0, "喷射火焰附加灼烧")
+	var close_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(1, 3)], ["water_wild1", Vector2i(3, 3)]])
+	var close_fire := close_state.unit_by_uid(1)
+	close_fire.cell = Vector2i(0, 3)
+	var close_preview := close_state.preview_skill(close_fire, "flame_jet", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(1, 3)})
+	t.eq(close_preview["hits"][0]["damage"], 2, "近身喷射预览显示 2 点直伤")
+	t.eq(close_state.unit_by_uid(100).hp, close_state.unit_by_uid(100).max_hp, "喷射预览不修改生命")
+	SkillResolver.apply(close_state, close_fire, "flame_jet", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(1, 3)}, false)
+	t.eq(close_state.unit_by_uid(100).hp, close_state.unit_by_uid(100).max_hp - 2, "紧邻单位额外受到 1 点直伤")
+	t.eq(close_state.unit_by_uid(101).hp, close_state.unit_by_uid(101).max_hp - 1, "三格处单位仍只受到 1 点直伤")
 
 
 func _water(t: TestContext) -> void:
@@ -59,11 +68,12 @@ func _electric(t: TestContext) -> void:
 	var caster := state.unit_by_uid(1)
 	caster.cell = Vector2i(0, 3)
 	var target := state.unit_by_uid(100)
-	var entry := {"type": "multi", "cells": [target.cell, Vector2i(2, 2), Vector2i(1, 2)]}
+	var entry := {"type": "cell", "cell": caster.cell}
 	var preview := state.preview_skill(caster, "lightning", entry)
-	t.check(bool(preview.get("ok", false)), "闪电预览可用")
+	t.check(bool(preview.get("ok", false)), "打雷预览可用")
 	t.eq(state.pending_casts.size(), 0, "预览不会开始真实吟唱")
-	t.check(bool(state.cast_skill(caster, "lightning", entry).get("ok", false)), "闪电锁定三个不同落点")
+	t.check(bool(state.cast_skill(caster, "lightning", entry).get("ok", false)), "打雷锁定当前所有敌方落点")
+	t.eq(state.pending_casts[0]["cells"], [target.cell], "只有敌方所在格被锁定")
 	t.eq(target.hp, target.max_hp, "闪电宣告后目标暂不受伤")
 	state.round = 2
 	state._resolve_due_channels("player")
@@ -75,7 +85,7 @@ func _electric(t: TestContext) -> void:
 	second.cell = Vector2i(1, 3)
 	state.units.append(second)
 	target.hp = 10
-	var second_entry := {"type": "multi", "cells": [target.cell, Vector2i(2, 2), Vector2i(4, 2)]}
+	var second_entry := {"type": "cell", "cell": second.cell}
 	t.check(bool(SkillResolver.apply(state, second, "lightning", second_entry, false).get("ok", false)), "另一只电怪可同时吟唱")
 	state.round = 3
 	state._resolve_due_channels("player")
@@ -121,8 +131,25 @@ func _ice_slide(t: TestContext) -> void:
 	fire.cell = Vector2i(1, 3)
 	t.check(state.move_unit(fire, Vector2i(2, 3)), "单位主动走上冰面")
 	t.eq(fire.last_move_direction, Vector2i(1, 0), "记录最后位移方向")
+	var slide := state.ice_slide_outcome(fire)
+	t.eq(slide.get("to", Vector2i(-1, -1)), Vector2i(3, 3), "冰面箭头指向实际滑行落点")
+	t.check(bool(slide.get("lethal", false)) and not bool(slide.get("blocked", true)), "致死落点在滑行前标为危险")
 	state.settle_round()
 	t.eq(fire.hp, 0, "冰面结算滑入深坑立即倒下")
+	t.check(state.ice_slide_outcome(fire).is_empty(), "结算后清除滑行箭头")
+	var blocked_terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(2, 3), TerrainDB.ICE], [Vector2i(3, 3), TerrainDB.OBSTACLE]])
+	var blocked_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]], blocked_terrain)
+	var blocked_unit := blocked_state.unit_by_uid(1)
+	blocked_unit.cell = Vector2i(2, 3)
+	blocked_unit.last_move_direction = Vector2i(1, 0)
+	t.check(bool(blocked_state.ice_slide_outcome(blocked_unit).get("blocked", false)), "障碍前显示止步标记")
+	blocked_state.settle_round()
+	t.eq(blocked_unit.cell, Vector2i(2, 3), "标为受阻的滑行实际停在原地")
+	blocked_unit.last_move_direction = Vector2i.ZERO
+	t.check(blocked_state.ice_slide_outcome(blocked_unit).is_empty(), "本轮无位移时没有方向箭头")
+	blocked_unit.last_move_direction = Vector2i(1, 0)
+	blocked_unit.battle_buffs["flight"] = true
+	t.check(blocked_state.ice_slide_outcome(blocked_unit).is_empty(), "飞行单位没有冰面滑行箭头")
 
 
 func _matchup_damage(t: TestContext) -> void:

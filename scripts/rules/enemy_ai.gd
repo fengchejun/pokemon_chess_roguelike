@@ -83,11 +83,12 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 						continue
 					var score := _score(base, sim, unit.uid)
 					var channel_score := _channel_score(base, base_unit, skill_id, entry)
+					var route_score := _route_opening_score(base, sim, unit.uid)
 					var candidate := {
 						"uid": unit.uid,
 						"move_path": path,
 						"skill": {"id": skill_id, "target": entry},
-						"score": score["total"] + channel_score - _pending_hazard(base, position, "player"),
+						"score": score["total"] + channel_score + route_score + _exit_clearance_score(work, unit, position) + (30 if skill_id == "tree_man" else 0) - _pending_hazard(base, position, "player"),
 						"meta": result,
 						"lethal": score["kills"],
 					}
@@ -100,34 +101,9 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 
 
 static func _dedupe_entries(state: BattleState, unit: CombatUnit, skill_id: String) -> Array:
-	if skill_id == "lightning":
-		if state.round >= Balance.MAX_ROUNDS:
-			return []
-		var max_range := int(SkillDB.get_def(skill_id).get("range", 5))
-		var choices: Array = []
-		for target in state.alive_units("player"):
-			if GridSpec.manhattan(unit.cell, target.cell) <= max_range:
-				choices.append(target)
-		choices.sort_custom(func(a: CombatUnit, b: CombatUnit) -> bool:
-			if a.is_trainer != b.is_trainer:
-				return a.is_trainer
-			return a.reg_index < b.reg_index
-		)
-		if choices.is_empty():
-			return []
-		var cells: Array = []
-		for target in choices:
-			if not cells.has(target.cell):
-				cells.append(target.cell)
-		for cell in GridSpec.all_cells():
-			if cells.size() >= 3:
-				break
-			if not cells.has(cell) and GridSpec.manhattan(unit.cell, cell) <= max_range and state.unit_at(cell) == null:
-				cells.append(cell)
-		return [{"type": "multi", "cells": cells}] if cells.size() == 3 else []
 	## 射线类只保留“最近命中”和“最远落点”两个代表性选项，避免重复克隆。
 	var entries := SkillResolver.targets(state, unit, skill_id)
-	if skill_id == "fire_burst" and state.round >= Balance.MAX_ROUNDS:
+	if bool(SkillDB.get_def(skill_id).get("channel", false)) and state.round >= Balance.MAX_ROUNDS:
 		return []
 	if SkillDB.kind_of(skill_id) != "ray" or skill_id == "fire_burst":
 		return entries
@@ -150,11 +126,16 @@ static func _dedupe_entries(state: BattleState, unit: CombatUnit, skill_id: Stri
 
 
 static func _channel_score(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary) -> int:
-	if skill_id != "fire_burst" and skill_id != "lightning":
+	if not ["fire_burst", "lightning", "rock_slide", "tsunami"].has(skill_id):
 		return 0
 	var areas: Array = []
 	if skill_id == "lightning":
-		areas = (entry.get("cells", []) as Array).duplicate()
+		for target in state.alive_units("player" if caster.side == "enemy" else "enemy"):
+			areas.append(target.cell)
+	elif skill_id == "rock_slide":
+		areas = [entry["cell"]]
+	elif skill_id == "tsunami":
+		areas = SkillResolver.tsunami_cells(caster.cell, entry["dir"])
 	else:
 		var center: Vector2i = entry["cell"]
 		for dx in range(-1, 2):
@@ -166,8 +147,11 @@ static func _channel_score(state: BattleState, caster: CombatUnit, skill_id: Str
 	for target in state.alive_units():
 		if not areas.has(target.cell):
 			continue
+		if skill_id == "tsunami" and not TerrainDB.is_water_body(state.terrain_at(target.cell)):
+			continue
 		if target.side == caster.side:
-			score -= 70
+			if skill_id != "tsunami":
+				score -= 70
 		else:
 			score += 48 + (25 if target.is_trainer else 0)
 	return score
@@ -178,7 +162,9 @@ static func _pending_hazard(state: BattleState, cell: Vector2i, source_side: Str
 		if String(cast["side"]) != source_side:
 			continue
 		for center in cast["cells"]:
-			if String(cast["skill_id"]) == "lightning" and cell == center:
+			if (String(cast["skill_id"]) == "lightning" or String(cast["skill_id"]) == "rock_slide") and cell == center:
+				return 120
+			if String(cast["skill_id"]) == "tsunami" and cell == center and TerrainDB.is_water_body(state.terrain_at(cell)):
 				return 120
 			if String(cast["skill_id"]) == "fire_burst" and absi(cell.x - center.x) <= 1 and absi(cell.y - center.y) <= 1:
 				return 120
@@ -206,6 +192,8 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 		if later != null and later.is_alive():
 			if later.root_pending and not unit.root_pending:
 				total += 14
+			if later.parasite_source_uid >= 0 and unit.parasite_source_uid < 0:
+				total += 25
 			if later.slow_ticks > unit.slow_ticks:
 				total += 10
 			if later.burn_ticks > unit.burn_ticks:
@@ -228,6 +216,13 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 			total -= (actor_before.hp - actor_after.hp) * 50
 		elif actor_after.hp > actor_before.hp:
 			total += _heal_score(actor_before, actor_after, before)
+		if actor_after != null and actor_after.is_alive():
+			if actor_after.fire_amp_stacks > actor_before.fire_amp_stacks:
+				total += (actor_after.fire_amp_stacks - actor_before.fire_amp_stacks) * 11
+			if actor_after.ice_glide_until_round > actor_before.ice_glide_until_round and before.terrain_at(actor_after.cell) == TerrainDB.ICE:
+				total += 13
+			if actor_after.surf_until_round > actor_before.surf_until_round and TerrainDB.is_water_body(before.terrain_at(actor_after.cell)):
+				total += 13
 	for unit in before.units:
 		if unit.side != "enemy" or unit.uid == actor_uid or not unit.is_alive():
 			continue
@@ -295,6 +290,53 @@ static func _terrain_setup_score(before: BattleState, after: BattleState) -> int
 	return mini(score, 24)
 
 
+static func _route_opening_score(before: BattleState, after: BattleState, actor_uid: int) -> int:
+	## 破障、造冰和藤蔓若让被困友军重新接敌，计入技能选择。
+	var ally_repositioned := false
+	for ally in before.alive_units("enemy"):
+		var later := after.unit_by_uid(ally.uid)
+		if later != null and later.cell != ally.cell:
+			ally_repositioned = true
+			break
+	if not ally_repositioned and before.terrain == after.terrain and before.obstacle_durability == after.obstacle_durability:
+		return 0
+	var score := 0
+	for ally in before.alive_units("enemy"):
+		var later := after.unit_by_uid(ally.uid)
+		if later == null or not later.is_alive():
+			continue
+		var old_distance := 1 << 30
+		var new_distance := 1 << 30
+		for target in before.alive_units("player"):
+			old_distance = mini(old_distance, PathFinder.path_distance(before, ally.cell, target.cell, ally.element, ally.has_buff("flight")))
+			new_distance = mini(new_distance, PathFinder.path_distance(after, later.cell, target.cell, later.element, later.has_buff("flight")))
+		if old_distance >= (1 << 30) and new_distance < (1 << 30):
+			score += 36 if ally.uid == actor_uid else 48
+		elif new_distance < old_distance:
+			score += mini(old_distance - new_distance, 4) * 4
+	for cell in before.obstacle_durability:
+		var old_hp := int(before.obstacle_durability[cell])
+		var new_hp := int(after.obstacle_durability.get(cell, 0))
+		if new_hp >= old_hp:
+			continue
+		# 尚未完全打穿的岩障也有价值，避免 AI 对 2 耐久障碍永不出手。
+		var near_ally := false
+		for ally in before.alive_units("enemy"):
+			if GridSpec.manhattan(ally.cell, cell) <= 2:
+				near_ally = true
+				break
+		if near_ally:
+			score += 12
+	return mini(score, 72)
+
+
+static func _exit_clearance_score(state: BattleState, unit: CombatUnit, position: Vector2i) -> int:
+	if int(state.nest.get("hp", 0)) <= 0 or int(state.nest.get("pending_waves", 0)) <= 0:
+		return 0
+	var exits: Array = state.nest.get("exits", [])
+	return 24 if exits.has(unit.cell) and position != unit.cell else 0
+
+
 static func _priority(state: BattleState, unit: CombatUnit) -> int:
 	if unit.is_trainer:
 		return PRIORITY_TRAINER
@@ -344,6 +386,10 @@ static func _approach_action(work: BattleState, unit: CombatUnit, positions: Arr
 	var targets := work.alive_units("player")
 	if targets.is_empty():
 		return {"uid": unit.uid, "move_path": [], "skill": {}}
+	if int(work.nest.get("pending_waves", 0)) > 0 and (work.nest.get("exits", []) as Array).has(unit.cell):
+		for position in positions:
+			if position != unit.cell and _pending_hazard(work, position, "player") == 0:
+				return {"uid": unit.uid, "move_path": paths[position], "skill": {}}
 	var best_cell := unit.cell
 	var best_distance := 1 << 30
 	var best_cost := 0

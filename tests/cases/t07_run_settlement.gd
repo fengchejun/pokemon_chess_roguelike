@@ -290,7 +290,14 @@ func _t_forced_retreat(t: TestContext) -> void:
 	t.eq((outcome["recovery"] as Array).size(), 0, "失败结局不享受出战 30% 恢复")
 	t.eq(int(run.record_by_uid(3)["hp"]), SpeciesDB.hp_of("grass_starter"), "留守基地的成员回满 100%")
 	t.eq((outcome["base_rest"] as Array).size(), 1, "基地休养明细 1 条")
-	t.eq(run.trainer_hp, int(SpeciesDB.get_species("trainer").get("hp", 7)), "训练家回满")
+	t.eq(run.trainer_hp, 0, "训练家倒下后不会战后回满")
+	t.check(run.run_failed and run.run_lost(), "训练家死亡立即标记整局失败")
+	t.check(not run.settlement_pending, "整局失败不会进入常规战后选择")
+	var before_index := run.battle_index
+	run.advance_battle()
+	t.eq(run.battle_index, before_index, "整局失败不能推进下一场")
+	var restored := RunState.from_dict(run.to_dict())
+	t.check(restored.run_failed and restored.run_lost() and restored.trainer_hp == 0, "读档仍保持本局失败及训练家零生命")
 
 
 func run2_setup(t: TestContext, state: BattleState, run: RunState) -> void:

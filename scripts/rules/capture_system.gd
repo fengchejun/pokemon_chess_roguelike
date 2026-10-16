@@ -42,6 +42,8 @@ static func can_attempt(state, trainer: CombatUnit, target: CombatUnit) -> bool:
 		return false
 	if target.side != "enemy":
 		return false
+	if target.summon_owner_uid >= 0:
+		return false
 	if not in_range(trainer, target):
 		return false
 	if bool(state.capture_options.get("capture_low_hp", false)) and target.hp_ratio() > 0.5:

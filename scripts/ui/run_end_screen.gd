@@ -45,7 +45,7 @@ func _ready() -> void:
 		lines.append("  本局强化：%s" % ("、".join(upgrade_names) if not upgrade_names.is_empty() else "尚无"))
 	lines.append("仓库替补：%d 只" % run.storage.size())
 	if lost:
-		lines.append("全员濒死：没有可出战的宝可梦，本局结束。")
+		lines.append("训练家倒下：本局失败，请从主菜单开始新局。" if run.run_failed else "全员濒死：没有可出战的宝可梦，本局结束。")
 	if not run.deaths.is_empty():
 		lines.append("—— 战损记录 ——")
 		for entry in run.deaths:

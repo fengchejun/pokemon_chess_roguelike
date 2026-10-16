@@ -212,6 +212,14 @@ func _update_unit_card() -> void:
 	var statuses: Array = []
 	if unit.burn_ticks > 0:
 		statuses.append("灼烧 %d 回合" % unit.burn_ticks)
+	if unit.parasite_source_uid >= 0:
+		statuses.append("寄生：整轮末失去 1 HP；其他伤害会解除")
+	if unit.fire_amp_stacks > 0:
+		statuses.append("火焰增幅 +%d：下一次造成技能直伤时消耗" % unit.fire_amp_stacks)
+	if unit.ice_glide_until_round >= state.round:
+		statuses.append("溜冰：至第 %d 回合，可沿连通冰面不限距离移动" % unit.ice_glide_until_round)
+	if unit.surf_until_round >= state.round:
+		statuses.append("冲浪：至第 %d 回合，可沿连通水域不限距离移动" % unit.surf_until_round)
 	if unit.root_pending:
 		statuses.append("定身待生效")
 	if unit.move_cancelled:
@@ -241,6 +249,14 @@ func _update_unit_card() -> void:
 	if statuses.is_empty():
 		statuses.append("无")
 	lines.append("状态：" + "、".join(statuses))
+	var slide := state.ice_slide_outcome(unit)
+	if not slide.is_empty():
+		var direction_name := String(GridSpec.DIR_NAMES.get(slide["direction"], "未知"))
+		if bool(slide["blocked"]):
+			lines.append("冰面滑行（按当前站位）：向%s，目标受阻，回合末停在原地（灰色止步标记）。" % direction_name)
+		else:
+			var target: Vector2i = slide["to"]
+			lines.append("冰面滑行（按当前站位）：向%s至 (%d,%d)%s。" % [direction_name, target.x, target.y, "，落点致命" if bool(slide["lethal"]) else ""])
 	lines.append("本回合移动：%s" % _move_status(unit))
 	if unit.is_trainer:
 		lines.append("本回合捕获机会：%s" % ("已使用" if unit.capture_used else "可用"))
@@ -251,8 +267,11 @@ func _update_unit_card() -> void:
 		lines.append("捕获概率：%d%%（训练家在周围八格可尝试%s）" % [
 			CaptureSystem.chance_percent(unit, low_hp_rules), "，目标需不高于半血" if low_hp_rules else "",
 		])
-		if unit.fresh_spawn:
-			lines.append("本回合新生成：在巢穴出口待机，不能移动或施法")
+	if unit.fresh_spawn:
+		lines.append("本回合新生成：不能移动或施法")
+	if unit.summon_owner_uid >= 0:
+		var owner := state.unit_by_uid(unit.summon_owner_uid)
+		lines.append("召唤物：施法者 %s；战斗结束后消失" % (owner.display_name if owner != null else "未知"))
 	for skill_id in unit.skills:
 		var id := String(skill_id)
 		var used_text := "（本场已用尽）" if not unit.can_use_in_battle(id) else ""
@@ -304,7 +323,7 @@ func _rebuild_skill_buttons() -> void:
 		var button := UIKit.small_button(button_text)
 		button.name = "SkillButton_%s" % id
 		button.tooltip_text = String(def.get("desc", ""))
-		if state.round >= Balance.MAX_ROUNDS and (id == "fire_burst" or id == "lightning"):
+		if state.round >= Balance.MAX_ROUNDS and bool(def.get("channel", false)):
 			button.tooltip_text += "\n第 %d 回合开始吟唱无法在本场结算。" % Balance.MAX_ROUNDS
 		button.toggle_mode = true
 		button.button_pressed = aim_skill == id
@@ -326,13 +345,25 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	var def := SkillDB.get_def(skill_id)
 	var parts: Array = []
 	var damage := int(def.get("damage", 0))
-	if damage > 0:
+	if skill_id == "flame_jet":
+		parts.append("伤害 1 · 邻格 2")
+	elif skill_id == "flame_charge":
+		parts.append("撞击 %d" % (damage + (1 if unit.has_buff("flame_charge") or int(unit.upgrades.get("flame_charge_damage", 0)) > 0 else 0)))
+	elif skill_id == "leech_seed":
+		parts.append("寄生")
+	elif skill_id == "fire_amplify":
+		parts.append("吸火 ≤2 格")
+	elif skill_id == "ice_glide" or skill_id == "surf":
+		parts.append("地形移动 2 回合")
+	elif skill_id == "tree_man":
+		parts.append("召唤")
+	elif damage > 0:
 		parts.append("伤害 %d" % damage)
 	var kind := String(def.get("kind", ""))
 	if kind == "ray":
 		parts.append("射线 %d-%d" % [int(def.get("min_range", 1)), int(def.get("max_range", 8))])
-	elif kind == "multi_cell":
-		parts.append("选 3 格 · 距离 ≤%d" % int(def.get("range", 5)))
+	elif skill_id == "lightning":
+		parts.append("全场锁定 · 蓄力")
 	elif kind == "unit":
 		var actual_range := int(def.get("range", 1))
 		if SkillDB.is_placeholder(skill_id):
@@ -341,13 +372,13 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 			actual_range += int(unit.upgrades.get(skill_id + "_range", 0))
 		parts.append("射程 %d" % actual_range)
 	elif kind == "cell":
-		parts.append("落点 %d" % int(def.get("range", 3)))
+		parts.append("落点 %d%s" % [int(def.get("range", 3)), " · 蓄力" if bool(def.get("channel", false)) else ""])
 	elif kind == "charge":
-		parts.append("跃迁 2 格")
+		parts.append("冲撞最多 2 格")
 	elif kind == "teleport":
 		parts.append("瞬移 %d" % int(def.get("range", 2)))
 	elif kind == "direction":
-		parts.append("方向")
+		parts.append("蓄力 · 方向" if skill_id == "tsunami" else "方向")
 	if parts.is_empty():
 		parts.append("辅助")
 	return " · ".join(parts)
@@ -518,14 +549,6 @@ func _on_board_hovered(cell: Vector2i) -> void:
 	if aim_skill != "":
 		var unit := state.unit_by_uid(selected_uid)
 		var entry := _find_entry(cell)
-		if aim_skill == "lightning":
-			if not entry.is_empty() and not aim_cells.has(cell):
-				hint_label.text = "闪电落点 %d/3：选中 (%d,%d)；已锁定 %s" % [aim_cells.size() + 1, cell.x, cell.y, str(aim_cells)]
-				board.area_cells = aim_cells + [cell]
-			else:
-				hint_label.text = "闪电需选三个不同且距施法者不超过 5 格的落点。"
-			board.queue_redraw()
-			return
 		if unit != null and not entry.is_empty():
 			var preview := state.preview_skill(unit, aim_skill, entry)
 			if bool(preview.get("ok", false)):
@@ -571,6 +594,13 @@ func _on_board_hovered(cell: Vector2i) -> void:
 			board.path_cells = [unit.cell] + (options[cell]["path"] as Array)
 			hint_label.text = "移动到 (%d,%d)，消耗 %d 移动力（移动优先撤回）" % [cell.x, cell.y, int(options[cell]["cost"])]
 			hint_label.add_theme_color_override("font_color", UIKit.TEXT)
+	if state.vine_expire_round.has(cell):
+		var origin := int(state.vine_origin.get(cell, TerrainDB.PLAIN))
+		var warning := "藤蔓第 %d 回合末恢复%s" % [int(state.vine_expire_round[cell]), TerrainDB.name_of(origin)]
+		if TerrainDB.is_lethal(origin):
+			warning += "；站在上方可能死亡"
+		hint_label.text = warning
+		hint_label.add_theme_color_override("font_color", UIKit.BAD if TerrainDB.is_lethal(origin) else UIKit.ACCENT)
 	board.queue_redraw()
 
 
@@ -591,6 +621,12 @@ func _preview_overlays(preview: Dictionary) -> void:
 			var to_cell: Vector2i = push.get("to", Vector2i(-1, -1))
 			if GridSpec.is_inside(from_cell) and GridSpec.is_inside(to_cell) and from_cell != to_cell:
 				board.arrows.append({"from": from_cell, "to": to_cell, "color": Color(1.0, 0.45, 0.35)})
+	if String(preview.get("skill_id", "")) == "flame_charge":
+		for obstacle in preview.get("obstacles_damaged", []):
+			board.markers.append({"cell": obstacle["cell"], "kind": "damage", "text": str(int(obstacle["damage"]))})
+		var nest_hit = preview.get("nest_damaged")
+		if nest_hit != null and not state.nest.is_empty():
+			board.markers.append({"cell": state.nest["cell"], "kind": "damage", "text": str(int(nest_hit.get("damage", 0)))})
 	if preview.get("self_move") != null:
 		var unit := state.unit_by_uid(selected_uid)
 		if unit != null:
@@ -605,6 +641,14 @@ func _preview_overlays(preview: Dictionary) -> void:
 func _show_terrain(cell: Vector2i) -> void:
 	var value := state.terrain_at(cell)
 	var lines: Array = ["地块 (%d,%d)：%s" % [cell.x, cell.y, TerrainDB.name_of(value)], TerrainDB.DESCRIPTIONS.get(value, "")]
+	if state.vine_expire_round.has(cell):
+		var origin := int(state.vine_origin.get(cell, TerrainDB.PLAIN))
+		lines.append("临时藤蔓：第 %d 回合敌我行动结束后恢复为%s；不会自行扩张。" % [int(state.vine_expire_round[cell]), TerrainDB.name_of(origin)])
+		if TerrainDB.is_lethal(origin):
+			lines.append("危险：恢复时立即按底层致死地形结算站位；深水对水系、地面致死地形对飞行单位沿用现有豁免。")
+	if value == TerrainDB.ICE:
+		lines.append("冰面：每次整轮末最多随机冻结一格相邻浅水或深水；新冰下一轮才会扩张。")
+		lines.append("单位本轮在冰面留下位移方向时，蓝色箭头指向回合末滑行格；红色表示致死落点，灰色止步标记表示被挡住。")
 	if state.obstacle_durability.has(cell):
 		var max_hp := Balance.TREE_DURABILITY if value == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
 		lines.append("障碍耐久：%d/%d；树木和岩障会截断射线。" % [int(state.obstacle_durability[cell]), max_hp])
@@ -667,8 +711,8 @@ func _on_skill_pressed(skill_id: String) -> void:
 		var cell: Vector2i = entry.get("cell", Vector2i(-1, -1))
 		if GridSpec.is_inside(cell):
 			board.attack_cells.append(cell)
-	hint_label.text = "瞄准：%s。%s右键或 Esc 取消。" % [SkillDB.name_of(skill_id), "依次点击三个不同金色格；" if skill_id == "lightning" else "点击金色格；"]
-	if state.round >= Balance.MAX_ROUNDS and (skill_id == "fire_burst" or skill_id == "lightning"):
+	hint_label.text = "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
+	if state.round >= Balance.MAX_ROUNDS and bool(SkillDB.get_def(skill_id).get("channel", false)):
 		hint_label.text += " 第 %d 回合开始吟唱将不会在本场结算。" % Balance.MAX_ROUNDS
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_rebuild_skill_buttons()
@@ -720,20 +764,6 @@ func _try_cast_at(cell: Vector2i) -> void:
 	if entry.is_empty():
 		hint_label.text = "该格不在技能有效范围内。"
 		hint_label.add_theme_color_override("font_color", UIKit.BAD)
-		return
-	if aim_skill == "lightning":
-		if aim_cells.has(cell):
-			hint_label.text = "闪电三个落点不能重复。"
-			return
-		aim_cells.append(cell)
-		board.area_cells = aim_cells.duplicate()
-		if aim_cells.size() < 3:
-			hint_label.text = "闪电已选 %d/3 格；右键或 Esc 可取消。" % aim_cells.size()
-			board.queue_redraw()
-			return
-		var chosen := aim_cells.duplicate()
-		if not do_cast("lightning", {"type": "multi", "cells": chosen}):
-			aim_cells = chosen.slice(0, 2)
 		return
 	do_cast(aim_skill, entry)
 

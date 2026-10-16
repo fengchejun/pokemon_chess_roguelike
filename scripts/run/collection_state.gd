@@ -8,6 +8,8 @@ const VERSION := 2
 
 var owned: Array = []
 var next_id: int = 1
+var skill_use_counts: Dictionary = {"player": {}, "enemy": {}}
+var recorded_skill_battles: Dictionary = {}
 
 
 static func defaults() -> CollectionState:
@@ -32,6 +34,18 @@ static func load_profile(path: String = SAVE_PATH) -> CollectionState:
 		return defaults()
 	var profile := CollectionState.new()
 	profile.next_id = maxi(1, int(parsed.get("next_id", 1)))
+	var saved_counts: Dictionary = parsed.get("skill_use_counts", {}) if parsed.get("skill_use_counts", {}) is Dictionary else {}
+	for side in ["player", "enemy"]:
+		var counts: Dictionary = saved_counts.get(side, {}) if saved_counts.get(side, {}) is Dictionary else {}
+		for raw_id in counts:
+			var skill_id := String(raw_id)
+			var amount := maxi(0, int(counts[raw_id]))
+			if skill_id != "" and amount > 0:
+				(profile.skill_use_counts[side] as Dictionary)[skill_id] = amount
+	var saved_battles: Dictionary = parsed.get("recorded_skill_battles", {}) if parsed.get("recorded_skill_battles", {}) is Dictionary else {}
+	for raw_key in saved_battles:
+		if bool(saved_battles[raw_key]):
+			profile.recorded_skill_battles[String(raw_key)] = true
 	var seen := {}
 	for raw in parsed.get("owned", []):
 		if not raw is Dictionary:
@@ -67,9 +81,36 @@ func save(path: String = SAVE_PATH) -> bool:
 			"source": String(record.get("source", "")),
 			"affinity": maxi(0, int(record.get("affinity", 0))),
 		})
-	file.store_string(JSON.stringify({"version": VERSION, "next_id": next_id, "owned": serialized}, "\t"))
+	file.store_string(JSON.stringify({"version": VERSION, "next_id": next_id, "owned": serialized,
+		"skill_use_counts": skill_use_counts, "recorded_skill_battles": recorded_skill_battles}, "\t"))
 	file.close()
 	return true
+
+
+func record_battle_skill_usage(battle: BattleState) -> bool:
+	if battle == null or not battle.ended:
+		return false
+	var key := "%d:%d" % [battle.run_seed, battle.battle_index]
+	if recorded_skill_battles.has(key):
+		return false
+	for side in ["player", "enemy"]:
+		var source: Dictionary = battle.skill_use_counts.get(side, {})
+		var total: Dictionary = skill_use_counts[side]
+		for raw_id in source:
+			var amount := maxi(0, int(source[raw_id]))
+			if amount > 0:
+				var skill_id := String(raw_id)
+				total[skill_id] = int(total.get(skill_id, 0)) + amount
+	recorded_skill_battles[key] = true
+	return true
+
+
+func skill_use_total(side: String) -> int:
+	var total := 0
+	var counts: Dictionary = skill_use_counts.get(side, {})
+	for amount in counts.values():
+		total += int(amount)
+	return total
 
 
 func _add(species_id: String, source: String) -> int:

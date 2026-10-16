@@ -60,7 +60,7 @@ func _ready() -> void:
 	right.add_child(right_scroll)
 	var right_content := UIKit.vbox(10)
 	right_scroll.add_child(right_content)
-	right_content.add_child(_reward_inventory_box(run))
+	right_content.add_child(UIKit.wrapped("消耗品统一在下一页地图预览中选择并使用；返回整备不会重置已使用的卡和地图。背包现有 %d 张。" % run.reward_inventory.size(), 13, UIKit.TEXT_DIM))
 	right_content.add_child(_capture_settings_box(run))
 	right_content.add_child(_archive_box(run))
 	right_content.add_child(_storage_box(run))
@@ -95,36 +95,6 @@ func _capture_settings_box(run: RunState) -> Control:
 		app.autosave()
 	)
 	column.add_child(field_join)
-	return box
-
-
-func _reward_inventory_box(run: RunState) -> Control:
-	var box := UIKit.panel(UIKit.PANEL)
-	var column := UIKit.vbox(5)
-	box.add_child(column)
-	column.add_child(UIKit.label("战后奖励背包（%d 张）" % run.reward_inventory.size(), 17, UIKit.ACCENT))
-	var selector := OptionButton.new()
-	selector.name = "RewardItemOption"
-	selector.add_item("本场不使用消耗卡")
-	var selected_index := 0
-	for reward_id in run.reward_inventory:
-		var id := String(reward_id)
-		selector.add_item(RewardDB.name_of(id))
-		if id == run.selected_reward_item and selected_index == 0:
-			selected_index = selector.item_count - 1
-	selector.select(selected_index)
-	selector.item_selected.connect(func(index: int) -> void:
-		var id := "" if index == 0 else String(run.reward_inventory[index - 1])
-		if run.select_reward_item(id):
-			app.autosave()
-			show_prep_after_mode_change()
-	)
-	column.add_child(selector)
-	column.add_child(UIKit.wrapped("每场战斗前最多使用一张，开战时才消耗。站位卡作用于本场战斗；地貌卡改变本场地图生成倾向；改造工具允许预览时改造两格。未选中的卡会留在本局背包。", 12))
-	if run.selected_reward_item != "":
-		column.add_child(UIKit.wrapped("已选：%s\n%s" % [RewardDB.name_of(run.selected_reward_item), RewardDB.description_of(run.selected_reward_item)], 12, UIKit.ACCENT))
-	if run.pending_bonus_choices > 0:
-		column.add_child(UIKit.wrapped("旧存档待领额外奖励 %d 次：将在下一次战后结算中兑现。" % run.pending_bonus_choices, 12, UIKit.ACCENT))
 	return box
 
 

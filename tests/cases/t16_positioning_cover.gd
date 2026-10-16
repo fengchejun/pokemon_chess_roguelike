@@ -38,9 +38,10 @@ func _test_ranges(t: TestContext) -> void:
 		t.check(not bool(failed.get("ok", false)) and not caster.skill_used, "%s 越界施法不消耗机会" % item[1])
 	var electric := TestScenario.make_state(["electric_starter"], [["rock_wild1", Vector2i(5, 0)]])
 	electric.unit_by_uid(1).cell = Vector2i(0, 0)
-	t.check(_has_target(SkillResolver.targets(electric, electric.unit_by_uid(1), "lightning"), Vector2i(5, 0)), "闪电曼哈顿 5 格可选")
+	t.check(_has_target(SkillResolver.targets(electric, electric.unit_by_uid(1), "lightning"), Vector2i(0, 0)), "打雷可在自身格宣告")
 	electric.unit_by_uid(100).cell = Vector2i(6, 0)
-	t.check(not _has_target(SkillResolver.targets(electric, electric.unit_by_uid(1), "lightning"), Vector2i(6, 0)), "闪电曼哈顿 6 格不可选")
+	t.check(bool(electric.cast_skill(electric.unit_by_uid(1), "lightning", {"type": "cell", "cell": Vector2i(0, 0)}).get("ok", false)), "打雷全地图锁定远处敌方")
+	t.check(electric.pending_casts[0]["cells"].has(Vector2i(6, 0)), "曼哈顿 6 格敌人也被锁定")
 	var rain := TestScenario.make_state(["water_starter"], [])
 	rain.unit_by_uid(1).cell = Vector2i(0, 0)
 	t.check(_has_target(SkillResolver.targets(rain, rain.unit_by_uid(1), "rain_call"), Vector2i(0, 4)), "造雨 4 格中心可选")
@@ -99,7 +100,8 @@ func _test_tree_cover(t: TestContext) -> void:
 	t.eq(flame.unit_by_uid(100).hp, flame_hp, "喷射火焰毁树当次停在树格")
 	var lightning := TestScenario.make_state(["electric_starter"], [["rock_wild1", enemy_cell]], terrain)
 	lightning.unit_by_uid(1).cell = Vector2i(0, 3)
-	t.check(_has_target(SkillResolver.targets(lightning, lightning.unit_by_uid(1), "lightning"), enemy_cell), "闪电不按射线受树木阻挡")
+	lightning.cast_skill(lightning.unit_by_uid(1), "lightning", {"type": "cell", "cell": Vector2i(0, 3)})
+	t.check(lightning.pending_casts[0]["cells"].has(enemy_cell), "打雷不按射线受树木阻挡")
 
 
 func _test_single_exit_guard(t: TestContext) -> void:

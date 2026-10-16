@@ -38,9 +38,15 @@ var channel_lock_round: int = 0
 var battle_buffs: Dictionary = {}
 var upgrades: Dictionary = {} # 仅此怪物本局取得的强化；敌人默认为空。
 var last_move_direction: Vector2i = Vector2i.ZERO
+var parasite_source_uid: int = -1
+var parasite_source_side: String = ""
+var ice_glide_until_round: int = 0
+var surf_until_round: int = 0
+var fire_amp_stacks: int = 0
 
 # 其他
 var fresh_spawn: bool = false       # 本回合新生成：在出口待机，不能移动或施法
+var summon_owner_uid: int = -1
 
 
 func is_alive() -> bool:
@@ -67,7 +73,7 @@ func has_buff(id: String) -> bool:
 
 
 func can_act_skill() -> bool:
-	return is_alive() and not frozen and paralyzed_ticks <= 0 and (not skill_used or extra_casts > 0)
+	return is_alive() and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and (not skill_used or extra_casts > 0)
 
 
 func can_use_in_battle(skill_id: String) -> bool:
@@ -76,7 +82,7 @@ func can_use_in_battle(skill_id: String) -> bool:
 
 
 func can_move_now() -> bool:
-	return is_alive() and not frozen and paralyzed_ticks <= 0 and vine_ticks <= 0 and not moved and not move_cancelled and effective_move() > 0
+	return is_alive() and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and vine_ticks <= 0 and not moved and not move_cancelled and effective_move() > 0
 
 
 func dup() -> CombatUnit:
@@ -114,7 +120,13 @@ func dup() -> CombatUnit:
 	copy.battle_buffs = battle_buffs.duplicate()
 	copy.upgrades = upgrades.duplicate()
 	copy.last_move_direction = last_move_direction
+	copy.parasite_source_uid = parasite_source_uid
+	copy.parasite_source_side = parasite_source_side
+	copy.ice_glide_until_round = ice_glide_until_round
+	copy.surf_until_round = surf_until_round
+	copy.fire_amp_stacks = fire_amp_stacks
 	copy.fresh_spawn = fresh_spawn
+	copy.summon_owner_uid = summon_owner_uid
 	return copy
 
 

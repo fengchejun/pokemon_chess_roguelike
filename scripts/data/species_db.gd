@@ -20,6 +20,10 @@ const SPECIES := {
 		"name": "妙蛙种子", "glyph": "芽", "element": "grass", "hp": 6, "move": 3,
 		"skills": ["wild_vines", "herbal_heal", "drain"],
 	},
+	"tree_summon": {
+		"name": "树人", "glyph": "树", "element": "grass", "hp": 1, "move": 2,
+		"skills": ["tree_wrath"],
+	},
 	"electric_starter": {
 		"name": "皮卡丘", "glyph": "电", "element": "electric", "hp": 5, "move": 3,
 		"skills": ["lightning", "electric_arc", "volt_replace"],

@@ -75,7 +75,7 @@ func run(t: TestContext) -> void:
 	t.check(back_button != null, "预览界面有返回按钮")
 	back_button.pressed.emit()
 	t.eq(app.current_screen.name, "PrepScreen", "返回整备界面")
-	t.check(app.current_screen.find_child("RewardItemOption", true, false) != null, "整备页有奖励背包选择")
+	t.check(app.current_screen.find_child("RewardItemOption", true, false) == null, "整备页不再使用消耗品")
 	deploy_1 = app.current_screen.find_child("Deploy_1", true, false)
 	deploy_2 = app.current_screen.find_child("Deploy_2", true, false)
 	deploy_3 = app.current_screen.find_child("Deploy_3", true, false)
@@ -160,21 +160,23 @@ func run(t: TestContext) -> void:
 	t.eq(app.run.storage.size(), 1, "仓库有 1 只（放入的捕获）")
 	# 第二场：从背包选一张卡，开战后只消耗所选的一张。
 	var selected_item := String(app.run.reward_inventory[0])
-	var reward_selector: OptionButton = app.current_screen.find_child("RewardItemOption", true, false)
-	t.check(reward_selector != null and reward_selector.item_count > 1, "下一场整备页列出背包卡")
-	reward_selector.select(1)
-	reward_selector.item_selected.emit(1)
-	t.eq(app.run.selected_reward_item, selected_item, "战前选中一张已有消耗卡")
 	var inventory_before_battle: int = app.run.reward_inventory.size()
 	# 第二场：验证战后恢复与补给流程。
 	app.show_preview([1, 2, 3])
 	var preview2 = app.current_screen
+	var reward_selector: OptionButton = preview2.find_child("RewardItemOption", true, false)
+	t.check(reward_selector != null and reward_selector.item_count > 1, "预览页列出背包卡")
+	reward_selector.select(1)
+	var use_card: Button = preview2.find_child("UseRewardItemButton", true, false)
+	use_card.pressed.emit()
+	t.eq(app.run.preview_used_reward_item, selected_item, "预览页使用一张已有消耗卡")
+	t.eq(app.run.reward_inventory.size(), inventory_before_battle - 1, "使用时立即消耗卡")
 	var start2: Button = preview2.find_child("StartBattleButton", true, false)
 	t.check(start2 != null, "第二场预览开始按钮存在")
 	start2.pressed.emit()
 	var battle2 = app.current_screen
 	t.eq(battle2.name, "BattleScreen", "第二场进入战斗")
-	t.eq(app.run.reward_inventory.size(), inventory_before_battle - 1, "开战消耗且仅消耗一张选定卡")
+	t.eq(app.run.reward_inventory.size(), inventory_before_battle - 1, "开战不重复消耗卡")
 	t.eq(app.run.selected_reward_item, "", "开战后已选卡清空")
 	t.eq(app.run.carried.size(), 6, "名单不受出战选择影响")
 	for enemy in battle2.state.alive_units("enemy"):

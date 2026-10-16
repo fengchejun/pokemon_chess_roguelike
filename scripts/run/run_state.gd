@@ -31,7 +31,7 @@ const MONSTER_UPGRADES := {
 	},
 	"fireball_damage": {"name": "炽烈火球", "desc": "我方火球术中心直接伤害 +1。", "key": "fireball_damage", "value": 1, "requires_skill": "fire_burst"},
 	"flame_jet_length": {"name": "长焰", "desc": "我方喷射火焰直线长度由 3 格增至 4 格。", "key": "flame_jet_length", "value": 1, "requires_skill": "flame_jet"},
-	"water_flow_push": {"name": "急流", "desc": "我方水流击退距离由 1 格增至 2 格。", "key": "water_flow_push", "value": 1, "requires_skill": "water_flow"},
+	"water_flow_push": {"name": "急流", "desc": "我方水炮击退距离由 1 格增至 2 格。", "key": "water_flow_push", "value": 1, "requires_skill": "water_flow"},
 	"drain_range": {"name": "蔓延吸取", "desc": "我方吸取射程由 2 格增至 3 格。", "key": "drain_range", "value": 1, "requires_skill": "drain"},
 	"herbal_heal_amount": {"name": "丰茂药草", "desc": "我方药草治疗每个目标回复 2 点生命。", "key": "herbal_heal_amount", "value": 1, "requires_skill": "herbal_heal"},
 	"ice_shard_damage": {"name": "尖锐冰锥", "desc": "我方冰锥基础伤害 +1。", "key": "ice_shard_damage", "value": 1, "requires_skill": "ice_shard"},
@@ -39,13 +39,13 @@ const MONSTER_UPGRADES := {
 	"wind_gust_distance": {"name": "强劲推风", "desc": "我方推风击退距离由 1 格增至 2 格。", "key": "wind_gust_distance", "value": 1, "requires_skill": "wind_gust"},
 	"electric_arc_damage": {"name": "高压传导", "desc": "我方放电传导基础伤害 +1。", "key": "electric_arc_damage", "value": 1, "requires_skill": "electric_arc"},
 	"volt_replace_flex": {"name": "灵活换位", "desc": "伏特替换可与相距 1 或 2 格的单位交换位置。", "key": "volt_replace_flex", "value": 1, "requires_skill": "volt_replace"},
-	"tailwind_reach": {"name": "远风", "desc": "加速的前方影响距离由 2 排扩为 3 排。", "key": "tailwind_reach", "value": 1, "requires_skill": "tailwind"},
-	"flame_charge_damage": {"name": "冲锋余焰", "desc": "闪焰冲锋经过单位时额外造成 1 点直接伤害。", "key": "flame_charge_damage", "value": 1, "requires_skill": "flame_charge"},
+	"tailwind_reach": {"name": "远风", "desc": "顺风的前方影响距离由 2 排扩为 3 排。", "key": "tailwind_reach", "value": 1, "requires_skill": "tailwind"},
+	"flame_charge_damage": {"name": "冲锋余焰", "desc": "闪焰冲锋撞击伤害增加 1 点。", "key": "flame_charge_damage", "value": 1, "requires_skill": "flame_charge"},
 	"wild_vines_reach": {"name": "藤蔓延展", "desc": "疯狂藤蔓向前延长至第 3 格。", "key": "wild_vines_reach", "value": 1, "requires_skill": "wild_vines"},
-	"lightning_first_shock": {"name": "首击蓄电", "desc": "闪电的第一个落点额外施加一层感电。", "key": "lightning_first_shock", "value": 1, "requires_skill": "lightning"},
+	"lightning_first_shock": {"name": "首击蓄电", "desc": "打雷锁定的第一个落点额外施加一层感电。", "key": "lightning_first_shock", "value": 1, "requires_skill": "lightning"},
 	"rock_break_range": {"name": "长距碎岩", "desc": "碎岩射程由 2 格增至 3 格。", "key": "rock_break_range", "value": 1, "requires_skill": "rock_break"},
 	"freeze_ray_range": {"name": "远距急冻", "desc": "急冻光线射程由 4 格增至 5 格。", "key": "freeze_ray_range", "value": 1, "requires_skill": "freeze_ray"},
-	"double_cast_range": {"name": "远距加速", "desc": "加速2施放距离由 1 格增至 2 格。", "key": "double_cast_range", "value": 1, "requires_skill": "double_cast"},
+	"double_cast_range": {"name": "远距风力引擎", "desc": "风力引擎施放距离由 1 格增至 2 格。", "key": "double_cast_range", "value": 1, "requires_skill": "double_cast"},
 }
 
 
@@ -68,6 +68,7 @@ static func upgrade_id_for_skill(skill_id: String) -> String:
 var seed: int = 0
 var battle_index: int = 0
 var in_battle: bool = false
+var run_failed: bool = false # 训练家倒下后整局终止；旧存档默认未失败。
 var trainer_hp: int = 6
 var carried: Array = []
 var storage: Array = []
@@ -79,6 +80,8 @@ var environment_deck: Array = [] # 旧存档字段；读取时按已确认规则
 var environment_reward_pending: bool = false # 旧结算字段。
 var reward_inventory: Array = []
 var selected_reward_item: String = ""
+var preview_used_reward_item: String = ""
+var preview_modifications: Array = []
 var pending_reward_choices: int = 0
 var reward_choice_index: int = 0
 var settlement_pending: bool = false
@@ -177,19 +180,29 @@ func region_name() -> String:
 
 
 func effects() -> Dictionary:
-	if selected_reward_item.begins_with("position:"):
-		return CardDB.active_effects([selected_reward_item.trim_prefix("position:")])
+	if preview_used_reward_item.begins_with("position:"):
+		return CardDB.active_effects([preview_used_reward_item.trim_prefix("position:")])
 	return {}
 
 
 func map_deck() -> Array:
-	if selected_reward_item.begins_with("map:"):
-		return [selected_reward_item.trim_prefix("map:")]
+	if preview_used_reward_item.begins_with("map:"):
+		return [preview_used_reward_item.trim_prefix("map:")]
 	return []
 
 
 func mod_points() -> int:
-	return Balance.MOD_POINTS if selected_reward_item == RewardDB.MOD_ITEM else 0
+	return Balance.MOD_POINTS if preview_used_reward_item == RewardDB.MOD_ITEM else 0
+
+
+func use_reward_item_in_preview(reward_id: String) -> bool:
+	if preview_used_reward_item != "" or not RewardDB.is_consumable(reward_id) or not reward_inventory.has(reward_id):
+		return false
+	reward_inventory.erase(reward_id)
+	preview_used_reward_item = reward_id
+	selected_reward_item = ""
+	preview_modifications.clear()
+	return true
 
 
 func select_reward_item(reward_id: String) -> bool:
@@ -261,6 +274,8 @@ func sync_from_battle(battle: BattleState) -> void:
 		known_death_uids[int(entry.get("uid", -1))] = true
 	for unit in battle.units:
 		if unit.side != "player":
+			continue
+		if unit.summon_owner_uid >= 0:
 			continue
 		if unit.is_trainer:
 			trainer_hp = unit.hp
@@ -382,7 +397,13 @@ func settle_battle(battle: BattleState) -> Dictionary:
 	for entry in battle.captured:
 		(outcome["captured_names"] as Array).append(SpeciesDB.name_of(String(entry.get("species_id", ""))))
 	var failure := battle.end_reason == "forced_retreat"
-	var bonus_earned := battle.reward_bonus_earned() and not bool(battle.reward.get("credited", false))
+	if failure:
+		run_failed = true
+		# 本场尚未战后收容的捕获失效；此前已在名单或仓库的收藏保留。
+		pending_captures.clear()
+		pending_reward_choices = 0
+		pending_bonus_choices = 0
+	var bonus_earned := not failure and battle.reward_bonus_earned() and not bool(battle.reward.get("credited", false))
 	if not failure:
 		var gains: Dictionary = {}
 		var original: Dictionary = {}
@@ -487,19 +508,24 @@ func settle_battle(battle: BattleState) -> Dictionary:
 	outcome["storage_rest"] = storage_healed
 	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
 	outcome["trainer_from"] = trainer_hp
-	trainer_hp = trainer_max
-	outcome["trainer_to"] = trainer_max
+	if not failure:
+		trainer_hp = trainer_max
+	outcome["trainer_to"] = trainer_hp
 	in_battle = false
 	environment_reward_pending = false
-	settlement_pending = true
+	settlement_pending = not failure
 	last_settlement = outcome.duplicate(true)
 	battle.reward["run_settled_outcome"] = outcome.duplicate(true)
 	return outcome
 
 
 func advance_battle() -> void:
+	if run_failed:
+		return
 	settlement_pending = false
 	last_settlement = {}
+	preview_used_reward_item = ""
+	preview_modifications.clear()
 	battle_index += 1
 
 
@@ -508,6 +534,8 @@ func run_finished() -> bool:
 
 
 func run_lost() -> bool:
+	if run_failed:
+		return true
 	## 全员濒死（无可出战成员）即本局结束；濒死成员需留守基地休养一场才能恢复。
 	for record in carried:
 		if int(record["hp"]) > 0:
@@ -536,7 +564,7 @@ func available_new_skills(uid: int) -> Array:
 		return []
 	var known: Array = record.get("known_skills", SpeciesDB.skills_of(String(record["species_id"])))
 	var pool: Array = []
-	for skill_id in SkillDB.placeholder_ids_for(SpeciesDB.element_of(String(record["species_id"]))):
+	for skill_id in SkillDB.learnable_ids_for(SpeciesDB.element_of(String(record["species_id"]))):
 		if not known.has(skill_id):
 			pool.append(skill_id)
 	return pool
@@ -651,6 +679,7 @@ func to_dict() -> Dictionary:
 		"seed": seed,
 		"battle_index": battle_index,
 		"in_battle": in_battle,
+		"run_failed": run_failed,
 		"trainer_hp": trainer_hp,
 		"carried": carried.duplicate(true),
 		"storage": storage.duplicate(true),
@@ -661,6 +690,8 @@ func to_dict() -> Dictionary:
 		"environment_reward_pending": environment_reward_pending,
 		"reward_inventory": reward_inventory.duplicate(),
 		"selected_reward_item": selected_reward_item,
+		"preview_used_reward_item": preview_used_reward_item,
+		"preview_modifications": preview_modifications.duplicate(true),
 		"pending_reward_choices": pending_reward_choices,
 		"reward_choice_index": reward_choice_index,
 		"settlement_pending": settlement_pending,
@@ -683,7 +714,8 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.seed = int(data.get("seed", 0))
 	run.battle_index = int(data.get("battle_index", 0))
 	run.in_battle = bool(data.get("in_battle", false))
-	run.trainer_hp = clampi(int(data.get("trainer_hp", 6)), 1, SpeciesDB.hp_of("trainer"))
+	run.run_failed = bool(data.get("run_failed", false))
+	run.trainer_hp = clampi(int(data.get("trainer_hp", 6)), 0 if run.run_failed else 1, SpeciesDB.hp_of("trainer"))
 	run.carried = (data.get("carried", []) as Array).duplicate(true)
 	run.storage = (data.get("storage", []) as Array).duplicate(true)
 	run.pending_captures = (data.get("pending_captures", []) as Array).duplicate(true)
@@ -710,10 +742,21 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.selected_reward_item = String(data.get("selected_reward_item", ""))
 	if not run.reward_inventory.has(run.selected_reward_item):
 		run.selected_reward_item = ""
+	run.preview_used_reward_item = String(data.get("preview_used_reward_item", ""))
+	if not RewardDB.is_consumable(run.preview_used_reward_item):
+		run.preview_used_reward_item = ""
+	run.preview_modifications = (data.get("preview_modifications", []) as Array).duplicate(true)
 	run.pending_reward_choices = maxi(0, int(data.get("pending_reward_choices", 0)))
 	run.reward_choice_index = maxi(0, int(data.get("reward_choice_index", 0)))
 	run.settlement_pending = bool(data.get("settlement_pending", false))
 	run.last_settlement = (data.get("last_settlement", {}) as Dictionary).duplicate(true)
+	if run.settlement_pending and String(run.last_settlement.get("reason", "")) == "forced_retreat":
+		# 旧单槽存档若停在失败结算页，按新规则直接进入本局结束页。
+		run.run_failed = true
+		run.settlement_pending = false
+		run.trainer_hp = 0
+	if run.run_failed:
+		run.pending_captures.clear()
 	run.pending_bonus_choices = maxi(0, int(data.get("pending_bonus_choices", 0)))
 	## 修复历史存档：补齐缺失的 uid（否则名单/仓库相关界面会取键失败）。
 	for group in [run.carried, run.storage, run.pending_captures]:

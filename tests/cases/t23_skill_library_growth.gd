@@ -47,7 +47,7 @@ func _test_missing_skill_upgrades(t: TestContext) -> void:
 	var crossed := charge.unit_by_uid(100)
 	var charge_hp := crossed.hp
 	SkillResolver.apply(charge, fire, "flame_charge", {"type": "cell", "cell": Vector2i(3, 3)}, false)
-	t.eq(crossed.hp, charge_hp - 1, "冲锋强化对沿途单位追加一点直伤")
+	t.eq(crossed.hp, charge_hp - 2, "冲锋强化使撞击伤害由一提升至二")
 	var vines := TestScenario.make_state(["grass_starter"], [["rock_wild1", Vector2i(7, 7)]])
 	var grass := vines.unit_by_uid(1)
 	grass.cell = Vector2i(1, 3)

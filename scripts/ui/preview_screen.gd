@@ -20,14 +20,29 @@ var board: BoardView = null
 var hint_label: Label = null
 var mod_count_label: Label = null
 var mod_buttons: Dictionary = {}
+var card_selector: OptionButton = null
+var card_use_button: Button = null
+var card_status_label: Label = null
+var card_header_label: Label = null
+var card_result: Dictionary = {}
 
 
 func _ready() -> void:
 	name = "PreviewScreen"
 	UIKit.fill_background(self)
 	var run: RunState = app.run
-	map = MapGenerator.generate(run.seed, run.battle_index, 0, run.map_deck())
+	map = MapGenerator.generate(run.seed, run.battle_index)
+	if run.preview_used_reward_item.begins_with("map:"):
+		card_result = MapGenerator.generate_card_preview(run.seed, run.battle_index, run.preview_used_reward_item.trim_prefix("map:"), map)
+		map = (card_result["map"] as Dictionary).duplicate(true)
 	base_map = map.duplicate(true)
+	for modification in run.preview_modifications:
+		if typeof(modification) != TYPE_DICTIONARY:
+			continue
+		var entry: Dictionary = modification
+		var cell := Vector2i(int(entry.get("x", -1)), int(entry.get("y", -1)))
+		if MapGenerator.apply_modification(map, cell, String(entry.get("kind", ""))):
+			mod_used += 1
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", 16)
@@ -54,7 +69,7 @@ func _ready() -> void:
 	right.add_child(scroll)
 	var content := UIKit.vbox(8)
 	scroll.add_child(content)
-	content.add_child(UIKit.wrapped("本场地图由区域、种子与已选地貌卡生成；卡只影响生成倾向。开战后不再重新生成地形，所选消耗卡在开战时消耗。", 13))
+	content.add_child(UIKit.wrapped("所有消耗品在此页使用；使用后立即消耗，本场限一张。地貌卡会重新生成地图，并增加对应地形。返回整备再进入时保留结果。", 13))
 	content.add_child(_enemy_box(run))
 	content.add_child(_cards_box())
 	var mod_box := UIKit.panel(UIKit.PANEL)
@@ -155,12 +170,82 @@ func _cards_box() -> Control:
 	var box := UIKit.panel(UIKit.PANEL)
 	var column := UIKit.vbox(6)
 	box.add_child(column)
-	column.add_child(UIKit.label("本场消耗卡", 17, UIKit.ACCENT))
-	if run.selected_reward_item == "":
-		column.add_child(UIKit.wrapped("未使用卡牌。可返回整备页从背包选择；不选也能开战。", 13))
+	card_header_label = UIKit.label("战前消耗品背包（%d 张）" % run.reward_inventory.size(), 17, UIKit.ACCENT)
+	column.add_child(card_header_label)
+	card_selector = OptionButton.new()
+	card_selector.name = "RewardItemOption"
+	if run.preview_used_reward_item != "":
+		card_selector.add_item("本场已使用：%s" % RewardDB.name_of(run.preview_used_reward_item))
 	else:
-		column.add_child(UIKit.wrapped("%s：%s" % [RewardDB.name_of(run.selected_reward_item), RewardDB.description_of(run.selected_reward_item)], 13))
+		card_selector.add_item("选择一张消耗品")
+		var selected_index := 0
+		for reward_id in run.reward_inventory:
+			var id := String(reward_id)
+			card_selector.add_item(RewardDB.name_of(id))
+			if id == run.selected_reward_item and selected_index == 0:
+				selected_index = card_selector.item_count - 1
+		card_selector.select(selected_index)
+	card_selector.disabled = run.preview_used_reward_item != ""
+	card_selector.item_selected.connect(func(_index: int) -> void: _refresh_card_status())
+	column.add_child(card_selector)
+	card_use_button = UIKit.small_button("使用并消耗")
+	card_use_button.name = "UseRewardItemButton"
+	card_use_button.disabled = run.preview_used_reward_item != "" or run.reward_inventory.is_empty()
+	card_use_button.pressed.connect(_on_use_reward_item)
+	column.add_child(card_use_button)
+	card_status_label = UIKit.wrapped("", 13)
+	column.add_child(card_status_label)
+	_refresh_card_status()
 	return box
+
+
+func _on_use_reward_item() -> void:
+	var run: RunState = app.run
+	var index := card_selector.selected - 1
+	if index < 0 or index >= run.reward_inventory.size():
+		hint_label.text = "请先选择一张背包里的消耗品。"
+		return
+	var reward_id := String(run.reward_inventory[index])
+	if not run.use_reward_item_in_preview(reward_id):
+		hint_label.text = "本场已经使用过消耗品，或这张卡已不在背包。"
+		return
+	if reward_id.begins_with("map:"):
+		card_result = MapGenerator.generate_card_preview(run.seed, run.battle_index, reward_id.trim_prefix("map:"), map)
+		map = (card_result["map"] as Dictionary).duplicate(true)
+		base_map = map.duplicate(true)
+	card_selector.disabled = true
+	card_selector.clear()
+	card_selector.add_item("本场已使用：%s" % RewardDB.name_of(reward_id))
+	card_use_button.disabled = true
+	card_header_label.text = "战前消耗品背包（%d 张）" % run.reward_inventory.size()
+	_refresh_card_status()
+	_refresh()
+	app.autosave()
+
+
+func _refresh_card_status() -> void:
+	if card_status_label == null:
+		return
+	var used := String(app.run.preview_used_reward_item)
+	if used == "":
+		var index := card_selector.selected - 1
+		if index >= 0 and index < app.run.reward_inventory.size():
+			var selected := String(app.run.reward_inventory[index])
+			card_status_label.text = "%s：%s" % [RewardDB.name_of(selected), RewardDB.description_of(selected)]
+		else:
+			card_status_label.text = "未使用。站位卡在本场战斗生效；改造工具可在此页改造地形。"
+		return
+	card_status_label.text = "已消耗：%s。%s" % [RewardDB.name_of(used), RewardDB.description_of(used)]
+	if used.begins_with("map:") and not card_result.is_empty():
+		var before: Dictionary = card_result["before"]
+		var after: Dictionary = card_result["after"]
+		var details: Array = []
+		var terrain_names := {"water": "浅水", "grass": "草丛", "rock": "岩障", "steam": "蒸汽"}
+		for key in MapGenerator.card_targets(used.trim_prefix("map:")):
+			details.append("%s %d→%d" % [terrain_names.get(String(key), key), int(before[key]), int(after[key])])
+		card_status_label.text += "\n对应地形：%s。" % "、".join(details)
+		if not bool(card_result["guaranteed"]):
+			card_status_label.text += "本图空间受限，未能全部增加；卡已消耗。"
 
 
 func _set_mod_kind(kind: String) -> void:
@@ -181,6 +266,8 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 		return
 	if MapGenerator.apply_modification(map, cell, mod_kind):
 		mod_used += 1
+		run.preview_modifications.append({"x": cell.x, "y": cell.y, "kind": mod_kind})
+		app.autosave()
 		hint_label.text = ""
 		_refresh()
 	else:
@@ -221,6 +308,8 @@ func _mod_hover_text(cell: Vector2i) -> String:
 func _on_reset() -> void:
 	map = base_map.duplicate(true)
 	mod_used = 0
+	app.run.preview_modifications.clear()
+	app.autosave()
 	hint_label.text = ""
 	_refresh()
 
@@ -229,6 +318,8 @@ func _refresh() -> void:
 	var run: RunState = app.run
 	board.set_map_preview(map, _preview_units(run))
 	mod_count_label.text = "剩余改造次数：%d / %d" % [maxi(0, run.mod_points() - mod_used), run.mod_points()]
+	for button in mod_buttons.values():
+		(button as Button).disabled = run.mod_points() <= 0 or mod_used >= run.mod_points()
 	var lethal := int(map.get("lethal_count", 0))
 	var obstacle_count: int = (map.get("obstacle_cells", []) as Array).size()
 	hint_label.text = hint_label.text if hint_label.text != "" else "致死地形 %d 格｜障碍 %d 格（种子可复现）" % [lethal, obstacle_count]

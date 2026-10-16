@@ -348,7 +348,7 @@ func _t_forced_retreat(t: TestContext) -> void:
 	var enemy := state.unit_by_uid(100)
 	state.damage_unit(enemy, trainer, 99, {"cause": "测试", "no_element": true})
 	t.eq(state.end_reason, "forced_retreat", "训练家倒下触发强制撤退")
-	t.eq(trainer.hp, 1, "训练家以 1 生命保留")
+	t.eq(trainer.hp, 0, "训练家死亡后生命归零")
 	t.eq(state.battle_exp(), 0, "强制撤退不结算本场经验")
 
 

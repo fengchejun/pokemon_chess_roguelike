@@ -45,7 +45,38 @@ static func reachable(state, unit: CombatUnit) -> Dictionary:
 		if cell == start:
 			continue
 		out[cell] = {"cost": best[cell], "path": paths[cell]}
+	var terrain_mode := -1
+	if state.terrain_at(start) == TerrainDB.ICE and unit.ice_glide_until_round >= state.round:
+		terrain_mode = TerrainDB.ICE
+	elif TerrainDB.is_water_body(state.terrain_at(start)) and unit.surf_until_round >= state.round:
+		terrain_mode = TerrainDB.WATER
+	if terrain_mode >= 0:
+		var terrain_paths := _connected_terrain_paths(state, unit, terrain_mode)
+		for cell in terrain_paths:
+			var route: Array = terrain_paths[cell]
+			if not out.has(cell) or route.size() < (out[cell]["path"] as Array).size():
+				out[cell] = {"cost": 0, "path": route, "terrain_travel": true}
 	return out
+
+
+static func _connected_terrain_paths(state, unit: CombatUnit, terrain_mode: int) -> Dictionary:
+	var routes: Dictionary = {unit.cell: []}
+	var queue: Array = [unit.cell]
+	while not queue.is_empty():
+		var current: Vector2i = queue.pop_front()
+		for dir in GridSpec.DIRS4:
+			var next: Vector2i = current + dir
+			if not GridSpec.is_inside(next) or routes.has(next) or state.unit_at(next) != null or state.is_nest_cell(next) or TerrainDB.blocks_move(state.terrain_at(next)):
+				continue
+			var terrain: int = state.terrain_at(next)
+			if terrain_mode == TerrainDB.ICE and terrain != TerrainDB.ICE:
+				continue
+			if terrain_mode == TerrainDB.WATER and not TerrainDB.is_water_body(terrain):
+				continue
+			routes[next] = (routes[current] as Array).duplicate() + [next]
+			queue.append(next)
+	routes.erase(unit.cell)
+	return routes
 
 
 static func stop_cells(state, unit: CombatUnit) -> Dictionary:

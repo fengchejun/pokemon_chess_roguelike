@@ -3,13 +3,13 @@ extends Control
 var app = null
 var help_box: PanelContainer = null
 
-const HELP_TEXT := "流程：编成（出战名单 6 只、每场勾选 1 至 3 只作战）→ 地图预览与改造（默认 2 次）→ 战斗 → 战后结算 → 下一场。\n" \
+const HELP_TEXT := "流程：编成（出战名单 6 只、每场勾选 1 至 3 只作战）→ 地图预览与可选改造 → 战斗 → 战后结算 → 下一场。\n" \
 	+ "属性克制暂时关闭：七种元素仍影响技能、状态与地形反应，直接伤害不按属性增减。\n" \
 	+ "地形：浅水在双方行动阶段交接时赋予浸湿；草丛、藤蔓和树木可被点燃；水面蒸汽禁止站在其中的单位施法。易碎地面可塌陷；深水与深坑可造成坠落。\n" \
 	+ "行动：每只宝可梦每回合 1 次移动 + 1 次技能；训练家每回合 1 次捕获。第 %d 回合结束后野生逃离。\n" \
-	+ "环境卡：整备页二选一。默认 v2 站位卡在地图预览时选五选二；地图构筑卡在战后选一张，持续改变后续地图生成倾向。\n" \
+	+ "消耗品：战后取得三选一卡，可留在本局背包；每场在地图预览页最多使用一张，点击即消耗。地貌卡刷新地图并使对应地形比旧图更多，改造工具提供两次手动改造。\n" \
 	+ "捕获：训练家周围八格每回合可尝试 1 次；整备页可分别启用半血保证捕获与捕获后原地转阵营。默认使用 v2 概率判定与离场处理。\n" \
-	+ "战损：战斗中倒下进入濒死（无永久死亡，留守一个冒险周期后回满）；战斗失败（训练家倒下）时不结算本场经验、出战宝可梦生命减半并退回基地（捕获保留）。\n" \
+	+ "战损：宝可梦倒下进入濒死；训练家倒下则整局立即失败，本场未收容的捕获和奖励失效，需重新开始。\n" \
 	+ "冒险：一次冒险＝从开始战斗到回到基地。战后恢复：训练家每次冒险前回满；出战过的宝可梦冒险结束恢复 30%%，留守基地的成员与仓库回满 100%%；每 %d 场进入补给点。\n" \
 	+ "永久收藏：本局结束时携带队伍与仓库里的怪物进入收藏；新局从收藏中选三只开局。\n" \
 	+ "威胁预告：默认关闭，可在战斗中打开；红色骷髅表示致死威胁。"
@@ -48,6 +48,10 @@ func _ready() -> void:
 	continue_button.disabled = not SaveSystem.has_save()
 	continue_button.pressed.connect(_on_continue)
 	buttons.add_child(continue_button)
+	var stats_button := UIKit.button("技能使用统计")
+	stats_button.name = "SkillStatsButton"
+	stats_button.pressed.connect(func() -> void: app.show_skill_stats())
+	buttons.add_child(stats_button)
 	var help_button := UIKit.button("玩法说明")
 	help_button.name = "HelpButton"
 	help_button.pressed.connect(_on_help)

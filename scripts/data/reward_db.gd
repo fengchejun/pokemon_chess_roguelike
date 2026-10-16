@@ -32,11 +32,11 @@ static func name_of(reward_id: String) -> String:
 static func description_of(reward_id: String) -> String:
 	if reward_id.begins_with("position:"):
 		var card := CardDB.get_card(reward_id.trim_prefix("position:"))
-		return "%s：%s。选用的战斗生效，开战消耗。" % [card.get("anchor", ""), card.get("effect", "")]
+		return "%s：%s。预览页使用后立即消耗，本场战斗生效。" % [card.get("anchor", ""), card.get("effect", "")]
 	if reward_id.begins_with("map:"):
-		return "%s 选用时在地图生成前生效，开战消耗；只改变生成倾向。" % MapCardDB.get_card(reward_id.trim_prefix("map:")).get("desc", "")
+		return "%s 预览页使用后立即消耗、刷新地图；对应地形数量比当前图更多。" % MapCardDB.get_card(reward_id.trim_prefix("map:")).get("desc", "")
 	if reward_id == MOD_ITEM:
-		return "选用的战斗前可在地图预览中改造最多 %d 格，开战消耗。" % Balance.MOD_POINTS
+		return "预览页使用后立即消耗，可在本场预览地图改造最多 %d 格。" % Balance.MOD_POINTS
 	return ""
 
 
