@@ -865,7 +865,19 @@ func _show_unit_detail(unit: CombatUnit) -> void:
 		var record: Dictionary = app.run.record_by_uid(unit.uid)
 		progress += " · 经验 %d" % int(record.get("xp", 0))
 	var identity := "物种：%s · %s · %s\n等级：%s · 生命：%d/%d\n移动：当前 %d / 基础 %d\n行动：移动%s · 技能%s · 捕获%s\n强化：%s\n\n" % [SpeciesDB.name_of(unit.species_id), "我方" if unit.side == "player" else "敌方", Elements.FULL_NAMES.get(unit.element, "无属性"), progress, unit.hp, unit.max_hp, state.move_budget_for(unit), unit.move_points, "已用" if unit.moved else "可用", "已用" if unit.skill_used else "可用", "已用" if unit.capture_used else "可用", str(unit.upgrades.keys()) if not unit.upgrades.is_empty() else "无"]
-	_show_modal("%s · 详细信息" % unit.display_name, identity + unit_body.text + "\n\n可用技能\n" + "\n".join(skills))
+	var sources: Array = []
+	if unit.burn_ticks > 0:
+		sources.append("灼烧来源：%s #%d" % [unit.burn_source_side, unit.burn_source_uid])
+	if unit.parasite_source_uid >= 0:
+		sources.append("寄生来源：%s #%d" % [unit.parasite_source_side, unit.parasite_source_uid])
+	if not unit.vine_sources.is_empty():
+		sources.append("藤蔓来源与剩余阶段：%s" % str(unit.vine_sources))
+	if unit.summon_owner_uid >= 0:
+		sources.append("召唤者：#%d" % unit.summon_owner_uid)
+	if not unit.battle_buffs.is_empty():
+		sources.append("本场增益：%s" % str(unit.battle_buffs))
+	var source_text := "\n".join(sources) if not sources.is_empty() else "无"
+	_show_modal("%s %s · 详细信息" % [unit.glyph, unit.display_name], identity + unit_body.text + "\n\n状态来源\n" + source_text + "\n\n可用技能\n" + "\n".join(skills))
 
 
 func _show_modal(title: String, body: String) -> void:
