@@ -19,6 +19,7 @@ var round_label: Label = null
 var status_label: Label = null
 var unit_title: Label = null
 var unit_body: Label = null
+var unit_health: ProgressBar = null
 var skill_box: VBoxContainer = null
 var capture_button: Button = null
 var end_turn_button: Button = null
@@ -27,50 +28,62 @@ var hint_label: Label = null
 var channel_warning_box: Control = null
 var channel_warning_list: VBoxContainer = null
 var log_label: RichTextLabel = null
+var menu_button: Button = null
+var action_panel: Control = null
+var unit_panel: Control = null
+var terrain_panel: Control = null
+var terrain_label: Label = null
+var objective_panel: Control = null
+var objective_label: Label = null
+var corner_top_left: Control = null
+var modal_layer: ColorRect = null
+var hovered_uid: int = 0
 
 
 func _ready() -> void:
 	name = "BattleScreen"
 	UIKit.fill_background(self)
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 12)
-	margin.add_theme_constant_override("margin_right", 12)
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_bottom", 10)
-	add_child(margin)
-	var columns := UIKit.hbox(12)
-	margin.add_child(columns)
-	# 棋盘列
-	var board_column := UIKit.vbox(6)
-	columns.add_child(board_column)
 	board = BoardView.new()
 	board.name = "BoardView"
 	board.cell_clicked.connect(_on_board_clicked)
-	board.cell_right_clicked.connect(func(_cell: Vector2i) -> void: _clear_aim())
+	board.cell_double_clicked.connect(_on_board_double_clicked)
+	board.cell_right_clicked.connect(func(_cell: Vector2i) -> void: _cancel_action())
 	board.cell_hovered.connect(_on_board_hovered)
-	board_column.add_child(board)
+	add_child(board)
 	hint_label = UIKit.label("点击己方单位开始行动；右键/Esc 取消瞄准。", 13, UIKit.TEXT_DIM)
 	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint_label.custom_minimum_size = Vector2(GridSpec.W * BoardView.TILE, 0)
-	board_column.add_child(hint_label)
-	# 信息与行动列
-	var main_column := UIKit.vbox(8)
-	main_column.custom_minimum_size = Vector2(400, 0)
-	columns.add_child(main_column)
-	main_column.add_child(_header_box())
-	main_column.add_child(_unit_box())
-	main_column.add_child(_skill_box())
-	main_column.add_child(_action_row())
+	add_child(hint_label)
+	var top_left := UIKit.vbox(6)
+	corner_top_left = top_left
+	add_child(top_left)
+	menu_button = UIKit.small_button("☰ 菜单")
+	menu_button.pressed.connect(_open_menu)
+	top_left.add_child(menu_button)
+	top_left.add_child(_header_box())
+	top_left.add_child(_action_row())
+	top_left.set_meta("corner", "top_left")
+	objective_panel = UIKit.panel(UIKit.PANEL)
+	add_child(objective_panel)
+	objective_label = UIKit.label("战斗目标", 15, UIKit.ACCENT)
+	objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	objective_label.custom_minimum_size.x = 270
+	objective_panel.add_child(objective_label)
+	objective_panel.set_meta("corner", "top_right")
+	unit_panel = _unit_box()
+	add_child(unit_panel)
+	unit_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	unit_panel.set_meta("corner", "bottom_left")
+	terrain_panel = UIKit.panel(UIKit.PANEL)
+	add_child(terrain_panel)
+	terrain_label = UIKit.label("悬停地块查看信息", 13, UIKit.TEXT_DIM)
+	terrain_panel.add_child(terrain_label)
+	terrain_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	terrain_panel.set_meta("corner", "bottom_right")
+	action_panel = _skill_box()
+	add_child(action_panel)
 	channel_warning_box = _channel_warning_box()
-	main_column.add_child(channel_warning_box)
-	# 日志列
-	var log_column := UIKit.vbox(6)
-	log_column.custom_minimum_size = Vector2(236, 0)
-	columns.add_child(log_column)
-	log_column.add_child(UIKit.label("战斗日志", 17, UIKit.ACCENT))
+	add_child(channel_warning_box)
 	var log_scroll := UIKit.scroll()
-	log_column.add_child(log_scroll)
 	log_label = RichTextLabel.new()
 	log_label.bbcode_enabled = false
 	log_label.scroll_following = true
@@ -79,8 +92,12 @@ func _ready() -> void:
 	log_label.custom_minimum_size = Vector2(220, 0)
 	log_label.add_theme_font_size_override("normal_font_size", 12)
 	log_scroll.add_child(log_label)
+	log_scroll.visible = false
+	add_child(log_scroll)
 	board.set_from_state(state)
 	refresh_all()
+	resized.connect(_layout_overlays)
+	call_deferred("_layout_overlays")
 
 
 func _header_box() -> Control:
@@ -101,8 +118,13 @@ func _unit_box() -> Control:
 	box.add_child(column)
 	unit_title = UIKit.label("", 17)
 	column.add_child(unit_title)
+	unit_health = ProgressBar.new()
+	unit_health.custom_minimum_size = Vector2(230, 12)
+	unit_health.show_percentage = false
+	column.add_child(unit_health)
 	unit_body = UIKit.label("", 13, UIKit.TEXT_DIM)
 	unit_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	unit_body.visible = false
 	column.add_child(unit_body)
 	return box
 
@@ -142,6 +164,48 @@ func _channel_warning_box() -> Control:
 	return box
 
 
+func _layout_overlays() -> void:
+	if board == null or size.x <= 0 or size.y <= 0:
+		return
+	var side_space := 310.0
+	var board_size := minf(size.y - 100.0, size.x - side_space * 2.0)
+	var factor := maxf(0.5, board_size / (GridSpec.W * BoardView.TILE))
+	board.scale = Vector2.ONE * factor
+	board.position = Vector2((size.x - GridSpec.W * BoardView.TILE * factor) * 0.5, (size.y - GridSpec.H * BoardView.TILE * factor) * 0.5)
+	corner_top_left.position = Vector2(14, 12)
+	corner_top_left.custom_minimum_size.x = side_space - 28.0
+	objective_panel.position = Vector2(size.x - side_space + 10.0, 12)
+	objective_panel.custom_minimum_size = Vector2(side_space - 24.0, 105)
+	unit_panel.position = Vector2(14, size.y - 136)
+	unit_panel.custom_minimum_size = Vector2(side_space - 28.0, 92)
+	terrain_panel.position = Vector2(size.x - side_space + 10.0, size.y - 136)
+	terrain_panel.custom_minimum_size = Vector2(side_space - 24.0, 120)
+	hint_label.position = Vector2(board.position.x, size.y - 34)
+	hint_label.custom_minimum_size.x = board_size
+	channel_warning_box.position = Vector2(size.x - side_space + 10.0, 130)
+	channel_warning_box.custom_minimum_size.x = side_space - 24.0
+	_position_action_panel()
+
+
+func _position_action_panel() -> void:
+	if action_panel == null or board == null:
+		return
+	action_panel.visible = selected_uid > 0 and aim_skill == "" and not capture_mode and not busy and not state.ended and state.phase == BattleState.PHASE_PLAYER
+	if not action_panel.visible:
+		return
+	var unit := state.unit_by_uid(selected_uid)
+	if unit == null or unit.side != "player":
+		action_panel.visible = false
+		return
+	var panel_width := 220.0
+	action_panel.custom_minimum_size.x = panel_width
+	var cell_screen := board.position + (Vector2(unit.cell) + Vector2.ONE) * BoardView.TILE * board.scale.x
+	var x := cell_screen.x + 8.0
+	if x + panel_width > size.x - 12.0:
+		x = board.position.x + unit.cell.x * BoardView.TILE * board.scale.x - panel_width - 8.0
+	action_panel.position = Vector2(clampf(x, 8.0, size.x - panel_width - 8.0), clampf(cell_screen.y - 70.0, 8.0, size.y - 260.0))
+
+
 # ---------------------------------------------------------------- 刷新
 
 
@@ -157,6 +221,7 @@ func refresh_all() -> void:
 	_update_channel_warnings()
 	_update_log()
 	_update_selection_overlay()
+	_position_action_panel()
 	if state.ended and not settled_reported:
 		settled_reported = true
 		call_deferred("_report_end")
@@ -164,7 +229,7 @@ func refresh_all() -> void:
 
 func _update_header() -> void:
 	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
-	round_label.text = "第 %d 层 %d/6 战 · 第 %d/%d 回合 · %s" % [BattleDB.floor_of(state.battle_index) + 1, BattleDB.local_battle_of(state.battle_index) + 1, maxi(1, state.round), Balance.MAX_ROUNDS, phase_text]
+	round_label.text = "第 %d 层 %d/6 战\n第 %d/%d 回合 · %s" % [BattleDB.floor_of(state.battle_index) + 1, BattleDB.local_battle_of(state.battle_index) + 1, maxi(1, state.round), Balance.MAX_ROUNDS, phase_text]
 	var reward_text := ""
 	match String(state.reward.get("state", "")):
 		"map":
@@ -180,20 +245,30 @@ func _update_header() -> void:
 	status_label.text = "敌人剩余 %d｜已击败 %d｜已捕获 %d%s" % [
 		state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text,
 	]
+	status_label.visible = false
+	objective_label.text = "战斗目标\n敌人 %d · 击败 %d · 捕获 %d\n%s" % [state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text.strip_edges()]
 
 
 func _update_unit_card() -> void:
+	if unit_title == null:
+		return
 	var unit: CombatUnit = null
-	if selected_uid != 0:
+	if hovered_uid != 0:
+		unit = state.unit_by_uid(hovered_uid)
+	if unit == null and selected_uid != 0:
 		unit = state.unit_by_uid(selected_uid)
-	elif viewed_enemy_uid != 0:
+	elif unit == null and viewed_enemy_uid != 0:
 		unit = state.unit_by_uid(viewed_enemy_uid)
 	if unit == null:
 		unit_title.text = "未选择单位"
+		unit_health.value = 0
 		unit_body.text = "点击己方单位进行移动或施放技能；点击敌人查看信息。"
 		return
 	var side_text := "我方" if unit.side == "player" else "野生"
 	unit_title.text = "%s%s（%s · %s）" % ["首领·" if unit.is_boss else "", unit.display_name, side_text, Elements.FULL_NAMES.get(unit.element, "无属性")]
+	unit_title.text += "\nHP %d/%d" % [unit.hp, unit.max_hp]
+	unit_health.max_value = maxi(1, unit.max_hp)
+	unit_health.value = unit.hp
 	var lines: Array = []
 	if unit.side == "enemy":
 		lines.append("Lv.%d%s" % [unit.enemy_level, " · 首领：最大生命 +20" if unit.is_boss else ""])
@@ -352,6 +427,12 @@ func _rebuild_skill_buttons() -> void:
 			button.tooltip_text += "\n（蒸汽中无法施法）" if state.steam_cells.has(unit.cell) else "\n（当前没有有效目标）"
 		button.pressed.connect(func() -> void: _on_skill_pressed(id))
 		skill_box.add_child(button)
+	var detail_button := UIKit.small_button("查看详情")
+	detail_button.pressed.connect(func() -> void: _show_unit_detail(unit))
+	skill_box.add_child(detail_button)
+	var cancel_button := UIKit.small_button("取消选择")
+	cancel_button.pressed.connect(_cancel_action)
+	skill_box.add_child(cancel_button)
 
 
 func _skill_phase_block_reason(unit: CombatUnit, skill_id: String = "") -> String:
@@ -558,6 +639,12 @@ func _on_board_clicked(cell: Vector2i) -> void:
 func _on_board_hovered(cell: Vector2i) -> void:
 	if busy or state.ended:
 		return
+	var hover_unit := state.unit_at(cell)
+	var next_hover_uid := hover_unit.uid if hover_unit != null else 0
+	if hovered_uid != next_hover_uid:
+		hovered_uid = next_hover_uid
+		_update_unit_card()
+	_show_terrain(cell)
 	board.path_cells = []
 	board.area_cells = []
 	board.ray_cells = []
@@ -670,8 +757,15 @@ func _preview_overlays(preview: Dictionary) -> void:
 
 
 func _show_terrain(cell: Vector2i) -> void:
+	if terrain_label == null:
+		return
 	var value := state.terrain_at(cell)
 	var lines: Array = ["地块 (%d,%d)：%s" % [cell.x, cell.y, TerrainDB.name_of(value)], TerrainDB.DESCRIPTIONS.get(value, "")]
+	var selected := state.unit_by_uid(selected_uid)
+	var move_cost := state.move_cost_for(selected, cell) if selected != null else TerrainDB.move_cost(value, "")
+	lines.append("移动消耗：%s" % (str(move_cost) if move_cost >= 0 else "不可进入"))
+	if state.burning_cells.has(cell):
+		lines.append("燃烧：%s" % str(state.burning_cells[cell]))
 	if state.vine_expire_round.has(cell):
 		var origin := int(state.vine_origin.get(cell, TerrainDB.PLAIN))
 		lines.append("临时藤蔓：第 %d 回合敌我行动结束后恢复为%s；不会自行扩张。" % [int(state.vine_expire_round[cell]), TerrainDB.name_of(origin)])
@@ -708,8 +802,7 @@ func _show_terrain(cell: Vector2i) -> void:
 				lines.append("本场奖励已失去。")
 	if state.fruits.has(cell):
 		lines.append("恢复果实：拾取回复 20 生命。")
-	unit_title.text = "地块信息"
-	unit_body.text = "\n".join(lines)
+	terrain_label.text = "\n".join(lines)
 
 
 func select_unit(uid: int) -> void:
@@ -722,6 +815,104 @@ func select_unit(uid: int) -> void:
 	_rebuild_skill_buttons()
 	_update_selection_overlay()
 	board.queue_redraw()
+	_position_action_panel()
+
+
+func _on_board_double_clicked(cell: Vector2i) -> void:
+	if busy or aim_skill != "" or capture_mode or modal_layer != null:
+		return
+	var unit := state.unit_at(cell)
+	if unit != null:
+		_show_unit_detail(unit)
+
+
+func _show_unit_detail(unit: CombatUnit) -> void:
+	selected_uid = unit.uid if unit.side == "player" else 0
+	viewed_enemy_uid = unit.uid if unit.side == "enemy" else 0
+	_update_unit_card()
+	var skills: Array = []
+	for skill_id in unit.skills:
+		skills.append("%s（%s）：%s" % [SkillDB.name_of(String(skill_id)), _skill_tag(String(skill_id), unit), SkillDB.get_def(String(skill_id)).get("desc", "")])
+	var progress := "Lv.%d" % (unit.enemy_level if unit.side == "enemy" else unit.combat_level)
+	if unit.side == "player" and not unit.is_trainer and app.run != null:
+		var record: Dictionary = app.run.record_by_uid(unit.uid)
+		progress += " · 经验 %d" % int(record.get("xp", 0))
+	var identity := "物种：%s · %s · %s\n等级：%s · 生命：%d/%d\n移动：当前 %d / 基础 %d\n行动：移动%s · 技能%s · 捕获%s\n强化：%s\n\n" % [SpeciesDB.name_of(unit.species_id), "我方" if unit.side == "player" else "敌方", Elements.FULL_NAMES.get(unit.element, "无属性"), progress, unit.hp, unit.max_hp, state.move_budget_for(unit), unit.move_points, "已用" if unit.moved else "可用", "已用" if unit.skill_used else "可用", "已用" if unit.capture_used else "可用", str(unit.upgrades.keys()) if not unit.upgrades.is_empty() else "无"]
+	_show_modal("%s · 详细信息" % unit.display_name, identity + unit_body.text + "\n\n可用技能\n" + "\n".join(skills))
+
+
+func _show_modal(title: String, body: String) -> void:
+	if modal_layer != null:
+		modal_layer.queue_free()
+	modal_layer = ColorRect.new()
+	modal_layer.color = Color(0.02, 0.03, 0.06, 0.86)
+	modal_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	modal_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(modal_layer)
+	var panel := UIKit.panel(UIKit.PANEL)
+	modal_layer.add_child(panel)
+	var full_detail := title.contains("详细信息")
+	var panel_size := Vector2(size.x * (0.9 if full_detail else 0.58), size.y * (0.88 if full_detail else 0.72))
+	panel.position = (size - panel_size) * 0.5
+	panel.size = panel_size
+	var content := UIKit.vbox(8)
+	panel.add_child(content)
+	content.add_child(UIKit.label(title, 22, UIKit.ACCENT))
+	var scroll := UIKit.scroll()
+	scroll.custom_minimum_size.y = size.y * (0.69 if full_detail else 0.44)
+	content.add_child(scroll)
+	scroll.add_child(UIKit.wrapped(body, 15, UIKit.TEXT))
+	var close_button := UIKit.small_button("继续战斗" if title == "战斗菜单" else "关闭")
+	close_button.pressed.connect(_close_modal)
+	content.add_child(close_button)
+
+
+func _close_modal() -> void:
+	if modal_layer != null:
+		modal_layer.queue_free()
+		modal_layer = null
+
+
+func _open_menu() -> void:
+	if busy or state.phase != BattleState.PHASE_PLAYER:
+		return
+	_show_modal("战斗菜单", "对战记录、游戏设置和保存返回标题")
+	var content := modal_layer.get_child(0).get_child(0)
+	for entry in [["对战记录", func() -> void: _show_modal("本场对战记录", "\n".join(state.events))], ["游戏设置", func() -> void: _open_settings()], ["保存并回到标题", func() -> void: _confirm_return()]]:
+		var button := UIKit.small_button(String(entry[0]))
+		button.pressed.connect(entry[1])
+		content.add_child(button)
+
+
+func _confirm_return() -> void:
+	_show_modal("保存并回到标题", "将保存当前回合、站位与战斗记录。下次点击继续上一局即可续战。")
+	var button := UIKit.small_button("确认保存并返回")
+	button.pressed.connect(func() -> void:
+		if not app.save_battle_and_return(state):
+			_show_modal("保存失败", "无法写入当前战斗存档，请检查存档目录后重试。")
+	)
+	modal_layer.get_child(0).get_child(0).add_child(button)
+
+
+func _open_settings() -> void:
+	_show_modal("游戏设置", "音乐音量与窗口显示")
+	var content := modal_layer.get_child(0).get_child(0)
+	var volume := HSlider.new()
+	volume.min_value = 0
+	volume.max_value = 100
+	volume.value = app.music_percent
+	volume.value_changed.connect(func(value: float) -> void: app.set_music_percent(int(value)))
+	content.add_child(volume)
+	var mute := CheckButton.new()
+	mute.text = "静音"
+	mute.button_pressed = app.music_muted
+	mute.toggled.connect(func(value: bool) -> void: app.set_music_muted(value))
+	content.add_child(mute)
+	var fullscreen := CheckButton.new()
+	fullscreen.text = "全屏"
+	fullscreen.button_pressed = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+	fullscreen.toggled.connect(func(value: bool) -> void: app.set_fullscreen(value))
+	content.add_child(fullscreen)
 
 
 func _on_skill_pressed(skill_id: String) -> void:
@@ -760,6 +951,7 @@ func _on_skill_pressed(skill_id: String) -> void:
 		hint_label.text += " 第 %d 回合开始吟唱将不会在本场结算。" % Balance.MAX_ROUNDS
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_rebuild_skill_buttons()
+	_position_action_panel()
 	board.queue_redraw()
 
 
@@ -778,6 +970,7 @@ func _on_capture_pressed() -> void:
 		board.attack_cells.append(enemy.cell)
 	hint_label.text = "捕获：点击周围八格内的合法目标。"
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
+	_position_action_panel()
 	board.queue_redraw()
 
 
@@ -794,6 +987,21 @@ func _clear_aim() -> void:
 	hint_label.add_theme_color_override("font_color", UIKit.TEXT_DIM)
 	_rebuild_skill_buttons()
 	_update_selection_overlay()
+	board.queue_redraw()
+	_position_action_panel()
+
+
+func _cancel_action() -> void:
+	if aim_skill != "" or capture_mode:
+		_clear_aim()
+		return
+	selected_uid = 0
+	viewed_enemy_uid = 0
+	board.selected_uid = 0
+	board.clear_overlays()
+	_update_unit_card()
+	_rebuild_skill_buttons()
+	_position_action_panel()
 	board.queue_redraw()
 
 
@@ -929,6 +1137,7 @@ func do_undo() -> bool:
 		return false
 	if not state.undo_last_move():
 		return false
+	app.sync_and_save(state)
 	board.clear_overlays()
 	_refresh_after_action()
 	return true
@@ -981,6 +1190,7 @@ func _refresh_after_action() -> void:
 	_update_channel_warnings()
 	_update_log()
 	_update_selection_overlay()
+	_position_action_panel()
 	board.queue_redraw()
 	if state.ended and not settled_reported:
 		settled_reported = true
@@ -999,4 +1209,9 @@ func _report_end() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
-		_clear_aim()
+		if modal_layer != null:
+			_close_modal()
+		elif aim_skill != "" or capture_mode or selected_uid != 0 or viewed_enemy_uid != 0:
+			_cancel_action()
+		else:
+			_open_menu()

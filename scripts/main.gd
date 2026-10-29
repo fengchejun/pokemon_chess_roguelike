@@ -1,4 +1,5 @@
 extends Control
+const BattleSnapshot = preload("res://scripts/run/battle_snapshot.gd")
 
 ## 应用路由：主菜单 → 编队 → 地图预览与改造 → 战斗 → 战后结算 → 下一场 / 本局结束。
 
@@ -24,17 +25,59 @@ var battle_settled := false
 var prep_deploy_preset: Array = []
 var autosave_enabled: bool = true # UI 自动化在挂载场景前设为 false，避免覆盖玩家单槽存档。
 var debug_console: Control = null
+var music_percent: int = 100
+var music_muted: bool = false
 
 
 func _ready() -> void:
 	collection = CollectionState.load_profile() if autosave_enabled else CollectionState.defaults()
 	music_director = MusicDirectorScript.new()
 	add_child(music_director)
+	_load_settings()
 	_fit_to_window()
 	if not get_window().size_changed.is_connected(_fit_to_window):
 		get_window().size_changed.connect(_fit_to_window)
 	UIKit.setup_theme(get_window())
 	show_menu()
+
+
+func _load_settings() -> void:
+	var config := ConfigFile.new()
+	if config.load("user://game_settings.cfg") == OK:
+		music_percent = clampi(int(config.get_value("audio", "music_percent", 100)), 0, 100)
+		music_muted = bool(config.get_value("audio", "muted", false))
+		if bool(config.get_value("display", "fullscreen", false)):
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	_apply_music_settings()
+
+
+func _apply_music_settings() -> void:
+	music_director.volume_db = -80.0 if music_muted or music_percent <= 0 else -10.0 + linear_to_db(float(music_percent) / 100.0)
+
+
+func _save_settings() -> void:
+	var config := ConfigFile.new()
+	config.set_value("audio", "music_percent", music_percent)
+	config.set_value("audio", "muted", music_muted)
+	config.set_value("display", "fullscreen", DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN)
+	config.save("user://game_settings.cfg")
+
+
+func set_music_percent(value: int) -> void:
+	music_percent = clampi(value, 0, 100)
+	_apply_music_settings()
+	_save_settings()
+
+
+func set_music_muted(value: bool) -> void:
+	music_muted = value
+	_apply_music_settings()
+	_save_settings()
+
+
+func set_fullscreen(value: bool) -> void:
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if value else DisplayServer.WINDOW_MODE_WINDOWED)
+	_save_settings()
 
 
 func _fit_to_window() -> void:
@@ -129,6 +172,14 @@ func continue_run() -> void:
 	run = loaded
 	if run.run_failed:
 		show_run_end()
+	elif not run.battle_snapshot.is_empty():
+		var restored := BattleSnapshot.load_state(run.battle_snapshot)
+		if restored == null:
+			show_prep()
+		else:
+			var screen: Control = BattleScreen.new()
+			screen.state = restored
+			_switch(screen)
 	elif run.settlement_pending:
 		pending_settlement = {"battle": null, "outcome": run.last_settlement.duplicate(true)}
 		battle_settled = true
@@ -147,10 +198,27 @@ func autosave() -> void:
 
 
 func sync_and_save(battle: BattleState) -> void:
-	## 战斗中的死亡与捕获即时写回并落盘（死亡当帧写入）。
+	## 敌方动画期间保留上一稳定的我方节点，避免从半步动作恢复。
 	if run != null and battle != null:
+		if battle.phase == BattleState.PHASE_ENEMY or battle.phase == BattleState.PHASE_SETTLE:
+			return
 		run.sync_from_battle(battle)
+		if battle.phase == BattleState.PHASE_PLAYER and not battle.ended:
+			run.battle_snapshot = BattleSnapshot.save_state(battle)
 		autosave()
+
+
+func save_battle_and_return(battle: BattleState) -> bool:
+	if run == null or battle == null or battle.phase != BattleState.PHASE_PLAYER or battle.ended:
+		return false
+	var snapshot := BattleSnapshot.save_state(battle)
+	var previous := run.battle_snapshot
+	run.battle_snapshot = snapshot
+	if autosave_enabled and not SaveSystem.save_run(run):
+		run.battle_snapshot = previous
+		return false
+	show_menu()
+	return true
 
 
 func show_prep() -> void:
@@ -186,6 +254,7 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 	var state := BattleState.new()
 	var card_effects := run.effects()
 	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, card_effects, {}, cfg.get("reinforce", []), run.options, run.relic_stacks)
+	run.battle_snapshot = BattleSnapshot.save_state(state)
 	## 消耗品已经在预览页使用时扣除；开战不再二次扣卡。
 	run.selected_reward_item = ""
 	run.mark_deployed(deploy_uids)
@@ -200,6 +269,7 @@ func finish_battle(battle: BattleState) -> void:
 	if battle_settled or run == null:
 		return
 	battle_settled = true
+	run.battle_snapshot = {}
 	run.sync_from_battle(battle)
 	var outcome := run.settle_battle(battle)
 	if collection != null and not run.debug_tainted:

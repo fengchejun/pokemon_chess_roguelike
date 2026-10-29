@@ -1,0 +1,84 @@
+class_name BattleSnapshot
+extends RefCounted
+
+## JSON-compatible battle state. Dictionary keys may be Vector2i, so encode pairs.
+static func encode(value: Variant) -> Variant:
+	if value is int:
+		return {"@": "i", "value": str(value)}
+	if value is Vector2i:
+		return {"@": "v2i", "x": value.x, "y": value.y}
+	if value is Vector2:
+		return {"@": "v2", "x": value.x, "y": value.y}
+	if value is Dictionary:
+		var entries: Array = []
+		for key in value:
+			entries.append([encode(key), encode(value[key])])
+		return {"@": "dict", "items": entries}
+	if value is Array:
+		var entries: Array = []
+		for item in value:
+			entries.append(encode(item))
+		return entries
+	return value
+
+
+static func decode(value: Variant) -> Variant:
+	if value is Array:
+		var entries: Array = []
+		for item in value:
+			entries.append(decode(item))
+		return entries
+	if value is Dictionary:
+		match String(value.get("@", "")):
+			"i": return int(value["value"])
+			"v2i": return Vector2i(int(value["x"]), int(value["y"]))
+			"v2": return Vector2(float(value["x"]), float(value["y"]))
+			"dict":
+				var result := {}
+				for pair in value["items"]:
+					result[decode(pair[0])] = decode(pair[1])
+				return result
+	return value
+
+
+static func _fields(object: Object) -> Dictionary:
+	var result := {}
+	for property in object.get_property_list():
+		if int(property["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			var key := String(property["name"])
+			if key in ["units", "spawn_rng", "capture_rng", "terrain_rng"]:
+				continue
+			result[key] = encode(object.get(key))
+	return result
+
+
+static func save_state(state: BattleState) -> Dictionary:
+	var members: Array = []
+	for unit in state.units:
+		members.append(_fields(unit))
+	return {"fields": _fields(state), "units": members, "rng": {
+		"spawn_seed": str(state.spawn_rng.seed), "spawn_state": str(state.spawn_rng.state),
+		"capture_seed": str(state.capture_rng.seed), "capture_state": str(state.capture_rng.state),
+		"terrain_seed": str(state.terrain_rng.seed), "terrain_state": str(state.terrain_rng.state),
+	}}
+
+
+static func load_state(snapshot: Dictionary) -> BattleState:
+	if not snapshot.has("fields") or not snapshot.has("units") or not snapshot.has("rng"):
+		return null
+	var state := BattleState.new()
+	for key in snapshot["fields"]:
+		state.set(key, decode(snapshot["fields"][key]))
+	for member in snapshot["units"]:
+		var unit := CombatUnit.new()
+		for key in member:
+			unit.set(key, decode(member[key]))
+		state.units.append(unit)
+	var rng: Dictionary = snapshot["rng"]
+	state.spawn_rng.seed = int(rng["spawn_seed"])
+	state.spawn_rng.state = int(rng["spawn_state"])
+	state.capture_rng.seed = int(rng["capture_seed"])
+	state.capture_rng.state = int(rng["capture_state"])
+	state.terrain_rng.seed = int(rng["terrain_seed"])
+	state.terrain_rng.state = int(rng["terrain_state"])
+	return state

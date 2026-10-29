@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 8
+const SAVE_VERSION := 9
 const MAX_EQUIPPED_SKILLS := Balance.SKILL_SLOTS
 const RETIRED_GENERIC_UPGRADES := ["move_plus", "max_hp_plus", "direct_guard", "collision_guard", "grass_resilience", "recovery_plus"]
 
@@ -80,6 +80,7 @@ var battle_index: int = 0
 var floor_themes: Array = []
 var offered_floor_themes: Array = []
 var in_battle: bool = false
+var battle_snapshot: Dictionary = {}
 var run_failed: bool = false # 训练家倒下后整局终止；旧存档默认未失败。
 var debug_tainted: bool = false # 使用 F7 修改过本局；仍可存档，但不进入永久收藏统计。
 var trainer_hp: int = 35
@@ -771,6 +772,7 @@ func to_dict() -> Dictionary:
 		"floor_themes": floor_themes.duplicate(),
 		"offered_floor_themes": offered_floor_themes.duplicate(),
 		"in_battle": in_battle,
+		"battle_snapshot": battle_snapshot.duplicate(true),
 		"run_failed": run_failed,
 		"debug_tainted": debug_tainted,
 		"trainer_hp": trainer_hp,
@@ -815,6 +817,7 @@ static func from_dict(data: Dictionary) -> RunState:
 	if run.offered_floor_themes.is_empty():
 		run.refresh_theme_offers()
 	run.in_battle = bool(data.get("in_battle", false))
+	run.battle_snapshot = (data.get("battle_snapshot", {}) as Dictionary).duplicate(true)
 	run.run_failed = bool(data.get("run_failed", false))
 	run.debug_tainted = bool(data.get("debug_tainted", false))
 	run.trainer_hp = clampi(_migrate_hp(int(data.get("trainer_hp", 6)), _old_max_hp("trainer", 1, version), SpeciesDB.hp_of("trainer")) if old_hp_scale else int(data.get("trainer_hp", SpeciesDB.hp_of("trainer"))), 0 if run.run_failed else 1, SpeciesDB.hp_of("trainer"))
