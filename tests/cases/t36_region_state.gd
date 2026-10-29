@@ -89,7 +89,7 @@ func run(t: TestContext) -> void:
 	var rest := run_state.rest_with_food({"basic": 3})
 	t.check(rest["ok"], "初始营地可立即休息")
 	t.eq(run_state.trainer_hp, SpeciesDB.hp_of("trainer"), "恢复训练家")
-	t.eq(run_state.carried[0]["hp"], run_state.monster_max_hp(run_state.carried[0]), "恢复濒死成员")
+	t.eq(run_state.carried[0]["hp"], ceili(run_state.monster_max_hp(run_state.carried[0]) / 2.0), "濒死成员恢复一半生命")
 	t.eq(run_state.food_inventory["basic"], 0, "按食物种类扣除 3 份")
 	t.check(not run_state.rest_with_food({"basic": 3})["ok"], "无需恢复时不能重复休息")
 	var legacy: Dictionary = run_state.to_dict()

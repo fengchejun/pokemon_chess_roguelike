@@ -800,8 +800,16 @@ func _on_board_clicked(cell: Vector2i) -> void:
 	if busy or state.ended:
 		return
 	if cell == state.boss_portal_cell and not capture_mode and aim_skill == "" and action_mode != "move":
-		state.end_battle("victory")
-		refresh_all()
+		if app.run.storage.is_empty():
+			_enter_boss_portal()
+		else:
+			var dialog := ConfirmationDialog.new()
+			dialog.title = "前往下一层"
+			dialog.dialog_text = "营地留守的 %d 只宝可梦将被抛弃，无法进入永久收藏。确认前往下一层？" % app.run.storage.size()
+			dialog.confirmed.connect(_enter_boss_portal)
+			dialog.popup_hide.connect(func() -> void: dialog.queue_free())
+			add_child(dialog)
+			dialog.popup_centered()
 		return
 	var occupant := state.unit_at(cell)
 	if capture_mode:
@@ -832,6 +840,11 @@ func _on_board_clicked(cell: Vector2i) -> void:
 	_show_terrain(cell)
 	if selected_uid != 0 and aim_skill == "" and not capture_mode:
 		_position_action_panel()
+
+
+func _enter_boss_portal() -> void:
+	state.end_battle("victory")
+	refresh_all()
 
 
 func _on_board_hovered(cell: Vector2i) -> void:

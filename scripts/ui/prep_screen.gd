@@ -27,7 +27,7 @@ func _ready() -> void:
 	columns.add_child(left)
 	left.add_child(UIKit.label("整备 · 第 %d 层 %d/6 战（%s）" % [run.floor_index() + 1, run.battle_in_floor() + 1, run.region_name()], 24, UIKit.ACCENT))
 	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
-	var recovery_text := "训练家生命：%d / %d。战后不自动回血；前往营地消耗 3 食物，可恢复携带队伍和训练家全部生命，包括濒死成员。" if run.region_mode else "训练家生命：%d / %d（每次冒险前回满）。出战者战后不自动回血，留守成员每场恢复 50%% 最大生命；濒死成员留守一场后恢复到 5 HP。"
+	var recovery_text := "训练家生命：%d / %d。营地消耗 3 食物恢复受伤成员，濒死成员复活至半血。" if run.region_mode else "训练家生命：%d / %d（每次冒险前回满）。出战者战后不自动回血，留守成员每场恢复 50%% 最大生命；濒死成员留守一场后恢复到 5 HP。"
 	left.add_child(UIKit.wrapped(recovery_text % [run.trainer_hp, trainer_max], 14, UIKit.TEXT_DIM))
 	left.add_child(UIKit.label("出战名单（%d/%d）——每场最多勾选 %d 只出战；其余在备战席休养；濒死成员本场不能出战：" % [run.carried.size(), Balance.CARRIED_LIMIT, MAX_DEPLOY], 16))
 	var team_scroll := UIKit.scroll()
@@ -117,7 +117,7 @@ func _team_row(record: Dictionary) -> Control:
 	box.name = "Deploy_%d" % int(record["uid"])
 	if int(record["hp"]) <= 0:
 		box.disabled = true
-		box.tooltip_text = "濒死：留守一场后恢复到 5 HP。"
+		box.tooltip_text = "濒死：在营地休息后恢复至半血。" if app.run.region_mode else "濒死：留守一场后恢复到 5 HP。"
 	box.toggled.connect(func(pressed: bool) -> void: _on_toggle(int(record["uid"]), pressed))
 	line.add_child(box)
 	check_boxes[int(record["uid"])] = box
@@ -133,7 +133,7 @@ func _team_row(record: Dictionary) -> Control:
 		int(record["hp"]), app.run.monster_max_hp(record), SpeciesDB.move_of(species_id), int(record.get("affinity", 0)),
 	], 13, UIKit.TEXT_DIM))
 	if int(record["hp"]) <= 0:
-			title_line.add_child(UIKit.label("濒死（留守一场后恢复到 5 HP）", 13, UIKit.BAD))
+			title_line.add_child(UIKit.label("濒死（营地休息恢复半血）" if app.run.region_mode else "濒死（留守一场后恢复到 5 HP）", 13, UIKit.BAD))
 	var upgrade_names: Array = []
 	for upgrade_id in record.get("upgrades_taken", []):
 		var info_entry: Dictionary = RunState.upgrade_info(String(upgrade_id))
@@ -195,6 +195,10 @@ func _storage_box(run: RunState) -> Control:
 	var box := UIKit.panel(UIKit.PANEL)
 	var column := UIKit.vbox(6)
 	box.add_child(column)
+	if run.region_mode:
+		column.add_child(UIKit.label("营地留守：%d 只" % run.storage.size(), 17, UIKit.ACCENT))
+		column.add_child(UIKit.wrapped("仅能在营地交换队伍；进入下一层后留守成员将被抛弃。", 13))
+		return box
 	column.add_child(UIKit.label("仓库（%d/%d）" % [run.storage.size(), Balance.STORAGE_LIMIT], 17, UIKit.ACCENT))
 	column.add_child(UIKit.wrapped("仓库成员不参战、不受战损，沿用每场战后回满规则；携带名单中的留守成员每场恢复 50%% 最大生命，濒死者留守一场后恢复到 5 HP。名单满员时，捕获可替换或放入仓库。", 13))
 	if not run.storage.is_empty():
@@ -228,7 +232,7 @@ func _on_toggle(uid: int, pressed: bool) -> void:
 		if not record.is_empty() and int(record["hp"]) <= 0:
 			var box: CheckBox = check_boxes[uid]
 			box.set_pressed_no_signal(false)
-			hint_label.text = "濒死的宝可梦无法出战：留守一场后恢复到 5 HP。"
+			hint_label.text = "濒死的宝可梦无法出战：请在营地休息。" if app.run.region_mode else "濒死的宝可梦无法出战：留守一场后恢复到 5 HP。"
 			return
 		if deploy_selection.size() >= MAX_DEPLOY:
 			var box: CheckBox = check_boxes[uid]

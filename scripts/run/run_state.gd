@@ -336,8 +336,10 @@ func rest_with_food(selection: Dictionary) -> Dictionary:
 	food = total_food()
 	trainer_hp = SpeciesDB.hp_of("trainer")
 	for record in carried:
-		results.append("%s HP %d → %d" % [SpeciesDB.name_of(String(record["species_id"])), int(record["hp"]), monster_max_hp(record)])
-		record["hp"] = monster_max_hp(record)
+		var before := int(record["hp"])
+		var healed := ceili(monster_max_hp(record) / 2.0) if before <= 0 else monster_max_hp(record)
+		results.append("%s HP %d → %d" % [SpeciesDB.name_of(String(record["species_id"])), before, healed])
+		record["hp"] = healed
 	return {"ok": true, "spent": {kind: cost}, "results": results}
 
 
@@ -551,7 +553,7 @@ func _add_capture(species_id: String, hp: int) -> void:
 	var record := _make_record(species_id, hp)
 	if carried.size() < Balance.CARRIED_LIMIT:
 		carried.append(record)
-	elif storage.size() < Balance.STORAGE_LIMIT:
+	elif region_mode or storage.size() < Balance.STORAGE_LIMIT:
 		storage.append(record)
 	else:
 		pending_captures.append(record)
@@ -571,7 +573,7 @@ func capture_join_team() -> bool:
 
 
 func capture_to_storage() -> bool:
-	if pending_captures.is_empty() or storage.size() >= Balance.STORAGE_LIMIT:
+	if pending_captures.is_empty() or (not region_mode and storage.size() >= Balance.STORAGE_LIMIT):
 		return false
 	var record: Dictionary = pending_captures.pop_front()
 	_ensure_uid(record)
@@ -581,7 +583,7 @@ func capture_to_storage() -> bool:
 
 func capture_replace(replace_uid: int) -> bool:
 	## 用捕获替换名单中的一名成员：被替换者进入仓库。
-	if pending_captures.is_empty() or storage.size() >= Balance.STORAGE_LIMIT:
+	if region_mode or pending_captures.is_empty() or storage.size() >= Balance.STORAGE_LIMIT:
 		return false
 	for index in carried.size():
 		if int(carried[index]["uid"]) == replace_uid:
@@ -591,6 +593,21 @@ func capture_replace(replace_uid: int) -> bool:
 			_ensure_uid(incoming)
 			carried.append(incoming)
 			return true
+	return false
+
+
+func camp_swap(carried_uid: int, stored_uid: int) -> bool:
+	if not region_mode or get_region().active_node != "camp" or not get_region().at_camp_scene:
+		return false
+	for i in carried.size():
+		if int(carried[i]["uid"]) != carried_uid:
+			continue
+		for j in storage.size():
+			if int(storage[j]["uid"]) == stored_uid:
+				var old = carried[i]
+				carried[i] = storage[j]
+				storage[j] = old
+				return true
 	return false
 
 

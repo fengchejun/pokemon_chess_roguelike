@@ -111,6 +111,22 @@ func run(t: TestContext) -> void:
 	t.eq(boss_battle.end_reason, "victory", "点击传送门才开始胜利结算")
 	boss_app.current_screen.report_end_now()
 	t.check(boss_app.run.get_region().nodes["boss"]["cleared"], "使用传送门后的结算记录首领完成")
+	var abandoned: Dictionary = boss_app.run._make_record("fire_starter")
+	boss_app.run.carried.append(abandoned)
+	boss_app.collection.absorb_run(boss_app.run)
+	boss_app.run.carried.erase(abandoned)
+	boss_app.run.storage.append(abandoned)
+	var previous_collection_id := int(boss_app.collection.owned[0]["id"])
+	var prior_owned: Dictionary = boss_app.run._make_record("water_starter")
+	prior_owned["collection_id"] = previous_collection_id
+	boss_app.run.storage.append(prior_owned)
+	var abandoned_source := "run:%d:%d" % [boss_app.run.seed, int(abandoned["uid"])]
+	while boss_app.run.pending_reward_choices > 0:
+		boss_app.run.choose_reward(String(boss_app.run.reward_choices()[0]))
+	boss_app.continue_after_settlement()
+	t.check(boss_app.run.storage.is_empty(), "进入下一层后丢弃营地留守成员")
+	t.check(boss_app.collection.owned.all(func(entry): return String(entry.get("source", "")) != abandoned_source), "本局留守成员不进入永久收藏")
+	t.check(not boss_app.collection.record_by_id(previous_collection_id).is_empty(), "已有永久收藏不会因留守被删除")
 	boss_app.queue_free()
 	var support_app = _new_app(t, 74)
 	region = support_app.run.get_region()

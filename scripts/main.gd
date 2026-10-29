@@ -405,6 +405,13 @@ func continue_after_settlement() -> void:
 		var region = run.get_region()
 		var boss_cleared: bool = region.active_node == "boss" and bool(region.nodes["boss"]["cleared"])
 		if boss_cleared:
+			if collection != null:
+				for member in run.storage:
+					var source := "run:%d:%d" % [run.seed, int(member.get("uid", -1))]
+					collection.owned = collection.owned.filter(func(entry: Dictionary) -> bool: return String(entry.get("source", "")) != source)
+				if autosave_enabled:
+					collection.save()
+			run.storage.clear()
 			run.battle_index = (region.floor_index + 1) * 6
 			run.region_data = {}
 			run.refresh_theme_offers()

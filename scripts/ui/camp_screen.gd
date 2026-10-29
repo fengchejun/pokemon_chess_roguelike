@@ -27,6 +27,10 @@ func _ready() -> void:
 	route.name = "ReturnToRegion"
 	route.pressed.connect(func() -> void: app.leave_camp())
 	top.add_child(route)
+	var manage := UIKit.button("营地宝可梦（%d）" % app.run.storage.size())
+	manage.name = "CampStorage"
+	manage.pressed.connect(_open_storage)
+	top.add_child(manage)
 	inventory_label = UIKit.label("", 17, UIKit.ACCENT)
 	column.add_child(inventory_label)
 	column.add_child(UIKit.wrapped("点击篝火选择食物并休息。点击携带的宝可梦可查看状态、抚摸或交谈；互动不改变养成数值。", 15))
@@ -67,6 +71,36 @@ func _refresh_inventory() -> void:
 	for id in FoodDB.FOODS:
 		parts.append("%s %d" % [FoodDB.definition(String(id))["name"], int(app.run.food_inventory.get(id, 0))])
 	inventory_label.text = "食物库存：%s" % " · ".join(parts)
+
+
+func _open_storage() -> void:
+	var dialog := AcceptDialog.new()
+	dialog.title = "营地宝可梦 · 与背包交换"
+	dialog.size = Vector2i(600, 480)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(560, 400)
+	dialog.add_child(scroll)
+	var column := UIKit.vbox(8)
+	scroll.add_child(column)
+	column.add_child(UIKit.wrapped("选择营地成员与背包成员交换。进入下一层时，留在营地的成员将被抛弃，无法进入永久收藏。", 15))
+	for stored in app.run.storage:
+		column.add_child(UIKit.label("营地：%s HP %d/%d" % [SpeciesDB.name_of(String(stored["species_id"])), int(stored["hp"]), app.run.monster_max_hp(stored)], 16, UIKit.ACCENT))
+		for member in app.run.carried:
+			var stored_uid := int(stored["uid"])
+			var member_uid := int(member["uid"])
+			var button := UIKit.small_button("交换背包中的 %s" % SpeciesDB.name_of(String(member["species_id"])))
+			button.pressed.connect(func() -> void:
+				if app.run.camp_swap(member_uid, stored_uid):
+					app.autosave()
+					dialog.queue_free()
+					app.show_camp()
+			)
+			column.add_child(button)
+	if app.run.storage.is_empty():
+		column.add_child(UIKit.label("营地暂无留守成员。", 15))
+	add_child(dialog)
+	dialog.popup_hide.connect(func() -> void: dialog.queue_free())
+	dialog.popup_centered()
 
 
 func _open_fire() -> void:

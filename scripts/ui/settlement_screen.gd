@@ -44,7 +44,19 @@ func _ready() -> void:
 	continue_button = UIKit.button("继续", 18)
 	continue_button.name = "ContinueButton"
 	continue_button.disabled = true
-	continue_button.pressed.connect(func() -> void: app.continue_after_settlement())
+	continue_button.pressed.connect(func() -> void:
+		var region = app.run.get_region() if app.run.region_mode else null
+		if region != null and region.active_node == "boss" and bool(region.nodes["boss"]["cleared"]) and not app.run.storage.is_empty():
+			var confirm := ConfirmationDialog.new()
+			confirm.title = "前往下一层"
+			confirm.dialog_text = "留在营地的 %d 只宝可梦将被抛弃，无法进入永久收藏。" % app.run.storage.size()
+			confirm.confirmed.connect(func() -> void: app.continue_after_settlement())
+			confirm.popup_hide.connect(func() -> void: confirm.queue_free())
+			add_child(confirm)
+			confirm.popup_centered()
+		else:
+			app.continue_after_settlement()
+	)
 	right.add_child(continue_button)
 	_show_next_step()
 
@@ -124,7 +136,7 @@ func _summary_box(run: RunState) -> Control:
 		lines.append("训练家每次出征前回满：%d→%d" % [trainer_from, trainer_to])
 	var death_entries: Array = outcome.get("deaths", [])
 	if death_entries.size() > 0:
-		lines.append("—— 本场濒死（留守一场后恢复到 5 HP）——")
+		lines.append("—— 本场濒死（营地休息恢复半血）——" if app.run.region_mode else "—— 本场濒死（留守一场后恢复到 5 HP）——")
 		for entry in death_entries:
 			lines.append("%s（%s）" % [entry.get("name", "?"), entry.get("cause", "?")])
 	column.add_child(UIKit.wrapped("\n".join(lines), 14))
@@ -136,6 +148,11 @@ func _show_next_step() -> void:
 	UIKit.clear_children(choice_box)
 	var run: RunState = app.run
 	if not run.pending_captures.is_empty():
+		if run.region_mode and run.carried.size() >= Balance.CARRIED_LIMIT:
+			run.capture_to_storage()
+			app.autosave()
+			_show_next_step()
+			return
 		# 名单未满：直接入队（不打断流程）
 		if run.carried.size() < Balance.CARRIED_LIMIT:
 			run.capture_join_team()

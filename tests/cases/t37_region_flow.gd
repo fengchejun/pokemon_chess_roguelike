@@ -33,7 +33,7 @@ func run(t: TestContext) -> void:
 	t.check(rest != null and not rest.disabled, "库存足够且需恢复时可休息")
 	rest.pressed.emit()
 	t.eq(app.run.food_inventory["basic"], 0, "篝火按类型扣除食物")
-	t.eq(app.run.carried[0]["hp"], app.run.monster_max_hp(app.run.carried[0]), "篝火恢复濒死成员")
+	t.eq(app.run.carried[0]["hp"], ceili(app.run.monster_max_hp(app.run.carried[0]) / 2.0), "篝火将濒死成员恢复至半血")
 	app.run.trainer_hp = 1
 	app.show_camp()
 	app.current_screen.find_child("Campfire", true, false).pressed.emit()
@@ -97,5 +97,24 @@ func run(t: TestContext) -> void:
 	t.eq(app.current_screen.name, "BattleScreen", "标题续战恢复进行中战斗")
 	t.eq(app.current_screen.state.alive_enemy_count(), 4, "补兵状态读档不重复补充")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var camp_run := RunState.new_run(915)
+	camp_run.region_mode = true
+	camp_run.choose_floor_theme(String(camp_run.offered_floor_themes[0]))
+	camp_run.get_region()
+	var starting_count := camp_run.carried.size()
+	for i in range(Balance.CARRIED_LIMIT + 20):
+		camp_run._add_capture("fire_starter", 10)
+	t.eq(camp_run.storage.size(), starting_count + 20, "满员捕获可无限存放在营地")
+	var before_uid := int(camp_run.carried[0]["uid"])
+	var stored_uid := int(camp_run.storage[0]["uid"])
+	t.check(camp_run.camp_swap(before_uid, stored_uid), "营地内可交换成员")
+	t.eq(int(camp_run.carried[0]["uid"]), stored_uid, "交换后成员进入背包")
+	var outside = camp_run.get_region()
+	outside.at_camp_scene = false
+	camp_run.region_data = outside.to_dict()
+	t.check(not camp_run.camp_swap(stored_uid, before_uid), "离开营地后不能交换")
+	var collection := CollectionState.defaults()
+	collection.absorb_run(camp_run)
+	t.check(collection.owned.all(func(entry): return String(entry.get("source", "")) != "run:915:%d" % before_uid), "留守成员不登记永久收藏")
 	app.queue_free()
 	t.finish()

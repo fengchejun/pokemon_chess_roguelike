@@ -167,7 +167,7 @@ func absorb_run(run: RunState) -> int:
 	if run.debug_tainted:
 		return 0
 	var added := 0
-	for group in [run.carried, run.storage]:
+	for group in ([run.carried] if run.region_mode else [run.carried, run.storage]):
 		for record in group:
 			if bool(record.get("debug_spawned", false)):
 				continue
