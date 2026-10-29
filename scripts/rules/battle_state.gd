@@ -34,6 +34,21 @@ var vine_expire_round: Dictionary = {}
 var nest: Dictionary = {}
 var boss_uid: int = -1
 var boss_portal_cell: Vector2i = Vector2i(-1, -1)
+var merchant: Dictionary = {}
+var essence_earned: int = 0
+var essence_applied: int = 0
+var essence_claims: Dictionary = {}
+var natural_essence_cells: Array = []
+var capture_aid: bool = false
+var burning_sources: Dictionary = {}
+
+
+func earn_essence(key: String, amount: int) -> void:
+	if node_kind == "" or essence_claims.has(key):
+		return
+	essence_claims[key] = true
+	essence_earned += amount
+	log_event("原质 +%d。" % amount)
 var inspiration_triggered: bool = false
 var reward: Dictionary = {}
 var fruits: Array = []
@@ -141,6 +156,7 @@ func load_map(map_data: Dictionary) -> void:
 	obstacle_expire_round = {}
 	for cell in map_data.get("obstacle_cells", []):
 		obstacle_durability[cell] = Balance.TREE_DURABILITY if terrain_at(cell) == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
+	natural_essence_cells = obstacle_durability.keys().duplicate()
 	nest = {
 		"cell": map_data["nest_cell"],
 		"exits": map_data["nest_exits"].duplicate(),
@@ -196,12 +212,13 @@ func place_temp_vines(cell: Vector2i) -> void:
 	vine_expire_round[cell] = round + 1
 
 
-func ignite(cell: Vector2i) -> void:
+func ignite(cell: Vector2i, source_side: String = "") -> void:
 	if not GridSpec.is_inside(cell):
 		return
 	if terrain_at(cell) != TerrainDB.GRASS and terrain_at(cell) != TerrainDB.VINES and terrain_at(cell) != TerrainDB.TREE:
 		return
 	burning_cells[cell] = 2
+	burning_sources[cell] = source_side
 	log_event("(%d,%d) 的可燃物被点燃。" % [cell.x, cell.y])
 
 
@@ -316,6 +333,8 @@ func is_blocking_ray(cell: Vector2i) -> bool:
 
 
 func move_cost_for(unit: CombatUnit, cell: Vector2i) -> int:
+	if node_kind == "event" and not merchant.is_empty() and merchant["cell"] == cell:
+		return -1
 	## 主动移动进入该格的消耗；-1 表示不可进入。
 	## 潮汐效果：我方单位进入水面不额外消耗移动力。
 	var terrain := terrain_at(cell)
@@ -458,6 +477,8 @@ func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "", killer
 		log_event("%s 倒下（濒死）（%s），可在基地休养恢复。" % [unit.display_name, cause])
 	else:
 		var killer := unit_by_uid(killer_uid)
+		if killer_side == "player":
+			earn_essence("enemy:%d" % unit.uid, 10 if unit.is_boss else 3)
 		if killer != null and killer.summon_owner_uid >= 0:
 			killer_uid = killer.summon_owner_uid
 		enemy_kills.append({
@@ -700,11 +721,15 @@ func _finish_movement_effects(side: String) -> void:
 		unit.haste_ticks = maxi(0, unit.haste_ticks - 1)
 
 
-func damage_obstacle(cell: Vector2i, amount: int) -> bool:
+func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "") -> bool:
 	if not obstacle_durability.has(cell):
 		return false
 	var left := int(obstacle_durability[cell]) - amount
 	if left <= 0:
+		if natural_essence_cells.has(cell):
+			natural_essence_cells.erase(cell)
+			if source_side == "player":
+				earn_essence("terrain:%d:%d" % [cell.x, cell.y], 1)
 		if node_kind != "" and terrain_at(cell) == TerrainDB.TREE and terrain_rng.randf() < 0.25 and not food_cells.has(cell):
 			food_cells.append(cell)
 		obstacle_durability.erase(cell)
@@ -732,6 +757,8 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 	# 守口只决定这次命中能否破防；巢穴每次命中最多损失 1 点耐久。
 	target_nest["hp"] = maxi(0, int(target_nest["hp"]) - 1)
 	if int(target_nest["hp"]) <= 0:
+		if source_side == "player":
+			earn_essence("nest", 8)
 		target_nest["alive"] = false
 		target_nest["destroyed_by_player"] = source_side == "player"
 		set_terrain(target_nest["cell"], TerrainDB.PLAIN)
@@ -755,6 +782,7 @@ func nest_exit_guarded(target_cell: Vector2i = Vector2i(-1, -1)) -> bool:
 
 
 func place_temp_obstacle(cell: Vector2i, origin: int, expire_round: int) -> void:
+	natural_essence_cells.erase(cell)
 	set_terrain(cell, TerrainDB.OBSTACLE)
 	obstacle_durability[cell] = Balance.OBSTACLE_DURABILITY
 	obstacle_origin[cell] = origin
@@ -1226,15 +1254,23 @@ func _settle_ice_slides() -> void:
 func _settle_burning_cells() -> void:
 	var current := burning_cells.keys().duplicate()
 	var newly_lit: Array = []
+	var spread_sources := {}
 	for cell in current:
 		for near in GridSpec.neighbors4(cell):
 			if not burning_cells.has(near) and (terrain_at(near) == TerrainDB.GRASS or terrain_at(near) == TerrainDB.VINES or terrain_at(near) == TerrainDB.TREE):
 				newly_lit.append(near)
+				spread_sources[near] = burning_sources.get(cell, "")
 		var occupant := unit_at(cell)
 		if occupant != null and not occupant.has_buff("flight"):
 			apply_burn(occupant, null)
+			occupant.burn_source_side = String(burning_sources.get(cell, ""))
 		burning_cells[cell] = int(burning_cells[cell]) - 1
 		if int(burning_cells[cell]) <= 0:
+			if natural_essence_cells.has(cell):
+				natural_essence_cells.erase(cell)
+				if String(burning_sources.get(cell, "")) == "player":
+					earn_essence("terrain:%d:%d" % [cell.x, cell.y], 1)
+			burning_sources.erase(cell)
 			burning_cells.erase(cell)
 			obstacle_durability.erase(cell)
 			var was_vines := terrain_at(cell) == TerrainDB.VINES
@@ -1246,7 +1282,7 @@ func _settle_burning_cells() -> void:
 				return
 	for cell in newly_lit:
 		if not burning_cells.has(cell):
-			ignite(cell)
+			ignite(cell, String(spread_sources.get(cell, "")))
 
 
 func _settle_temp_vines() -> void:
@@ -1465,6 +1501,13 @@ func _signature() -> String:
 func clone() -> BattleState:
 	var copy := BattleState.new()
 	copy.node_kind = node_kind
+	copy.merchant = merchant.duplicate(true)
+	copy.essence_earned = essence_earned
+	copy.essence_applied = essence_applied
+	copy.essence_claims = essence_claims.duplicate()
+	copy.natural_essence_cells = natural_essence_cells.duplicate()
+	copy.capture_aid = capture_aid
+	copy.burning_sources = burning_sources.duplicate()
 	copy.food_cells = food_cells.duplicate()
 	copy.food_wait = food_wait.duplicate()
 	copy.food_collected = food_collected

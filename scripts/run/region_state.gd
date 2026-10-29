@@ -202,6 +202,7 @@ func resume_node(id: String, players: Array) -> BattleState:
 	battle.food_collected = 0
 	battle.food_applied = 0
 	battle.food_wait.clear()
+	battle.capture_aid = false
 	battle.reward.erase("run_settled_outcome")
 	battle.nest["destroyed_by_player"] = false
 	battle.start_round()

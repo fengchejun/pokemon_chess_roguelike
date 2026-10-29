@@ -96,7 +96,10 @@ const STARTER_TEAM := [
 
 
 static func get_species(species_id: String) -> Dictionary:
-	return SPECIES.get(species_id, {})
+	var definition: Dictionary = SPECIES.get(species_id, {}).duplicate()
+	if not definition.is_empty() and not definition.has("rarity"):
+		definition["rarity"] = "common"
+	return definition
 
 
 static func name_of(species_id: String) -> String:

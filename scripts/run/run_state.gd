@@ -3,7 +3,10 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 10
+const SAVE_VERSION := 11
+var essence: int = 0
+var trainer_items: Dictionary = {}
+var sold_monster_uids: Array = []
 const MAX_EQUIPPED_SKILLS := Balance.SKILL_SLOTS
 const RETIRED_GENERIC_UPGRADES := ["move_plus", "max_hp_plus", "direct_guard", "collision_guard", "grass_resilience", "recovery_plus"]
 
@@ -253,7 +256,10 @@ func current_theme() -> String:
 func get_region():
 	if region_data.is_empty():
 		region_data = Region.create_floor(floor_index(), current_theme()).to_dict()
-	return Region.from_dict(region_data)
+	var region = Region.from_dict(region_data)
+	Merchant.ensure_region(region, seed)
+	region_data = region.to_dict()
+	return region
 
 
 func enter_region_node(id: String) -> bool:
@@ -505,6 +511,8 @@ func mark_deployed(deploy_uids: Array) -> void:
 
 
 func sync_from_battle(battle: BattleState) -> void:
+	essence += maxi(0, battle.essence_earned - battle.essence_applied)
+	battle.essence_applied = battle.essence_earned
 	if region_mode:
 		add_food("basic", maxi(0, battle.food_collected - battle.food_applied))
 		battle.food_applied = battle.food_collected
@@ -958,6 +966,7 @@ func pending_upgrades() -> bool:
 func to_dict() -> Dictionary:
 	return {
 		"version": SAVE_VERSION,
+		"essence": essence, "trainer_items": trainer_items.duplicate(), "sold_monster_uids": sold_monster_uids.duplicate(),
 		"seed": seed,
 		"region_mode": region_mode,
 		"region_data": region_data.duplicate(true),
@@ -1003,6 +1012,9 @@ func to_dict() -> Dictionary:
 
 static func from_dict(data: Dictionary) -> RunState:
 	var run := RunState.new()
+	run.essence = maxi(0, int(data.get("essence", 0)))
+	run.trainer_items = (data.get("trainer_items", {}) as Dictionary).duplicate()
+	run.sold_monster_uids = (data.get("sold_monster_uids", []) as Array).map(func(uid): return int(uid))
 	var version := int(data.get("version", 1))
 	var legacy_growth := version < 2
 	var legacy_upgrade_style := version < 3

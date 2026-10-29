@@ -81,4 +81,6 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 	state.capture_rng.state = int(rng["capture_state"])
 	state.terrain_rng.seed = int(rng["terrain_seed"])
 	state.terrain_rng.state = int(rng["terrain_state"])
+	if not snapshot["fields"].has("natural_essence_cells"):
+		state.natural_essence_cells = state.obstacle_durability.keys().filter(func(cell): return not state.obstacle_expire_round.has(cell))
 	return state

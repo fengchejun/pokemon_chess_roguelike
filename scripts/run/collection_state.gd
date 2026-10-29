@@ -166,6 +166,9 @@ func absorb_run(run: RunState) -> int:
 	## 战斗结束后同步亲密度，并登记携带与仓库（含濒死）里的新怪物。
 	if run.debug_tainted:
 		return 0
+	for uid in run.sold_monster_uids:
+		var source := "run:%d:%d" % [run.seed, int(uid)]
+		owned = owned.filter(func(entry): return String(entry.get("source", "")) != source)
 	var added := 0
 	for group in ([run.carried] if run.region_mode else [run.carried, run.storage]):
 		for record in group:

@@ -231,6 +231,32 @@ func save_battle_and_return(battle: BattleState) -> bool:
 	return true
 
 
+func merchant_trade(state: BattleState, operation: String, id: String, quantity: int = 1, save_path: String = SaveSystem.DEFAULT_PATH) -> Dictionary:
+	run.sync_from_battle(state)
+	var previous := run.to_dict()
+	var battle_before := BattleSnapshot.save_state(state)
+	var result := Merchant.trade(run, state, operation, id, quantity)
+	if not bool(result["ok"]):
+		return result
+	var region = run.get_region()
+	region.nodes[region.active_node]["merchant"] = state.merchant.duplicate(true)
+	region.nodes[region.active_node]["merchant"]["cell"] = [state.merchant["cell"].x, state.merchant["cell"].y]
+	run.region_data = region.to_dict()
+	run.battle_snapshot = BattleSnapshot.save_state(state)
+	if autosave_enabled and not SaveSystem.save_run(run, save_path):
+		run = RunState.from_dict(previous)
+		var restored := BattleSnapshot.load_state(battle_before)
+		state.units = restored.units
+		state.merchant = restored.merchant
+		state.relic_stacks = restored.relic_stacks
+		return {"ok": false, "reason": "存档写入失败，交易已撤回。"}
+	if collection != null:
+		collection.absorb_run(run)
+		if autosave_enabled:
+			collection.save()
+	return result
+
+
 func show_prep() -> void:
 	if run != null and run.needs_theme_choice():
 		show_floor_theme()
@@ -345,6 +371,29 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 			state.nest["alive"] = false
 			state.reward["state"] = "destroyed"
 		run.region_data = region.to_dict()
+	if run.region_mode:
+		var current = run.get_region()
+		var node: Dictionary = current.nodes[current.active_node]
+		if node.has("merchant"):
+			if state.merchant.is_empty():
+				state.merchant = node["merchant"].duplicate(true)
+				var coordinates: Array = state.merchant["cell"]
+				state.merchant["cell"] = Vector2i(int(coordinates[0]), int(coordinates[1]))
+			if not GridSpec.is_inside(state.merchant["cell"]):
+				var trainer := state.unit_by_uid(Balance.TRAINER_UID)
+				var options := state.move_options(trainer)
+				for cell in options:
+					if GridSpec.manhattan(trainer.cell, cell) >= 2 and not state.deploy_cells.has(cell) and not state.food_cells.has(cell) and cell != state.nest["cell"]:
+						state.merchant["cell"] = cell
+						break
+				if not GridSpec.is_inside(state.merchant["cell"]):
+					for cell in GridSpec.neighbors4(trainer.cell):
+						if state.unit_at(cell) == null and TerrainDB.can_stand(state.terrain_at(cell), ""):
+							state.merchant["cell"] = cell
+							break
+			node["merchant"] = state.merchant.duplicate(true)
+			node["merchant"]["cell"] = [state.merchant["cell"].x, state.merchant["cell"].y]
+			run.region_data = current.to_dict()
 	run.battle_snapshot = BattleSnapshot.save_state(state)
 	run.pending_region_entry_backup.clear()
 	## 消耗品已经在预览页使用时扣除；开战不再二次扣卡。

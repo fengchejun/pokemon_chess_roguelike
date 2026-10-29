@@ -60,6 +60,8 @@ static func attempt(state, trainer: CombatUnit, target: CombatUnit, forced_roll:
 	var low_hp_rules := bool(state.capture_options.get("capture_low_hp", false))
 	var debug_percent := int(state.debug_capture_percent)
 	var chance := capture_chance(target, low_hp_rules, debug_percent)
+	chance = minf(1.0, chance + (0.2 if state.capture_aid else 0.0))
+	state.capture_aid = false
 	var roll := forced_roll
 	if chance < 1.0 and roll < 0.0:
 		roll = state.capture_roll()
@@ -67,9 +69,9 @@ static func attempt(state, trainer: CombatUnit, target: CombatUnit, forced_roll:
 	if chance >= 1.0 or roll < chance:
 		var species_id := target.species_id
 		var keep_hp := maxi(1, target.hp)
-		var percent := chance_percent(target, low_hp_rules, debug_percent)
+		var percent := roundi(chance * 100)
 		state.log_event("训练家捕获成功：%s（成功率 %d%%）。" % [target.display_name, percent])
 		state.on_captured(target, species_id, keep_hp)
 		return {"ok": true, "success": true, "chance": chance, "roll": roll, "species_id": species_id, "hp": keep_hp}
-	state.log_event("训练家捕获失败：%s（成功率 %d%%）。" % [target.display_name, chance_percent(target, low_hp_rules, debug_percent)])
+	state.log_event("训练家捕获失败：%s（成功率 %d%%）。" % [target.display_name, roundi(chance * 100)])
 	return {"ok": true, "success": false, "chance": chance, "roll": roll}

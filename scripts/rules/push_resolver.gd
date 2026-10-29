@@ -91,4 +91,4 @@ static func _summarize_collision(state, summary: Dictionary, target: CombatUnit,
 	elif is_nest:
 		state.damage_nest(1, source_side, cell)
 	else:
-		state.damage_obstacle(cell, 1)
+		state.damage_obstacle(cell, 1, source_side)
