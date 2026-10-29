@@ -34,12 +34,16 @@ static func has_save(path: String = DEFAULT_PATH) -> bool:
 
 
 static func save_run(run: RunState, path: String = DEFAULT_PATH) -> bool:
+	var content := JSON.stringify(run.to_dict(), "\t")
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		push_warning("无法写入存档：%s" % path)
 		return false
-	file.store_string(JSON.stringify(run.to_dict(), "\t"))
+	file.store_string(content)
 	file.close()
+	if FileAccess.get_file_as_string(path) != content:
+		push_warning("存档写入后核对失败：%s" % path)
+		return false
 	return true
 
 
@@ -55,7 +59,7 @@ static func load_run(path: String = DEFAULT_PATH) -> RunState:
 	if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
 		return null
 	var data: Dictionary = parsed
-	if not [4, 5, 6, 7, 8, RunState.SAVE_VERSION].has(int(data.get("version", -1))):
+	if not [4, 5, 6, 7, 8, 9, RunState.SAVE_VERSION].has(int(data.get("version", -1))):
 		return null
 	return RunState.from_dict(data)
 

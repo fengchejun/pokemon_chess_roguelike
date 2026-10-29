@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 9
+const SAVE_VERSION := 10
 const MAX_EQUIPPED_SKILLS := Balance.SKILL_SLOTS
 const RETIRED_GENERIC_UPGRADES := ["move_plus", "max_hp_plus", "direct_guard", "collision_guard", "grass_resilience", "recovery_plus"]
 
@@ -77,9 +77,13 @@ static func upgrade_id_for_skill(skill_id: String) -> String:
 
 var seed: int = 0
 const Region = preload("res://scripts/run/region_state.gd")
+const FoodDB = preload("res://scripts/data/food_db.gd")
 var region_mode: bool = false
 var region_data: Dictionary = {}
+var pending_region_entry_backup: Dictionary = {}
+var pending_region_battle_index: int = 0
 var food: int = 3
+var food_inventory: Dictionary = {"basic": 3}
 var battle_index: int = 0
 var floor_themes: Array = []
 var offered_floor_themes: Array = []
@@ -254,8 +258,13 @@ func get_region():
 
 func enter_region_node(id: String) -> bool:
 	var region = get_region()
+	var previous := region_data.duplicate(true)
+	var previous_index := battle_index
 	if not region.record_entry(id):
 		return false
+	if id != "camp":
+		pending_region_entry_backup = previous
+		pending_region_battle_index = previous_index
 	region_data = region.to_dict()
 	var kind := String(region.nodes[id]["type"])
 	if kind == "battle" or kind == "boss":
@@ -264,27 +273,126 @@ func enter_region_node(id: String) -> bool:
 	return true
 
 
+func cancel_region_entry() -> void:
+	if pending_region_entry_backup.is_empty() or not battle_snapshot.is_empty():
+		return
+	if preview_used_reward_item != "" and RewardDB.is_consumable(preview_used_reward_item):
+		reward_inventory.append(preview_used_reward_item)
+	preview_used_reward_item = ""
+	selected_reward_item = ""
+	preview_modifications.clear()
+	region_data = pending_region_entry_backup.duplicate(true)
+	battle_index = pending_region_battle_index
+	pending_region_entry_backup.clear()
+
+
 func rest_at_region_camp() -> bool:
+	return bool(rest_with_food({"basic": 3}).get("ok", false))
+
+
+func needs_camp_rest() -> bool:
+	if trainer_hp < SpeciesDB.hp_of("trainer"):
+		return true
+	for record in carried:
+		if int(record["hp"]) < monster_max_hp(record):
+			return true
+	return false
+
+
+func add_food(kind: String, amount: int) -> void:
+	if FoodDB.definition(kind).is_empty() or amount <= 0:
+		return
+	food_inventory[kind] = int(food_inventory.get(kind, 0)) + amount
+	food = total_food()
+
+
+func total_food() -> int:
+	var result := 0
+	for count in food_inventory.values():
+		result += maxi(0, int(count))
+	return result
+
+
+func rest_with_food(selection: Dictionary) -> Dictionary:
 	var region = get_region()
-	if region.active_node == "" or region.node_mode(region.active_node) != "camp" or food < 3:
-		return false
-	food -= 3
+	if region.active_node != "camp" or region.node_mode(region.active_node) != "camp":
+		return {"ok": false, "reason": "请先进入营地。"}
+	if not needs_camp_rest():
+		return {"ok": false, "reason": "队伍当前无需恢复。"}
+	if selection.size() != 1:
+		return {"ok": false, "reason": "请选择一种食物。"}
+	var kind := String(selection.keys()[0])
+	var definition: Dictionary = FoodDB.definition(kind)
+	if definition.is_empty() or String(definition.get("effect", "")) != "full_party_heal":
+		return {"ok": false, "reason": "这种食物尚不能用于篝火休息。"}
+	var cost := int(definition["rest_cost"])
+	if int(selection[kind]) != cost:
+		return {"ok": false, "reason": "本次需要选择 %d 份%s。" % [cost, definition["name"]]}
+	if int(food_inventory.get(kind, 0)) < cost:
+		return {"ok": false, "reason": "%s不足 %d 份。" % [definition["name"], cost]}
+	var results: Array = []
+	results.append("训练家 HP %d → %d" % [trainer_hp, SpeciesDB.hp_of("trainer")])
+	food_inventory[kind] = int(food_inventory[kind]) - cost
+	food = total_food()
 	trainer_hp = SpeciesDB.hp_of("trainer")
 	for record in carried:
+		results.append("%s HP %d → %d" % [SpeciesDB.name_of(String(record["species_id"])), int(record["hp"]), monster_max_hp(record)])
 		record["hp"] = monster_max_hp(record)
-	return true
+	return {"ok": true, "spent": {kind: cost}, "results": results}
 
 
 func battle_config() -> Dictionary:
 	var cfg := BattleDB.config_for(battle_index, seed, current_theme())
 	if region_mode and not region_data.is_empty():
 		var region = get_region()
+		cfg = cfg.duplicate(true)
 		if region.active_node != "" and region.node_mode(region.active_node) == "event":
-			cfg = cfg.duplicate(true)
 			cfg["enemies"] = []
 			cfg["reinforce"] = []
 			cfg["boss_index"] = -1
+		elif region.active_node != "":
+			var source: Array = cfg["enemies"]
+			var count := 5 if region.active_node == "boss" and region.support_triggered else 3
+			var chosen: Array = []
+			if region.active_node == "boss":
+				var boss_index := clampi(int(cfg.get("boss_index", 0)), 0, source.size() - 1)
+				chosen.append(source[boss_index])
+				for index in source.size():
+					if index != boss_index and chosen.size() < count:
+						chosen.append(source[index])
+				cfg["boss_index"] = 0
+			else:
+				chosen = source.slice(0, count)
+			while chosen.size() < count:
+				var pool: Array = cfg.get("reinforce", [])
+				chosen.append([pool[chosen.size() % pool.size()] if not pool.is_empty() else source[0][0], Vector2i(-1, -1)])
+			cfg["enemies"] = chosen
+			cfg["enemy_level_bonus"] = region.boss_level_bonus if region.active_node == "boss" else 0
 	return cfg
+
+
+func place_region_enemies(cfg: Dictionary, map_data: Dictionary) -> Dictionary:
+	if not region_mode:
+		return cfg
+	var result := cfg.duplicate(true)
+	var pairs: Array = result.get("enemies", [])
+	var used: Array = []
+	for pair in pairs:
+		if GridSpec.is_inside(pair[1]) and TerrainDB.can_stand(int(map_data["terrain"][GridSpec.index(pair[1])]), SpeciesDB.element_of(String(pair[0]))) and not used.has(pair[1]):
+			used.append(pair[1])
+		else:
+			pair[1] = Vector2i(-1, -1)
+	for pair in pairs:
+		if GridSpec.is_inside(pair[1]):
+			continue
+		for cell in GridSpec.all_cells():
+			if cell.x < 4 or used.has(cell) or cell == map_data["nest_cell"] or (map_data.get("deploy_cells", []) as Array).has(cell):
+				continue
+			if TerrainDB.can_stand(int(map_data["terrain"][GridSpec.index(cell)]), SpeciesDB.element_of(String(pair[0]))):
+				pair[1] = cell
+				used.append(cell)
+				break
+	return result
 
 
 func region_name() -> String:
@@ -396,7 +504,7 @@ func mark_deployed(deploy_uids: Array) -> void:
 
 func sync_from_battle(battle: BattleState) -> void:
 	if region_mode:
-		food += maxi(0, battle.food_collected - battle.food_applied)
+		add_food("basic", maxi(0, battle.food_collected - battle.food_applied))
 		battle.food_applied = battle.food_collected
 	## 战斗中的倒下、捕获与生命变化即时写回（濒死当帧写入）。
 	var known_death_uids := {}
@@ -836,7 +944,10 @@ func to_dict() -> Dictionary:
 		"seed": seed,
 		"region_mode": region_mode,
 		"region_data": region_data.duplicate(true),
+		"pending_region_entry_backup": pending_region_entry_backup.duplicate(true),
+		"pending_region_battle_index": pending_region_battle_index,
 		"food": food,
+		"food_inventory": food_inventory.duplicate(),
 		"battle_index": battle_index,
 		"floor_themes": floor_themes.duplicate(),
 		"offered_floor_themes": offered_floor_themes.duplicate(),
@@ -882,7 +993,11 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.seed = int(data.get("seed", 0))
 	run.region_mode = bool(data.get("region_mode", false))
 	run.region_data = (data.get("region_data", {}) as Dictionary).duplicate(true)
+	run.pending_region_entry_backup = (data.get("pending_region_entry_backup", {}) as Dictionary).duplicate(true)
+	run.pending_region_battle_index = int(data.get("pending_region_battle_index", 0))
 	run.food = maxi(0, int(data.get("food", 3)))
+	run.food_inventory = (data.get("food_inventory", {"basic": run.food}) as Dictionary).duplicate()
+	run.food = run.total_food()
 	run.battle_index = int(data.get("battle_index", 0))
 	run.floor_themes = (data.get("floor_themes", []) as Array).duplicate()
 	run.offered_floor_themes = (data.get("offered_floor_themes", []) as Array).duplicate()

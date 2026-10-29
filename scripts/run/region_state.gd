@@ -4,12 +4,18 @@ extends RefCounted
 ## 区域节点的持久化账本。节点数量、连线和强化数值由流程配置提供。
 const Snapshot = preload("res://scripts/run/battle_snapshot.gd")
 const NODE_TYPES := ["camp", "battle", "event", "boss"]
+const AREA_CELLS := {"battle_1": Vector2i(0, 0), "battle_2": Vector2i(1, 0), "event_2": Vector2i(2, 0), "camp": Vector2i(0, 1), "battle_3": Vector2i(1, 1), "boss": Vector2i(2, 1), "event_1": Vector2i(0, 2), "battle_5": Vector2i(1, 2), "battle_4": Vector2i(2, 2)}
 
 var floor_index: int = 0
 var theme: String = ""
 var visits: int = 0
 var active_node: String = ""
 var nodes: Dictionary = {}
+var visit_pending: bool = false
+var support_triggered: bool = false
+var boss_level_bonus: int = 0
+var notifications: Array = []
+var at_camp_scene: bool = false
 
 
 static func create_floor(floor_value: int, theme_value: String) -> RegionState:
@@ -17,13 +23,19 @@ static func create_floor(floor_value: int, theme_value: String) -> RegionState:
 	for index in range(1, 6):
 		specifications.append({"id": "battle_%d" % index, "type": "battle"})
 	var region := create(floor_value, theme_value, specifications)
-	var edges := [["camp", "battle_1"], ["camp", "event_1"], ["battle_1", "battle_2"], ["event_1", "battle_3"], ["battle_2", "event_2"], ["battle_3", "event_2"], ["event_2", "battle_4"], ["battle_3", "battle_5"], ["battle_4", "boss"], ["battle_5", "boss"]]
 	for id in region.nodes:
 		region.nodes[id]["unlocked"] = id == "camp"
 		region.nodes[id]["links"] = []
-	for edge in edges:
-		region.nodes[edge[0]]["links"].append(edge[1])
-		region.nodes[edge[1]]["links"].append(edge[0])
+	for id in AREA_CELLS:
+		for other in AREA_CELLS:
+			if id != other and absi(AREA_CELLS[id].x - AREA_CELLS[other].x) + absi(AREA_CELLS[id].y - AREA_CELLS[other].y) == 1:
+				region.nodes[id]["links"].append(other)
+	region.nodes["camp"]["unlocked"] = true
+	region.nodes["camp"]["visits"] = 1
+	for neighbor in region.nodes["camp"]["links"]:
+		region.nodes[neighbor]["unlocked"] = true
+	region.active_node = "camp"
+	region.at_camp_scene = true
 	return region
 
 
@@ -36,7 +48,7 @@ static func create(floor_value: int, theme_value: String, specifications: Array)
 		var kind := String(specification.get("type", ""))
 		if id == "" or region.nodes.has(id) or not NODE_TYPES.has(kind):
 			return null
-		region.nodes[id] = {"type": kind, "visits": 0, "cleared": false, "snapshot": {}}
+		region.nodes[id] = {"type": kind, "mode": kind, "visits": 0, "cleared": false, "withdrawn": false, "pending_garrison": false, "pending_replenish": false, "snapshot": {}}
 	return region
 
 
@@ -44,13 +56,19 @@ func node_mode(id: String) -> String:
 	if not nodes.has(id):
 		return ""
 	var node: Dictionary = nodes[id]
-	if node["type"] == "battle" and bool(node["cleared"]):
-		return "event"
-	return String(node["type"])
+	return String(node.get("mode", "event" if node["type"] == "battle" and bool(node["cleared"]) else node["type"]))
+
+
+func display_name(id: String) -> String:
+	if id == "camp":
+		return "营地"
+	if id == "boss":
+		return "首领区"
+	return "%s %s" % ["战斗区" if id.begins_with("battle_") else "探索区", id.get_slice("_", 1)]
 
 
 func record_entry(id: String) -> bool:
-	if not nodes.has(id):
+	if visit_pending or not nodes.has(id):
 		return false
 	if not bool(nodes[id].get("unlocked", true)):
 		return false
@@ -60,23 +78,76 @@ func record_entry(id: String) -> bool:
 		visits += 1
 	nodes[id]["visits"] = int(nodes[id]["visits"]) + 1
 	for neighbor in nodes[id].get("links", []):
+		if not bool(nodes[neighbor].get("unlocked", false)):
+			notifications.append("已解锁：%s" % display_name(String(neighbor)))
 		nodes[neighbor]["unlocked"] = true
 	active_node = id
+	at_camp_scene = id == "camp"
+	visit_pending = true
 	return true
+
+
+func complete_visit() -> Array:
+	if not visit_pending:
+		return []
+	visit_pending = false
+	if active_node == "camp":
+		at_camp_scene = false
+	if active_node != "boss" and visits >= 8 and not support_triggered:
+		support_triggered = true
+		for id in nodes:
+			var node: Dictionary = nodes[id]
+			if node["type"] != "battle" and node_mode(String(id)) != "battle":
+				continue
+			node["mode"] = "event"
+			node["withdrawn"] = true
+			node["pending_garrison"] = false
+			node["pending_replenish"] = false
+			var saved := load_battle(String(id))
+			if saved != null:
+				saved.units = saved.units.filter(func(unit: CombatUnit) -> bool: return unit.side != "enemy")
+				saved.nest["alive"] = false
+				saved.nest["pending_waves"] = 0
+				node["snapshot"] = Snapshot.save_state(saved)
+		notifications.append("敌军支援首领：普通战斗区永久撤空，首领驻军增至 5 名。")
+	if support_triggered:
+		var new_bonus := maxi(0, (visits - 8) / 3)
+		if new_bonus > boss_level_bonus:
+			boss_level_bonus = new_bonus
+			notifications.append("首领区全体敌人等级 +%d。" % boss_level_bonus)
+	var result := notifications.duplicate()
+	notifications.clear()
+	return result
+
+
+func next_pressure_text() -> String:
+	if not support_triggered:
+		return "第 8 次返回后敌军支援首领（还差 %d 次）" % maxi(0, 8 - visits)
+	return "第 %d 次返回后首领区全体等级 +1（还差 %d 次）" % [11 + boss_level_bonus * 3, maxi(0, 11 + boss_level_bonus * 3 - visits)]
 
 
 func store_battle(id: String, battle: BattleState) -> bool:
 	if not nodes.has(id) or battle == null:
 		return false
 	var node: Dictionary = nodes[id]
-	if not ["battle", "boss"].has(String(node["type"])):
+	if not ["battle", "boss", "event"].has(String(node["type"])):
 		return false
 	node["snapshot"] = Snapshot.save_state(battle)
 	if node["type"] == "boss":
 		var boss := battle.unit_by_uid(battle.boss_uid)
 		node["cleared"] = boss != null and (not boss.is_alive() or boss.side == "player")
-	else:
+	elif node_mode(id) == "battle":
 		node["cleared"] = battle.alive_enemy_count() == 0 and not bool(battle.nest.get("alive", false))
+		if bool(node["cleared"]):
+			node["mode"] = "event"
+			node["pending_replenish"] = false
+		elif battle.end_reason == "escape":
+			node["pending_replenish"] = true
+			notifications.append("%s 撤退；下次进入敌军补足 4 名，已击败者不会复活。" % display_name(id))
+	elif battle.end_reason == "escape" and not support_triggered and not bool(node.get("withdrawn", false)):
+		node["mode"] = "battle"
+		node["pending_garrison"] = true
+		notifications.append("%s 停留超时；下次进入出现 3 名新驻军与新巢穴。" % display_name(id))
 	return true
 
 
@@ -138,7 +209,7 @@ func resume_node(id: String, players: Array) -> BattleState:
 
 
 func to_dict() -> Dictionary:
-	return {"floor": floor_index, "theme": theme, "visits": visits, "active_node": active_node, "nodes": nodes.duplicate(true)}
+	return {"floor": floor_index, "theme": theme, "visits": visits, "active_node": active_node, "nodes": nodes.duplicate(true), "visit_pending": visit_pending, "support_triggered": support_triggered, "boss_level_bonus": boss_level_bonus, "notifications": notifications.duplicate(), "at_camp_scene": at_camp_scene}
 
 
 static func from_dict(data: Dictionary) -> RegionState:
@@ -148,4 +219,13 @@ static func from_dict(data: Dictionary) -> RegionState:
 	region.visits = int(data.get("visits", 0))
 	region.active_node = String(data.get("active_node", ""))
 	region.nodes = (data.get("nodes", {}) as Dictionary).duplicate(true)
+	region.visit_pending = bool(data.get("visit_pending", false))
+	region.support_triggered = bool(data.get("support_triggered", false))
+	region.boss_level_bonus = int(data.get("boss_level_bonus", 0))
+	region.notifications = (data.get("notifications", []) as Array).duplicate()
+	region.at_camp_scene = bool(data.get("at_camp_scene", false))
+	for id in region.nodes:
+		var node: Dictionary = region.nodes[id]
+		if not node.has("mode"):
+			node["mode"] = "event" if node["type"] == "battle" and bool(node.get("cleared", false)) else node["type"]
 	return region

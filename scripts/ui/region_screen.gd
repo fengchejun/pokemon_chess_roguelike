@@ -1,77 +1,106 @@
 extends Control
 
 var app = null
-const POSITIONS := {"camp": Vector2(.08, .5), "battle_1": Vector2(.28, .25), "event_1": Vector2(.28, .75), "battle_2": Vector2(.46, .2), "battle_3": Vector2(.46, .72), "event_2": Vector2(.62, .38), "battle_4": Vector2(.78, .23), "battle_5": Vector2(.72, .75), "boss": Vector2(.93, .5)}
-const NAMES := {"camp": "营地", "battle": "普通战斗", "event": "非战斗区域", "boss": "首领挑战"}
 var graph: Control
+var region
 
 
 func _ready() -> void:
 	name = "RegionScreen"
 	UIKit.fill_background(self)
-	var region = app.run.get_region()
-	var column := UIKit.vbox(12)
-	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	column.offset_left = 30
-	column.offset_top = 24
-	column.offset_right = -30
-	column.offset_bottom = -24
-	add_child(column)
-	column.add_child(UIKit.title("第 %d 层 · %s" % [region.floor_index + 1, BattleDB.THEMES.get(region.theme, {}).get("name", region.theme)]))
-	column.add_child(UIKit.wrapped("访问节点解锁相邻地点。每进入一个非首领节点，首领生命与直伤各增加基础值的 5%。首领战限 8 回合。", 16))
-	column.add_child(UIKit.label("食物 %d · 首领强化 +%d%%" % [app.run.food, region.visits * 5], 18, UIKit.ACCENT))
+	region = app.run.get_region()
+	var outer := MarginContainer.new()
+	outer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right"]:
+		outer.add_theme_constant_override("margin_" + side, 24)
+	for side in ["top", "bottom"]:
+		outer.add_theme_constant_override("margin_" + side, 14)
+	add_child(outer)
+	var column := UIKit.vbox(7)
+	outer.add_child(column)
+	column.add_child(UIKit.title("第 %d 层 · %s · 区域路线" % [region.floor_index + 1, BattleDB.THEMES.get(region.theme, {}).get("name", region.theme)], 25))
+	column.add_child(UIKit.label("移动 %d 次｜%s｜首领驻军 %d 名 · 等级 +%d" % [region.visits, region.next_pressure_text(), 5 if region.support_triggered else 3, region.boss_level_bonus], 16, UIKit.ACCENT))
+	column.add_child(UIKit.wrapped("初始已进入营地并解锁邻区。可进入任意已解锁区域；确认进入才计移动，首领除外。每区最多停留 8 回合。", 14))
 	graph = Control.new()
+	graph.name = "AreaGraph"
 	graph.custom_minimum_size.y = 350
 	graph.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(graph)
 	graph.resized.connect(_layout_graph)
-	graph.draw.connect(_draw_links)
-	for id in region.nodes:
+	graph.draw.connect(_draw_regions)
+	for id in RegionState.AREA_CELLS:
 		var node: Dictionary = region.nodes[id]
 		var unlocked := bool(node.get("unlocked", false))
-		var status := "未解锁" if not unlocked else "已清空" if node["cleared"] else "已访问 %d 次" % int(node["visits"])
-		var button := UIKit.button("%s\n%s" % [NAMES[region.node_mode(id)], status], 15)
-		var style := StyleBoxFlat.new()
-		style.bg_color = UIKit.PANEL
-		style.border_color = UIKit.ACCENT if unlocked else UIKit.TEXT_DIM.darkened(.5)
-		style.set_border_width_all(1)
-		style.set_corner_radius_all(6)
-		for style_name in ["normal", "hover", "pressed", "disabled"]:
-			button.add_theme_stylebox_override(style_name, style)
+		var status := "未解锁" if not unlocked else "当前位置" if region.active_node == id else "敌军撤离" if bool(node.get("withdrawn", false)) else "已清空" if bool(node.get("cleared", false)) and region.node_mode(id) == "event" else "已探索" if int(node.get("visits", 0)) > 0 else "待探索"
+		var button := UIKit.button("%s\n%s" % [region.display_name(String(id)), status], 17)
 		button.name = "Node_" + id
-		button.custom_minimum_size = Vector2(134, 64)
-		button.disabled = not bool(node.get("unlocked", false)) or (node["type"] == "boss" and node["cleared"])
+		button.custom_minimum_size = Vector2(142, 58)
+		button.disabled = not unlocked or (id == "boss" and bool(node.get("cleared", false)))
 		var node_id := String(id)
-		button.pressed.connect(func() -> void: app.enter_region_node(node_id))
+		button.pressed.connect(func() -> void: _confirm_entry(node_id))
 		graph.add_child(button)
-	if region.active_node == "camp":
-		var rest := UIKit.button("休息：消耗 3 食物，携带队伍与训练家恢复全部生命")
-		rest.name = "CampRestButton"
-		rest.disabled = app.run.food < 3
-		rest.pressed.connect(func() -> void:
-			if app.run.rest_at_region_camp():
-				app.autosave()
-				app.show_region()
-		)
-		column.add_child(rest)
+	if not region.notifications.is_empty():
+		var notice := UIKit.panel(UIKit.PANEL)
+		var content := UIKit.vbox(2)
+		notice.add_child(content)
+		content.add_child(UIKit.label("区域变化", 15, UIKit.ACCENT))
+		for message in region.notifications:
+			content.add_child(UIKit.wrapped(String(message), 14))
+		column.add_child(notice)
+		region.notifications.clear()
+		app.run.region_data = region.to_dict()
+		app.autosave()
 	call_deferred("_layout_graph")
 
 
-func _point(id: String) -> Vector2:
-	return Vector2(70, 45) + POSITIONS[id] * (graph.size - Vector2(140, 90))
+func _point(x: int, y: int) -> Vector2:
+	var point := Vector2(7.0 + maxf(1, graph.size.x - 14.0) * float(x) / 3.0, 4.0 + maxf(1, graph.size.y - 8.0) * float(y) / 3.0)
+	if x > 0 and x < 3 and y > 0 and y < 3:
+		point += Vector2(17 if (x + y) % 2 == 0 else -15, 10 if x == y else -11)
+	return point
+
+
+func _polygon(id: String) -> PackedVector2Array:
+	var cell: Vector2i = RegionState.AREA_CELLS[id]
+	return PackedVector2Array([_point(cell.x, cell.y), _point(cell.x + 1, cell.y), _point(cell.x + 1, cell.y + 1), _point(cell.x, cell.y + 1)])
 
 
 func _layout_graph() -> void:
-	for id in POSITIONS:
+	for id in RegionState.AREA_CELLS:
 		var button := graph.get_node_or_null("Node_" + id)
-		if button != null:
-			button.position = _point(id) - Vector2(67, 32)
+		if button == null:
+			continue
+		var points := _polygon(String(id))
+		button.position = (points[0] + points[1] + points[2] + points[3]) / 4.0 - button.custom_minimum_size / 2.0
 	graph.queue_redraw()
 
 
-func _draw_links() -> void:
-	var region = app.run.get_region()
-	for id in region.nodes:
-		for neighbor in region.nodes[id].get("links", []):
-			if String(id) < String(neighbor):
-				graph.draw_line(_point(id), _point(neighbor), UIKit.TEXT_DIM, 2)
+func _draw_regions() -> void:
+	for id in RegionState.AREA_CELLS:
+		var node: Dictionary = region.nodes[id]
+		var color := Color("20242d")
+		if bool(node.get("unlocked", false)):
+			color = Color("394c45") if region.node_mode(id) == "event" else Color("493b3a") if region.node_mode(id) == "battle" else Color("544038") if id == "boss" else Color("4a4936")
+		if bool(node.get("withdrawn", false)):
+			color = Color("384852")
+		if region.active_node == id:
+			color = color.lightened(.22)
+		var points := _polygon(String(id))
+		graph.draw_colored_polygon(points, color)
+		graph.draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[3], points[0]]), UIKit.ACCENT if region.active_node == id else UIKit.TEXT_DIM, 2.0)
+
+
+func _confirm_entry(id: String) -> void:
+	var node: Dictionary = region.nodes[id]
+	var kind: String = region.node_mode(id)
+	var details: String = "营地：篝火休息与宝可梦互动。" if kind == "camp" else "首领：8 回合内击败或捕获，否则本局失败。" if kind == "boss" else "收集区：可随时离开；第 8 回合强撤%s。" % ("，之后仍保持撤空" if region.support_triggered else "，下次出现 3 名新驻军和巢穴") if kind == "event" else "战斗区：清空敌人与巢穴可离开；第 8 回合强撤，重访补足 4 名。"
+	if bool(node.get("pending_replenish", false)):
+		details += "\n本次进场补足 4 名敌人。"
+	if bool(node.get("pending_garrison", false)):
+		details += "\n本次出现 3 名新驻军与巢穴。"
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "进入%s" % region.display_name(id)
+	dialog.dialog_text = details + "\n确认进入后计 1 次移动（首领除外）。"
+	dialog.confirmed.connect(func() -> void: app.enter_region_node(id))
+	add_child(dialog)
+	dialog.popup_centered()

@@ -72,7 +72,7 @@ func _ready() -> void:
 	right.add_child(start)
 	if run.region_mode:
 		var back := UIKit.small_button("返回区域路线")
-		back.pressed.connect(func() -> void: app.show_region())
+		back.pressed.connect(func() -> void: app.cancel_region_entry())
 		right.add_child(back)
 
 
@@ -211,7 +211,8 @@ func _next_box(run: RunState) -> Control:
 	box.add_child(column)
 	var cfg := run.battle_config()
 	column.add_child(UIKit.label("下一场：%s" % run.region_name(), 18, UIKit.ACCENT))
-	column.add_child(UIKit.wrapped("普通敌人 Lv.%d%s" % [int(cfg.get("enemy_level", 1)), " · 首领 Lv.%d" % (int(cfg.get("enemy_level", 1)) + 1) if int(cfg.get("boss_index", -1)) >= 0 else ""], 14, UIKit.TEXT_DIM))
+	var level_bonus := int(cfg.get("enemy_level_bonus", 0))
+	column.add_child(UIKit.wrapped("敌人 %d 名 · 普通 Lv.%d%s" % [(cfg.get("enemies", []) as Array).size(), int(cfg.get("enemy_level", 1)) + level_bonus, " · 首领 Lv.%d" % (int(cfg.get("enemy_level", 1)) + level_bonus + 1) if int(cfg.get("boss_index", -1)) >= 0 else ""], 14, UIKit.TEXT_DIM))
 	var enemy_names: Array = []
 	for pair in cfg.get("enemies", []):
 		var species_id := String(pair[0])

@@ -21,7 +21,7 @@ var food_cells: Array = []
 var food_wait: Dictionary = {}
 var food_collected: int = 0
 var food_applied: int = 0
-var boss_power_percent: int = 0
+var boss_power_percent: int = 0 # 仅为旧快照兼容保留；新版不使用百分比强化。
 
 var terrain: Array = []
 var obstacle_durability: Dictionary = {}
@@ -327,7 +327,7 @@ func move_cost_for(unit: CombatUnit, cell: Vector2i) -> int:
 
 func move_budget_for(unit: CombatUnit) -> int:
 	## 移动预算的统一入口（寻路与界面共用；未来的机动类效果在此接线）。
-	return GridSpec.W * GridSpec.H * 2 if node_kind == "event" else unit.effective_move()
+	return unit.effective_move()
 
 
 func terrain_travel_mode(unit: CombatUnit) -> int:
@@ -515,8 +515,6 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var amount := base
 	if source != null and bool(opts.get("skill_direct", false)):
 		amount = Balance.skill_damage_for_side(amount, source.side)
-		if source.uid == boss_uid and boss_power_percent > 0:
-			amount = ceili(amount * (1.0 + boss_power_percent / 100.0))
 	var is_lethal_check := true
 	var matchup_modifier := 0
 	if not bool(opts.get("no_element", false)):
@@ -813,8 +811,6 @@ func move_unit(unit: CombatUnit, dest: Vector2i) -> bool:
 		"fruit_gained": int(pickup.get("gained", 0)),
 	})
 	log_event("%s 移动到 (%d,%d)。" % [unit.display_name, dest.x, dest.y])
-	if node_kind == "event":
-		unit.moved = false
 	return true
 
 
@@ -885,9 +881,6 @@ func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) ->
 		else:
 			unit.skill_used = true
 		commit_actions()
-		if node_kind == "event":
-			unit.moved = false
-			unit.skill_used = false
 		check_battle_end()
 	return result
 
@@ -1184,12 +1177,12 @@ func settle_round() -> void:
 			unit.slow_ticks = maxi(0, unit.slow_ticks - 1)
 		if unit.shock_ticks > 0:
 			unit.shock_ticks -= 1
-	# 5. 恢复果实
+	# 5. 停留拾取食物
 	_pickups()
 	# 6. 胜负与时限
 	if check_battle_end():
 		return
-	if round >= Balance.MAX_ROUNDS and (alive_enemy_count() > 0 or node_kind == "battle"):
+	if round >= Balance.MAX_ROUNDS and (alive_enemy_count() > 0 or node_kind in ["battle", "event"]):
 		end_battle("boss_timeout" if boss_uid >= 0 else "escape")
 		return
 	log_event("环境结算完成。")
@@ -1335,6 +1328,52 @@ func can_leave_node() -> bool:
 	return node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not bool(nest.get("alive", false)))
 
 
+func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) -> int:
+	var added := 0
+	var cells := preferred_cells.duplicate()
+	for cell in GridSpec.all_cells():
+		if cell.x >= 4 and not cells.has(cell):
+			cells.append(cell)
+	for cell in cells:
+		if added >= count:
+			break
+		if not GridSpec.is_inside(cell) or unit_at(cell) != null or is_nest_cell(cell) or species_pool.is_empty():
+			continue
+		var species_id := String(species_pool[next_enemy_uid % species_pool.size()])
+		if not TerrainDB.can_stand(terrain_at(cell), SpeciesDB.element_of(species_id)):
+			continue
+		var enemy := CombatUnit.make(species_id, "enemy", next_enemy_uid)
+		next_enemy_uid += 1
+		_configure_enemy(enemy, enemy.uid)
+		enemy.cell = cell
+		enemy.reg_index = units.size()
+		units.append(enemy)
+		added += 1
+	return added
+
+
+func set_enemy_level_bonus(bonus: int) -> void:
+	for unit in units:
+		if unit.side != "enemy" or not unit.is_alive():
+			continue
+		var base_level := 1 + BattleDB.floor_of(battle_index) * 2 + (1 if unit.is_boss else 0)
+		var target_level := base_level + maxi(0, bonus)
+		if unit.enemy_level == target_level:
+			continue
+		var old_max: int = unit.max_hp
+		unit.enemy_level = target_level
+		unit.combat_level = target_level
+		unit.skills = BattleDB.enemy_skills_for_level(unit.species_id, target_level)
+		unit.max_hp = MonsterProgression.max_hp(unit.species_id, target_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0)
+		unit.hp = clampi(unit.hp + unit.max_hp - old_max, 1, unit.max_hp)
+		var upgrades := {}
+		for upgrade_id in BattleDB.enemy_upgrade_ids_at_level(run_seed, battle_index, unit.uid, unit.species_id, target_level):
+			var info := RunState.upgrade_info(String(upgrade_id))
+			if not info.is_empty():
+				upgrades[String(info["key"])] = int(info["value"])
+		unit.upgrades = upgrades
+
+
 func end_battle(reason: String) -> void:
 	if ended:
 		return
@@ -1346,7 +1385,7 @@ func end_battle(reason: String) -> void:
 		"victory": "全部敌人被击败或捕获，胜利！",
 		"forced_retreat": "训练家倒下，本局失败。",
 		"boss_timeout": "第 8 回合结束，未能击败首领，本局失败。",
-		"escape": "第 %d 回合结束，野生宝可梦逃离。" % Balance.MAX_ROUNDS,
+		"escape": "第 %d 回合结束，强制撤离当前区域。" % Balance.MAX_ROUNDS if node_kind != "" else "第 %d 回合结束，野生宝可梦逃离。" % Balance.MAX_ROUNDS,
 	}.get(reason, reason)
 	log_event("战斗结束：" + text)
 

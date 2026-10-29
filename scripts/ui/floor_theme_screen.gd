@@ -46,7 +46,7 @@ func _ready() -> void:
 			if app.run.choose_floor_theme(theme_id):
 				app.autosave()
 				if app.run.region_mode:
-					app.show_region()
+					app.show_camp()
 				else:
 					app.show_prep()
 		)

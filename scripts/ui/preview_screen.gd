@@ -32,7 +32,12 @@ func _ready() -> void:
 	name = "PreviewScreen"
 	UIKit.fill_background(self)
 	var run: RunState = app.run
-	map = MapGenerator.generate(run.seed, run.battle_index, 0, [], run.current_theme())
+	var map_salt := 0
+	if run.region_mode:
+		var active_id: String = run.get_region().active_node
+		if active_id.begins_with("event_"):
+			map_salt = 100 + int(active_id.trim_prefix("event_"))
+	map = MapGenerator.generate(run.seed, run.battle_index, map_salt, [], run.current_theme())
 	if run.region_mode:
 		var region = run.get_region()
 		var saved: BattleState = region.load_battle(region.active_node)
@@ -149,7 +154,7 @@ func _legend() -> Control:
 		swatch.custom_minimum_size = Vector2(14, 14)
 		box.add_child(swatch)
 		box.add_child(UIKit.label(String(entry[1]), 12, UIKit.TEXT_DIM))
-	box.add_child(UIKit.label("　蓝框=部署区　紫=巢穴　金星=奖励　红点=恢复果实", 12, UIKit.TEXT_DIM))
+	box.add_child(UIKit.label("　蓝框=部署区　紫=巢穴　金星=奖励　粮=可收集食物", 12, UIKit.TEXT_DIM))
 	return box
 
 
@@ -158,12 +163,19 @@ func _enemy_box(run: RunState) -> Control:
 	var column := UIKit.vbox(4)
 	box.add_child(column)
 	column.add_child(UIKit.label("敌方配置（可复现）", 17, UIKit.ACCENT))
-	var cfg := run.battle_config()
+	var cfg := run.place_region_enemies(run.battle_config(), map)
 	var enemy_index := 0
 	for pair in cfg.get("enemies", []):
 		var species_id := String(pair[0])
 		var unit := CombatUnit.make(species_id, "enemy", 100 + enemy_index)
 		BattleDB.configure_enemy(unit, run.seed, run.battle_index, enemy_index, enemy_index == int(cfg.get("boss_index", -1)))
+		var bonus := int(cfg.get("enemy_level_bonus", 0))
+		if bonus > 0:
+			unit.enemy_level += bonus
+			unit.combat_level = unit.enemy_level
+			unit.skills = BattleDB.enemy_skills_for_level(species_id, unit.enemy_level)
+			unit.max_hp = MonsterProgression.max_hp(species_id, unit.enemy_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0)
+			unit.hp = unit.max_hp
 		var skill_names: Array = []
 		for skill_id in unit.skills:
 			skill_names.append(SkillDB.name_of(String(skill_id)))

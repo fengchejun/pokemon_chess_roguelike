@@ -184,7 +184,7 @@ func _action_row() -> Control:
 	row1.add_child(undo_button)
 	end_turn_button = UIKit.small_button("结束回合")
 	if state.node_kind == "event":
-		end_turn_button.text = "等待（收集食物）"
+		end_turn_button.text = "结束回合（收集）"
 	end_turn_button.name = "EndTurnButton"
 	end_turn_button.pressed.connect(do_end_turn)
 	row1.add_child(end_turn_button)
@@ -362,7 +362,8 @@ func _add_battle_xp_bar(unit: CombatUnit) -> void:
 
 func _update_header() -> void:
 	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
-	round_label.text = "第 %d 层 %d/6 战\n第 %d/%d 回合 · %s" % [BattleDB.floor_of(state.battle_index) + 1, BattleDB.local_battle_of(state.battle_index) + 1, maxi(1, state.round), Balance.MAX_ROUNDS, phase_text]
+	var region_name := "收集区" if state.node_kind == "event" else "首领区" if state.node_kind == "boss" else "%d/6 战" % (BattleDB.local_battle_of(state.battle_index) + 1)
+	round_label.text = "第 %d 层 · %s\n第 %d/%d 回合 · %s" % [BattleDB.floor_of(state.battle_index) + 1, region_name, maxi(1, state.round), Balance.MAX_ROUNDS, phase_text]
 	var reward_text := ""
 	match String(state.reward.get("state", "")):
 		"map":
@@ -381,8 +382,9 @@ func _update_header() -> void:
 	status_label.visible = false
 	objective_label.text = "战斗目标\n敌人 %d · 击败 %d · 捕获 %d\n%s" % [state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text.strip_edges()]
 	if state.node_kind == "event":
-		round_label.text = "自由收集 · 移动不限次数"
-		objective_label.text = "非战斗区域\n本次收集食物 %d\n可随时返回区域" % state.food_collected
+		objective_label.text = "收集区 · 剩余 %d 回合\n本次收集食物 %d\n可随时返回区域" % [maxi(0, Balance.MAX_ROUNDS - state.round + 1), state.food_collected]
+	if state.node_kind != "" and state.round >= 6:
+		objective_label.text += "\n%s" % ("本回合结束将强制撤离。" if state.round >= 8 else "即将到达第 8 回合强制撤离期限。")
 
 
 func _update_unit_card() -> void:
@@ -538,7 +540,7 @@ func _rebuild_skill_buttons() -> void:
 			var button := UIKit.small_button(button_text)
 			button.name = "SkillButton_%s" % id
 			button.tooltip_text = String(def.get("desc", ""))
-			if state.node_kind != "event" and state.round >= Balance.MAX_ROUNDS and bool(def.get("channel", false)):
+			if state.round >= Balance.MAX_ROUNDS and bool(def.get("channel", false)):
 				button.tooltip_text += "\n第 %d 回合开始吟唱无法在本场结算。" % Balance.MAX_ROUNDS
 			var entries := state.skill_targets(unit, id)
 			if phase_reason != "":
@@ -1151,7 +1153,7 @@ func _on_skill_pressed(skill_id: String) -> void:
 				if not board.area_cells.has(affected):
 					board.area_cells.append(affected)
 	hint_label.text = "风力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
-	if state.node_kind != "event" and state.round >= Balance.MAX_ROUNDS and bool(SkillDB.get_def(skill_id).get("channel", false)):
+	if state.round >= Balance.MAX_ROUNDS and bool(SkillDB.get_def(skill_id).get("channel", false)):
 		hint_label.text += " 第 %d 回合开始吟唱将不会在本场结算。" % Balance.MAX_ROUNDS
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_rebuild_skill_buttons()

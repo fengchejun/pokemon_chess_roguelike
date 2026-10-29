@@ -14,6 +14,7 @@ const RunEndScreen = preload("res://scripts/ui/run_end_screen.gd")
 const SkillStatsScreen = preload("res://scripts/ui/skill_stats_screen.gd")
 const FloorThemeScreen = preload("res://scripts/ui/floor_theme_screen.gd")
 const RegionScreen = preload("res://scripts/ui/region_screen.gd")
+const CampScreen = preload("res://scripts/ui/camp_screen.gd")
 const DebugConsoleScreen = preload("res://scripts/ui/debug_console.gd")
 const MusicDirectorScript = preload("res://scripts/ui/music_director.gd")
 
@@ -31,6 +32,7 @@ var music_muted: bool = false
 
 
 func _ready() -> void:
+	OS.set_use_file_access_save_and_swap(true)
 	collection = CollectionState.load_profile() if autosave_enabled else CollectionState.defaults()
 	music_director = MusicDirectorScript.new()
 	add_child(music_director)
@@ -172,6 +174,10 @@ func continue_run(path: String = SaveSystem.DEFAULT_PATH) -> void:
 		show_menu()
 		return
 	run = loaded
+	if run.region_mode and run.battle_snapshot.is_empty() and not run.pending_region_entry_backup.is_empty() and not run.settlement_pending:
+		run.cancel_region_entry()
+		if autosave_enabled:
+			SaveSystem.save_run(run, path)
 	if run.run_failed or run.run_finished():
 		show_run_end()
 	elif not run.battle_snapshot.is_empty():
@@ -191,7 +197,7 @@ func continue_run(path: String = SaveSystem.DEFAULT_PATH) -> void:
 	elif run.needs_theme_choice():
 		show_floor_theme()
 	elif run.region_mode:
-		show_region()
+		show_camp() if run.get_region().at_camp_scene else show_region()
 	else:
 		show_prep()
 
@@ -242,12 +248,34 @@ func show_region() -> void:
 	_switch(RegionScreen.new())
 
 
+func cancel_region_entry() -> void:
+	if run != null:
+		run.cancel_region_entry()
+		autosave()
+	show_region()
+
+
+func show_camp() -> void:
+	battle_settled = false
+	_switch(CampScreen.new())
+
+
+func leave_camp() -> void:
+	var region = run.get_region()
+	region.at_camp_scene = false
+	var notices: Array = region.complete_visit()
+	region.notifications.append_array(notices)
+	run.region_data = region.to_dict()
+	autosave()
+	show_region()
+
+
 func enter_region_node(id: String) -> void:
 	if not run.enter_region_node(id):
 		return
 	autosave()
 	if run.get_region().node_mode(id) == "camp":
-		show_region()
+		show_camp()
 	else:
 		show_prep()
 
@@ -276,6 +304,8 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 			cfg["enemies"] = []
 			cfg["reinforce"] = []
 			cfg["boss_index"] = -1
+	if run.region_mode:
+		cfg = run.place_region_enemies(cfg, final_map)
 	var player_units := run.build_deploy_units(deploy_uids)
 	var state := BattleState.new()
 	var card_effects := run.effects()
@@ -287,9 +317,25 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 		if not (region.nodes[node_id]["snapshot"] as Dictionary).is_empty():
 			state = region.resume_node(node_id, run.build_deploy_units(deploy_uids))
 			if state == null:
-				show_region()
+				cancel_region_entry()
 				return
 		state.node_kind = region.node_mode(node_id)
+		state.reinforcement_pool = (cfg.get("reinforce", []) as Array).duplicate()
+		if bool(region.nodes[node_id].get("pending_garrison", false)):
+			state.nest["alive"] = true
+			state.nest["hp"] = Balance.NEST_DURABILITY
+			state.nest["pending_waves"] = 0
+			state.nest["scheduled_waves"] = []
+			state.add_garrison(3, cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
+			region.nodes[node_id]["pending_garrison"] = false
+		if bool(region.nodes[node_id].get("pending_replenish", false)):
+			state.add_garrison(maxi(0, 4 - state.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
+			region.nodes[node_id]["pending_replenish"] = false
+		if node_id == "boss" and region.support_triggered:
+			state.add_garrison(maxi(0, 5 - state.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
+		if node_id == "boss":
+			state.set_enemy_level_bonus(region.boss_level_bonus)
+		state.boss_power_percent = 0
 		if (region.nodes[node_id]["snapshot"] as Dictionary).is_empty():
 			for cell in GridSpec.all_cells():
 				if state.terrain_at(cell) == TerrainDB.PLAIN and state.unit_at(cell) == null and state.terrain_rng.randf() < 0.05 and state.food_cells.size() < 2:
@@ -298,13 +344,9 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 			state.set_terrain(state.nest["cell"], TerrainDB.PLAIN)
 			state.nest["alive"] = false
 			state.reward["state"] = "destroyed"
-		if state.node_kind == "boss":
-			state.boss_power_percent = region.visits * 5
-			var boss := state.unit_by_uid(state.boss_uid)
-			if boss != null:
-				boss.max_hp = ceili(boss.max_hp * (1.0 + state.boss_power_percent / 100.0))
-				boss.hp = boss.max_hp
+		run.region_data = region.to_dict()
 	run.battle_snapshot = BattleSnapshot.save_state(state)
+	run.pending_region_entry_backup.clear()
 	## 消耗品已经在预览页使用时扣除；开战不再二次扣卡。
 	run.selected_reward_item = ""
 	run.mark_deployed(deploy_uids)
@@ -327,7 +369,7 @@ func finish_battle(battle: BattleState) -> void:
 	var outcome := run.settle_battle(battle)
 	if run.region_mode:
 		if battle.node_kind != "event" and not run.run_failed:
-			run.food += 1
+			run.add_food("basic", 1)
 		var region = run.get_region()
 		region.store_battle(region.active_node, battle)
 		if bool(battle.reward.get("node_reward_available", false)):
@@ -361,10 +403,15 @@ func continue_after_settlement() -> void:
 		run.settlement_pending = false
 		run.last_settlement = {}
 		var region = run.get_region()
-		if region.active_node == "boss" and bool(region.nodes["boss"]["cleared"]):
+		var boss_cleared: bool = region.active_node == "boss" and bool(region.nodes["boss"]["cleared"])
+		if boss_cleared:
 			run.battle_index = (region.floor_index + 1) * 6
 			run.region_data = {}
 			run.refresh_theme_offers()
+		else:
+			var notices: Array = region.complete_visit()
+			region.notifications.append_array(notices)
+			run.region_data = region.to_dict()
 		autosave()
 		if run.run_finished() or run.run_lost():
 			show_run_end()
