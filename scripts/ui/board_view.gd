@@ -20,6 +20,7 @@ var battle_round: int = 0
 var reward: Dictionary = {}
 var fruits: Array = []
 var food_cells: Array = []
+var merchant_cell := Vector2i(-1, -1)
 var units: Array = []
 var deploy_cells: Array = []
 var ice_slides: Array = []
@@ -58,6 +59,7 @@ func set_from_state(state: BattleState) -> void:
 	reward = state.reward.duplicate(true)
 	fruits = []
 	food_cells = state.food_cells.duplicate()
+	merchant_cell = state.merchant.get("cell", Vector2i(-1, -1)) if state.node_kind == "event" else Vector2i(-1, -1)
 	units = state.units.duplicate()
 	deploy_cells = state.deploy_cells.duplicate()
 	ice_slides = []
@@ -203,6 +205,8 @@ func _draw() -> void:
 			draw_string(font, Vector2(cell.x * TILE + 6, cell.y * TILE + 16), "危", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
 	_draw_pending_casts(font)
 	_draw_nest_exit(font)
+	if GridSpec.is_inside(merchant_cell):
+		_draw_marker(font, {"cell": merchant_cell, "kind": "text", "text": "商", "color": UIKit.ACCENT, "size": 24})
 	# 标记与箭头
 	for arrow in arrows:
 		_draw_arrow(arrow)

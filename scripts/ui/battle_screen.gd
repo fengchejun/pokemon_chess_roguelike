@@ -43,6 +43,7 @@ var team_panel: Control = null
 var team_list: VBoxContainer = null
 var team_scroll: ScrollContainer = null
 var modal_layer: ColorRect = null
+var item_aim: String = ""
 var hovered_uid: int = 0
 var corner_cards_swapped := false
 
@@ -255,7 +256,7 @@ func _fit_terrain_panel() -> void:
 func _position_action_panel() -> void:
 	if action_panel == null or board == null:
 		return
-	action_panel.visible = selected_uid > 0 and action_mode != "move" and aim_skill == "" and not capture_mode and not busy and not state.ended and state.phase == BattleState.PHASE_PLAYER
+	action_panel.visible = selected_uid > 0 and action_mode != "move" and item_aim == "" and aim_skill == "" and not capture_mode and not busy and not state.ended and state.phase == BattleState.PHASE_PLAYER
 	if not action_panel.visible:
 		return
 	var unit := state.unit_by_uid(selected_uid)
@@ -387,6 +388,7 @@ func _update_header() -> void:
 		objective_label.text = "首领已击败 · 敌军撤离\n点击首领位置的传送门前往下一层。"
 	elif state.node_kind != "" and state.round >= 6:
 		objective_label.text += "\n%s" % ("本回合结束将强制撤离。" if state.round >= 8 else "即将到达第 8 回合强制撤离期限。")
+	objective_label.text += "\n原质 %d%s" % [app.run.essence + maxi(0, state.essence_earned - state.essence_applied), " · 捕获辅助生效" if state.capture_aid else ""]
 
 
 func _update_unit_card() -> void:
@@ -486,7 +488,7 @@ func _update_unit_card() -> void:
 	if unit.side == "enemy":
 		var low_hp_rules := bool(state.capture_options.get("capture_low_hp", false))
 		lines.append("捕获概率：%d%%（训练家在周围八格可尝试%s）" % [
-			CaptureSystem.chance_percent(unit, low_hp_rules, state.debug_capture_percent), "，目标需不高于半血" if low_hp_rules else "",
+			mini(100, CaptureSystem.chance_percent(unit, low_hp_rules, state.debug_capture_percent) + (20 if state.capture_aid else 0)), "，目标需不高于半血" if low_hp_rules else "",
 		])
 	if unit.fresh_spawn:
 		lines.append("本回合新生成：不能移动或施法")
@@ -527,6 +529,34 @@ func _rebuild_skill_buttons() -> void:
 	var unit := state.unit_by_uid(selected_uid)
 	if unit == null or not unit.is_alive():
 		skill_box.add_child(UIKit.label("选择己方单位后显示行动。", 13, UIKit.TEXT_DIM))
+		return
+	if action_mode == "items" and unit.is_trainer:
+		for item_id in Merchant.ITEMS:
+			var id := String(item_id)
+			var button := UIKit.small_button("%s ×%d" % [Merchant.ITEMS[id][0], int(app.run.trainer_items.get(id, 0))])
+			button.tooltip_text = Merchant.ITEMS[id][2]
+			button.disabled = int(app.run.trainer_items.get(id, 0)) <= 0 or unit.capture_used or not unit.can_act_skill() or (id == "capture_aid" and state.capture_aid)
+			if id == "potion" and state.alive_units("player").filter(func(target): return Merchant.item_target_valid(state, target)).is_empty():
+				button.disabled = true
+				button.tooltip_text += "\n当前没有可治疗目标。"
+			button.pressed.connect(func() -> void:
+				if id == "potion":
+					item_aim = id
+					board.clear_overlays()
+					for target in state.alive_units("player"):
+						if Merchant.item_target_valid(state, target):
+							board.attack_cells.append(target.cell)
+					_position_action_panel()
+					hint_label.text = "治疗药：点击三格内受伤己方单位；右键或Esc取消。"
+					board.queue_redraw()
+				else:
+					_use_trainer_item(id)
+			)
+			skill_box.add_child(button)
+		var back := UIKit.small_button("返回行动")
+		back.pressed.connect(_return_to_main_actions)
+		skill_box.add_child(back)
+		call_deferred("_fit_action_panel")
 		return
 	capture_button = null
 	if action_mode == "skills":
@@ -578,6 +608,13 @@ func _rebuild_skill_buttons() -> void:
 		capture_button.disabled = unit.capture_used or _capture_targets(unit).is_empty()
 		capture_button.pressed.connect(_on_capture_pressed)
 		skill_box.add_child(capture_button)
+		var items := UIKit.small_button("道具")
+		items.name = "TrainerItemsButton"
+		items.pressed.connect(func() -> void:
+			action_mode = "items"
+			_rebuild_skill_buttons()
+		)
+		skill_box.add_child(items)
 	var detail_button := UIKit.small_button("查看详情")
 	detail_button.pressed.connect(func() -> void: _show_unit_detail(unit))
 	skill_box.add_child(detail_button)
@@ -797,7 +834,18 @@ func _update_log() -> void:
 
 
 func _on_board_clicked(cell: Vector2i) -> void:
-	if busy or state.ended:
+	if busy or state.ended or modal_layer != null:
+		return
+	if item_aim != "":
+		var target := state.unit_at(cell)
+		_use_trainer_item(item_aim, target.uid if target != null else -1)
+		return
+	if not state.merchant.is_empty() and state.node_kind == "event" and cell == state.merchant["cell"] and aim_skill == "" and not capture_mode:
+		var trainer := state.unit_by_uid(Balance.TRAINER_UID)
+		if GridSpec.manhattan(trainer.cell, cell) == 1:
+			_show_merchant()
+		else:
+			hint_label.text = "训练师走到商人相邻格后可交易。"
 		return
 	if cell == state.boss_portal_cell and not capture_mode and aim_skill == "" and action_mode != "move":
 		if app.run.storage.is_empty():
@@ -904,7 +952,7 @@ func _on_board_hovered(cell: Vector2i) -> void:
 				hint_label.text = "当前设置要求目标生命不高于一半。"
 			else:
 				hint_label.text = "捕获 %s：成功率 %d%%（生命 %d/%d）" % [
-					occupant.display_name, CaptureSystem.chance_percent(occupant, bool(state.capture_options.get("capture_low_hp", false)), state.debug_capture_percent), occupant.hp, occupant.max_hp,
+					occupant.display_name, mini(100, CaptureSystem.chance_percent(occupant, bool(state.capture_options.get("capture_low_hp", false)), state.debug_capture_percent) + (20 if state.capture_aid else 0)), occupant.hp, occupant.max_hp,
 				]
 			hint_label.add_theme_color_override("font_color", UIKit.TEXT)
 		board.queue_redraw()
@@ -1034,7 +1082,7 @@ func select_unit(uid: int) -> void:
 
 
 func _on_board_double_clicked(cell: Vector2i) -> void:
-	if busy or aim_skill != "" or capture_mode or modal_layer != null:
+	if busy or aim_skill != "" or capture_mode or item_aim != "" or modal_layer != null:
 		return
 	var unit := state.unit_at(cell)
 	if unit != null:
@@ -1098,6 +1146,82 @@ func _close_modal() -> void:
 	if modal_layer != null:
 		modal_layer.queue_free()
 		modal_layer = null
+
+
+func _use_trainer_item(id: String, uid: int = -1) -> void:
+	var result := Merchant.use_item(app.run, state, id, uid)
+	hint_label.text = String(result["reason"])
+	if result["ok"]:
+		_clear_aim()
+		app.sync_and_save(state)
+		refresh_all()
+
+
+func _show_merchant(message: String = "") -> void:
+	_show_modal("商人 · 原质 %d" % app.run.essence, message)
+	var content = modal_layer.get_child(0).get_child(0)
+	var scroll = content.get_child(1)
+	for child in scroll.get_children():
+		scroll.remove_child(child)
+		child.queue_free()
+	var list := UIKit.vbox(7)
+	scroll.add_child(list)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_child(UIKit.wrapped(message if message != "" else "交易不消耗回合。库存不会随重访刷新。", 14))
+	for item_id in state.merchant["stock"]:
+		var id := String(item_id)
+		var is_relic := id.begins_with("relic:")
+		var relic := id.trim_prefix("relic:")
+		var price := 16 if is_relic else int(Merchant.ITEMS[id][1])
+		var title := RelicDB.name_of(relic) if is_relic else String(Merchant.ITEMS[id][0])
+		var button := UIKit.small_button("购买 %s · %d原质 · 剩%d" % [title, price, int(state.merchant["stock"][id])])
+		button.disabled = int(state.merchant["stock"][id]) == 0 or app.run.essence < price or (is_relic and RelicDB.rank(app.run.relic_stacks, relic) >= 3)
+		button.tooltip_text = RelicDB.description_of(relic) if is_relic else Merchant.ITEMS[id][2]
+		button.pressed.connect(func() -> void: _trade("buy", id))
+		list.add_child(button)
+	list.add_child(UIKit.label("出售", 18, UIKit.ACCENT))
+	for kind in app.run.food_inventory:
+		var id := String(kind)
+		if int(app.run.food_inventory[id]) <= 0:
+			continue
+		var row := UIKit.hbox(6)
+		var quantity := SpinBox.new()
+		quantity.min_value = 1
+		quantity.max_value = int(app.run.food_inventory[id])
+		row.add_child(quantity)
+		var button := UIKit.small_button("出售%s · 每份1原质" % FoodDB.definition(id)["name"])
+		button.pressed.connect(func() -> void: _trade("food", id, int(quantity.value)))
+		row.add_child(button)
+		list.add_child(row)
+	for relic_id in app.run.relic_stacks:
+		var id := String(relic_id)
+		if RelicDB.rank(app.run.relic_stacks, id) <= 0:
+			continue
+		var button := UIKit.small_button("出售一级 %s（当前%d级）· 8原质" % [RelicDB.name_of(id), RelicDB.rank(app.run.relic_stacks, id)])
+		button.pressed.connect(func() -> void: _trade("relic", id))
+		list.add_child(button)
+	for record in app.run.carried:
+		var uid := int(record["uid"])
+		var rarity := String(Merchant.RARITIES[Merchant.rarity(String(record["species_id"]))][0])
+		var caption := "%s · %s · Lv.%d · HP%d · %d原质" % [SpeciesDB.name_of(String(record["species_id"])), rarity, int(record["level"]), int(record["hp"]), Merchant.monster_price(record)]
+		var button := UIKit.small_button("出售 " + caption)
+		button.pressed.connect(func() -> void:
+			var confirm := ConfirmationDialog.new()
+			confirm.title = "出售宝可梦"
+			confirm.dialog_text = caption + "\n出售后移除本局成员，本次捕获不进入永久收藏；开局前已有收藏保留。"
+			confirm.confirmed.connect(func() -> void: _trade("monster", str(uid)))
+			confirm.popup_hide.connect(func() -> void: confirm.queue_free())
+			add_child(confirm)
+			confirm.popup_centered()
+		)
+		list.add_child(button)
+
+
+func _trade(operation: String, id: String, quantity: int = 1) -> void:
+	var result: Dictionary = app.merchant_trade(state, operation, id, quantity)
+	selected_uid = 0
+	refresh_all()
+	_show_merchant(String(result["reason"]))
 
 
 func _open_menu() -> void:
@@ -1202,6 +1326,7 @@ func _on_capture_pressed() -> void:
 
 
 func _clear_aim() -> void:
+	item_aim = ""
 	if aim_skill == "" and not capture_mode:
 		return
 	aim_skill = ""
@@ -1220,7 +1345,7 @@ func _clear_aim() -> void:
 
 
 func _cancel_action() -> void:
-	if aim_skill != "" or capture_mode:
+	if aim_skill != "" or capture_mode or item_aim != "":
 		_clear_aim()
 		return
 	if action_mode != "main":
@@ -1458,7 +1583,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		if modal_layer != null:
 			_close_modal()
-		elif aim_skill != "" or capture_mode or selected_uid != 0 or viewed_enemy_uid != 0:
+		elif aim_skill != "" or capture_mode or item_aim != "" or selected_uid != 0 or viewed_enemy_uid != 0:
 			_cancel_action()
 		else:
 			_open_menu()

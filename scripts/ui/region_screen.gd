@@ -32,6 +32,8 @@ func _ready() -> void:
 		var node: Dictionary = region.nodes[id]
 		var unlocked := bool(node.get("unlocked", false))
 		var status := "未解锁" if not unlocked else "当前位置" if region.active_node == id else "敌军撤离" if bool(node.get("withdrawn", false)) else "已清空" if bool(node.get("cleared", false)) and region.node_mode(id) == "event" else "已探索" if int(node.get("visits", 0)) > 0 else "待探索"
+		if node.has("merchant") and int(node.get("visits", 0)) > 0:
+			status += " · 商人" if region.node_mode(id) == "event" else " · 商人暂停交易"
 		var button := UIKit.button("%s\n%s" % [region.display_name(String(id)), status], 17)
 		button.name = "Node_" + id
 		button.custom_minimum_size = Vector2(142, 58)
