@@ -506,6 +506,17 @@ func release_storage(uid: int) -> bool:
 	return false
 
 
+func battle_kill_xp_for(battle: BattleState, uid: int) -> int:
+	var unit := battle.unit_by_uid(uid)
+	if not deployed_uids.has(uid) or unit == null or not unit.is_alive() or record_by_uid(uid).is_empty():
+		return 0
+	var gained := 0
+	for entry in battle.enemy_kills:
+		if String(entry.get("killer_side", "player" if bool(entry.get("by_player", false)) else "")) == "player":
+			gained += Balance.EXP_PER_KILL
+	return gained
+
+
 func settle_battle(battle: BattleState) -> Dictionary:
 	## 结算口径：胜利 / 强制撤退（失败） / 野生逃离。
 	if battle.reward.has("run_settled_outcome"):
@@ -554,6 +565,8 @@ func settle_battle(battle: BattleState) -> Dictionary:
 				original[id] = true
 				gains[id] = 0
 		for entry in battle.enemy_kills:
+			if region_mode:
+				continue
 			var killer_side := String(entry.get("killer_side", "player" if bool(entry.get("by_player", false)) else ""))
 			if killer_side == "enemy":
 				continue
@@ -563,6 +576,9 @@ func settle_battle(battle: BattleState) -> Dictionary:
 			else:
 				for id in original:
 					gains[id] = int(gains[id]) + 1
+		if region_mode:
+			for id in original:
+				gains[id] = battle_kill_xp_for(battle, int(id))
 		var shared_bonus := battle.captured.size() * Balance.EXP_PER_CAPTURE
 		if bonus_earned:
 			shared_bonus += 1
@@ -889,7 +905,9 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.deaths = (data.get("deaths", []) as Array).duplicate(true)
 	run.stats = (data.get("stats", {}) as Dictionary).duplicate()
 	run.captured_applied = int(data.get("captured_applied", 0))
-	run.deployed_uids = (data.get("deployed_uids", []) as Array).duplicate()
+	run.deployed_uids = []
+	for deployed_uid in data.get("deployed_uids", []):
+		run.deployed_uids.append(int(deployed_uid))
 	run.pending_supply = bool(data.get("pending_supply", false))
 	for relic_id in (data.get("relic_stacks", {}) as Dictionary):
 		if RelicDB.DEFINITIONS.has(relic_id):

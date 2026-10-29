@@ -41,6 +41,7 @@ var objective_label: Label = null
 var corner_top_left: Control = null
 var team_panel: Control = null
 var team_list: VBoxContainer = null
+var team_scroll: ScrollContainer = null
 var modal_layer: ColorRect = null
 var hovered_uid: int = 0
 var corner_cards_swapped := false
@@ -74,7 +75,11 @@ func _ready() -> void:
 	team_panel.add_child(team_column)
 	team_column.add_child(UIKit.label("我方队伍", 15, UIKit.ACCENT))
 	team_list = UIKit.vbox(3)
-	team_column.add_child(team_list)
+	team_scroll = ScrollContainer.new()
+	team_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	team_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	team_scroll.add_child(team_list)
+	team_column.add_child(team_scroll)
 	objective_panel = UIKit.panel(UIKit.PANEL)
 	add_child(objective_panel)
 	objective_label = UIKit.label("战斗目标", 15, UIKit.ACCENT)
@@ -216,8 +221,9 @@ func _layout_overlays() -> void:
 	corner_top_left.custom_minimum_size.x = side_space - 28.0
 	objective_panel.position = Vector2(size.x - side_space + 10.0, 12)
 	objective_panel.custom_minimum_size = Vector2(side_space - 24.0, 105)
-	team_panel.position = Vector2(14, 178)
+	team_panel.position = Vector2(14, maxf(178, corner_top_left.position.y + corner_top_left.get_combined_minimum_size().y + 10))
 	team_panel.custom_minimum_size.x = side_space - 28.0
+	_fit_team_panel()
 	_layout_corner_cards()
 	hint_label.position = Vector2(board.position.x, size.y - 34)
 	hint_label.custom_minimum_size.x = board_size
@@ -309,6 +315,49 @@ func _update_team_list() -> void:
 		var uid: int = unit.uid
 		entry.pressed.connect(func() -> void: select_unit(uid))
 		team_list.add_child(entry)
+		if not unit.is_trainer and unit.summon_owner_uid < 0 and app != null and app.run != null and app.run.region_mode:
+			_add_battle_xp_bar(unit)
+	call_deferred("_fit_team_panel")
+
+
+func _fit_team_panel() -> void:
+	if team_scroll == null or team_panel == null:
+		return
+	team_scroll.custom_minimum_size = Vector2(262, minf(team_list.get_combined_minimum_size().y, maxf(70, size.y - team_panel.position.y - 180)))
+	team_panel.reset_size()
+
+
+func _add_battle_xp_bar(unit: CombatUnit) -> void:
+	var record: Dictionary = app.run.record_by_uid(unit.uid)
+	if record.is_empty() or not app.run.deployed_uids.has(unit.uid):
+		return
+	var level := int(record.get("level", 1))
+	var gained: int = app.run.battle_kill_xp_for(state, unit.uid)
+	var total := mini(MonsterProgression.threshold_for_level(MonsterProgression.MAX_LEVEL), int(record.get("xp", 0)) + gained)
+	var target_level := MonsterProgression.level_for_xp(total)
+	var floor_xp := MonsterProgression.threshold_for_level(level)
+	var next_xp := MonsterProgression.threshold_for_level(level + 1)
+	var caption := "Lv.%d · XP %d/%d · 本场 +%d" % [level, mini(total - floor_xp, next_xp - floor_xp), next_xp - floor_xp, gained]
+	if not unit.is_alive():
+		caption = "濒死 · 本场不获得经验"
+	elif level >= MonsterProgression.MAX_LEVEL:
+		caption = "Lv.%d · 已满级" % level
+	elif target_level > level:
+		caption += "\n战后可升至 Lv.%d" % target_level
+	var label := UIKit.label(caption, 12, UIKit.GOOD if target_level > level else UIKit.TEXT_DIM)
+	label.name = "BattleXPText_%d" % unit.uid
+	team_list.add_child(label)
+	var bar := ProgressBar.new()
+	bar.name = "BattleXP_%d" % unit.uid
+	bar.custom_minimum_size = Vector2(0, 7)
+	bar.show_percentage = false
+	bar.max_value = maxi(1, next_xp - floor_xp)
+	bar.value = bar.max_value if level >= MonsterProgression.MAX_LEVEL else maxi(0, total - floor_xp)
+	bar.tooltip_text = "击杀经验立即记录；等级、属性和升级选择在战后生效。仅存活出战成员结算。"
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color("59b8e8")
+	bar.add_theme_stylebox_override("fill", fill)
+	team_list.add_child(bar)
 
 
 func _update_header() -> void:
@@ -1335,6 +1384,7 @@ func _enemy_phase() -> void:
 		state.step_enemy_phase()
 		board.set_from_state(state)
 		_update_header()
+		_update_team_list()
 		_update_log()
 		app.sync_and_save(state)
 		if state.ended:
