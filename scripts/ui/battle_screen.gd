@@ -38,6 +38,7 @@ var objective_label: Label = null
 var corner_top_left: Control = null
 var modal_layer: ColorRect = null
 var hovered_uid: int = 0
+var corner_cards_swapped := false
 
 
 func _ready() -> void:
@@ -98,6 +99,18 @@ func _ready() -> void:
 	refresh_all()
 	resized.connect(_layout_overlays)
 	call_deferred("_layout_overlays")
+
+
+func _process(_delta: float) -> void:
+	if unit_panel == null or terrain_panel == null:
+		return
+	var pointer := get_global_mouse_position()
+	if not corner_cards_swapped and (unit_panel.get_global_rect().has_point(pointer) or terrain_panel.get_global_rect().has_point(pointer)):
+		corner_cards_swapped = true
+		_layout_corner_cards()
+	elif corner_cards_swapped and pointer.y < size.y - 160.0:
+		corner_cards_swapped = false
+		_layout_corner_cards()
 
 
 func _header_box() -> Control:
@@ -176,15 +189,20 @@ func _layout_overlays() -> void:
 	corner_top_left.custom_minimum_size.x = side_space - 28.0
 	objective_panel.position = Vector2(size.x - side_space + 10.0, 12)
 	objective_panel.custom_minimum_size = Vector2(side_space - 24.0, 105)
-	unit_panel.position = Vector2(14, size.y - 136)
-	unit_panel.custom_minimum_size = Vector2(side_space - 28.0, 92)
-	terrain_panel.position = Vector2(size.x - side_space + 10.0, size.y - 136)
-	terrain_panel.custom_minimum_size = Vector2(side_space - 24.0, 120)
+	_layout_corner_cards()
 	hint_label.position = Vector2(board.position.x, size.y - 34)
 	hint_label.custom_minimum_size.x = board_size
 	channel_warning_box.position = Vector2(size.x - side_space + 10.0, 130)
 	channel_warning_box.custom_minimum_size.x = side_space - 24.0
 	_position_action_panel()
+
+
+func _layout_corner_cards() -> void:
+	var side_space := 310.0
+	unit_panel.position = Vector2(size.x - side_space + 10.0 if corner_cards_swapped else 14.0, size.y - 136.0)
+	unit_panel.custom_minimum_size = Vector2(side_space - 28.0, 92)
+	terrain_panel.position = Vector2(14.0 if corner_cards_swapped else size.x - side_space + 10.0, size.y - 136.0)
+	terrain_panel.custom_minimum_size = Vector2(side_space - 24.0, 120)
 
 
 func _position_action_panel() -> void:
@@ -203,6 +221,13 @@ func _position_action_panel() -> void:
 	var x := cell_screen.x + 8.0
 	if x + panel_width > size.x - 12.0:
 		x = board.position.x + unit.cell.x * BoardView.TILE * board.scale.x - panel_width - 8.0
+	var hover := board.hover_cell
+	if GridSpec.is_inside(hover):
+		var hover_origin := board.position + Vector2(hover) * BoardView.TILE * board.scale.x
+		var hover_rect := Rect2(hover_origin, Vector2.ONE * BoardView.TILE * board.scale.x)
+		var candidate := Rect2(Vector2(x, clampf(cell_screen.y - 70.0, 8.0, size.y - 260.0)), Vector2(panel_width, 240))
+		if candidate.intersects(hover_rect):
+			x = board.position.x + unit.cell.x * BoardView.TILE * board.scale.x - panel_width - 8.0
 	action_panel.position = Vector2(clampf(x, 8.0, size.x - panel_width - 8.0), clampf(cell_screen.y - 70.0, 8.0, size.y - 260.0))
 
 
@@ -634,6 +659,8 @@ func _on_board_clicked(cell: Vector2i) -> void:
 		do_move(cell)
 		return
 	_show_terrain(cell)
+	if selected_uid != 0 and aim_skill == "" and not capture_mode:
+		_position_action_panel()
 
 
 func _on_board_hovered(cell: Vector2i) -> void:
