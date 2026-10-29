@@ -489,7 +489,7 @@ func _rebuild_skill_buttons() -> void:
 			var button := UIKit.small_button(button_text)
 			button.name = "SkillButton_%s" % id
 			button.tooltip_text = String(def.get("desc", ""))
-			if state.round >= Balance.MAX_ROUNDS and bool(def.get("channel", false)):
+			if state.node_kind != "event" and state.round >= Balance.MAX_ROUNDS and bool(def.get("channel", false)):
 				button.tooltip_text += "\n第 %d 回合开始吟唱无法在本场结算。" % Balance.MAX_ROUNDS
 			var entries := state.skill_targets(unit, id)
 			if phase_reason != "":
@@ -1102,7 +1102,7 @@ func _on_skill_pressed(skill_id: String) -> void:
 				if not board.area_cells.has(affected):
 					board.area_cells.append(affected)
 	hint_label.text = "风力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
-	if state.round >= Balance.MAX_ROUNDS and bool(SkillDB.get_def(skill_id).get("channel", false)):
+	if state.node_kind != "event" and state.round >= Balance.MAX_ROUNDS and bool(SkillDB.get_def(skill_id).get("channel", false)):
 		hint_label.text += " 第 %d 回合开始吟唱将不会在本场结算。" % Balance.MAX_ROUNDS
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_rebuild_skill_buttons()

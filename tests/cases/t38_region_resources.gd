@@ -63,4 +63,15 @@ func run(t: TestContext) -> void:
 	fight.boss_power_percent = 20
 	var boosted := fight.damage_unit(attacker, defender, 10, {"skill_direct": true, "no_element": true})
 	t.eq(boosted["amount"], ceili(int(baseline["amount"]) * 1.2), "首领强化实际增加技能直伤")
+	var quota := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	quota.node_kind = "battle"
+	quota.reinforcement_pool = []
+	quota.nest["scheduled_waves"] = [2]
+	quota.nest["pending_waves"] = 0
+	quota.round = 1
+	quota.start_round()
+	t.eq(quota.nest["pending_waves"], 0, "重访第二回合不会重发已使用产敌名额")
+	quota.round = 3
+	quota.start_round()
+	t.eq(quota.nest["pending_waves"], 1, "尚未使用的第四回合名额仍能发放")
 	t.finish()

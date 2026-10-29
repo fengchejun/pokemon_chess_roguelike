@@ -291,7 +291,7 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 			summary["text"] = "撼地蓄力中：第 %d 回合本方阶段开始影响前方固定的 %d 格。" % [state.round + 1, cells.size()]
 		else:
 			summary["text"] = "%s 吟唱中：第 %d 回合本方阶段开始命中固定落点。" % [SkillDB.name_of(skill_id), state.round + 1]
-		if state.round >= Balance.MAX_ROUNDS:
+		if state.node_kind != "event" and state.round >= Balance.MAX_ROUNDS:
 			summary["text"] += "本场将在结算前结束，此次吟唱不会生效。"
 		return summary
 	state.log_event("%s 施放%s。" % [caster.display_name, SkillDB.name_of(skill_id)])

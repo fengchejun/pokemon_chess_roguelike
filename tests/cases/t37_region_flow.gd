@@ -45,6 +45,15 @@ func run(t: TestContext) -> void:
 	t.eq(revisit.state.unit_by_uid(foe_uid).hp, revisit.state.unit_by_uid(foe_uid).max_hp, "实际重访恢复敌人生命")
 	t.eq(revisit.state.unit_by_uid(foe_uid).cell, foe_cell, "实际重访保留敌人站位")
 	t.eq(revisit.state.round, 1, "重访重开回合")
+	var resume_path := "res://.test_region_resume.json"
+	app.sync_and_save(revisit.state)
+	t.check(SaveSystem.save_run(app.run, resume_path), "区域战斗中快照写入临时存档")
+	app.show_menu()
+	app.continue_run(resume_path)
+	t.eq(app.current_screen.name, "BattleScreen", "标题续战恢复当前节点战斗")
+	t.eq(app.current_screen.state.node_kind, "battle", "续战保留节点规则")
+	t.eq(app.current_screen.state.unit_by_uid(foe_uid).cell, foe_cell, "续战保留节点敌人站位")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(resume_path))
 	t.check(app.run.get_region().visits >= 4, "各次非首领进入累计强化次数")
 	app.run = RunState.new_run(77)
 	app.run.region_mode = true

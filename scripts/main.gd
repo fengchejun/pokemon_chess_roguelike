@@ -166,13 +166,13 @@ func begin_new_run_with_collection(chosen: Array) -> void:
 	show_prep()
 
 
-func continue_run() -> void:
-	var loaded := SaveSystem.load_run()
+func continue_run(path: String = SaveSystem.DEFAULT_PATH) -> void:
+	var loaded := SaveSystem.load_run(path)
 	if loaded == null:
 		show_menu()
 		return
 	run = loaded
-	if run.run_failed:
+	if run.run_failed or run.run_finished():
 		show_run_end()
 	elif not run.battle_snapshot.is_empty():
 		var restored := BattleSnapshot.load_state(run.battle_snapshot)

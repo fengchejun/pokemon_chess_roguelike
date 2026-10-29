@@ -54,6 +54,50 @@ func _run() -> void:
 	await process_frame
 	root.get_texture().get_image().save_png("res://artifacts/region_return.png")
 	print("WINDOW_RETURN_SCREEN ", app.current_screen.name)
+	DisplayServer.window_set_size(Vector2i(1280, 720))
+	app.enter_region_node("battle_1")
+	app.show_preview([1, 2, 3])
+	app.current_screen._on_start()
+	var combat = app.current_screen
+	# 高生命夹具隔离验证八回合路由，不用于平衡性结论。
+	for unit in combat.state.alive_units("player"):
+		unit.max_hp = 500
+		unit.hp = 500
+	for turn in range(8):
+		combat.do_end_turn()
+		while is_instance_valid(combat) and combat.busy:
+			await create_timer(.05).timeout
+	await process_frame
+	await process_frame
+	root.get_texture().get_image().save_png("res://artifacts/region_eight_round_settlement.png")
+	print("WINDOW_EIGHT_ROUND_SCREEN ", app.current_screen.name)
+	app.run.trainer_hp = mini(app.run.trainer_hp, SpeciesDB.hp_of("trainer"))
+	app.continue_after_settlement()
+	app.enter_region_node("battle_1")
+	app.show_preview([1, 2, 3])
+	app.current_screen._on_start()
+	var revisit = app.current_screen
+	await process_frame
+	await process_frame
+	root.get_texture().get_image().save_png("res://artifacts/region_combat_revisit.png")
+	for enemy in revisit.state.alive_units("enemy"):
+		revisit.state.kill_unit(enemy, "验收夹具清场", "enemy")
+	while bool(revisit.state.nest.get("alive", false)):
+		revisit.state.damage_nest(2)
+	revisit.refresh_all()
+	revisit.leave_node_button.pressed.emit()
+	await process_frame
+	await process_frame
+	while app.run.pending_reward_choices > 0:
+		app.run.choose_reward(String(app.run.reward_choices()[0]))
+	app.continue_after_settlement()
+	app.enter_region_node("battle_1")
+	app.show_preview([1, 2, 3])
+	app.current_screen._on_start()
+	await process_frame
+	await process_frame
+	root.get_texture().get_image().save_png("res://artifacts/region_cleared_revisit.png")
+	print("WINDOW_CLEARED_NODE_MODE ", app.current_screen.state.node_kind)
 	app.queue_free()
 	await process_frame
 	quit()
