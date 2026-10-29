@@ -27,7 +27,8 @@ func _ready() -> void:
 	columns.add_child(left)
 	left.add_child(UIKit.label("整备 · 第 %d 层 %d/6 战（%s）" % [run.floor_index() + 1, run.battle_in_floor() + 1, run.region_name()], 24, UIKit.ACCENT))
 	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
-	left.add_child(UIKit.wrapped("训练家生命：%d / %d（每次冒险前回满）。每只怪物独立累计本局经验；出战者战后不自动回血，留守成员每场恢复 50%% 最大生命。濒死怪物留守一场后恢复到 5 HP。" % [run.trainer_hp, trainer_max], 14, UIKit.TEXT_DIM))
+	var recovery_text := "训练家生命：%d / %d。战后不自动回血；前往营地消耗 3 食物，可恢复携带队伍和训练家全部生命，包括濒死成员。" if run.region_mode else "训练家生命：%d / %d（每次冒险前回满）。出战者战后不自动回血，留守成员每场恢复 50%% 最大生命；濒死成员留守一场后恢复到 5 HP。"
+	left.add_child(UIKit.wrapped(recovery_text % [run.trainer_hp, trainer_max], 14, UIKit.TEXT_DIM))
 	left.add_child(UIKit.label("出战名单（%d/%d）——每场最多勾选 %d 只出战；其余在备战席休养；濒死成员本场不能出战：" % [run.carried.size(), Balance.CARRIED_LIMIT, MAX_DEPLOY], 16))
 	var team_scroll := UIKit.scroll()
 	left.add_child(team_scroll)

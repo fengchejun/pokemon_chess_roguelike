@@ -780,6 +780,8 @@ func move_unit(unit: CombatUnit, dest: Vector2i) -> bool:
 	var movement_used_before := unit.moved
 	var free_terrain_move := bool(options[dest].get("terrain_travel", false))
 	var from_cell := unit.cell
+	var food_wait_before := food_wait.duplicate()
+	food_wait.erase(from_cell)
 	var burn_ticks_before := unit.burn_ticks
 	var burn_source_uid_before := unit.burn_source_uid
 	var burn_source_side_before := unit.burn_source_side
@@ -798,6 +800,7 @@ func move_unit(unit: CombatUnit, dest: Vector2i) -> bool:
 	var pickup := try_pickup_fruit(unit)
 	undo_stack.append({
 		"uid": unit.uid,
+		"food_wait_before": food_wait_before,
 		"from": from_cell,
 		"burn_ticks": burn_ticks_before,
 		"burn_source_uid": burn_source_uid_before,
@@ -819,6 +822,7 @@ func undo_last_move() -> bool:
 	if phase != PHASE_PLAYER or ended or undo_stack.is_empty():
 		return false
 	var entry: Dictionary = undo_stack.pop_back()
+	food_wait = (entry.get("food_wait_before", food_wait) as Dictionary).duplicate()
 	var unit := unit_by_uid(int(entry["uid"]))
 	if unit == null:
 		return false

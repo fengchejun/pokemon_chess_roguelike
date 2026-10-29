@@ -56,7 +56,9 @@ func _result_title() -> String:
 		"forced_retreat":
 			return "强制撤退（战斗失败）"
 		"escape":
-			return "野生逃离"
+			return "八回合结束 · 返回区域（敌人留守）" if app.run.region_mode else "野生逃离"
+		"explored":
+			return "收集结束 · 返回区域"
 	return "战斗结束"
 
 

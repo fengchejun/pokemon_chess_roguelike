@@ -59,6 +59,9 @@ func run(t: TestContext) -> void:
 		t.eq(boss_screen.state.boss_power_percent, 20, "每层四次非首领访问增加 20% 强化")
 		var boss: CombatUnit = boss_screen.state.unit_by_uid(boss_screen.state.boss_uid)
 		t.check(boss != null and boss.is_boss, "首领节点生成首领")
+		var base_boss := CombatUnit.make(boss.species_id, "enemy", boss.uid)
+		BattleDB.configure_enemy(base_boss, app.run.seed, app.run.battle_index, int(app.run.battle_config()["boss_index"]), true)
+		t.eq(boss.max_hp, ceili(base_boss.max_hp * 1.2), "首领强化实际增加最大生命")
 		boss.hp = 0
 		boss_screen.state.check_battle_end()
 		app.finish_battle(boss_screen.state)
