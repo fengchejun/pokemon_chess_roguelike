@@ -71,6 +71,13 @@ func _run() -> void:
 	await _shot("06_battle_move_mode")
 	battle._show_terrain(Vector2i(2, 3))
 	await _shot("06_battle_terrain")
+	var terrain_text: String = battle.terrain_label.text
+	battle.terrain_label.text = "地块详情换行与滚动检查\n" + "临时藤蔓在指定回合恢复原地形，蒸汽会阻止施放技能，障碍耐久会随攻击减少。\n".repeat(18)
+	await process_frame
+	battle._fit_terrain_panel()
+	await _shot("06_battle_terrain_long")
+	battle.terrain_label.text = terrain_text
+	battle._fit_terrain_panel()
 	battle._show_unit_detail(battle.state.unit_by_uid(1))
 	await _shot("06_battle_detail")
 	battle._close_modal()

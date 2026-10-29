@@ -34,6 +34,7 @@ var action_panel: Control = null
 var unit_panel: Control = null
 var terrain_panel: Control = null
 var terrain_label: Label = null
+var terrain_scroll: ScrollContainer = null
 var objective_panel: Control = null
 var objective_label: Label = null
 var corner_top_left: Control = null
@@ -87,8 +88,13 @@ func _ready() -> void:
 	terrain_panel = UIKit.panel(UIKit.PANEL)
 	add_child(terrain_panel)
 	terrain_label = UIKit.label("悬停地块查看信息", 13, UIKit.TEXT_DIM)
-	terrain_panel.add_child(terrain_label)
-	terrain_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	terrain_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	terrain_label.custom_minimum_size.x = 258
+	terrain_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	terrain_scroll = ScrollContainer.new()
+	terrain_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	terrain_scroll.add_child(terrain_label)
+	terrain_panel.add_child(terrain_scroll)
 	terrain_panel.set_meta("corner", "bottom_right")
 	action_panel = _skill_box()
 	add_child(action_panel)
@@ -115,7 +121,7 @@ func _process(_delta: float) -> void:
 	if unit_panel == null or terrain_panel == null:
 		return
 	var pointer := get_global_mouse_position()
-	if not corner_cards_swapped and (unit_panel.get_global_rect().has_point(pointer) or terrain_panel.get_global_rect().has_point(pointer)):
+	if not corner_cards_swapped and unit_panel.get_global_rect().has_point(pointer):
 		corner_cards_swapped = true
 		_layout_corner_cards()
 	elif corner_cards_swapped and pointer.y < size.y - 160.0:
@@ -215,6 +221,18 @@ func _layout_corner_cards() -> void:
 	unit_panel.custom_minimum_size = Vector2(side_space - 28.0, 92)
 	terrain_panel.position = Vector2(14.0 if corner_cards_swapped else size.x - side_space + 10.0, size.y - 136.0)
 	terrain_panel.custom_minimum_size = Vector2(side_space - 24.0, 120)
+	_fit_terrain_panel()
+
+
+func _fit_terrain_panel() -> void:
+	if terrain_scroll == null or terrain_label == null:
+		return
+	var available := maxf(120.0, size.y - 270.0)
+	var height := clampf(terrain_label.get_minimum_size().y + 24.0, 120.0, available)
+	terrain_scroll.custom_minimum_size = Vector2(266, height - 20.0)
+	terrain_panel.custom_minimum_size.y = height
+	terrain_panel.size = Vector2(286, height)
+	terrain_panel.position.y = size.y - height - 16.0
 
 
 func _position_action_panel() -> void:
@@ -908,6 +926,8 @@ func _show_terrain(cell: Vector2i) -> void:
 	if state.fruits.has(cell):
 		lines.append("恢复果实：拾取回复 20 生命。")
 	terrain_label.text = "\n".join(lines)
+	terrain_scroll.scroll_vertical = 0
+	call_deferred("_fit_terrain_panel")
 
 
 func select_unit(uid: int) -> void:
