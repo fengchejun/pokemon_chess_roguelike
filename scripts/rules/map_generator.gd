@@ -141,14 +141,6 @@ static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget:
 		return {}
 	protected[reward] = true
 	var fruits: Array = []
-	for index in Balance.FRUITS_PER_BATTLE:
-		var fruit := _pick_cell(rng, terrain, protected, func(cell: Vector2i) -> bool:
-			return int(terrain[GridSpec.index(cell)]) == TerrainDB.PLAIN
-		)
-		if fruit == Vector2i(-1, -1):
-			return {}
-		fruits.append(fruit)
-		protected[fruit] = true
 	var required: Array = []
 	required.append_array(enemy_cells)
 	required.append(reward)
@@ -341,7 +333,7 @@ static func _fallback(cfg: Dictionary) -> Dictionary:
 		"nest_cell": nest_cell,
 		"nest_exits": (cfg["nest_exits"] as Array).duplicate(),
 		"reward_cell": reward,
-		"fruit_cells": [Vector2i(2, 6), Vector2i(4, 1)],
+		"fruit_cells": [],
 		"deploy_cells": Balance.DEPLOY_CELLS.duplicate(),
 		"lethal_count": 0,
 		"region": String(cfg.get("region", "?")),

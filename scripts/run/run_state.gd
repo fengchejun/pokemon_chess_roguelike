@@ -387,6 +387,9 @@ func mark_deployed(deploy_uids: Array) -> void:
 
 
 func sync_from_battle(battle: BattleState) -> void:
+	if region_mode:
+		food += maxi(0, battle.food_collected - battle.food_applied)
+		battle.food_applied = battle.food_collected
 	## 战斗中的倒下、捕获与生命变化即时写回（濒死当帧写入）。
 	var known_death_uids := {}
 	for entry in deaths:

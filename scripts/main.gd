@@ -266,6 +266,13 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 		show_floor_theme()
 		return
 	var cfg := run.battle_config()
+	if run.region_mode:
+		var region = run.get_region()
+		if region.node_mode(region.active_node) == "event":
+			cfg = cfg.duplicate(true)
+			cfg["enemies"] = []
+			cfg["reinforce"] = []
+			cfg["boss_index"] = -1
 	var player_units := run.build_deploy_units(deploy_uids)
 	var state := BattleState.new()
 	var card_effects := run.effects()
@@ -280,6 +287,20 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 				show_region()
 				return
 		state.node_kind = region.node_mode(node_id)
+		if (region.nodes[node_id]["snapshot"] as Dictionary).is_empty():
+			for cell in GridSpec.all_cells():
+				if state.terrain_at(cell) == TerrainDB.PLAIN and state.unit_at(cell) == null and state.terrain_rng.randf() < 0.05 and state.food_cells.size() < 2:
+					state.food_cells.append(cell)
+		if state.node_kind == "event":
+			state.set_terrain(state.nest["cell"], TerrainDB.PLAIN)
+			state.nest["alive"] = false
+			state.reward["state"] = "destroyed"
+		if state.node_kind == "boss":
+			state.boss_power_percent = region.visits * 5
+			var boss := state.unit_by_uid(state.boss_uid)
+			if boss != null:
+				boss.max_hp = ceili(boss.max_hp * (1.0 + state.boss_power_percent / 100.0))
+				boss.hp = boss.max_hp
 	run.battle_snapshot = BattleSnapshot.save_state(state)
 	## 消耗品已经在预览页使用时扣除；开战不再二次扣卡。
 	run.selected_reward_item = ""
@@ -299,6 +320,8 @@ func finish_battle(battle: BattleState) -> void:
 	run.sync_from_battle(battle)
 	var outcome := run.settle_battle(battle)
 	if run.region_mode:
+		if battle.node_kind != "event" and not run.run_failed:
+			run.food += 1
 		var region = run.get_region()
 		region.store_battle(region.active_node, battle)
 		run.region_data = region.to_dict()

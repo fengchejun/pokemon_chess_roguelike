@@ -178,6 +178,8 @@ func _action_row() -> Control:
 	undo_button.pressed.connect(do_undo)
 	row1.add_child(undo_button)
 	end_turn_button = UIKit.small_button("结束回合")
+	if state.node_kind == "event":
+		end_turn_button.text = "等待（收集食物）"
 	end_turn_button.name = "EndTurnButton"
 	end_turn_button.pressed.connect(do_end_turn)
 	row1.add_child(end_turn_button)
@@ -329,6 +331,9 @@ func _update_header() -> void:
 	]
 	status_label.visible = false
 	objective_label.text = "战斗目标\n敌人 %d · 击败 %d · 捕获 %d\n%s" % [state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text.strip_edges()]
+	if state.node_kind == "event":
+		round_label.text = "自由收集 · 移动不限次数"
+		objective_label.text = "非战斗区域\n本次收集食物 %d\n可随时返回区域" % state.food_collected
 
 
 func _update_unit_card() -> void:
@@ -934,8 +939,8 @@ func _show_terrain(cell: Vector2i) -> void:
 				lines.append("奖励已由我方持有；持有者活到战斗结束可记录一次额外战后三选一。")
 			"lost", "destroyed":
 				lines.append("本场奖励已失去。")
-	if state.fruits.has(cell):
-		lines.append("恢复果实：拾取回复 20 生命。")
+	if state.food_cells.has(cell):
+		lines.append("食物：单位在此停留一整轮后收集 1 份，用于营地休息。")
 	terrain_label.text = "\n".join(lines)
 	terrain_scroll.scroll_vertical = 0
 	call_deferred("_fit_terrain_panel")

@@ -86,4 +86,23 @@ func run(t: TestContext) -> void:
 	t.check(restored_run.region_mode and restored_run.get_region().active_node == "camp", "区域模式和当前位置可存档往返")
 	t.eq(restored_run.food, 0, "食物消耗可存档往返")
 	app.queue_free()
+	var supply := TestScenario.make_state(["fire_starter"], [])
+	supply.node_kind = "event"
+	var picker := supply.unit_by_uid(1)
+	picker.hp = 2
+	supply.food_cells.append(picker.cell)
+	supply.settle_round()
+	t.eq(supply.food_collected, 0, "刚站上食物格不立即拾取")
+	supply.settle_round()
+	t.eq(supply.food_collected, 1, "停留一整轮后获得食物")
+	t.eq(picker.hp, 2, "食物不即时回血")
+	var supply_run := RunState.new_run(10)
+	supply_run.region_mode = true
+	supply_run.sync_from_battle(supply)
+	supply_run.sync_from_battle(supply)
+	t.eq(supply_run.food, 4, "重复同步不会重复增加已收集食物")
+	t.check(supply.move_budget_for(picker) > 8, "非战斗节点不使用普通移动力上限")
+	supply.round = 20
+	supply.settle_round()
+	t.check(not supply.ended, "非战斗节点不受八回合限制")
 	t.finish()

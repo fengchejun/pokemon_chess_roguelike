@@ -302,34 +302,13 @@ func _t_pickups(t: TestContext) -> void:
 	state.end_enemy_phase()
 	t.eq(state.reward["state"], "carried", "敌方阶段结束后由守点者持有奖励")
 	t.eq(state.reward_owner().uid, fire.uid, "奖励记录实际守点者")
-	# 恢复果实
-	var fruits_state := TestScenario.make_state(["fire_starter"], [])
-	var fmon := fruits_state.unit_by_uid(1)
-	fmon.hp = 2
-	fruits_state.fruits.append(Vector2i(1, 1))
-	fmon.cell = Vector2i(1, 1)
-	fruits_state.settle_round()
-	t.eq(fmon.hp, 2 + Balance.FRUIT_HEAL, "拾取恢复果实回复配置的生命")
-	t.eq(fruits_state.fruits.size(), 0, "果实被消耗")
-	# 踩上即拾取；撤销移动时连同果实一起回滚
-	var move_state := TestScenario.make_state(["fire_starter"], [])
-	move_state.trainer().cell = Vector2i(0, 7)
-	var mmon := move_state.unit_by_uid(1)
-	mmon.cell = Vector2i(0, 3)
-	mmon.hp = 2
-	move_state.fruits.append(Vector2i(2, 3))
-	t.eq(move_state.move_unit(mmon, Vector2i(2, 3)), true, "移动到果实格")
-	t.eq(mmon.hp, 2 + Balance.FRUIT_HEAL, "踩上即拾取并回复配置的生命")
-	t.eq(move_state.fruits.size(), 0, "果实立即被消耗")
-	t.eq(move_state.undo_last_move(), true, "撤回移动")
-	t.eq(mmon.hp, 2, "撤回后回复被回滚")
-	t.eq(move_state.fruits.size(), 1, "撤回后果实回到原位")
-	t.eq(move_state.fruits[0], Vector2i(2, 3), "果实位置正确")
-	# 满血踩上也同样消耗（拾取即拾取）
-	mmon.hp = SpeciesDB.hp_of("fire_starter")
-	move_state.move_unit(mmon, Vector2i(2, 3))
-	t.eq(mmon.hp, SpeciesDB.hp_of("fire_starter"), "满血拾取不回血")
-	t.eq(move_state.fruits.size(), 0, "满血拾取同样消耗果实")
+	# 历史果实不再提供即时恢复。
+	var legacy := TestScenario.make_state(["fire_starter"], [])
+	var member := legacy.unit_by_uid(1)
+	member.hp = 2
+	legacy.fruits.append(member.cell)
+	legacy.settle_round()
+	t.eq(member.hp, 2, "旧果实不再回血")
 
 
 func _t_temp_obstacle_expiry(t: TestContext) -> void:

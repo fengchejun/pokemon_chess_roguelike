@@ -17,6 +17,11 @@ var phase: String = PHASE_PLAYER
 var ended: bool = false
 var end_reason: String = ""
 var node_kind: String = "" # 空值沿用旧逐场流程；battle / boss / event 使用区域规则。
+var food_cells: Array = []
+var food_wait: Dictionary = {}
+var food_collected: int = 0
+var food_applied: int = 0
+var boss_power_percent: int = 0
 
 var terrain: Array = []
 var obstacle_durability: Dictionary = {}
@@ -148,7 +153,7 @@ func load_map(map_data: Dictionary) -> void:
 		"owner_uid": -1,
 		"guard_uid": -1,
 	}
-	fruits = map_data.get("fruit_cells", []).duplicate()
+	fruits = []
 
 
 # ---------------------------------------------------------------- 查询
@@ -322,7 +327,7 @@ func move_cost_for(unit: CombatUnit, cell: Vector2i) -> int:
 
 func move_budget_for(unit: CombatUnit) -> int:
 	## 移动预算的统一入口（寻路与界面共用；未来的机动类效果在此接线）。
-	return unit.effective_move()
+	return GridSpec.W * GridSpec.H * 2 if node_kind == "event" else unit.effective_move()
 
 
 func terrain_travel_mode(unit: CombatUnit) -> int:
@@ -510,6 +515,8 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var amount := base
 	if source != null and bool(opts.get("skill_direct", false)):
 		amount = Balance.skill_damage_for_side(amount, source.side)
+		if source.uid == boss_uid and boss_power_percent > 0:
+			amount = ceili(amount * (1.0 + boss_power_percent / 100.0))
 	var is_lethal_check := true
 	var matchup_modifier := 0
 	if not bool(opts.get("no_element", false)):
@@ -699,6 +706,8 @@ func damage_obstacle(cell: Vector2i, amount: int) -> bool:
 		return false
 	var left := int(obstacle_durability[cell]) - amount
 	if left <= 0:
+		if node_kind != "" and terrain_at(cell) == TerrainDB.TREE and terrain_rng.randf() < 0.25 and not food_cells.has(cell):
+			food_cells.append(cell)
 		obstacle_durability.erase(cell)
 		burning_cells.erase(cell)
 		var origin := int(obstacle_origin.get(cell, TerrainDB.PLAIN))
@@ -801,6 +810,8 @@ func move_unit(unit: CombatUnit, dest: Vector2i) -> bool:
 		"fruit_gained": int(pickup.get("gained", 0)),
 	})
 	log_event("%s 移动到 (%d,%d)。" % [unit.display_name, dest.x, dest.y])
+	if node_kind == "event":
+		unit.moved = false
 	return true
 
 
@@ -870,6 +881,9 @@ func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) ->
 		else:
 			unit.skill_used = true
 		commit_actions()
+		if node_kind == "event":
+			unit.moved = false
+			unit.skill_used = false
 		check_battle_end()
 	return result
 
@@ -1266,23 +1280,22 @@ func _settle_ice_growth(sources: Array) -> void:
 
 
 func try_pickup_fruit(unit: CombatUnit) -> Dictionary:
-	## 恢复果实：拾取即恢复（踩上即消耗；撤销移动时回滚）。
-	if unit == null or unit.side != "player" or not unit.is_alive():
-		return {}
-	if not fruits.has(unit.cell):
-		return {}
-	var healed := mini(unit.max_hp, unit.hp + Balance.FRUIT_HEAL)
-	var gained := healed - unit.hp
-	fruits.erase(unit.cell)
-	unit.hp = healed
-	if gained > 0:
-		log_event("%s 拾取恢复果实，回复 %d 生命。" % [unit.display_name, gained])
-	else:
-		log_event("%s 拾取恢复果实（生命已满）。" % unit.display_name)
-	return {"cell": unit.cell, "gained": gained}
+	# 保留旧调用入口用于读取历史撤回记录；恢复果实已删除。
+	return {}
 
 
 func _pickups() -> void:
+	for cell in food_cells.duplicate():
+		var picker := _player_unit_at(cell)
+		if picker != null and int(food_wait.get(cell, -1)) == picker.uid:
+			food_cells.erase(cell)
+			food_wait.erase(cell)
+			food_collected += 1
+			log_event("%s 收集了 1 份食物。" % picker.display_name)
+		elif picker != null:
+			food_wait[cell] = picker.uid
+		else:
+			food_wait.erase(cell)
 	for fruit_cell in fruits.duplicate():
 		var picker := _player_unit_at(fruit_cell)
 		if picker != null:
@@ -1398,6 +1411,12 @@ func _signature() -> String:
 
 func clone() -> BattleState:
 	var copy := BattleState.new()
+	copy.node_kind = node_kind
+	copy.food_cells = food_cells.duplicate()
+	copy.food_wait = food_wait.duplicate()
+	copy.food_collected = food_collected
+	copy.food_applied = food_applied
+	copy.boss_power_percent = boss_power_percent
 	copy.run_seed = run_seed
 	copy.battle_index = battle_index
 	copy.round = round

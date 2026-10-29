@@ -19,6 +19,7 @@ var pending_casts: Array = []
 var battle_round: int = 0
 var reward: Dictionary = {}
 var fruits: Array = []
+var food_cells: Array = []
 var units: Array = []
 var deploy_cells: Array = []
 var ice_slides: Array = []
@@ -55,7 +56,8 @@ func set_from_state(state: BattleState) -> void:
 	pending_casts = state.pending_casts.duplicate(true)
 	battle_round = state.round
 	reward = state.reward.duplicate(true)
-	fruits = state.fruits.duplicate()
+	fruits = []
+	food_cells = state.food_cells.duplicate()
 	units = state.units.duplicate()
 	deploy_cells = state.deploy_cells.duplicate()
 	ice_slides = []
@@ -85,7 +87,8 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	pending_casts = []
 	battle_round = 0
 	reward = {"state": "map", "cell": map.get("reward_cell", Vector2i(-1, -1)), "owner_uid": -1}
-	fruits = map.get("fruit_cells", []).duplicate()
+	fruits = []
+	food_cells = []
 	units = preview_units
 	deploy_cells = map.get("deploy_cells", Balance.DEPLOY_CELLS.duplicate())
 	ice_slides = []
@@ -281,10 +284,10 @@ func _draw_objects(font: Font) -> void:
 		var state_name := String(reward.get("state", ""))
 		if state_name == "map" or state_name == "guarding":
 			_draw_star(reward["cell"])
-	for fruit_cell in fruits:
-		var center := cell_center(fruit_cell)
-		draw_circle(center + Vector2(0, -2), 8.0, Color(0.9, 0.25, 0.35))
-		draw_circle(center + Vector2(0, -26), 4.0, Color(0.3, 0.75, 0.35))
+	for food_cell in food_cells:
+		var center := cell_center(food_cell)
+		draw_rect(Rect2(center - Vector2(12, 12), Vector2(24, 24)), Color("b58c4b"))
+		draw_string(UIKit.font(), center + Vector2(-10, 7), "粮", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
 
 
 func _draw_nest_exit(font: Font) -> void:
