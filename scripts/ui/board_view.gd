@@ -386,7 +386,6 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	elif ratio <= 0.67:
 		hp_color = Color(0.95, 0.75, 0.3)
 	draw_rect(Rect2(bar_rect.position, Vector2(bar_rect.size.x * ratio, bar_rect.size.y)), hp_color)
-	draw_string(font, center + Vector2(-34, -24), "%d/%d" % [unit.hp, unit.max_hp], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 	# 状态徽章
 	var badges_text := ""
 	if unit.burn_ticks > 0:

@@ -67,6 +67,8 @@ func _run() -> void:
 	battle.select_unit(1)
 	await process_frame
 	await _shot("06_battle_select")
+	battle._on_move_pressed()
+	await _shot("06_battle_move_mode")
 	battle._show_terrain(Vector2i(2, 3))
 	await _shot("06_battle_terrain")
 	battle._show_unit_detail(battle.state.unit_by_uid(1))
@@ -91,6 +93,9 @@ func _run() -> void:
 		battle._on_board_hovered(move_hover)
 	await process_frame
 	await _shot("06_battle_move_hover")
+	battle._return_to_main_actions()
+	battle._on_choose_skill_pressed()
+	await _shot("07_battle_skill_list")
 	battle._on_skill_pressed("fire_burst")
 	await process_frame
 	await _shot("07_battle_aim")

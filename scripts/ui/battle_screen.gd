@@ -7,6 +7,7 @@ var deploy_uids: Array = []
 var board: BoardView = null
 var selected_uid: int = 0
 var viewed_enemy_uid: int = 0
+var action_mode: String = "main" # main / move / skills；仅界面状态，不写入战斗快照。
 var aim_skill: String = ""
 var aim_entries: Array = []
 var aim_cells: Array = []
@@ -36,6 +37,8 @@ var terrain_label: Label = null
 var objective_panel: Control = null
 var objective_label: Label = null
 var corner_top_left: Control = null
+var team_panel: Control = null
+var team_list: VBoxContainer = null
 var modal_layer: ColorRect = null
 var hovered_uid: int = 0
 var corner_cards_swapped := false
@@ -63,6 +66,13 @@ func _ready() -> void:
 	top_left.add_child(_header_box())
 	top_left.add_child(_action_row())
 	top_left.set_meta("corner", "top_left")
+	team_panel = UIKit.panel(UIKit.PANEL)
+	add_child(team_panel)
+	var team_column := UIKit.vbox(4)
+	team_panel.add_child(team_column)
+	team_column.add_child(UIKit.label("我方队伍", 15, UIKit.ACCENT))
+	team_list = UIKit.vbox(3)
+	team_column.add_child(team_list)
 	objective_panel = UIKit.panel(UIKit.PANEL)
 	add_child(objective_panel)
 	objective_label = UIKit.label("战斗目标", 15, UIKit.ACCENT)
@@ -146,7 +156,7 @@ func _skill_box() -> Control:
 	var box := UIKit.panel(UIKit.PANEL)
 	var column := UIKit.vbox(4)
 	box.add_child(column)
-	column.add_child(UIKit.label("技能与行动", 15, UIKit.ACCENT))
+	column.add_child(UIKit.label("行动", 15, UIKit.ACCENT))
 	skill_box = UIKit.vbox(4)
 	column.add_child(skill_box)
 	return box
@@ -189,6 +199,8 @@ func _layout_overlays() -> void:
 	corner_top_left.custom_minimum_size.x = side_space - 28.0
 	objective_panel.position = Vector2(size.x - side_space + 10.0, 12)
 	objective_panel.custom_minimum_size = Vector2(side_space - 24.0, 105)
+	team_panel.position = Vector2(14, 178)
+	team_panel.custom_minimum_size.x = side_space - 28.0
 	_layout_corner_cards()
 	hint_label.position = Vector2(board.position.x, size.y - 34)
 	hint_label.custom_minimum_size.x = board_size
@@ -208,7 +220,7 @@ func _layout_corner_cards() -> void:
 func _position_action_panel() -> void:
 	if action_panel == null or board == null:
 		return
-	action_panel.visible = selected_uid > 0 and aim_skill == "" and not capture_mode and not busy and not state.ended and state.phase == BattleState.PHASE_PLAYER
+	action_panel.visible = selected_uid > 0 and action_mode != "move" and aim_skill == "" and not capture_mode and not busy and not state.ended and state.phase == BattleState.PHASE_PLAYER
 	if not action_panel.visible:
 		return
 	var unit := state.unit_by_uid(selected_uid)
@@ -227,7 +239,9 @@ func _position_action_panel() -> void:
 		var hover_rect := Rect2(hover_origin, Vector2.ONE * BoardView.TILE * board.scale.x)
 		var candidate := Rect2(Vector2(x, clampf(cell_screen.y - 70.0, 8.0, size.y - 260.0)), Vector2(panel_width, 240))
 		if candidate.intersects(hover_rect):
-			x = board.position.x + unit.cell.x * BoardView.TILE * board.scale.x - panel_width - 8.0
+			var left_x := board.position.x + unit.cell.x * BoardView.TILE * board.scale.x - panel_width - 8.0
+			if left_x >= board.position.x - 8.0:
+				x = left_x
 	action_panel.position = Vector2(clampf(x, 8.0, size.x - panel_width - 8.0), clampf(cell_screen.y - 70.0, 8.0, size.y - 260.0))
 
 
@@ -240,6 +254,7 @@ func refresh_all() -> void:
 	board.selected_uid = selected_uid
 	board.clear_overlays()
 	_update_header()
+	_update_team_list()
 	_update_unit_card()
 	_rebuild_skill_buttons()
 	_update_action_buttons()
@@ -250,6 +265,21 @@ func refresh_all() -> void:
 	if state.ended and not settled_reported:
 		settled_reported = true
 		call_deferred("_report_end")
+
+
+func _update_team_list() -> void:
+	if team_list == null:
+		return
+	UIKit.clear_children(team_list)
+	for unit in state.units:
+		if unit.side != "player":
+			continue
+		var entry := UIKit.small_button("%s  HP %d/%d" % [unit.display_name, unit.hp, unit.max_hp])
+		entry.disabled = not unit.is_alive()
+		entry.add_theme_color_override("font_color", UIKit.ACCENT if unit.uid == selected_uid else UIKit.TEXT)
+		var uid: int = unit.uid
+		entry.pressed.connect(func() -> void: select_unit(uid))
+		team_list.add_child(entry)
 
 
 func _update_header() -> void:
@@ -411,53 +441,101 @@ func _rebuild_skill_buttons() -> void:
 	UIKit.clear_children(skill_box)
 	var unit := state.unit_by_uid(selected_uid)
 	if unit == null or not unit.is_alive():
-		skill_box.add_child(UIKit.label("选择己方单位后显示技能。", 13, UIKit.TEXT_DIM))
+		skill_box.add_child(UIKit.label("选择己方单位后显示行动。", 13, UIKit.TEXT_DIM))
 		return
-	if unit.is_trainer:
-		var trainer_text := "训练家不施放技能；每回合可在周围八格尝试捕获一次。"
-		skill_box.add_child(UIKit.wrapped(trainer_text, 13))
 	capture_button = null
-	if unit.is_trainer:
-		capture_button = UIKit.small_button("捕获（周围八格）")
+	if action_mode == "skills":
+		for skill_id in unit.skills:
+			var id := String(skill_id)
+			var def := SkillDB.get_def(id)
+			var button_text := "%s（%s）" % [def.get("name", id), _skill_tag(id, unit)]
+			var phase_reason := _skill_phase_block_reason(unit, id)
+			if phase_reason != "":
+				button_text += "·" + phase_reason
+			elif not unit.can_use_in_battle(id):
+				button_text += "·本场已用"
+			var button := UIKit.small_button(button_text)
+			button.name = "SkillButton_%s" % id
+			button.tooltip_text = String(def.get("desc", ""))
+			if state.round >= Balance.MAX_ROUNDS and bool(def.get("channel", false)):
+				button.tooltip_text += "\n第 %d 回合开始吟唱无法在本场结算。" % Balance.MAX_ROUNDS
+			var entries := state.skill_targets(unit, id)
+			if phase_reason != "":
+				button.disabled = true
+				button.tooltip_text += "\n（%s）" % phase_reason
+			elif not unit.can_use_in_battle(id):
+				button.disabled = true
+				button.tooltip_text += "\n（本场使用次数已耗尽）"
+			elif entries.is_empty():
+				button.disabled = true
+				button.tooltip_text += "\n（蒸汽中无法施法）" if state.steam_cells.has(unit.cell) else "\n（当前没有有效目标）"
+			button.pressed.connect(func() -> void: _on_skill_pressed(id))
+			skill_box.add_child(button)
+		var back_button := UIKit.small_button("返回行动")
+		back_button.pressed.connect(_return_to_main_actions)
+		skill_box.add_child(back_button)
+		call_deferred("_fit_action_panel")
+		return
+	var move_button := UIKit.small_button("移动")
+	move_button.name = "MoveActionButton"
+	move_button.disabled = not state.can_move_unit_now(unit) or state.move_options(unit).is_empty()
+	move_button.pressed.connect(_on_move_pressed)
+	skill_box.add_child(move_button)
+	if not unit.is_trainer:
+		var skills_button := UIKit.small_button("技能")
+		skills_button.name = "ChooseSkillButton"
+		skills_button.disabled = unit.skills.is_empty()
+		skills_button.pressed.connect(_on_choose_skill_pressed)
+		skill_box.add_child(skills_button)
+	else:
+		capture_button = UIKit.small_button("捕获")
 		capture_button.name = "CaptureButton"
-		var targets := _capture_targets(unit)
-		capture_button.disabled = unit.capture_used or targets.is_empty()
+		capture_button.disabled = unit.capture_used or _capture_targets(unit).is_empty()
 		capture_button.pressed.connect(_on_capture_pressed)
 		skill_box.add_child(capture_button)
-	for skill_id in unit.skills:
-		var id := String(skill_id)
-		var def := SkillDB.get_def(id)
-		var button_text := "%s（%s）" % [def.get("name", id), _skill_tag(id, unit)]
-		var phase_reason := _skill_phase_block_reason(unit, id)
-		if phase_reason != "":
-			button_text += "·" + phase_reason
-		elif not unit.can_use_in_battle(id):
-			button_text += "·本场已用"
-		var button := UIKit.small_button(button_text)
-		button.name = "SkillButton_%s" % id
-		button.tooltip_text = String(def.get("desc", ""))
-		if state.round >= Balance.MAX_ROUNDS and bool(def.get("channel", false)):
-			button.tooltip_text += "\n第 %d 回合开始吟唱无法在本场结算。" % Balance.MAX_ROUNDS
-		button.toggle_mode = true
-		button.button_pressed = aim_skill == id
-		var entries := state.skill_targets(unit, id)
-		if phase_reason != "":
-			button.disabled = true
-			button.tooltip_text += "\n（%s）" % phase_reason
-		elif not unit.can_use_in_battle(id):
-			button.disabled = true
-			button.tooltip_text += "\n（本场使用次数已耗尽）"
-		elif entries.is_empty():
-			button.disabled = true
-			button.tooltip_text += "\n（蒸汽中无法施法）" if state.steam_cells.has(unit.cell) else "\n（当前没有有效目标）"
-		button.pressed.connect(func() -> void: _on_skill_pressed(id))
-		skill_box.add_child(button)
 	var detail_button := UIKit.small_button("查看详情")
 	detail_button.pressed.connect(func() -> void: _show_unit_detail(unit))
 	skill_box.add_child(detail_button)
 	var cancel_button := UIKit.small_button("取消选择")
 	cancel_button.pressed.connect(_cancel_action)
 	skill_box.add_child(cancel_button)
+	call_deferred("_fit_action_panel")
+
+
+func _fit_action_panel() -> void:
+	if action_panel == null or not is_inside_tree():
+		return
+	action_panel.reset_size()
+	_position_action_panel()
+
+
+func _on_move_pressed() -> void:
+	var unit := state.unit_by_uid(selected_uid)
+	if unit == null or not state.can_move_unit_now(unit):
+		return
+	action_mode = "move"
+	board.clear_overlays()
+	_update_selection_overlay()
+	_position_action_panel()
+	hint_label.text = "移动：点击蓝色格；右键或 Esc 返回行动。"
+	board.queue_redraw()
+
+
+func _on_choose_skill_pressed() -> void:
+	action_mode = "skills"
+	hint_label.text = "选择具体技能；右键或 Esc 返回行动。"
+	_rebuild_skill_buttons()
+	_position_action_panel()
+
+
+func _return_to_main_actions() -> void:
+	action_mode = "main"
+	hint_label.text = "选择下一步行动。"
+	board.clear_overlays()
+	_update_selection_overlay()
+	_rebuild_skill_buttons()
+	_position_action_panel()
+	board.queue_redraw()
 
 
 func _skill_phase_block_reason(unit: CombatUnit, skill_id: String = "") -> String:
@@ -541,7 +619,7 @@ func _update_action_buttons() -> void:
 func _update_selection_overlay() -> void:
 	var unit := state.unit_by_uid(selected_uid)
 	if unit != null and unit.side == "player" and state.phase == BattleState.PHASE_PLAYER and not state.ended and not busy:
-		if aim_skill == "" and not capture_mode and state.can_move_unit_now(unit):
+		if action_mode == "move" and aim_skill == "" and not capture_mode and state.can_move_unit_now(unit):
 			board.movement_cells = state.move_options(unit)
 	elif viewed_enemy_uid != 0:
 		var enemy := state.unit_by_uid(viewed_enemy_uid)
@@ -655,7 +733,7 @@ func _on_board_clicked(cell: Vector2i) -> void:
 		return
 	# 空地形：移动或查看
 	var unit := state.unit_by_uid(selected_uid)
-	if unit != null and state.can_move_unit_now(unit) and state.move_options(unit).has(cell):
+	if action_mode == "move" and unit != null and state.can_move_unit_now(unit) and state.move_options(unit).has(cell):
 		do_move(cell)
 		return
 	_show_terrain(cell)
@@ -733,7 +811,7 @@ func _on_board_hovered(cell: Vector2i) -> void:
 		hint_label.text = "巢穴唯一出口：%s。" % detail
 		hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	var unit := state.unit_by_uid(selected_uid)
-	if unit != null and state.can_move_unit_now(unit):
+	if action_mode == "move" and unit != null and state.can_move_unit_now(unit):
 		var options := state.move_options(unit)
 		if options.has(cell):
 			board.path_cells = [unit.cell] + (options[cell]["path"] as Array)
@@ -833,12 +911,14 @@ func _show_terrain(cell: Vector2i) -> void:
 
 
 func select_unit(uid: int) -> void:
+	action_mode = "main"
 	selected_uid = uid
 	viewed_enemy_uid = 0
 	board.selected_uid = uid
 	_clear_aim()
 	board.clear_overlays()
 	_update_unit_card()
+	_update_team_list()
 	_rebuild_skill_buttons()
 	_update_selection_overlay()
 	board.queue_redraw()
@@ -1021,6 +1101,7 @@ func _clear_aim() -> void:
 	aim_first_uid = 0
 	capture_mode = false
 	aim_entries = []
+	action_mode = "main"
 	board.clear_overlays()
 	hint_label.text = "已取消瞄准。"
 	hint_label.add_theme_color_override("font_color", UIKit.TEXT_DIM)
@@ -1034,8 +1115,18 @@ func _cancel_action() -> void:
 	if aim_skill != "" or capture_mode:
 		_clear_aim()
 		return
+	if action_mode != "main":
+		action_mode = "main"
+		hint_label.text = "已返回行动选择。"
+		board.clear_overlays()
+		_update_selection_overlay()
+		_rebuild_skill_buttons()
+		_position_action_panel()
+		board.queue_redraw()
+		return
 	selected_uid = 0
 	viewed_enemy_uid = 0
+	action_mode = "main"
 	board.selected_uid = 0
 	board.clear_overlays()
 	_update_unit_card()
@@ -1123,6 +1214,8 @@ func do_move(cell: Vector2i) -> bool:
 		return false
 	if not state.move_unit(unit, cell):
 		return false
+	action_mode = "main"
+	hint_label.text = "已移动，选择下一步行动。"
 	app.sync_and_save(state)
 	viewed_enemy_uid = 0
 	board.clear_overlays()
@@ -1146,6 +1239,7 @@ func do_cast(skill_id: String, entry: Dictionary) -> bool:
 	aim_cells = []
 	aim_first_uid = 0
 	capture_mode = false
+	action_mode = "main"
 	app.sync_and_save(state)
 	board.clear_overlays()
 	_refresh_after_action()
@@ -1165,6 +1259,7 @@ func do_capture(target_uid: int) -> bool:
 		hint_label.add_theme_color_override("font_color", UIKit.BAD)
 		return false
 	capture_mode = false
+	action_mode = "main"
 	app.sync_and_save(state)
 	board.clear_overlays()
 	_refresh_after_action()
@@ -1176,6 +1271,8 @@ func do_undo() -> bool:
 		return false
 	if not state.undo_last_move():
 		return false
+	action_mode = "main"
+	hint_label.text = "已撤回移动，选择下一步行动。"
 	app.sync_and_save(state)
 	board.clear_overlays()
 	_refresh_after_action()
@@ -1185,6 +1282,7 @@ func do_undo() -> bool:
 func do_end_turn() -> void:
 	if busy or state.ended or state.phase != BattleState.PHASE_PLAYER:
 		return
+	action_mode = "main"
 	_clear_aim()
 	board.clear_overlays()
 	_enemy_phase()
@@ -1223,6 +1321,7 @@ func _enemy_phase() -> void:
 func _refresh_after_action() -> void:
 	board.set_from_state(state)
 	_update_header()
+	_update_team_list()
 	_update_unit_card()
 	_rebuild_skill_buttons()
 	_update_action_buttons()

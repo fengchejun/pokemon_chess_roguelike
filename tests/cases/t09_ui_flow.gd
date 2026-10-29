@@ -125,6 +125,12 @@ func run(t: TestContext) -> void:
 	t.check(battle_screen.status_label.text.contains("奖励已持有"), "战斗界面显示奖励持有状态")
 	if unit != null:
 		battle_screen.select_unit(unit.uid)
+		t.check(battle_screen.skill_box.find_child("ChooseSkillButton", true, false) != null, "选中后先显示技能类型入口")
+		t.check(battle_screen.skill_box.find_child("SkillButton_fire_burst", true, false) == null, "具体技能初始不直接出现")
+		t.check(battle_screen.board.movement_cells.is_empty(), "选中后尚未进入移动模式")
+		battle_screen._on_choose_skill_pressed()
+		t.check(battle_screen.skill_box.find_child("SkillButton_fire_burst", true, false) != null, "点击技能后才显示招式")
+		battle_screen._return_to_main_actions()
 		state.set_terrain(unit.cell, TerrainDB.VINES)
 		battle_screen.refresh_all()
 		t.check(battle_screen.unit_body.text.contains("藤蔓束缚（仅限制移动）"), "藤蔓详情说明不禁止施法")
@@ -158,9 +164,16 @@ func run(t: TestContext) -> void:
 			dest = cell
 			break
 		t.check(dest != Vector2i(-1, -1), "存在可移动格")
-		var moved: bool = battle_screen.do_move(dest)
-		t.eq(moved, true, "点击移动执行成功")
+		battle_screen._on_board_clicked(dest)
+		t.eq(unit.cell, from_cell, "未选择移动指令时点击空格不会行走")
+		battle_screen._on_move_pressed()
+		t.check(not battle_screen.action_panel.visible and not battle_screen.board.movement_cells.is_empty(), "移动指令收起浮窗并显示可移动格")
+		battle_screen._cancel_action()
+		t.check(battle_screen.action_panel.visible and battle_screen.board.movement_cells.is_empty(), "取消移动指令恢复行动窗并清除蓝色格")
+		battle_screen._on_move_pressed()
+		battle_screen._on_board_clicked(dest)
 		t.eq(unit.cell, dest, "移动位置正确")
+		t.check(battle_screen.action_panel.visible and battle_screen.action_mode == "main", "移动完成后重新显示主行动窗")
 		t.eq(battle_screen.do_undo(), true, "撤回移动成功")
 		t.eq(unit.cell, from_cell, "撤回后回位")
 	# 清场 → 结算
