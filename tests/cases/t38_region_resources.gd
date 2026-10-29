@@ -39,7 +39,6 @@ func run(t: TestContext) -> void:
 	run_state.region_mode = true
 	run_state.choose_floor_theme(String(run_state.offered_floor_themes[0]))
 	var region = run_state.get_region()
-	region.record_entry("camp")
 	region.record_entry("battle_1")
 	region.store_battle("battle_1", state)
 	run_state.region_data = region.to_dict()
@@ -62,7 +61,7 @@ func run(t: TestContext) -> void:
 	var baseline := fight.damage_unit(attacker, defender, 10, {"skill_direct": true, "no_element": true})
 	fight.boss_power_percent = 20
 	var boosted := fight.damage_unit(attacker, defender, 10, {"skill_direct": true, "no_element": true})
-	t.eq(boosted["amount"], ceili(int(baseline["amount"]) * 1.2), "首领强化实际增加技能直伤")
+	t.eq(boosted["amount"], baseline["amount"], "旧百分比首领直伤强化已废除")
 	var quota := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
 	quota.node_kind = "battle"
 	quota.reinforcement_pool = []

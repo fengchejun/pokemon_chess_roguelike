@@ -13,10 +13,11 @@ func _run() -> void:
 	app.run = RunState.new_run(42)
 	app.run.region_mode = true
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
-	app.enter_region_node("camp")
+	app.show_camp()
 	await process_frame
 	await process_frame
 	root.get_texture().get_image().save_png("res://artifacts/region_camp.png")
+	app.leave_camp()
 	app.enter_region_node("event_1")
 	app.show_preview([1, 2, 3])
 	app.current_screen._on_start()
