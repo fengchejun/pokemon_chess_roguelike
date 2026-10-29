@@ -277,9 +277,15 @@ func _t_rock_create(t: TestContext) -> void:
 
 
 func _t_attr_modifier(t: TestContext) -> void:
-	for pair in [["fire", "grass"], ["grass", "fire"], ["fire", "ice"], ["rock", "electric"], ["electric", "water"], ["water", "fire"]]:
-		t.eq(Elements.modifier(pair[0], pair[1]), 0, "%s 对 %s 无直接伤害修正" % [pair[0], pair[1]])
+	for pair in [["fire", "grass", 1], ["grass", "fire", -1], ["fire", "water", -1], ["rock", "electric", 1], ["electric", "water", 1], ["water", "fire", 1]]:
+		t.eq(Elements.modifier(pair[0], pair[1]), pair[2], "%s 对 %s 的五系克制关系" % [pair[0], pair[1]])
 	t.eq(Elements.modifier("fire", "fire"), 0, "同属性无修正")
 	t.eq(Elements.modifier("", "fire"), 0, "无属性不参与克制")
-	t.eq(Elements.LIST.size(), 7, "保留七种独立属性")
-	t.eq(Elements.counter_pairs().size(), 0, "当前不启用属性克制")
+	t.eq(Elements.LIST.size(), 5, "当前只有五种独立属性")
+	t.eq(Elements.counter_pairs().size(), 5, "五属性单环各有一条克制边")
+	t.eq(SpeciesDB.element_of("ice_starter"), "water", "冰物种归水系")
+	t.eq(SpeciesDB.element_of("wind_starter"), "electric", "风物种归电系")
+	t.eq(SkillDB.element_of("ice_shard"), "water", "冰技能归水系")
+	t.eq(SkillDB.element_of("wind_gust"), "electric", "风技能归电系")
+	t.eq(Elements.direct_damage(20, "fire", "grass"), 25, "克制直伤乘 1.25")
+	t.eq(Elements.direct_damage(20, "fire", "water"), 15, "被克直伤乘 0.75")

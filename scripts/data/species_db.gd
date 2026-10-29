@@ -33,11 +33,11 @@ const SPECIES := {
 		"skills": ["rock_push", "rock_break", "rock_create"],
 	},
 	"ice_starter": {
-		"name": "雪童子", "glyph": "冰", "element": "ice", "hp": 25, "move": 2,
+		"name": "雪童子", "glyph": "冰", "element": "water", "hp": 25, "move": 2,
 		"skills": ["frozen_ground", "freeze_ray", "ice_shard"],
 	},
 	"wind_starter": {
-		"name": "波波", "glyph": "风", "element": "wind", "hp": 25, "move": 4,
+		"name": "波波", "glyph": "风", "element": "electric", "hp": 25, "move": 4,
 		"skills": ["tailwind", "double_cast", "wind_gust"],
 	},
 	"fire_wild1": {
@@ -81,11 +81,11 @@ const SPECIES := {
 		"skills": ["rock_push", "rock_break", "rock_create"],
 	},
 	"ice_wild1": {
-		"name": "雪童子", "glyph": "冰", "element": "ice", "hp": 20, "move": 2,
+		"name": "雪童子", "glyph": "冰", "element": "water", "hp": 20, "move": 2,
 		"skills": ["frozen_ground", "freeze_ray", "ice_shard"],
 	},
 	"wind_wild1": {
-		"name": "波波", "glyph": "鸟", "element": "wind", "hp": 20, "move": 4,
+		"name": "波波", "glyph": "鸟", "element": "electric", "hp": 20, "move": 4,
 		"skills": ["tailwind", "double_cast", "wind_gust"],
 	},
 }

@@ -17,8 +17,8 @@ func _learning(t: TestContext) -> void:
 	var expectations := {
 		"fire": ["fire_amplify"],
 		"grass": ["leech_seed"],
-		"water": ["surf", "tsunami"],
-		"ice": ["ice_glide"],
+		"water": ["surf", "tsunami", "ice_glide"],
+		"electric": ["tailwind", "double_cast", "wind_gust"],
 	}
 	for element in expectations:
 		var choices := SkillDB.learnable_ids_for(element)

@@ -15,7 +15,7 @@ func _test_placeholder_effect(t: TestContext) -> void:
 	for element in ["fire", "water", "grass", "electric", "rock", "ice", "wind"]:
 		var ids := SkillDB.placeholder_ids_for(element)
 		t.eq(ids.size(), 2, "%s 有两招占位技能" % element)
-		var expected_element: String = element
+		var expected_element: String = "water" if element == "ice" else "electric" if element == "wind" else element
 		t.check(ids[0] != ids[1] and SkillDB.element_of(ids[0]) == expected_element, "%s 旧 ID 保留且归入当前属性" % element)
 		t.eq(SkillDB.get_def(ids[0]).get("range", 0), 2, "%s 占位招式基础射程 2" % element)
 	var battle := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(3, 3)]])

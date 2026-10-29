@@ -1,11 +1,11 @@
 class_name Elements
 extends RefCounted
 
-## 七种元素继续用于技能与环境互动；属性伤害克制暂时关闭。
+## 五属性单环；冰系技能归水，风系技能归电，机制与 ID 仍保留。
 
-const MATCHUPS_ENABLED := false
+const MATCHUPS_ENABLED := true
 
-const LIST := ["wind", "grass", "rock", "electric", "water", "fire", "ice"]
+const LIST := ["fire", "water", "grass", "rock", "electric"]
 
 const NAMES := {
 	"fire": "火",
@@ -13,8 +13,6 @@ const NAMES := {
 	"grass": "草",
 	"electric": "电",
 	"rock": "岩",
-	"ice": "冰",
-	"wind": "风",
 }
 
 const FULL_NAMES := {
@@ -23,8 +21,6 @@ const FULL_NAMES := {
 	"grass": "草系",
 	"electric": "电系",
 	"rock": "岩系",
-	"ice": "冰系",
-	"wind": "风系",
 }
 
 const COLORS := {
@@ -33,19 +29,15 @@ const COLORS := {
 	"grass": Color(0.40, 0.72, 0.38),
 	"electric": Color(0.93, 0.79, 0.25),
 	"rock": Color(0.62, 0.51, 0.40),
-	"ice": Color(0.49, 0.83, 0.94),
-	"wind": Color(0.62, 0.78, 0.70),
 	"": Color(0.75, 0.73, 0.68),
 }
 
 const BEATS := {
-	"wind": ["grass"],
 	"grass": ["rock"],
 	"rock": ["electric"],
 	"electric": ["water"],
 	"water": ["fire"],
-	"fire": ["ice", "grass"],
-	"ice": ["wind"],
+	"fire": ["grass"],
 }
 
 
@@ -61,8 +53,13 @@ static func modifier(attacker: String, defender: String) -> int:
 	return 0
 
 
-static func direct_damage(base: int, _attacker: String, _defender: String) -> int:
-	return base
+static func direct_damage(base: int, attacker: String, defender: String) -> int:
+	if base <= 0:
+		return 0
+	var relation := modifier(attacker, defender)
+	if relation == 0:
+		return base
+	return maxi(1, roundi(float(base) * (1.25 if relation > 0 else 0.75)))
 
 
 static func name_of(element: String) -> String:
@@ -81,7 +78,7 @@ static func counter_hint(element: String) -> String:
 	for attacker in LIST:
 		if BEATS[attacker].has(element):
 			predator_names.append(name_of(attacker))
-	return "克制：%s（直接伤害 +1）；被克：%s（直接伤害 -1）" % ["、".join(prey_names), "、".join(predator_names)]
+	return "克制：%s（技能直接伤害 ×1.25）；被克：%s（×0.75）" % ["、".join(prey_names), "、".join(predator_names)]
 
 
 static func color_of(element: String) -> Color:

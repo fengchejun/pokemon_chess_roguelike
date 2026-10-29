@@ -24,8 +24,8 @@ var capture_button: Button = null
 var end_turn_button: Button = null
 var undo_button: Button = null
 var hint_label: Label = null
-var forecast_list: VBoxContainer = null
-var last_threat_fingerprint: String = ""
+var channel_warning_box: Control = null
+var channel_warning_list: VBoxContainer = null
 var log_label: RichTextLabel = null
 
 
@@ -62,7 +62,8 @@ func _ready() -> void:
 	main_column.add_child(_unit_box())
 	main_column.add_child(_skill_box())
 	main_column.add_child(_action_row())
-	main_column.add_child(_forecast_box())
+	channel_warning_box = _channel_warning_box()
+	main_column.add_child(channel_warning_box)
 	# 日志列
 	var log_column := UIKit.vbox(6)
 	log_column.custom_minimum_size = Vector2(236, 0)
@@ -131,18 +132,13 @@ func _action_row() -> Control:
 	return column
 
 
-func _forecast_box() -> Control:
+func _channel_warning_box() -> Control:
 	var box := UIKit.panel(UIKit.PANEL)
 	var column := UIKit.vbox(3)
 	box.add_child(column)
-	column.add_child(UIKit.label("若现在结束回合 · 当前目标与危险区", 15, UIKit.ACCENT))
-	var scroll := UIKit.scroll()
-	scroll.custom_minimum_size = Vector2(0, 110)
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	column.add_child(scroll)
-	forecast_list = UIKit.vbox(2)
-	forecast_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(forecast_list)
+	column.add_child(UIKit.label("已宣告的敌方蓄力落点", 15, UIKit.ACCENT))
+	channel_warning_list = UIKit.vbox(2)
+	column.add_child(channel_warning_list)
 	return box
 
 
@@ -158,7 +154,7 @@ func refresh_all() -> void:
 	_update_unit_card()
 	_rebuild_skill_buttons()
 	_update_action_buttons()
-	_update_forecast()
+	_update_channel_warnings()
 	_update_log()
 	_update_selection_overlay()
 	if state.ended and not settled_reported:
@@ -451,40 +447,22 @@ func _update_selection_overlay() -> void:
 			board.enemy_cells_view = cells
 
 
-func _update_forecast() -> void:
-	if forecast_list == null:
+func _update_channel_warnings() -> void:
+	if channel_warning_list == null:
 		return
-	UIKit.clear_children(forecast_list)
-	forecast_list.add_child(UIKit.wrapped("仅按当前局面预测；我方行动后敌人会重新选择。", 12, UIKit.TEXT_DIM))
+	UIKit.clear_children(channel_warning_list)
+	var any_enemy_cast := false
 	for cast in state.pending_casts:
 		if String(cast["side"]) != "enemy":
 			continue
+		any_enemy_cast = true
 		var caster := state.unit_by_uid(int(cast["uid"]))
 		var caster_name := caster.display_name if caster != null else "?"
-		forecast_list.add_child(UIKit.wrapped("固定落点警示：%s · %s · %s" % [caster_name, SkillDB.name_of(String(cast["skill_id"])), str(cast["cells"])], 12, UIKit.BAD))
+		channel_warning_list.add_child(UIKit.wrapped("%s · %s · %s" % [caster_name, SkillDB.name_of(String(cast["skill_id"])), str(cast["cells"])], 12, UIKit.BAD))
 		for cell in cast["cells"]:
 			if GridSpec.is_inside(cell):
 				board.markers.append({"cell": cell, "kind": "text", "text": "蓄", "color": UIKit.BAD, "size": 14})
-	if state.ended:
-		forecast_list.add_child(UIKit.label("战斗已结束。", 12, UIKit.TEXT_DIM))
-		return
-	if state.phase != BattleState.PHASE_PLAYER:
-		forecast_list.add_child(UIKit.label("敌方行动中……", 12, UIKit.TEXT_DIM))
-		return
-	var plan := state.forecast()
-	if plan.is_empty():
-		forecast_list.add_child(UIKit.label("敌方没有可执行的行动。", 12, UIKit.TEXT_DIM))
-		return
-	var projection := ThreatProjection.from_plan(state, plan)
-	var fingerprint := str(projection)
-	if last_threat_fingerprint != "" and fingerprint != last_threat_fingerprint:
-		forecast_list.add_child(UIKit.label("目标或危险区已更新", 12, UIKit.ACCENT))
-	last_threat_fingerprint = fingerprint
-	for intention in projection["intentions"]:
-		forecast_list.add_child(UIKit.wrapped(String(intention), 12, UIKit.TEXT))
-	for cell in projection["danger"]:
-		board.markers.append({"cell": cell, "kind": "text", "text": "危", "color": UIKit.BAD, "size": 14})
-	forecast_list.add_child(UIKit.wrapped("危险格：%s" % str(projection["danger"]), 12, UIKit.BAD))
+	channel_warning_box.visible = any_enemy_cast and not state.ended
 
 
 func _action_detail(action: Dictionary) -> String:
@@ -969,7 +947,7 @@ func _enemy_phase() -> void:
 	_update_action_buttons()
 	state.begin_enemy_phase()
 	_update_header()
-	_update_forecast()
+	_update_channel_warnings()
 	_update_log()
 	while not state.enemy_phase_finished() and not state.ended:
 		state.step_enemy_phase()
@@ -1000,7 +978,7 @@ func _refresh_after_action() -> void:
 	_update_unit_card()
 	_rebuild_skill_buttons()
 	_update_action_buttons()
-	_update_forecast()
+	_update_channel_warnings()
 	_update_log()
 	_update_selection_overlay()
 	board.queue_redraw()

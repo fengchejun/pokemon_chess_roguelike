@@ -28,13 +28,13 @@ const DEFS := {
 	"leech_seed": {"name": "寄生种子", "element": "grass", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "使相邻敌人寄生；每次整轮结算目标失去 4 HP、存活的施法者恢复至多 4 HP。目标受到其他实际伤害时先清除寄生。"},
 	"tree_man": {"name": "大树守卫", "element": "grass", "kind": "cell", "range": 3, "damage": 0, "summon_collision_damage": 23, "ranged": false, "channel": true, "desc": "曼哈顿 3 格内指定空格蓄力召唤；下一本方阶段开始结算。落点被单位占据时对其造成 23 点基础伤害并取消召唤。树人基础 15 HP，自身格及四邻格每处浅水/深水 +5 HP、草丛/藤蔓 +10 HP；地形不变、数量不限，出生轮不能行动。"},
 	"tree_wrath": {"name": "大树之怒", "element": "grass", "kind": "unit", "range": 1, "damage": 10, "ranged": false, "desc": "对相邻一格的一名敌方单位造成 10 点基础伤害。"},
-	"frozen_ground": {"name": "冰封大地", "element": "ice", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 3×3 地形生成冰面，可覆盖深水和深坑。"},
-	"ice_glide": {"name": "溜冰", "element": "ice", "kind": "self", "damage": 0, "ranged": false, "desc": "施放当回合及后两回合，沿相连冰面移动不消耗普通移动机会，可重复移动并越过敌方单位；不能停在单位或障碍格。"},
-	"freeze_ray": {"name": "急冻光线", "element": "ice", "kind": "ray", "min_range": 1, "max_range": 4, "damage": 0, "ranged": true, "desc": "射程 4；树木与岩障截断射线。冻结命中的第一个敌人；受攻击解除。"},
-	"ice_shard": {"name": "冰锥", "element": "ice", "kind": "unit", "range": 3, "damage": 11, "ranged": true, "desc": "对 3 格内一个敌人造成 11 点基础直伤。"},
-	"tailwind": {"name": "顺风", "element": "wind", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 3×3 的友军下一次可用移动机会，移动力 +2。"},
-	"double_cast": {"name": "风力引擎", "element": "wind", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "令一名相邻友军本轮额外施法一次；强化后可依次选择两名相邻友军。蓄力宣告后获得的额外施法可在当轮使用，下一轮蓄力锁定仍生效。"},
-	"wind_gust": {"name": "推风", "element": "wind", "kind": "direction", "damage": 0, "ranged": true, "desc": "选择方向，推动前方宽 3、长 2 范围内的所有敌人 1 格；撞击与落入危险地形照常结算。"},
+	"frozen_ground": {"name": "冰封大地", "element": "water", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 3×3 地形生成冰面，可覆盖深水和深坑。"},
+	"ice_glide": {"name": "溜冰", "element": "water", "kind": "self", "damage": 0, "ranged": false, "desc": "施放当回合及后两回合，沿相连冰面移动不消耗普通移动机会，可重复移动并越过敌方单位；不能停在单位或障碍格。"},
+	"freeze_ray": {"name": "急冻光线", "element": "water", "kind": "ray", "min_range": 1, "max_range": 4, "damage": 0, "ranged": true, "desc": "射程 4；树木与岩障截断射线。冻结命中的第一个敌人；受攻击解除。"},
+	"ice_shard": {"name": "冰锥", "element": "water", "kind": "unit", "range": 3, "damage": 11, "ranged": true, "desc": "对 3 格内一个敌人造成 11 点基础直伤。"},
+	"tailwind": {"name": "顺风", "element": "electric", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 3×3 的友军下一次可用移动机会，移动力 +2。"},
+	"double_cast": {"name": "风力引擎", "element": "electric", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "令一名相邻友军本轮额外施法一次；强化后可依次选择两名相邻友军。蓄力宣告后获得的额外施法可在当轮使用，下一轮蓄力锁定仍生效。"},
+	"wind_gust": {"name": "推风", "element": "electric", "kind": "direction", "damage": 0, "ranged": true, "desc": "选择方向，推动前方宽 3、长 2 范围内的所有敌人 1 格；撞击与落入危险地形照常结算。"},
 	"fire_seed": {
 		"name": "火种",
 		"element": "fire",
@@ -144,7 +144,7 @@ static func get_def(skill_id: String) -> Dictionary:
 		var numeral := "Ⅰ" if parts[2] == "1" else "Ⅱ"
 		return {
 			"name": "%s元素试招%s" % ["冰" if parts[1] == "ice" else "风" if parts[1] == "wind" else Elements.name_of(parts[1]), numeral],
-			"element": parts[1], "kind": "unit", "range": 2,
+			"element": "water" if parts[1] == "ice" else "electric" if parts[1] == "wind" else parts[1], "kind": "unit", "range": 2,
 			"damage": 10, "ranged": true, "placeholder": true,
 			"desc": "临时占位技能：射程 2，单体造成 10 点基础直伤，无状态或地形效果；强化后基础直伤 20、射程 3。正式技能尚待设计。",
 		}
@@ -161,10 +161,8 @@ static func learnable_ids_for(element: String) -> Array:
 	var ids := placeholder_ids_for(element)
 	match element:
 		"fire": ids.append("fire_amplify")
-		"water": ids.append_array(["surf", "tsunami"])
-		"ice": ids.append_array(["frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
-		"electric": pass
-		"wind": ids.append_array(["tailwind", "double_cast", "wind_gust", "trial_wind_1", "trial_wind_2"])
+		"water": ids.append_array(["surf", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
+		"electric": ids.append_array(["tailwind", "double_cast", "wind_gust", "trial_wind_1", "trial_wind_2"])
 		"grass": ids.append_array(["leech_seed", "tree_man"])
 		"rock": ids.append_array(["rock_slide", "earth_shake"])
 	return ids

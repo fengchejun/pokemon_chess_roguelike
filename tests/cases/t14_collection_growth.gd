@@ -86,7 +86,7 @@ func _test_skill_bound_growth(t: TestContext) -> void:
 	t.check(not (fire.get("equipped_skills", []) as Array).has("flame_jet"), "换装后被替换的招式保留未装备")
 	t.check(run_state.enhance_monster_skill(1, 10, "trial_fire_1"), "占位招式可以独立强化")
 	t.check(run_state.pending_monster_levels().is_empty(), "五次偶数级成长均能完成")
-	t.eq(Elements.counter_hint("fire"), "", "未启用克制时不显示克制提示")
+	t.check(Elements.counter_hint("fire").contains("草") and Elements.counter_hint("fire").contains("水"), "火系显示克草与被水克")
 
 
 func _test_matchup_preview(t: TestContext) -> void:

@@ -100,6 +100,17 @@ func run(t: TestContext) -> void:
 		t.finish()
 		return
 	var state: BattleState = battle_screen.state
+	t.check(not battle_screen.channel_warning_box.visible, "无敌方蓄力时不显示危险或目标预告面板")
+	state.pending_casts.append({"uid": 100, "side": "enemy", "skill_id": "rock_slide", "cells": [Vector2i(2, 3)], "due_round": state.round + 1})
+	battle_screen.refresh_all()
+	t.check(battle_screen.channel_warning_box.visible, "已宣告敌方蓄力显示固定落点")
+	var has_channel_marker := false
+	for marker in battle_screen.board.markers:
+		if String(marker.get("text", "")) == "蓄":
+			has_channel_marker = true
+	t.check(has_channel_marker, "固定落点保留棋盘标记")
+	state.pending_casts.clear()
+	battle_screen.refresh_all()
 	t.eq(bool(state.capture_options.get("capture_low_hp", false)), true, "低血量设置传入战斗")
 	t.eq(bool(state.capture_options.get("capture_field_join", false)), true, "原地转阵营设置传入战斗")
 	t.check(not state.has_method("evacuate"), "战斗状态不再提供主动撤离接口")

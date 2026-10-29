@@ -54,6 +54,12 @@ func _run() -> void:
 	await process_frame
 	var battle = app.current_screen
 	await _shot("05_battle")
+	battle.state.pending_casts.append({"uid": 100, "side": "enemy", "skill_id": "rock_slide", "cells": [Vector2i(2, 3)], "due_round": battle.state.round + 1})
+	battle.refresh_all()
+	await process_frame
+	await _shot("05_channel_warning")
+	battle.state.pending_casts.clear()
+	battle.refresh_all()
 	app.toggle_debug_console()
 	await process_frame
 	await _shot("05_battle_debug")
@@ -154,6 +160,8 @@ func _run() -> void:
 	await process_frame
 	await _shot("14_run_end")
 	print("CAPTURE DONE")
+	app.queue_free()
+	await process_frame
 	quit(0)
 
 

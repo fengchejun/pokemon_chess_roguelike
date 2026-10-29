@@ -50,7 +50,7 @@ func _skill_ids(profile: CollectionState) -> Array:
 	for species_id in SpeciesDB.SPECIES:
 		for skill_id in SpeciesDB.skills_of(String(species_id)):
 			found[String(skill_id)] = true
-	for element in ["fire", "water", "grass", "electric", "rock", "ice", "wind"]:
+	for element in Elements.LIST:
 		for skill_id in SkillDB.learnable_ids_for(element):
 			if not SkillDB.is_placeholder(String(skill_id)):
 				found[String(skill_id)] = true
