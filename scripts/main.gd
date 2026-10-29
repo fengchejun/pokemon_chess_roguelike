@@ -13,6 +13,7 @@ const SupplyScreen = preload("res://scripts/ui/supply_screen.gd")
 const RunEndScreen = preload("res://scripts/ui/run_end_screen.gd")
 const SkillStatsScreen = preload("res://scripts/ui/skill_stats_screen.gd")
 const FloorThemeScreen = preload("res://scripts/ui/floor_theme_screen.gd")
+const RegionScreen = preload("res://scripts/ui/region_screen.gd")
 const DebugConsoleScreen = preload("res://scripts/ui/debug_console.gd")
 const MusicDirectorScript = preload("res://scripts/ui/music_director.gd")
 
@@ -231,6 +232,21 @@ func show_prep() -> void:
 
 func show_floor_theme() -> void:
 	_switch(FloorThemeScreen.new())
+
+
+func show_region() -> void:
+	battle_settled = false
+	_switch(RegionScreen.new())
+
+
+func enter_region_node(id: String) -> void:
+	if not run.enter_region_node(id):
+		return
+	autosave()
+	if run.get_region().node_mode(id) == "camp":
+		show_region()
+	else:
+		show_prep()
 
 
 func show_preview(deploy_uids: Array) -> void:

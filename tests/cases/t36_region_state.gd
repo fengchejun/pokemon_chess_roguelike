@@ -52,4 +52,26 @@ func run(t: TestContext) -> void:
 	win.boss_uid = defeated.uid
 	defeated.hp = 0
 	t.check(win.check_battle_end() and win.end_reason == "victory", "首领被击败即可获胜，无需清空其余敌人")
+	var app = load("res://scripts/main.gd").new()
+	app.autosave_enabled = false
+	t.tree.root.add_child(app)
+	app.run = RunState.new_run(42)
+	app.run.region_mode = true
+	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
+	app.run.trainer_hp = 1
+	app.run.carried[0]["hp"] = 0
+	app.show_region()
+	t.eq(app.current_screen.name, "RegionScreen", "区域路线页可打开")
+	app.enter_region_node("camp")
+	var rest: Button = app.current_screen.find_child("CampRestButton", true, false)
+	t.check(rest != null and not rest.disabled, "营地提供有物资的休息指令")
+	rest.pressed.emit()
+	t.eq(app.run.food, 0, "休息消耗三份食物")
+	t.eq(app.run.trainer_hp, SpeciesDB.hp_of("trainer"), "营地恢复训练家")
+	t.eq(app.run.carried[0]["hp"], app.run.monster_max_hp(app.run.carried[0]), "营地恢复濒死成员")
+	t.check(not app.run.rest_at_region_camp(), "物资不足不能继续休息")
+	var restored_run := RunState.from_dict(JSON.parse_string(JSON.stringify(app.run.to_dict())))
+	t.check(restored_run.region_mode and restored_run.get_region().active_node == "camp", "区域模式和当前位置可存档往返")
+	t.eq(restored_run.food, 0, "食物消耗可存档往返")
+	app.queue_free()
 	t.finish()

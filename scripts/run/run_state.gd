@@ -76,6 +76,10 @@ static func upgrade_id_for_skill(skill_id: String) -> String:
 	return ""
 
 var seed: int = 0
+const Region = preload("res://scripts/run/region_state.gd")
+var region_mode: bool = false
+var region_data: Dictionary = {}
+var food: int = 3
 var battle_index: int = 0
 var floor_themes: Array = []
 var offered_floor_themes: Array = []
@@ -240,6 +244,35 @@ func current_theme() -> String:
 	if floor_themes.size() <= floor_index():
 		return ""
 	return String(floor_themes[floor_index()])
+
+
+func get_region():
+	if region_data.is_empty():
+		region_data = Region.create_floor(floor_index(), current_theme()).to_dict()
+	return Region.from_dict(region_data)
+
+
+func enter_region_node(id: String) -> bool:
+	var region = get_region()
+	if not region.record_entry(id):
+		return false
+	region_data = region.to_dict()
+	var kind := String(region.nodes[id]["type"])
+	if kind == "battle" or kind == "boss":
+		var slot := 5 if kind == "boss" else int(id.trim_prefix("battle_")) - 1
+		battle_index = region.floor_index * 6 + slot
+	return true
+
+
+func rest_at_region_camp() -> bool:
+	var region = get_region()
+	if region.active_node == "" or region.node_mode(region.active_node) != "camp" or food < 3:
+		return false
+	food -= 3
+	trainer_hp = SpeciesDB.hp_of("trainer")
+	for record in carried:
+		record["hp"] = monster_max_hp(record)
+	return true
 
 
 func battle_config() -> Dictionary:
@@ -768,6 +801,9 @@ func to_dict() -> Dictionary:
 	return {
 		"version": SAVE_VERSION,
 		"seed": seed,
+		"region_mode": region_mode,
+		"region_data": region_data.duplicate(true),
+		"food": food,
 		"battle_index": battle_index,
 		"floor_themes": floor_themes.duplicate(),
 		"offered_floor_themes": offered_floor_themes.duplicate(),
@@ -811,6 +847,9 @@ static func from_dict(data: Dictionary) -> RunState:
 	var legacy_upgrade_style := version < 3
 	var old_hp_scale := version <= 6
 	run.seed = int(data.get("seed", 0))
+	run.region_mode = bool(data.get("region_mode", false))
+	run.region_data = (data.get("region_data", {}) as Dictionary).duplicate(true)
+	run.food = maxi(0, int(data.get("food", 3)))
 	run.battle_index = int(data.get("battle_index", 0))
 	run.floor_themes = (data.get("floor_themes", []) as Array).duplicate()
 	run.offered_floor_themes = (data.get("offered_floor_themes", []) as Array).duplicate()
