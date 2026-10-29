@@ -21,20 +21,20 @@ func _test_offer_and_claim(t: TestContext) -> void:
 	for reward_id in first:
 		var id := String(reward_id)
 		unique[id] = true
-		t.check(RewardDB.is_consumable(id), "奖励池仅含可留存的消耗卡：%s" % id)
-		t.check(RewardDB.name_of(id) != id and RewardDB.description_of(id) != "", "每项奖励有可读名称与说明")
+		t.check(RelicDB.DEFINITIONS.has(id), "奖励池仅含本局遗物：%s" % id)
+		t.check(RelicDB.name_of(id) != id and RelicDB.description_of(id) != "", "每项奖励有可读名称与说明")
 	t.eq(unique.size(), 3, "同一次三选一不会出现重复项目")
 	t.eq(run_state.choose_reward("upgrade:team_move"), false, "不能越过经验系统从战后池领取局内强化")
 	t.eq(run_state.choose_reward("position:not_real"), false, "奖励列表之外的项目不能领取")
 	var chosen := String(first[0])
 	t.eq(run_state.choose_reward(chosen), true, "从三个选项中领取一项")
-	t.eq(run_state.reward_inventory, [chosen], "消耗卡进入本局背包")
+	t.eq(RelicDB.rank(run_state.relic_stacks, chosen), 1, "遗物进入本局构筑")
 	t.eq(run_state.pending_reward_choices, 1, "领取后仅扣除一次待选机会")
 	t.eq(run_state.reward_choice_index, 1, "下一次奖励使用新的选择序号")
 	var second: Array = run_state.reward_choices()
 	t.eq(second, RunState.from_dict(run_state.to_dict()).reward_choices(), "读档后续选项保持可复现")
 	t.check(run_state.choose_reward(String(second[0])), "可领取第二次奖励")
-	t.eq(run_state.reward_inventory.size(), 2, "两次选择可累计两张卡")
+	t.eq(run_state.relic_stacks.values().reduce(func(total: int, value: int) -> int: return total + value, 0), 2, "两次选择可累计两级遗物")
 	t.eq(run_state.pending_reward_choices, 0, "待领次数归零")
 	t.eq(run_state.choose_reward(String(second[0])), false, "次数归零后不能重复领取")
 
@@ -86,19 +86,19 @@ func _test_monster_growth_in_battle(t: TestContext) -> void:
 	t.eq((deployed[1] as CombatUnit).max_hp, SpeciesDB.hp_of("fire_starter"), "新局部署不继承上局等级生命")
 	MonsterProgression.award_xp(fire, 10)
 	t.eq(int(fire["level"]), 3, "本局获得经验后升到三级")
-	t.eq((run_state.build_deploy_units([1])[1] as CombatUnit).max_hp, SpeciesDB.hp_of("fire_starter") + 1, "本局奇数级生命成长进入部署单位")
+	t.eq((run_state.build_deploy_units([1])[1] as CombatUnit).max_hp, MonsterProgression.max_hp("fire_starter", 3), "本局奇数级生命成长进入部署单位")
 	var battle := TestScenario.make_state(["fire_starter"], [])
 	run_state.mark_deployed([1])
 	battle.unit_by_uid(1).hp = 2
 	battle.end_battle("victory")
 	run_state.sync_from_battle(battle)
 	run_state.settle_battle(battle)
-	t.eq(int(run_state.record_by_uid(1)["hp"]), 2 + RunState.recovery_amount(SpeciesDB.hp_of("fire_starter") + 1), "战后恢复按本局成长后的生命上限计算")
+	t.eq(int(run_state.record_by_uid(1)["hp"]), 2, "出战怪物战后保留剩余生命")
 	var restored := RunState.from_dict(run_state.to_dict())
 	t.eq(int(restored.record_by_uid(1)["xp"]), 10, "本局读档保留本局怪物经验")
 	t.eq(int(restored.record_by_uid(1)["level"]), 3, "本局读档保留本局怪物等级")
 	t.eq(int(restored.record_by_uid(1)["affinity"]), 8, "本局读档保留出战后增长的永久亲密度")
-	t.eq((restored.build_deploy_units([1])[1] as CombatUnit).max_hp, SpeciesDB.hp_of("fire_starter") + 1, "读档后的部署仍有本局成长生命上限")
+	t.eq((restored.build_deploy_units([1])[1] as CombatUnit).max_hp, MonsterProgression.max_hp("fire_starter", 3), "读档后的部署仍有本局成长生命上限")
 
 
 func _test_settlement_resume(t: TestContext) -> void:
@@ -128,7 +128,7 @@ func _test_settlement_resume(t: TestContext) -> void:
 	t.check(choice != null, "恢复后的结算界面仍可领取三选一")
 	if choice != null:
 		choice.pressed.emit()
-		t.eq(restored.reward_inventory, [id], "恢复后领取的消耗卡进入背包")
+		t.eq(RelicDB.rank(restored.relic_stacks, id), 1, "恢复后领取的遗物进入构筑")
 		var next: Button = app.current_screen.find_child("ContinueButton", true, false)
 		t.check(next != null and not next.disabled, "领取后可继续下一场")
 		if next != null:

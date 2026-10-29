@@ -370,6 +370,8 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	if unit.uid == selected_uid:
 		draw_arc(center, radius + 4, 0, TAU, 48, UIKit.ACCENT, 3.0)
 	draw_string(font, center + Vector2(-14, 10), unit.glyph, HORIZONTAL_ALIGNMENT_CENTER, 28, 26, Color(0.1, 0.1, 0.12))
+	if unit.is_boss:
+		draw_string(font, center + Vector2(-30, -30), "首", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.8, 0.2))
 	# 生命条
 	var bar_rect := Rect2(center.x - 22, center.y + 20, 44, 7)
 	draw_rect(bar_rect, Color(0.1, 0.1, 0.1, 0.85))

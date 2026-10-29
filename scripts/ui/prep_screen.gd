@@ -25,10 +25,10 @@ func _ready() -> void:
 	var left := UIKit.vbox(10)
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	columns.add_child(left)
-	left.add_child(UIKit.label("整备 · 第 %d 场（%s）" % [run.battle_index + 1, run.region_name()], 24, UIKit.ACCENT))
+	left.add_child(UIKit.label("整备 · 第 %d 层 %d/6 战（%s）" % [run.floor_index() + 1, run.battle_in_floor() + 1, run.region_name()], 24, UIKit.ACCENT))
 	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
-	left.add_child(UIKit.wrapped("训练家生命：%d / %d（每次冒险前回满）。每只怪物独立累计本局经验；击败、捕获与战场目标按实际贡献结算。等级与强化在新局重置，出战宝可梦冒险结束恢复 30%%，留守基地成员回满。" % [run.trainer_hp, trainer_max], 14, UIKit.TEXT_DIM))
-	left.add_child(UIKit.label("出战名单（%d/%d）——每场最多勾选 %d 只出战；其余留守基地（冒险结束时回满）；濒死成员需留守一个冒险周期：" % [run.carried.size(), Balance.CARRIED_LIMIT, MAX_DEPLOY], 16))
+	left.add_child(UIKit.wrapped("训练家生命：%d / %d（每次冒险前回满）。每只怪物独立累计本局经验；出战者战后不自动回血，留守成员每场恢复 50%% 最大生命。濒死怪物留守一场后恢复到 5 HP。" % [run.trainer_hp, trainer_max], 14, UIKit.TEXT_DIM))
+	left.add_child(UIKit.label("出战名单（%d/%d）——每场最多勾选 %d 只出战；其余在备战席休养；濒死成员本场不能出战：" % [run.carried.size(), Balance.CARRIED_LIMIT, MAX_DEPLOY], 16))
 	var team_scroll := UIKit.scroll()
 	left.add_child(team_scroll)
 	var team_box := UIKit.vbox(6)
@@ -79,7 +79,7 @@ func _capture_settings_box(run: RunState) -> Control:
 	column.add_child(UIKit.wrapped("训练家周围八格可捕获。下面两项独立选择；关闭时使用 v2 的概率与离场处理。", 13))
 	var low_hp := CheckBox.new()
 	low_hp.name = "CaptureLowHpOption"
-	low_hp.text = "半血以下才可尝试；1 HP 或减益 2 HP 必成"
+	low_hp.text = "半血以下才可尝试；5 HP 或减益 10 HP 必成"
 	low_hp.button_pressed = bool(run.options.get("capture_low_hp", false))
 	low_hp.toggled.connect(func(value: bool) -> void:
 		run.options["capture_low_hp"] = value
@@ -112,7 +112,7 @@ func _team_row(record: Dictionary) -> Control:
 	box.name = "Deploy_%d" % int(record["uid"])
 	if int(record["hp"]) <= 0:
 		box.disabled = true
-		box.tooltip_text = "濒死：留守基地休养一场后恢复。"
+		box.tooltip_text = "濒死：留守一场后恢复到 5 HP。"
 	box.toggled.connect(func(pressed: bool) -> void: _on_toggle(int(record["uid"]), pressed))
 	line.add_child(box)
 	check_boxes[int(record["uid"])] = box
@@ -128,7 +128,7 @@ func _team_row(record: Dictionary) -> Control:
 		int(record["hp"]), app.run.monster_max_hp(record), SpeciesDB.move_of(species_id), int(record.get("affinity", 0)),
 	], 13, UIKit.TEXT_DIM))
 	if int(record["hp"]) <= 0:
-		title_line.add_child(UIKit.label("濒死（休养中）", 13, UIKit.BAD))
+			title_line.add_child(UIKit.label("濒死（留守一场后恢复到 5 HP）", 13, UIKit.BAD))
 	var upgrade_names: Array = []
 	for upgrade_id in record.get("upgrades_taken", []):
 		var info_entry: Dictionary = RunState.upgrade_info(String(upgrade_id))
@@ -191,7 +191,7 @@ func _storage_box(run: RunState) -> Control:
 	var column := UIKit.vbox(6)
 	box.add_child(column)
 	column.add_child(UIKit.label("仓库（%d/%d）" % [run.storage.size(), Balance.STORAGE_LIMIT], 17, UIKit.ACCENT))
-	column.add_child(UIKit.wrapped("仓库成员不参战、不受战损，且每场战后与留守成员一并回满；名单满员时，捕获可在战后选择替换（含濒死成员）或放入仓库。", 13))
+	column.add_child(UIKit.wrapped("仓库成员不参战、不受战损，沿用每场战后回满规则；携带名单中的留守成员每场恢复 50%% 最大生命，濒死者留守一场后恢复到 5 HP。名单满员时，捕获可替换或放入仓库。", 13))
 	if not run.storage.is_empty():
 		var names: Array = []
 		for record in run.storage:
@@ -204,8 +204,9 @@ func _next_box(run: RunState) -> Control:
 	var box := UIKit.panel(UIKit.PANEL)
 	var column := UIKit.vbox(6)
 	box.add_child(column)
-	var cfg := BattleDB.config_for(run.battle_index)
+	var cfg := run.battle_config()
 	column.add_child(UIKit.label("下一场：%s" % run.region_name(), 18, UIKit.ACCENT))
+	column.add_child(UIKit.wrapped("普通敌人 Lv.%d%s" % [int(cfg.get("enemy_level", 1)), " · 首领 Lv.%d" % (int(cfg.get("enemy_level", 1)) + 1) if int(cfg.get("boss_index", -1)) >= 0 else ""], 14, UIKit.TEXT_DIM))
 	var enemy_names: Array = []
 	for pair in cfg.get("enemies", []):
 		var species_id := String(pair[0])
@@ -221,7 +222,7 @@ func _on_toggle(uid: int, pressed: bool) -> void:
 		if not record.is_empty() and int(record["hp"]) <= 0:
 			var box: CheckBox = check_boxes[uid]
 			box.set_pressed_no_signal(false)
-			hint_label.text = "濒死的宝可梦无法出战：留守基地休养一场后恢复。"
+			hint_label.text = "濒死的宝可梦无法出战：留守一场后恢复到 5 HP。"
 			return
 		if deploy_selection.size() >= MAX_DEPLOY:
 			var box: CheckBox = check_boxes[uid]

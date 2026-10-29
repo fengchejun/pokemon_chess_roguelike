@@ -22,7 +22,7 @@ func _ready() -> void:
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	columns.add_child(left)
 	left.add_child(UIKit.label("补给点 · 完成第 %d 场后" % run.battle_index, 26, UIKit.ACCENT))
-	left.add_child(UIKit.wrapped("冒险＝从开始战斗到回到基地；每完成 %d 场冒险进入补给点。出战过的宝可梦冒险结束恢复 30%%，留守基地的成员与仓库在冒险结束时回满 100%%；训练家每次冒险前回满生命值。" % Balance.SUPPLY_INTERVAL, 14))
+	left.add_child(UIKit.wrapped("冒险＝从开始战斗到回到基地；每完成 %d 场进入补给点。出战怪物不自动回血，携带名单中的留守者每场恢复 50%% 最大生命，濒死者留守一场后恢复到 5 HP；仓库成员与训练家按现有规则回满。" % Balance.SUPPLY_INTERVAL, 14))
 	left.add_child(_summary_box(summary))
 	left.add_child(UIKit.label("出战列表（%d/%d）" % [run.carried.size(), Balance.CARRIED_LIMIT], 17, UIKit.ACCENT))
 	var team_scroll := UIKit.scroll()
@@ -65,7 +65,40 @@ func _ready() -> void:
 		hint.text = "本局不再有补给点（最后一场结束后本局结算）。"
 	right.add_child(hint)
 	var leave := UIKit.button("继续出发", 18)
+	var supply_box := UIKit.vbox(5)
+	right.add_child(supply_box)
+	var supply_choices := run.supply_choices()
+	if supply_choices.is_empty():
+		supply_box.add_child(UIKit.wrapped("本次消耗卡已领取。旧背包中的卡仍可在战前使用。", 13, UIKit.TEXT_DIM))
+	else:
+		supply_box.add_child(UIKit.label("免费补给 · 消耗卡三选一", 17, UIKit.ACCENT))
+		for candidate in supply_choices:
+			var item_id := String(candidate)
+			var pick := UIKit.button("%s\n%s" % [RewardDB.name_of(item_id), RewardDB.description_of(item_id)], 13)
+			pick.custom_minimum_size = Vector2(0, 68)
+			pick.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			var normal_style := StyleBoxFlat.new()
+			normal_style.bg_color = UIKit.PANEL_LIGHT
+			normal_style.border_color = UIKit.ACCENT.darkened(0.35)
+			normal_style.set_border_width_all(1)
+			normal_style.set_corner_radius_all(6)
+			normal_style.set_content_margin_all(10)
+			pick.add_theme_stylebox_override("normal", normal_style)
+			var hover_style := normal_style.duplicate() as StyleBoxFlat
+			hover_style.bg_color = UIKit.PANEL_LIGHT.lightened(0.18)
+			pick.add_theme_stylebox_override("hover", hover_style)
+			pick.name = "SupplyChoice_%s" % item_id.replace(":", "_")
+			pick.pressed.connect(func() -> void:
+				if app.run.choose_supply_item(item_id):
+					app.autosave()
+					for child in supply_box.get_children():
+						child.queue_free()
+					supply_box.add_child(UIKit.wrapped("已领取：%s" % RewardDB.name_of(item_id), 14, UIKit.GOOD))
+					leave.disabled = false
+			)
+			supply_box.add_child(pick)
 	leave.name = "LeaveSupplyButton"
+	leave.disabled = not supply_choices.is_empty()
 	leave.pressed.connect(func() -> void: app.leave_supply())
 	right.add_child(leave)
 

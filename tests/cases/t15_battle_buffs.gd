@@ -118,12 +118,12 @@ func _t_flight_and_defense(t: TestContext) -> void:
 	var guarded := guard_state.unit_by_uid(100)
 	guarded.battle_buffs["direct_guard"] = true
 	var before := guarded.hp
-	guard_state.damage_unit(attacker, guarded, 2, {"element": "rock", "cause": "技能"})
-	t.eq(guarded.hp, before - 1, "技能直接伤害减免一")
-	guard_state.damage_unit(null, guarded, 1, {"no_element": true, "cause": "碰撞"})
-	t.eq(guarded.hp, before - 2, "碰撞伤害不被减免")
-	guard_state.damage_unit(attacker, guarded, 1, {"element": "rock", "conductive": true})
-	t.eq(guarded.hp, before - 3, "导电伤害不被减免")
+	guard_state.damage_unit(attacker, guarded, SkillDB.damage_of("rock_break"), {"element": "rock", "cause": "技能"})
+	t.eq(guarded.hp, before - SkillDB.damage_of("rock_break") + Balance.DIRECT_GUARD_REDUCTION, "技能直接伤害减少配置的守护值")
+	guard_state.damage_unit(null, guarded, Balance.COLLISION_DAMAGE, {"no_element": true, "cause": "碰撞"})
+	t.eq(guarded.hp, before - SkillDB.damage_of("rock_break") + Balance.DIRECT_GUARD_REDUCTION - Balance.COLLISION_DAMAGE, "碰撞伤害不被减免")
+	guard_state.damage_unit(attacker, guarded, SkillDB.damage_of("rock_break"), {"element": "rock", "conductive": true})
+	t.eq(guarded.hp, before - SkillDB.damage_of("rock_break") * 2 + Balance.DIRECT_GUARD_REDUCTION - Balance.COLLISION_DAMAGE, "导电伤害不被减免")
 
 
 func _t_skill_buffs(t: TestContext) -> void:
@@ -139,7 +139,7 @@ func _t_skill_buffs(t: TestContext) -> void:
 	charger.battle_buffs["flame_charge"] = true
 	var hp := charge_state.unit_by_uid(100).hp
 	SkillResolver.apply(charge_state, charger, "flame_charge", {"type": "cell", "cell": Vector2i(2, 3)}, false)
-	t.eq(charge_state.unit_by_uid(100).hp, hp - 2, "强化冲锋撞击造成两点直伤")
+	t.eq(charge_state.unit_by_uid(100).hp, hp - SkillDB.damage_of("flame_charge") - Balance.SKILL_DAMAGE_UPGRADE, "强化冲锋撞击增加直伤")
 	var water_state := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(2, 3)]])
 	var water := water_state.unit_by_uid(1)
 	water.cell = Vector2i(0, 3)

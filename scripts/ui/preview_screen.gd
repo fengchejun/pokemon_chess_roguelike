@@ -31,7 +31,7 @@ func _ready() -> void:
 	name = "PreviewScreen"
 	UIKit.fill_background(self)
 	var run: RunState = app.run
-	map = MapGenerator.generate(run.seed, run.battle_index)
+	map = MapGenerator.generate(run.seed, run.battle_index, 0, [], run.current_theme())
 	if run.preview_used_reward_item.begins_with("map:"):
 		card_result = MapGenerator.generate_card_preview(run.seed, run.battle_index, run.preview_used_reward_item.trim_prefix("map:"), map)
 		map = (card_result["map"] as Dictionary).duplicate(true)
@@ -63,7 +63,7 @@ func _ready() -> void:
 	var right := UIKit.vbox(8)
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	columns.add_child(right)
-	right.add_child(UIKit.label("地图预览与改造 · 第 %d 场（%s）" % [run.battle_index + 1, run.region_name()], 22, UIKit.ACCENT))
+	right.add_child(UIKit.label("地图预览 · 第 %d 层 %d/6 战（%s）" % [run.floor_index() + 1, run.battle_in_floor() + 1, run.region_name()], 22, UIKit.ACCENT))
 	var scroll := UIKit.scroll()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	right.add_child(scroll)
@@ -145,23 +145,34 @@ func _enemy_box(run: RunState) -> Control:
 	var column := UIKit.vbox(4)
 	box.add_child(column)
 	column.add_child(UIKit.label("敌方配置（可复现）", 17, UIKit.ACCENT))
-	var cfg := BattleDB.config_for(run.battle_index)
+	var cfg := run.battle_config()
+	var enemy_index := 0
 	for pair in cfg.get("enemies", []):
 		var species_id := String(pair[0])
+		var unit := CombatUnit.make(species_id, "enemy", 100 + enemy_index)
+		BattleDB.configure_enemy(unit, run.seed, run.battle_index, enemy_index, enemy_index == int(cfg.get("boss_index", -1)))
 		var skill_names: Array = []
-		for skill_id in SpeciesDB.skills_of(species_id):
+		for skill_id in unit.skills:
 			skill_names.append(SkillDB.name_of(String(skill_id)))
 		var line := UIKit.hbox(8)
-		line.add_child(UIKit.label(SpeciesDB.name_of(species_id), 15))
+		line.add_child(UIKit.label(("首领·" if unit.is_boss else "") + SpeciesDB.name_of(species_id), 15))
 		line.add_child(UIKit.element_chip(SpeciesDB.element_of(species_id)))
-		line.add_child(UIKit.label("生命 %d · 移动 %d · %s" % [
-			SpeciesDB.hp_of(species_id), SpeciesDB.move_of(species_id), "、".join(skill_names),
+		line.add_child(UIKit.label("Lv.%d · 生命 %d · 移动 %d · %s" % [
+			unit.enemy_level, unit.max_hp, unit.effective_move(), "、".join(skill_names),
 		], 13, UIKit.TEXT_DIM))
 		column.add_child(line)
+		var upgrade_names: Array = []
+		for upgrade_id in BattleDB.enemy_upgrade_ids(run.seed, run.battle_index, enemy_index, species_id, unit.is_boss):
+			upgrade_names.append(String(RunState.upgrade_info(String(upgrade_id)).get("name", upgrade_id)))
+		if not upgrade_names.is_empty():
+			column.add_child(UIKit.wrapped("技能强化：%s" % "、".join(upgrade_names), 12, UIKit.TEXT_DIM))
+		enemy_index += 1
 	var reinforce_names: Array = []
 	for species_id in cfg.get("reinforce", []):
 		reinforce_names.append(SpeciesDB.name_of(String(species_id)))
 	column.add_child(UIKit.wrapped("巢穴增援池：%s（第 2、4、6 回合各尝试 1 只；堵口则排队）" % "、".join(reinforce_names), 13))
+	if int(cfg.get("boss_index", -1)) >= 0:
+		column.add_child(UIKit.wrapped("首领 +20 最大生命；首次降至半血及以下且仍存活时，其他敌人和随后出生的增援获得本场鼓舞：移动 +1、当前生命和生命上限各 +5。毁巢或第八回合逃离可过关但不发首领之血；捕获首领并清场获胜才得 1 份永久首领之血。", 13, UIKit.BAD))
 	return box
 
 
@@ -327,10 +338,11 @@ func _refresh() -> void:
 
 func _preview_units(run: RunState) -> Array:
 	var units: Array = []
-	var cfg := BattleDB.config_for(run.battle_index)
+	var cfg := run.battle_config()
 	var index := 0
 	for pair in cfg.get("enemies", []):
 		var unit := CombatUnit.make(String(pair[0]), "enemy", 100 + index)
+		BattleDB.configure_enemy(unit, run.seed, run.battle_index, index, index == int(cfg.get("boss_index", -1)))
 		unit.cell = pair[1]
 		units.append(unit)
 		index += 1

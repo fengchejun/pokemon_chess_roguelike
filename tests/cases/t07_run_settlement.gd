@@ -168,17 +168,17 @@ func _t_battle_recovery(t: TestContext) -> void:
 	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
 	t.eq(run.trainer_hp, trainer_max, "训练家每次出征回满")
 	t.eq(int(outcome["trainer_from"]), 2, "记录训练家回满前生命")
-	t.eq(int(run.carried[1]["hp"]), SpeciesDB.hp_of("water_starter"), "留守基地成员回满 100%")
-	t.eq(int(run.carried[2]["hp"]), SpeciesDB.hp_of("grass_starter"), "留守残血成员回满")
+	t.eq(int(run.carried[1]["hp"]), SpeciesDB.hp_of("water_starter"), "留守成员恢复至上限")
+	t.eq(int(run.carried[2]["hp"]), mini(SpeciesDB.hp_of("grass_starter"), 1 + RunState.recovery_amount(SpeciesDB.hp_of("grass_starter"))), "留守残血成员恢复半数上限")
 	t.eq((outcome["base_rest"] as Array).size(), 2, "基地休养明细 2 条")
-	# 出战成员的 30% 恢复（非失败结局）
+	# 出战成员不会自动恢复。
 	run.carried[0]["hp"] = 3
 	var next_battle := TestScenario.make_state(["fire_starter"], [])
 	run.mark_deployed([1])
 	var outcome2 := run.settle_battle(next_battle)
 	var fire_max := SpeciesDB.hp_of("fire_starter")
-	t.eq(int(run.carried[0]["hp"]), mini(fire_max, 3 + RunState.recovery_amount(fire_max)), "出战成员战后恢复 30%")
-	t.eq((outcome2["recovery"] as Array).size(), 1, "出战恢复明细 1 条")
+	t.eq(int(run.carried[0]["hp"]), 3, "出战成员战后保持生命")
+	t.eq((outcome2["recovery"] as Array).size(), 0, "出战成员无自动恢复明细")
 	var run2 := RunState.new_run(9102)
 	var battle2 := TestScenario.make_state(["fire_starter"], [])
 	run2.mark_deployed([1])
@@ -186,7 +186,7 @@ func _t_battle_recovery(t: TestContext) -> void:
 	run2.sync_from_battle(battle2)
 	run2.settle_battle(battle2)
 	t.eq(run2.carried.size(), 5, "濒死成员保留在名单")
-	t.eq(int(run2.record_by_uid(1)["hp"]), 0, "出战濒死不享受 30% 恢复，等待基地休养")
+	t.eq(int(run2.record_by_uid(1)["hp"]), 0, "出战濒死仍需留守一场")
 
 
 func _t_supply(t: TestContext) -> void:
@@ -201,7 +201,7 @@ func _t_supply(t: TestContext) -> void:
 	t.eq(run.trainer_hp, mini(trainer_max, 2 + amount), "训练家补给恢复 50%% 上限")
 	t.eq(int(summary["trainer_to"]), run.trainer_hp, "补给明细一致")
 	run.apply_supply_recovery()
-	t.eq(run.trainer_hp, trainer_max, "补给不超过上限")
+	t.eq(run.trainer_hp, mini(trainer_max, 2 + amount), "同一补给点重复进入不再次治疗")
 	run.battle_index = Balance.BATTLES_PER_RUN
 	t.eq(run.supply_due(), false, "最后一场后不再安排补给")
 	run.battle_index = Balance.SUPPLY_INTERVAL
@@ -288,7 +288,7 @@ func _t_forced_retreat(t: TestContext) -> void:
 	t.eq(int(run.record_by_uid(1)["hp"]), ceili(float(SpeciesDB.hp_of("fire_starter")) * 0.5), "出战宝可梦生命减半且不享受 30% 恢复")
 	t.eq(int(run.record_by_uid(2)["hp"]), 1, "低血量减半不致死（下限 1）")
 	t.eq((outcome["recovery"] as Array).size(), 0, "失败结局不享受出战 30% 恢复")
-	t.eq(int(run.record_by_uid(3)["hp"]), SpeciesDB.hp_of("grass_starter"), "留守基地的成员回满 100%")
+	t.eq(int(run.record_by_uid(3)["hp"]), mini(SpeciesDB.hp_of("grass_starter"), 2 + RunState.recovery_amount(SpeciesDB.hp_of("grass_starter"))), "失败战斗后留守成员仍恢复半数上限")
 	t.eq((outcome["base_rest"] as Array).size(), 1, "基地休养明细 1 条")
 	t.eq(run.trainer_hp, 0, "训练家倒下后不会战后回满")
 	t.check(run.run_failed and run.run_lost(), "训练家死亡立即标记整局失败")
@@ -342,7 +342,7 @@ func _t_faint_and_recover(t: TestContext) -> void:
 	t.eq(int(run2.record_by_uid(1)["hp"]), 0, "小火龙濒死")
 	run2.mark_deployed([2])
 	var outcome := run2.settle_battle(battle2)
-	t.eq(int(run2.record_by_uid(1)["hp"]), SpeciesDB.hp_of("fire_starter"), "留守一个冒险周期后濒死恢复满血")
+	t.eq(int(run2.record_by_uid(1)["hp"]), Balance.BENCH_REVIVE_HP, "留守一场后濒死恢复到五点生命")
 	t.eq((outcome["base_rest"] as Array).size(), 1, "基地休养明细包含濒死恢复")
 	# 全员濒死 → 本局结束
 	var run3 := RunState.new_run(7009)

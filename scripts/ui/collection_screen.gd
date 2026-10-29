@@ -3,6 +3,7 @@ extends Control
 var app = null
 var selection: Array = []
 var boxes: Dictionary = {}
+var skill_selectors: Dictionary = {}
 var hint: Label = null
 var start_button: Button = null
 
@@ -20,7 +21,8 @@ func _ready() -> void:
 	var column := UIKit.vbox(10)
 	margin.add_child(column)
 	column.add_child(UIKit.title("选择新一局的三只怪物", 30))
-	column.add_child(UIKit.wrapped("永久收藏会保留携带队伍和仓库的怪物，包括濒死成员。开局选三只，恢复满生命；亲密度会继承，当前暂不提供数值效果。本局等级、经验与怪物强化在新局重置。", 15))
+	column.add_child(UIKit.wrapped("永久收藏会保留携带队伍和仓库的怪物，包括濒死成员。开局选三只并为每只选择一招起始技能，恢复满生命；亲密度会继承，当前暂不提供数值效果。本局等级、经验与怪物强化在新局重置。", 15))
+	column.add_child(UIKit.wrapped("首领之血：%d 份（永久）；未来可用 5 份合成首领血浆，当前尚不能使用。" % app.collection.boss_blood, 15, UIKit.ACCENT))
 	var scroll := UIKit.scroll()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_child(scroll)
@@ -65,9 +67,18 @@ func _collection_row(record: Dictionary) -> Control:
 		int(record.get("affinity", 0)), SpeciesDB.hp_of(species_id), SpeciesDB.move_of(species_id),
 	], 14, UIKit.TEXT_DIM))
 	var skills: Array = []
+	var skill_selector := OptionButton.new()
+	skill_selector.name = "StartingSkill_%d" % id
 	for skill_id in SpeciesDB.skills_of(species_id):
-		skills.append(SkillDB.name_of(String(skill_id)))
-	content.add_child(UIKit.wrapped("技能：" + "、".join(skills), 13))
+		var skill_name := SkillDB.name_of(String(skill_id))
+		skills.append(skill_name)
+		skill_selector.add_item(skill_name)
+		skill_selector.set_item_metadata(skill_selector.item_count - 1, String(skill_id))
+		if (species_id.begins_with("ice_") and String(skill_id) == "ice_shard") or (species_id.begins_with("wind_") and String(skill_id) == "wind_gust"):
+			skill_selector.select(skill_selector.item_count - 1)
+	skill_selectors[id] = skill_selector
+	content.add_child(UIKit.wrapped("开局从以下技能中携带一招；其他招式可在局内升级时学习：" + "、".join(skills), 13))
+	content.add_child(skill_selector)
 	return row
 
 
@@ -86,4 +97,8 @@ func _on_toggle(id: int, pressed: bool) -> void:
 func _on_start() -> void:
 	var chosen: Array = app.collection.select_records(selection)
 	if chosen.size() == Balance.DEPLOY_LIMIT:
+		for record in chosen:
+			var selector: OptionButton = skill_selectors.get(int(record["id"]))
+			if selector != null and selector.item_count > 0:
+				record["starting_skill_id"] = String(selector.get_item_metadata(selector.selected))
 		app.begin_new_run_with_collection(chosen)

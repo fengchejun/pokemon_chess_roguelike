@@ -5,7 +5,7 @@ extends RefCounted
 ## 结算顺序：逐格移动 → 碰撞加伤 → 障碍/巢穴耐久 → 致死地形处死。
 
 
-static func push(state, target: CombatUnit, direction: Vector2i, distance: int, collision_bonus: int, cause: String, source_side: String = "", source_uid: int = -1) -> Dictionary:
+static func push(state, target: CombatUnit, direction: Vector2i, distance: int, collision_bonus: int, cause: String, source_side: String = "", source_uid: int = -1, skill_id: String = "") -> Dictionary:
 	var summary := {
 		"moved": false,
 		"blocked": false,
@@ -20,6 +20,13 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 		summary["blocked"] = true
 		state.log_event("%s 站稳脚跟，没有被推离。" % target.display_name)
 		return summary
+	var other_relic_bonus := 0
+	if source_side == "player" and target.side == "enemy":
+		other_relic_bonus += 4 * RelicDB.rank(state.relic_stacks, "wall_crash")
+		if skill_id == "wind_gust" and RelicDB.rank(state.relic_stacks, "wind_pressure") > 0:
+			distance += 1
+			other_relic_bonus += 3 * RelicDB.rank(state.relic_stacks, "wind_pressure")
+		collision_bonus += other_relic_bonus
 	for step in distance:
 		if not target.is_alive():
 			break
@@ -29,11 +36,11 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 			break
 		var terrain: int = state.terrain_at(next)
 		if state.is_nest_cell(next):
-			_summarize_collision(state, summary, target, null, next, collision_bonus, true, source_side, source_uid)
+			_summarize_collision(state, summary, target, null, next, collision_bonus, true, source_side, source_uid, other_relic_bonus)
 			break
 		var occupant: CombatUnit = state.unit_at(next)
 		if occupant != null:
-			_summarize_collision(state, summary, target, occupant, next, collision_bonus, false, source_side, source_uid)
+			_summarize_collision(state, summary, target, occupant, next, collision_bonus, false, source_side, source_uid, other_relic_bonus)
 			break
 		if not target.has_buff("flight") and TerrainDB.is_lethal(terrain) and (terrain != TerrainDB.DEEP or target.element != "water"):
 			target.last_move_direction = direction
@@ -45,7 +52,7 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 			summary["death"] = true
 			break
 		if TerrainDB.blocks_move(terrain):
-			_summarize_collision(state, summary, target, null, next, collision_bonus, false, source_side, source_uid)
+			_summarize_collision(state, summary, target, null, next, collision_bonus, false, source_side, source_uid, other_relic_bonus)
 			break
 		target.cell = next
 		target.last_move_direction = direction
@@ -58,13 +65,14 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 	return summary
 
 
-static func _summarize_collision(state, summary: Dictionary, target: CombatUnit, occupant, cell: Vector2i, collision_bonus: int, is_nest: bool, source_side: String, source_uid: int) -> void:
+static func _summarize_collision(state, summary: Dictionary, target: CombatUnit, occupant, cell: Vector2i, collision_bonus: int, is_nest: bool, source_side: String, source_uid: int, other_relic_bonus: int) -> void:
 	var target_damage := Balance.COLLISION_DAMAGE + collision_bonus
+	var other_damage := Balance.COLLISION_DAMAGE + (other_relic_bonus if occupant != null and occupant.side == "enemy" else 0)
 	var entry := {
 		"kind": "unit" if occupant != null else ("nest" if is_nest else "obstacle"),
 		"cell": cell,
 		"target_damage": target_damage,
-		"other_damage": Balance.COLLISION_DAMAGE if occupant != null else 0,
+		"other_damage": other_damage if occupant != null else 0,
 	}
 	summary["collisions"].append(entry)
 	var blocker_name := "障碍"
@@ -75,8 +83,8 @@ static func _summarize_collision(state, summary: Dictionary, target: CombatUnit,
 	state.log_event("%s 撞上%s，受到 %d 伤害。" % [target.display_name, blocker_name, target_damage])
 	state.damage_unit(null, target, target_damage, {"no_element": true, "cause": "碰撞", "collision": true, "killer_side": source_side, "killer_uid": source_uid})
 	if occupant != null:
-		state.damage_unit(null, occupant, Balance.COLLISION_DAMAGE, {"no_element": true, "cause": "被撞", "collision": true, "killer_side": source_side, "killer_uid": source_uid})
+		state.damage_unit(null, occupant, other_damage, {"no_element": true, "cause": "被撞", "collision": true, "killer_side": source_side, "killer_uid": source_uid})
 	elif is_nest:
-		state.damage_nest(Balance.COLLISION_DAMAGE, source_side)
+		state.damage_nest(1, source_side, cell)
 	else:
-		state.damage_obstacle(cell, Balance.COLLISION_DAMAGE)
+		state.damage_obstacle(cell, 1)

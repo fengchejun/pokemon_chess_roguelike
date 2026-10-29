@@ -10,48 +10,50 @@ extends RefCounted
 ##  direction 造岩：选择方向
 
 const DEFS := {
-	"fire_burst": {"name": "火球术", "element": "fire", "kind": "ray", "min_range": 2, "max_range": 4, "damage": 4, "ranged": true, "channel": true, "desc": "锁定射程 2–4 的格子，下次本方阶段开始落下；九宫格内各受 4 伤。吟唱后下一阶段不能行动，可被死亡、冻结或麻痹打断。"},
-	"fire_amplify": {"name": "火焰增幅", "element": "fire", "kind": "self", "damage": 0, "ranged": false, "desc": "熄灭自身曼哈顿 2 格内所有燃烧格，每格积累 1 点增幅；下一次实际造成技能直伤时，每个受击单位额外承受全部增幅。"},
-	"flame_jet": {"name": "喷射火焰", "element": "fire", "kind": "direction", "damage": 1, "ranged": true, "desc": "沿选定方向喷射 3 格；障碍截断；命中单位受到 1 伤并灼烧，紧邻自身的单位额外受到 1 伤。"},
+	"fire_burst": {"name": "火球术", "element": "fire", "kind": "ray", "min_range": 2, "max_range": 4, "damage": 18, "ranged": true, "channel": true, "desc": "锁定射程 2–4 的格子，下次本方阶段开始落下；九宫格内各受 18 点基础伤害。吟唱后下一阶段不能行动，可被死亡、冻结或麻痹打断。"},
+	"fire_amplify": {"name": "火焰增幅", "element": "fire", "kind": "self", "damage": 0, "ranged": false, "desc": "熄灭自身曼哈顿 2 格内所有燃烧格，每格积累 5 点增幅；下一次实际造成技能直伤时，每个受击单位额外承受全部增幅。"},
+	"flame_jet": {"name": "喷射火焰", "element": "fire", "kind": "direction", "damage": 10, "adjacent_bonus": 3, "ranged": true, "desc": "沿选定方向喷射 3 格；障碍截断；命中单位受到 10 点基础伤害并灼烧，紧邻自身的单位额外受到 3 点伤害。"},
 	"rain_call": {"name": "造雨术", "element": "water", "kind": "cell", "range": 4, "damage": 0, "ranged": false, "desc": "指定曼哈顿距离 4 格内中心，周围 3×3 格化为浅水；障碍与深坑不变。"},
-	"surf": {"name": "冲浪", "element": "water", "kind": "self", "damage": 0, "ranged": false, "desc": "施放后的两个本方行动阶段，若站在浅水或深水，可一次移动到同一片相连水域的任意空格；中途不能穿过单位或障碍。"},
-	"tsunami": {"name": "海啸", "element": "water", "kind": "direction", "damage": 4, "ranged": true, "channel": true, "desc": "选择方向警示前方宽 5、长 4 的固定区域；下次本方阶段开始，对区域内当时站在水格上的敌方单位造成 4 点直伤；施法者该阶段不能行动。"},
-	"rock_push": {"name": "推击", "element": "rock", "kind": "unit", "range": 1, "damage": 2, "ranged": false, "desc": "对相邻单位造成 2 伤并推开一格。"},
-	"rock_break": {"name": "碎岩", "element": "rock", "kind": "unit", "range": 2, "damage": 1, "ranged": true, "desc": "曼哈顿 2 格内攻击单位造成 1 点伤害，命中障碍扣 1 点耐久；解除冰冻时无视冰冻免伤并造成三倍伤害。"},
-	"rock_slide": {"name": "岩崩", "element": "rock", "kind": "cell", "range": 3, "damage": 8, "ranged": true, "channel": true, "desc": "锁定曼哈顿 3 格内一格；下次本方阶段开始，对该格当时的单位造成 8 点伤害，可误伤友军。"},
-	"lightning": {"name": "打雷", "element": "electric", "kind": "self", "damage": 4, "ranged": true, "channel": true, "desc": "锁定全场所有敌方单位当前格子；下次本方阶段开始，对固定落点上的单位造成 4 点伤害并感电，可误伤友军。"},
-	"electric_arc": {"name": "放电", "element": "electric", "kind": "cell", "range": 2, "damage": 1, "ranged": true, "desc": "指定两格内水域沿连通水域传导；若射程内没有水域，也可指定一名单位造成 1 点伤害。"},
+	"surf": {"name": "冲浪", "element": "water", "kind": "self", "damage": 0, "ranged": false, "desc": "施放当回合及后两回合，沿相连浅水或深水移动不消耗普通移动机会，可重复移动并越过敌方单位；不能停在单位或障碍格。"},
+	"tsunami": {"name": "海啸", "element": "water", "kind": "direction", "damage": 18, "ranged": true, "channel": true, "desc": "选择方向警示前方宽 5、长 5 的固定区域；下次本方阶段开始，对区域内当时站在水格上的敌方单位造成 18 点基础直伤；施法者该阶段不能行动。"},
+	"rock_push": {"name": "推击", "element": "rock", "kind": "unit", "range": 1, "damage": 13, "ranged": false, "desc": "对相邻单位造成 13 点基础伤害并推开一格。"},
+	"rock_break": {"name": "碎岩", "element": "rock", "kind": "unit", "range": 2, "damage": 10, "ranged": true, "desc": "曼哈顿 2 格内攻击单位造成 10 点基础伤害，命中障碍扣 1 点耐久；解除冰冻时无视冰冻免伤并造成三倍伤害。"},
+	"rock_slide": {"name": "岩崩", "element": "rock", "kind": "cell", "range": 3, "damage": 30, "ranged": true, "channel": true, "desc": "锁定曼哈顿 3 格内一格；下次本方阶段开始，对该格当时的单位造成 30 点基础伤害，可误伤友军。"},
+	"earth_shake": {"name": "撼地", "element": "rock", "kind": "direction", "damage": 18, "ranged": true, "channel": true, "desc": "蓄力锁定前方 3×3 格；下一本方阶段开始，对范围内敌人造成 18 点基础伤害，摧毁岩障和树木；平地变易碎地块、易碎地块变深坑。破障格本次不再改变地形，站在塌陷格上的地面单位立即坠落。"},
+	"lightning": {"name": "打雷", "element": "electric", "kind": "self", "damage": 18, "ranged": true, "channel": true, "desc": "锁定全场所有敌方单位当前格子；下次本方阶段开始，对固定落点上的单位造成 18 点基础伤害并感电，可误伤友军。"},
+	"electric_arc": {"name": "放电", "element": "electric", "kind": "cell", "range": 2, "damage": 10, "ranged": true, "desc": "指定两格内水域沿连通水域传导；若射程内没有水域，也可指定一名单位造成 10 点基础伤害。"},
 	"volt_replace": {"name": "伏特替换", "element": "electric", "kind": "unit", "range": 2, "damage": 0, "ranged": false, "desc": "与相隔恰好两格的单位交换位置；也可移动到两格内可站立的空格，无视途中障碍。"},
 	"wild_vines": {"name": "疯狂藤蔓", "element": "grass", "kind": "direction", "damage": 0, "ranged": false, "desc": "在前方两格生成藤蔓；障碍阻挡生成。生成时或后来停在藤蔓上的地面单位，下一次移动机会受阻。"},
-	"herbal_heal": {"name": "药草治疗", "element": "grass", "kind": "self", "damage": 0, "ranged": false, "desc": "自身周围 3×3 范围内所有己方单位回复 1 HP。"},
-	"leech_seed": {"name": "寄生种子", "element": "grass", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "使相邻敌人寄生；每次整轮结算目标失去 1 HP、存活的施法者恢复 1 HP。目标受到其他实际伤害时先清除寄生。"},
-	"tree_man": {"name": "大树守卫", "element": "grass", "kind": "cell", "range": 3, "damage": 0, "ranged": false, "desc": "曼哈顿 3 格内召唤一名树人；每名施法者只能维持一名。基础 1 HP，浅水 +2 HP，草丛 +3 HP；出生轮不能移动或施法，死亡后可重新召唤。"},
-	"tree_wrath": {"name": "大树之怒", "element": "grass", "kind": "unit", "range": 1, "damage": 1, "ranged": false, "desc": "对相邻一格的一名敌方单位造成 1 点伤害。"},
+	"herbal_heal": {"name": "药草治疗", "element": "grass", "kind": "self", "damage": 0, "ranged": false, "desc": "自身周围 3×3 范围内所有己方单位回复 8 HP。"},
+	"leech_seed": {"name": "寄生种子", "element": "grass", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "使相邻敌人寄生；每次整轮结算目标失去 4 HP、存活的施法者恢复至多 4 HP。目标受到其他实际伤害时先清除寄生。"},
+	"tree_man": {"name": "大树守卫", "element": "grass", "kind": "cell", "range": 3, "damage": 0, "summon_collision_damage": 23, "ranged": false, "channel": true, "desc": "曼哈顿 3 格内指定空格蓄力召唤；下一本方阶段开始结算。落点被单位占据时对其造成 23 点基础伤害并取消召唤。树人基础 15 HP，自身格及四邻格每处浅水/深水 +5 HP、草丛/藤蔓 +10 HP；地形不变、数量不限，出生轮不能行动。"},
+	"tree_wrath": {"name": "大树之怒", "element": "grass", "kind": "unit", "range": 1, "damage": 10, "ranged": false, "desc": "对相邻一格的一名敌方单位造成 10 点基础伤害。"},
 	"frozen_ground": {"name": "冰封大地", "element": "ice", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 3×3 地形生成冰面，可覆盖深水和深坑。"},
-	"ice_glide": {"name": "溜冰", "element": "ice", "kind": "self", "damage": 0, "ranged": false, "desc": "施放后的两个本方行动阶段，若站在冰面，可一次移动到同一片相连冰面的任意空格；中途不能穿过单位或障碍。"},
+	"ice_glide": {"name": "溜冰", "element": "ice", "kind": "self", "damage": 0, "ranged": false, "desc": "施放当回合及后两回合，沿相连冰面移动不消耗普通移动机会，可重复移动并越过敌方单位；不能停在单位或障碍格。"},
 	"freeze_ray": {"name": "急冻光线", "element": "ice", "kind": "ray", "min_range": 1, "max_range": 4, "damage": 0, "ranged": true, "desc": "射程 4；树木与岩障截断射线。冻结命中的第一个敌人；受攻击解除。"},
-	"ice_shard": {"name": "冰锥", "element": "ice", "kind": "unit", "range": 3, "damage": 1, "ranged": true, "desc": "对 3 格内一个敌人造成 1 点直接伤害。"},
-	"tailwind": {"name": "顺风", "element": "wind", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 2×3 的友军下一次可用移动机会，移动力 +2。"},
-	"double_cast": {"name": "风力引擎", "element": "wind", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "相邻友军本轮获得一次额外技能机会。"},
-	"wind_gust": {"name": "推风", "element": "wind", "kind": "unit", "range": 2, "damage": 0, "ranged": true, "desc": "推动 2 格内一个敌人 1 格；撞击与落入危险地形照常结算。"},
+	"ice_shard": {"name": "冰锥", "element": "ice", "kind": "unit", "range": 3, "damage": 11, "ranged": true, "desc": "对 3 格内一个敌人造成 11 点基础直伤。"},
+	"tailwind": {"name": "顺风", "element": "wind", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 3×3 的友军下一次可用移动机会，移动力 +2。"},
+	"double_cast": {"name": "风力引擎", "element": "wind", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "令一名相邻友军本轮额外施法一次；强化后可依次选择两名相邻友军。蓄力宣告后获得的额外施法可在当轮使用，下一轮蓄力锁定仍生效。"},
+	"wind_gust": {"name": "推风", "element": "wind", "kind": "direction", "damage": 0, "ranged": true, "desc": "选择方向，推动前方宽 3、长 2 范围内的所有敌人 1 格；撞击与落入危险地形照常结算。"},
 	"fire_seed": {
 		"name": "火种",
 		"element": "fire",
 		"kind": "ray",
 		"min_range": 2,
 		"max_range": 6,
-		"damage": 2,
+		"damage": 11,
+		"splash_damage": 8,
 		"ranged": true,
-		"desc": "沿行列 2 至 6 格射出，树木与岩障截断；命中首个单位造成 2 伤害并附加灼烧；未命中单位时，终点相邻 4 格各受 1 伤害。",
+		"desc": "沿行列 2 至 6 格射出，树木与岩障截断；命中首个单位造成 11 点基础伤害并附加灼烧；未命中单位时，终点相邻 4 格各受 8 点基础伤害。",
 	},
 	"flame_charge": {
 		"name": "闪焰冲锋",
 		"element": "fire",
 		"kind": "charge",
 		"distance": 2,
-		"damage": 1,
+		"damage": 11,
 		"ranged": false,
-		"desc": "沿正交方向冲撞最多 2 格；撞到单位或障碍就停下。单位受 1 伤并被推 1 格，障碍受 1 点耐久伤害；沿途致死地形仍会使地面单位倒下。",
+		"desc": "沿正交方向冲撞最多 2 格；撞到单位或障碍就停下。单位受 11 点基础伤害并被推 1 格，障碍受 1 点耐久伤害；沿途致死地形仍会使地面单位倒下。",
 	},
 	"water_flow": {
 		"name": "水炮",
@@ -59,9 +61,9 @@ const DEFS := {
 		"kind": "ray",
 		"min_range": 1,
 		"max_range": 4,
-		"damage": 1,
+		"damage": 11,
 		"ranged": true,
-		"desc": "沿行列射程 4，树木与岩障截断；命中单位造成 1 伤害、击退 1 格并减速；命中障碍时在其前一格生成水面。",
+		"desc": "沿行列射程 4，树木与岩障截断；命中单位造成 11 点基础伤害、击退 1 格并减速；命中障碍时在其前一格生成水面。",
 	},
 	"rain_dance": {
 		"name": "造雨术",
@@ -77,9 +79,9 @@ const DEFS := {
 		"element": "electric",
 		"kind": "unit",
 		"range": 3,
-		"damage": 2,
+		"damage": 13,
 		"ranged": true,
-		"desc": "射程 3 的单体：2 伤害；命中后目标下一次移动机会被取消（定身）。",
+		"desc": "射程 3 的单体：13 点基础伤害；命中后目标下一次移动机会被取消（定身）。",
 	},
 	"volt_step": {
 		"name": "电光步",
@@ -104,35 +106,35 @@ const DEFS := {
 		"element": "grass",
 		"kind": "unit",
 		"range": 2,
-		"damage": 1,
+		"damage": 10,
 		"ranged": true,
-		"desc": "射程 2 单体：1 伤害；自身回复 1 生命（不超过上限）。",
+		"desc": "射程 2 单体：10 点基础伤害；自身回复 5 生命（不超过上限）。",
 	},
 	"push": {
 		"name": "推击",
 		"element": "rock",
 		"kind": "unit",
 		"range": 1,
-		"damage": 2,
+		"damage": 13,
 		"ranged": false,
-		"desc": "相邻 1 格单体：2 伤害并沿方向推开 1 格；碰撞按地形结算，被推入深水或熔岩立即淘汰。",
+		"desc": "相邻 1 格单体：13 点基础伤害并沿方向推开 1 格；碰撞按地形结算，被推入深水或熔岩立即淘汰。",
 	},
 	"rock_smash": {
 		"name": "碎岩",
 		"element": "rock",
 		"kind": "unit",
 		"range": 2,
-		"damage": 1,
+		"damage": 10,
 		"ranged": true,
-		"desc": "射程 2：对单位 1 伤害；对障碍每次命中最多扣 1 点耐久，破坏后地形立即更新。",
+		"desc": "射程 2：对单位 10 点基础伤害；对障碍每次命中最多扣 1 点耐久，破坏后地形立即更新。",
 	},
 	"rock_create": {
 		"name": "造岩",
 		"element": "rock",
 		"kind": "direction",
-		"damage": 1,
+		"damage": 10,
 		"ranged": false,
-		"desc": "选择上下左右方向，在正前方横排生成临时障碍（3 格，出界裁剪）；该格有单位时改为造成 1 伤害且不生成；我方的临时障碍在本轮敌方阶段后消失，敌方的在下一轮敌方阶段后消失。",
+		"desc": "选择上下左右方向，在正前方横排生成临时障碍（3 格，出界裁剪）；该格有单位时改为造成 10 点基础伤害且不生成；我方的临时障碍在本轮敌方阶段后消失，敌方的在下一轮敌方阶段后消失。",
 	},
 }
 
@@ -141,16 +143,16 @@ static func get_def(skill_id: String) -> Dictionary:
 		var parts := skill_id.split("_")
 		var numeral := "Ⅰ" if parts[2] == "1" else "Ⅱ"
 		return {
-			"name": "%s元素试招%s" % [Elements.name_of(parts[1]), numeral],
+			"name": "%s元素试招%s" % ["冰" if parts[1] == "ice" else "风" if parts[1] == "wind" else Elements.name_of(parts[1]), numeral],
 			"element": parts[1], "kind": "unit", "range": 2,
-			"damage": 1, "ranged": true, "placeholder": true,
-			"desc": "临时占位技能：射程 2，单体造成 1 点直接伤害，无状态或地形效果；强化后射程 3。正式技能尚待设计。",
+			"damage": 10, "ranged": true, "placeholder": true,
+			"desc": "临时占位技能：射程 2，单体造成 10 点基础直伤，无状态或地形效果；强化后基础直伤 20、射程 3。正式技能尚待设计。",
 		}
 	return DEFS.get(skill_id, {})
 
 
 static func placeholder_ids_for(element: String) -> Array:
-	if not ["fire", "water", "grass", "electric", "rock", "ice", "wind"].has(element):
+	if not Elements.LIST.has(element) and not ["ice", "wind"].has(element):
 		return []
 	return ["trial_%s_1" % element, "trial_%s_2" % element]
 
@@ -160,9 +162,11 @@ static func learnable_ids_for(element: String) -> Array:
 	match element:
 		"fire": ids.append("fire_amplify")
 		"water": ids.append_array(["surf", "tsunami"])
+		"ice": ids.append_array(["frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
+		"electric": pass
+		"wind": ids.append_array(["tailwind", "double_cast", "wind_gust", "trial_wind_1", "trial_wind_2"])
 		"grass": ids.append_array(["leech_seed", "tree_man"])
-		"rock": ids.append("rock_slide")
-		"ice": ids.append("ice_glide")
+		"rock": ids.append_array(["rock_slide", "earth_shake"])
 	return ids
 
 

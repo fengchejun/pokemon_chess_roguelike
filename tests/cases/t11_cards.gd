@@ -68,20 +68,20 @@ func _t_grass_duel(t: TestContext) -> void:
 	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[Vector2i(2, 3), TerrainDB.GRASS],
 	])
-	var effects := {"grass_reduction": 1, "grass_strike": 1}
-	# 站在草丛中：受到的远程伤害 −1
+	var effects := {"grass_reduction": 1, "grass_strike": 5}
+	# 站在草丛中：受到的远程伤害 −8
 	var state := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(1, 3)]], terrain, effects)
 	var player := state.unit_by_uid(1)
 	player.cell = Vector2i(2, 3)
 	var hp_before := player.hp
 	SkillResolver.apply(state, state.unit_by_uid(100), "rock_smash", {"type": "unit", "unit": player.uid, "cell": player.cell}, false)
-	t.eq(player.hp, hp_before, "密林：草丛中的我方单位受远程伤害 −1（1 → 0）")
+	t.eq(player.hp, hp_before - Balance.skill_damage_for_side(SkillDB.damage_of("rock_smash"), "enemy") + Balance.DIRECT_GUARD_REDUCTION, "密林：草丛中的我方单位远程伤害减少 4")
 	var state2 := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(1, 3)]], terrain)
 	var player2 := state2.unit_by_uid(1)
 	player2.cell = Vector2i(2, 3)
 	SkillResolver.apply(state2, state2.unit_by_uid(100), "rock_smash", {"type": "unit", "unit": player2.uid, "cell": player2.cell}, false)
-	t.eq(player2.hp, hp_before - 1, "对照：无卡时正常受到 1 点")
-	# 站在草丛中：造成的直接伤害 +1
+	t.eq(player2.hp, hp_before - Balance.skill_damage_for_side(SkillDB.damage_of("rock_smash"), "enemy"), "对照：无卡时承受完整远程伤害")
+	# 站在草丛中：造成的直接伤害 +5
 	var terrain3 := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[Vector2i(0, 3), TerrainDB.GRASS],
 	])
@@ -89,12 +89,12 @@ func _t_grass_duel(t: TestContext) -> void:
 	var fire := state3.unit_by_uid(1)
 	fire.cell = Vector2i(0, 3)
 	SkillResolver.apply(state3, fire, "fire_seed", {"type": "cell", "cell": Vector2i(4, 3)}, false)
-	t.eq(state3.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 3, "密林：火种 2 + 草丛增伤 1")
+	t.eq(state3.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - Elements.direct_damage(SkillDB.damage_of("fire_seed"), "fire", "grass") - 5, "密林：火种克制后再获草丛增伤")
 	var state4 := TestScenario.make_state(["fire_starter"], [["grass_wild1", Vector2i(4, 3)]], [], effects)
 	var fire4 := state4.unit_by_uid(1)
 	fire4.cell = Vector2i(0, 3)
 	SkillResolver.apply(state4, fire4, "fire_seed", {"type": "cell", "cell": Vector2i(4, 3)}, false)
-	t.eq(state4.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - 2, "密林：不在草丛时仅基础伤害")
+	t.eq(state4.unit_by_uid(100).hp, SpeciesDB.hp_of("grass_wild1") - Elements.direct_damage(SkillDB.damage_of("fire_seed"), "fire", "grass"), "密林：离开草丛只保留属性克制")
 	# 敌方站在草丛中不享受增益
 	var terrain5 := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[Vector2i(0, 3), TerrainDB.GRASS],
@@ -103,7 +103,7 @@ func _t_grass_duel(t: TestContext) -> void:
 	var victim := state5.unit_by_uid(1)
 	victim.cell = Vector2i(1, 3)
 	SkillResolver.apply(state5, state5.unit_by_uid(100), "drain", {"type": "unit", "unit": victim.uid, "cell": victim.cell}, false)
-	t.eq(victim.hp, SpeciesDB.hp_of("fire_starter") - 1, "密林：敌方在草丛中不享受 +1")
+	t.eq(victim.hp, SpeciesDB.hp_of("fire_starter") - Elements.direct_damage(Balance.skill_damage_for_side(SkillDB.damage_of("drain"), "enemy"), "grass", "fire"), "密林：敌方不享受卡牌增伤但受逆克制")
 
 
 func _t_obstacle_cover(t: TestContext) -> void:
@@ -116,12 +116,12 @@ func _t_obstacle_cover(t: TestContext) -> void:
 	player.cell = Vector2i(2, 3)
 	var hp_before := player.hp
 	SkillResolver.apply(state, state.unit_by_uid(100), "rock_smash", {"type": "unit", "unit": player.uid, "cell": player.cell}, false)
-	t.eq(player.hp, hp_before, "岩脊：紧邻障碍的我方单位受远程伤害 −1（1 → 0）")
+	t.eq(player.hp, hp_before - Balance.skill_damage_for_side(SkillDB.damage_of("rock_smash"), "enemy") + Balance.DIRECT_GUARD_REDUCTION, "岩脊：紧邻障碍的我方单位远程伤害减少 4")
 	var state2 := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(1, 3)]], terrain)
 	var player2 := state2.unit_by_uid(1)
 	player2.cell = Vector2i(2, 3)
 	SkillResolver.apply(state2, state2.unit_by_uid(100), "rock_smash", {"type": "unit", "unit": player2.uid, "cell": player2.cell}, false)
-	t.eq(player2.hp, hp_before - 1, "对照：无卡时正常受到 1 点")
+	t.eq(player2.hp, hp_before - Balance.skill_damage_for_side(SkillDB.damage_of("rock_smash"), "enemy"), "对照：无卡时承受完整远程伤害")
 	# 不紧邻障碍时没有掩体（即便拥有岩脊）
 	var state3 := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(1, 3)]], terrain, effects)
 	var player3 := state3.unit_by_uid(1)
@@ -130,12 +130,12 @@ func _t_obstacle_cover(t: TestContext) -> void:
 	enemy3.cell = Vector2i(1, 5)
 	var hp3 := player3.hp
 	SkillResolver.apply(state3, enemy3, "rock_smash", {"type": "unit", "unit": player3.uid, "cell": player3.cell}, false)
-	t.eq(player3.hp, hp3 - 1, "岩脊：不紧邻障碍时无减伤")
+	t.eq(player3.hp, hp3 - Balance.skill_damage_for_side(SkillDB.damage_of("rock_smash"), "enemy"), "岩脊：不紧邻障碍时无减伤")
 
 
 func _t_push_bonus(t: TestContext) -> void:
-	var effects := {"push_damage": 1}
-	# 紧邻障碍推击：伤害 +1
+	var effects := {"push_damage": 5}
+	# 紧邻障碍推击：伤害 +5
 	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[Vector2i(2, 2), TerrainDB.OBSTACLE],
 	])
@@ -144,7 +144,7 @@ func _t_push_bonus(t: TestContext) -> void:
 	rock.cell = Vector2i(2, 3)
 	var wild := state.unit_by_uid(100)
 	SkillResolver.apply(state, rock, "push", {"type": "unit", "unit": wild.uid, "cell": wild.cell}, false)
-	t.eq(wild.hp, SpeciesDB.hp_of("water_wild1") - 3, "岩脊：借石发力，推击伤害 +1（2 → 3）")
+	t.eq(wild.hp, SpeciesDB.hp_of("water_wild1") - SkillDB.damage_of("push") - 5, "岩脊：借石发力，推击伤害增加 5")
 	t.eq(wild.cell, Vector2i(4, 3), "岩脊：推击位移照常")
 	# 不紧邻障碍：无加成
 	var state2 := TestScenario.make_state(["rock_starter"], [["water_wild1", Vector2i(3, 3)]], terrain, effects)
@@ -153,14 +153,14 @@ func _t_push_bonus(t: TestContext) -> void:
 	var wild2 := state2.unit_by_uid(100)
 	wild2.cell = Vector2i(3, 5)
 	SkillResolver.apply(state2, rock2, "push", {"type": "unit", "unit": wild2.uid, "cell": wild2.cell}, false)
-	t.eq(wild2.hp, SpeciesDB.hp_of("water_wild1") - 2, "岩脊：不紧邻障碍时推击无加成")
+	t.eq(wild2.hp, SpeciesDB.hp_of("water_wild1") - SkillDB.damage_of("push"), "岩脊：不紧邻障碍时推击无加成")
 	# 敌方推击不享受（且敌方也不算入场）
 	var state3 := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(1, 3)]], terrain, effects)
 	var fire := state3.unit_by_uid(1)
 	fire.cell = Vector2i(2, 3)
 	var enemy := state3.unit_by_uid(100)
 	SkillResolver.apply(state3, enemy, "push", {"type": "unit", "unit": fire.uid, "cell": fire.cell}, false)
-	t.eq(fire.hp, SpeciesDB.hp_of("fire_starter") - 2, "岩脊：敌方推击无加成（2 点）")
+	t.eq(fire.hp, SpeciesDB.hp_of("fire_starter") - Balance.skill_damage_for_side(SkillDB.damage_of("push"), "enemy"), "岩脊：敌方推击无卡牌加成")
 	t.eq(fire.cell, Vector2i(3, 3), "岩脊：敌方推击位移照常")
 
 
@@ -175,7 +175,7 @@ func _t_hazard_guards(t: TestContext) -> void:
 	var hp_before := player.hp
 	SkillResolver.apply(state, state.unit_by_uid(100), "push", {"type": "unit", "unit": player.uid, "cell": player.cell}, false)
 	t.eq(player.cell, Vector2i(2, 3), "潮汐：紧邻深水时不会被推离")
-	t.eq(player.hp, hp_before - 2, "潮汐：伤害照常结算（2 点）")
+	t.eq(player.hp, hp_before - Balance.skill_damage_for_side(SkillDB.damage_of("push"), "enemy"), "潮汐：伤害照常结算")
 	var state2 := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(1, 3)]], terrain)
 	var player2 := state2.unit_by_uid(1)
 	player2.cell = Vector2i(2, 3)
@@ -208,17 +208,17 @@ func _t_hazard_guards(t: TestContext) -> void:
 
 
 func _t_fire_bonus(t: TestContext) -> void:
-	var state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(4, 3)]], [], {"fire_bonus": 1})
+	var state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(4, 3)]], [], {"fire_bonus": 5})
 	var fire := state.unit_by_uid(1)
 	fire.cell = Vector2i(0, 3)
 	SkillResolver.apply(state, fire, "fire_seed", {"type": "cell", "cell": Vector2i(4, 3)}, false)
-	t.eq(state.unit_by_uid(100).hp, SpeciesDB.hp_of("rock_wild1") - 3, "熔脉：我方火系技能 +1 伤害（2+1=3）")
-	var state2 := TestScenario.make_state(["water_starter"], [["fire_wild1", Vector2i(4, 3)]], [], {"fire_bonus": 1})
+	t.eq(state.unit_by_uid(100).hp, SpeciesDB.hp_of("rock_wild1") - SkillDB.damage_of("fire_seed") - 5, "熔脉：我方火系技能获得五点加伤")
+	var state2 := TestScenario.make_state(["water_starter"], [["fire_wild1", Vector2i(4, 3)]], [], {"fire_bonus": 5})
 	state2.trainer().cell = Vector2i(0, 7)
 	var target := state2.unit_by_uid(1)
 	target.cell = Vector2i(0, 3)
 	SkillResolver.apply(state2, state2.unit_by_uid(100), "fire_seed", {"type": "cell", "cell": Vector2i(0, 3)}, false)
-	t.eq(target.hp, SpeciesDB.hp_of("water_starter") - 2, "熔脉：敌方火系不享受卡牌加成")
+	t.eq(target.hp, SpeciesDB.hp_of("water_starter") - Elements.direct_damage(Balance.skill_damage_for_side(SkillDB.damage_of("fire_seed"), "enemy"), "fire", "water"), "熔脉：敌方不享受卡牌加成但受逆克制")
 
 
 func _t_card_selection(t: TestContext) -> void:
@@ -236,7 +236,7 @@ func _t_card_selection(t: TestContext) -> void:
 	t.eq(run.use_reward_item_in_preview("position:magma"), true, "预览页立即消耗所选卡")
 	t.eq(run.reward_inventory.size(), 2, "背包只移除一张同名卡")
 	t.eq(run.selected_reward_item, "", "消耗后清除本场选择")
-	t.eq(int(run.effects().get("fire_bonus", 0)), 1, "已使用熔脉卡提供本场火系加伤")
+	t.eq(int(run.effects().get("fire_bonus", 0)), 3, "已使用熔脉卡提供本场火系加伤")
 	t.eq(int(run.effects().get("lava_guard", 0)), 1, "已使用熔脉卡提供本场致死地形庇护")
 	t.eq(run.use_reward_item_in_preview("position:tide"), false, "本场不能再用第二张卡")
 	run.advance_battle()

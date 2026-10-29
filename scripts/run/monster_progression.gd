@@ -2,11 +2,11 @@ class_name MonsterProgression
 extends RefCounted
 
 ## 怪物局内等级与跨局亲密度。经验阈值依次为 4、10、18……。
-## 仅出战实例成长；物种基础属性与野生敌人不受影响。
+## 我方实例按本局等级成长；敌方配置也使用同一生命曲线。
 const FIRST_LEVEL_XP := 4
 const XP_STEP_GROWTH := 2
 const MAX_LEVEL := 10
-const HP_PER_ODD_LEVEL := 1
+const HP_PER_ODD_LEVEL := 10
 
 
 static func threshold_for_level(level: int) -> int:
@@ -35,8 +35,7 @@ static func normalize_record(record: Dictionary) -> void:
 
 
 static func max_hp(species_id: String, level: int) -> int:
-	## Lv3/5/7/9 各 +1 HP，Lv2/4/6/8/10 不额外加生命。
-	return SpeciesDB.hp_of(species_id) + ((clampi(level, 1, MAX_LEVEL) - 1) / 2) * HP_PER_ODD_LEVEL
+	return SpeciesDB.hp_of(species_id) + int((clampi(level, 1, MAX_LEVEL) - 1) / 2) * HP_PER_ODD_LEVEL
 
 
 static func max_hp_for_record(record: Dictionary) -> int:

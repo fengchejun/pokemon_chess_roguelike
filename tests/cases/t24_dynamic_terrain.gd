@@ -5,6 +5,7 @@ func run(t: TestContext) -> void:
 	t.begin("临时藤蔓、冰面扩张与雾气")
 	_vines_and_expiry(t)
 	_vines_burning_and_replacement(t)
+	_vine_source_release(t)
 	_ice_growth(t)
 	_steam_overlay(t)
 	t.finish()
@@ -79,6 +80,33 @@ func _vines_burning_and_replacement(t: TestContext) -> void:
 	state.settle_round()
 	t.eq(state.terrain_at(pit), TerrainDB.ICE, "其他技能改写藤蔓后不再恢复旧底层")
 	t.check(not state.vine_origin.has(pit), "改写后底层记录清除")
+
+
+func _vine_source_release(t: TestContext) -> void:
+	var first := Vector2i(2, 3)
+	var second := Vector2i(3, 3)
+	var state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	var fire := state.unit_by_uid(1)
+	fire.cell = first
+	state.place_temp_vines(first)
+	t.check(fire.vine_ticks > 0 and fire.vine_sources.has(first), "藤蔓束缚记录来源格")
+	t.check(fire.can_act_skill() and not state.skill_targets(fire, "flame_jet").is_empty(), "站在藤蔓上仍可施法")
+	state.place_temp_vines(second)
+	PushResolver.push(state, fire, Vector2i.RIGHT, 1, 0, "测试强制位移", "enemy")
+	t.eq(fire.cell, second, "被推到另一块藤蔓上")
+	t.check(fire.vine_sources.has(first) and fire.vine_sources.has(second), "两块藤蔓分别记录束缚来源")
+	state.set_terrain(first, TerrainDB.PLAIN)
+	t.check(fire.vine_ticks > 0 and not fire.vine_sources.has(first), "原藤蔓消失时，保留另一来源的束缚")
+	state.set_terrain(second, TerrainDB.PLAIN)
+	t.eq(fire.vine_ticks, 0, "脚下藤蔓消失后解除全部束缚")
+	t.check(fire.can_move_now() and fire.can_act_skill(), "藤蔓消失后移动和技能均可使用")
+	var moved_away := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	var displaced := moved_away.unit_by_uid(1)
+	displaced.cell = first
+	moved_away.place_temp_vines(first)
+	displaced.cell = Vector2i(4, 3)
+	moved_away.set_terrain(first, TerrainDB.PLAIN)
+	t.eq(displaced.vine_ticks, 0, "单位已离开原格时，藤蔓消失仍清除来源束缚")
 
 
 func _ice_growth(t: TestContext) -> void:

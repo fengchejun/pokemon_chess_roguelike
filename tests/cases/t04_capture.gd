@@ -77,11 +77,12 @@ func _t_low_hp_option(t: TestContext) -> void:
 	trainer.cell = Vector2i(1, 3)
 	var wild := state.unit_by_uid(100)
 	t.eq(CaptureSystem.can_attempt(state, trainer, wild), false, "开启低血量规则后满血不可尝试")
-	wild.hp = 2
+	wild.hp = 15
 	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "半血可尝试")
-	t.check(CaptureSystem.capture_chance(wild, true) < 1.0, "2 HP 无减益仍为概率捕获")
+	t.check(CaptureSystem.capture_chance(wild, true) < 1.0, "15 HP 无减益仍为概率捕获")
+	wild.hp = Balance.CAPTURE_DEBUFF_GUARANTEE_HP
 	wild.slow_ticks = 1
-	t.eq(CaptureSystem.chance_percent(wild, true), 100, "带减益的 2 HP 必成")
+	t.eq(CaptureSystem.chance_percent(wild, true), 100, "带减益的 10 HP 必成")
 	var rng_before := state.capture_rng.state
 	var result := state.capture_attempt(trainer, wild)
 	t.eq(bool(result.get("success", false)), true, "必成不依赖随机值")
@@ -90,9 +91,9 @@ func _t_low_hp_option(t: TestContext) -> void:
 	state2.capture_options["capture_low_hp"] = true
 	state2.trainer().cell = Vector2i(1, 3)
 	var wild2 := state2.unit_by_uid(100)
-	wild2.hp = 1
-	t.eq(CaptureSystem.chance_percent(wild2, true), 100, "1 HP 必成")
-	t.eq(bool(state2.capture_attempt(state2.trainer(), wild2, 0.99).get("success", false)), true, "1 HP 高骰值仍必成")
+	wild2.hp = Balance.CAPTURE_GUARANTEE_HP
+	t.eq(CaptureSystem.chance_percent(wild2, true), 100, "5 HP 必成")
+	t.eq(bool(state2.capture_attempt(state2.trainer(), wild2, 0.99).get("success", false)), true, "5 HP 高骰值仍必成")
 
 
 func _t_field_join_option(t: TestContext) -> void:
@@ -112,6 +113,8 @@ func _t_field_join_option(t: TestContext) -> void:
 	t.eq(wild.skill_used, false, "捕获本轮获得一次技能")
 	t.eq(state.alive_enemy_count(), 1, "其他敌人仍可行动")
 	t.eq(state.move_unit(wild, Vector2i(3, 3)), true, "捕获当轮可以实际移动")
+	# 此用例验证捕获后的施法资格，目标视作已学造岩。
+	wild.skills = SpeciesDB.skills_of(wild.species_id).duplicate()
 	var rock_entries := state.skill_targets(wild, "rock_create")
 	t.check(not rock_entries.is_empty(), "捕获当轮存在合法技能目标")
 	if not rock_entries.is_empty():

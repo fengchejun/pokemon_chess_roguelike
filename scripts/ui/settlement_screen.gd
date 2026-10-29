@@ -83,6 +83,8 @@ func _summary_box(run: RunState) -> Control:
 			MonsterProgression.threshold_for_level(int(growth["level_after"]) + 1), level_text, affinity,
 		])
 	lines.append("击败：%d　捕获：%d" % [int(outcome.get("kills", 0)), int(outcome.get("captures", 0))])
+	if int(outcome.get("boss_blood", 0)) > 0:
+		lines.append("捕获首领：永久首领之血 +%d（当前 %d 份）" % [int(outcome["boss_blood"]), app.collection.boss_blood])
 	if bool(outcome.get("bonus_choice_earned", false)):
 		lines.append("奖励点：本场额外获得一次三选一")
 	if run.pending_reward_choices > 0:
@@ -104,13 +106,13 @@ func _summary_box(run: RunState) -> Control:
 		var parts: Array = []
 		for entry in recovery:
 			parts.append("%s %d→%d" % [entry["name"], int(entry["from"]), int(entry["to"])])
-		lines.append("战后恢复（出战 30% 上限）：" + "；".join(parts))
+		lines.append("战后恢复：" + "；".join(parts))
 	var base_rest: Array = outcome.get("base_rest", [])
 	if not base_rest.is_empty():
 		var rested: Array = []
 		for entry in base_rest:
 			rested.append("%s %d→%d" % [entry["name"], int(entry["from"]), int(entry["to"])])
-		lines.append("基地休养（冒险结束回满 100%）：" + "；".join(rested))
+		lines.append("备战席休养（存活者恢复 50% 上限；濒死者恢复到 5 HP）：" + "；".join(rested))
 	var trainer_to := int(outcome.get("trainer_to", 0))
 	var storage_rest := int(outcome.get("storage_rest", 0))
 	if storage_rest > 0:
@@ -120,7 +122,7 @@ func _summary_box(run: RunState) -> Control:
 		lines.append("训练家每次出征前回满：%d→%d" % [trainer_from, trainer_to])
 	var death_entries: Array = outcome.get("deaths", [])
 	if death_entries.size() > 0:
-		lines.append("—— 本场濒死（留守基地一场后恢复）——")
+		lines.append("—— 本场濒死（留守一场后恢复到 5 HP）——")
 		for entry in death_entries:
 			lines.append("%s（%s）" % [entry.get("name", "?"), entry.get("cause", "?")])
 	column.add_child(UIKit.wrapped("\n".join(lines), 14))
@@ -146,10 +148,11 @@ func _show_next_step() -> void:
 		return
 	if run.pending_reward_choices > 0:
 		step_label.text = "战后奖励：三选一（剩余 %d 次）" % run.pending_reward_choices
-		choice_box.add_child(UIKit.wrapped("三项均为消耗卡：选择一张加入本局背包，之后任意一场战斗前可用一张；未使用会保留。怪物强化在升级时分别选择。", 13))
+		choice_box.add_child(UIKit.wrapped("从三个完全随机的遗物中选择一个，效果持续到本局结束；同种遗物最多三级。怪物强化仍在升级时分别选择。", 13))
 		for reward_id in run.reward_choices():
 			var id := String(reward_id)
-			var button := UIKit.button("%s\n%s" % [RewardDB.name_of(id), RewardDB.description_of(id)], 14)
+			var next_rank := RelicDB.rank(run.relic_stacks, id) + 1
+			var button := UIKit.button("%s · 取得后 %d/%d 级\n%s" % [RelicDB.name_of(id), next_rank, RelicDB.MAX_RANK, RelicDB.description_of(id)], 14)
 			button.custom_minimum_size = Vector2(0, 76)
 			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			var normal_style := StyleBoxFlat.new()
@@ -182,12 +185,12 @@ func _show_monster_level_step(run: RunState, entry: Dictionary, remaining: int) 
 	var record := run.owned_record_by_uid(uid)
 	var monster_name := SpeciesDB.name_of(String(record.get("species_id", ""))) if not record.is_empty() else "怪物 #%d" % uid
 	step_label.text = "%s · Lv.%d 升级选择（剩余 %d 项）" % [monster_name, level, remaining]
-	choice_box.add_child(UIKit.wrapped("二选一：强化一招已学技能，或学习一招本属性的临时占位技能。先选类型，再选具体招式；本场结束后生效。", 13))
+	choice_box.add_child(UIKit.wrapped("二选一：强化一招已学技能，或学习一招尚未掌握的本属性技能。先选类型，再选具体招式；本场结束后生效。", 13))
 	for mode in ["enhance", "learn"]:
 		var options := run.available_monster_upgrades(uid) if mode == "enhance" else run.available_new_skills(uid)
 		if options.is_empty():
 			continue
-		var label := "强化已学技能（%d 招可选）" if mode == "enhance" else "学习新技能（%d 招占位）"
+		var label := "强化已学技能（%d 招可选）" if mode == "enhance" else "学习新技能（%d 招可选）"
 		var button := UIKit.button(label % options.size(), 16)
 		button.name = "MonsterGrowth_%s_%d_%d" % [mode, uid, level]
 		button.pressed.connect(func() -> void: _show_growth_options(run, uid, level, mode))
@@ -223,7 +226,7 @@ func _show_growth_options(run: RunState, uid: int, level: int, mode: String) -> 
 			)
 			choice_box.add_child(button)
 	else:
-		choice_box.add_child(UIKit.wrapped("试招Ⅰ／Ⅱ目前效果完全相同，仅作正式技能的临时占位。每只怪物最多装备四招。", 13, UIKit.TEXT_DIM))
+		choice_box.add_child(UIKit.wrapped("未学的物种基础招式也可在此选择；试招Ⅰ／Ⅱ效果相同，仅作临时占位。每只怪物最多装备三招。", 13, UIKit.TEXT_DIM))
 		for candidate in run.available_new_skills(uid):
 			var skill_id := String(candidate)
 			var button := UIKit.button("%s\n%s" % [SkillDB.name_of(skill_id), SkillDB.get_def(skill_id).get("desc", "")], 14)
@@ -243,7 +246,7 @@ func _show_growth_options(run: RunState, uid: int, level: int, mode: String) -> 
 
 func _show_growth_replace(run: RunState, uid: int, level: int, new_skill_id: String) -> void:
 	UIKit.clear_children(choice_box)
-	step_label.text = "四招已满：选择卸下的一招"
+	step_label.text = "三招已满：选择卸下的一招"
 	choice_box.add_child(UIKit.wrapped("卸下的招式留在本局招式库，已取得的强化也会保留；下场战斗前可在整备页换回。", 13))
 	var back := UIKit.small_button("返回学招选择")
 	back.pressed.connect(func() -> void: _show_growth_options(run, uid, level, "learn"))

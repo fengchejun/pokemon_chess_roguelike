@@ -21,11 +21,9 @@ func _test_thresholds(t: TestContext) -> void:
 	var earned := MonsterProgression.award_xp(record, 10)
 	t.eq(earned["level_after"], 3, "一次可跨多级")
 	t.eq(record["hp"], 0, "濒死单位升级不被直接救活")
-	t.eq(MonsterProgression.max_hp("fire_starter", 2), SpeciesDB.hp_of("fire_starter"), "二级不增加生命上限")
-	t.eq(MonsterProgression.max_hp_for_record(record), SpeciesDB.hp_of("fire_starter") + 1, "三级增加一生命上限")
-	t.eq(MonsterProgression.max_hp("fire_starter", 4), SpeciesDB.hp_of("fire_starter") + 1, "四级不再增加生命上限")
-	t.eq(MonsterProgression.max_hp("fire_starter", 9), SpeciesDB.hp_of("fire_starter") + 4, "九级累计增加四生命上限")
-	t.eq(MonsterProgression.max_hp("fire_starter", 10), SpeciesDB.hp_of("fire_starter") + 4, "十级生命上限不再增加")
+	for level in range(1, 11):
+		t.eq(MonsterProgression.max_hp("fire_starter", level), 30 + int((level - 1) / 2) * 10, "小火龙 Lv%d 仅奇数级增加生命" % level)
+	t.eq(MonsterProgression.max_hp_for_record(record), 40, "记录中的三级生命上限为 40")
 	MonsterProgression.award_xp(record, -5)
 	t.eq(record["xp"], 10, "负经验不会降低等级")
 	MonsterProgression.award_xp(record, 100000)
@@ -55,7 +53,7 @@ func _test_legacy_profile(t: TestContext) -> void:
 	t.check(not loaded.record_by_id(7).has("level") and not loaded.record_by_id(7).has("xp"), "迁移后收藏不保存等级经验")
 	t.check(loaded.save(PROFILE_PATH), "迁移后的收藏可保存")
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string(PROFILE_PATH))
-	t.eq(int(parsed.get("version", 0)), 2, "同路径保存为 v2 格式")
+	t.eq(int(parsed.get("version", 0)), CollectionState.VERSION, "同路径保存为当前收藏格式")
 	t.check(not parsed["owned"][0].has("level") and not parsed["owned"][0].has("xp"), "v2 文件不含旧永久等级经验")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(PROFILE_PATH))
 

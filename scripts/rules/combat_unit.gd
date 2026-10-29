@@ -14,6 +14,10 @@ var max_hp: int = 1
 var move_points: int = 3
 var skills: Array = []
 var reg_index: int = 0
+var enemy_level: int = 1
+var combat_level: int = 1
+var is_boss: bool = false
+var inspired: bool = false
 
 # 每回合行动资源
 var moved: bool = false
@@ -31,6 +35,7 @@ var shock_ticks: int = 0
 var paralyzed_ticks: int = 0
 var frozen: bool = false
 var vine_ticks: int = 0
+var vine_sources: Dictionary = {} # 束缚来源格 -> 剩余行动阶段；地块消失时按来源清除。
 var haste_ticks: int = 0
 var extra_casts: int = 0
 var battle_skill_uses: Dictionary = {}
@@ -59,6 +64,8 @@ func hp_ratio() -> float:
 
 func effective_move() -> int:
 	var value := move_points
+	if inspired:
+		value += 1
 	if slow_ticks > 0 and not has_buff("status_immune"):
 		value -= 1
 	if haste_ticks > 0:
@@ -81,8 +88,8 @@ func can_use_in_battle(skill_id: String) -> bool:
 	return limit <= 0 or int(battle_skill_uses.get(skill_id, 0)) < limit
 
 
-func can_move_now() -> bool:
-	return is_alive() and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and vine_ticks <= 0 and not moved and not move_cancelled and effective_move() > 0
+func can_move_now(free_terrain: bool = false) -> bool:
+	return is_alive() and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and vine_ticks <= 0 and not move_cancelled and (free_terrain or (not moved and effective_move() > 0))
 
 
 func dup() -> CombatUnit:
@@ -100,6 +107,10 @@ func dup() -> CombatUnit:
 	copy.move_points = move_points
 	copy.skills = skills.duplicate()
 	copy.reg_index = reg_index
+	copy.enemy_level = enemy_level
+	copy.combat_level = combat_level
+	copy.is_boss = is_boss
+	copy.inspired = inspired
 	copy.moved = moved
 	copy.skill_used = skill_used
 	copy.capture_used = capture_used
@@ -113,6 +124,7 @@ func dup() -> CombatUnit:
 	copy.paralyzed_ticks = paralyzed_ticks
 	copy.frozen = frozen
 	copy.vine_ticks = vine_ticks
+	copy.vine_sources = vine_sources.duplicate()
 	copy.haste_ticks = haste_ticks
 	copy.extra_casts = extra_casts
 	copy.battle_skill_uses = battle_skill_uses.duplicate()
@@ -140,8 +152,8 @@ static func make(species_id: String, side: String, uid_value: int) -> CombatUnit
 	unit.element = species.get("element", "")
 	unit.side = side
 	unit.is_trainer = bool(species.get("is_trainer", false))
-	unit.hp = int(species.get("hp", 4))
+	unit.hp = int(species.get("hp", 40))
 	unit.max_hp = unit.hp
 	unit.move_points = int(species.get("move", 3))
-	unit.skills = species.get("skills", []).duplicate()
+	unit.skills = (species.get("skills", []) as Array).slice(0, Balance.SKILL_SLOTS)
 	return unit

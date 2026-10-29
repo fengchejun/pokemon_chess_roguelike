@@ -18,20 +18,22 @@ const REGION_WEIGHTS := {
 const WEIGHT_ORDER := ["ground", "water", "fragile", "rock", "plant", "grass"]
 
 
-static func generate(run_seed: int, battle_index: int, salt: int = 0, environment_deck: Array = []) -> Dictionary:
+static func generate(run_seed: int, battle_index: int, salt: int = 0, environment_deck: Array = [], theme_id: String = "") -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("map:%d:%d:%d" % [run_seed, battle_index, salt])
-	var cfg := BattleDB.config_for(battle_index)
+	var cfg := BattleDB.config_for(battle_index, run_seed, theme_id)
 	var lethal_budget := maxi(0, int(cfg.get("lethal_budget", 2)))
 	for attempt in 64:
 		var result := _attempt(rng, cfg, lethal_budget, environment_deck)
 		if not result.is_empty():
 			result["region"] = String(cfg.get("region", "?"))
 			result["battle_index"] = battle_index
+			result["theme_id"] = theme_id
 			result["attempt"] = attempt
 			return result
 	var fallback := _fallback(cfg)
 	fallback["battle_index"] = battle_index
+	fallback["theme_id"] = theme_id
 	return fallback
 
 
@@ -62,7 +64,7 @@ static func generate_card_preview(run_seed: int, battle_index: int, card_id: Str
 	var best: Dictionary = {}
 	var best_gap := 999
 	for salt in range(1, 49):
-		var candidate := generate(run_seed, battle_index, salt, [card_id])
+		var candidate := generate(run_seed, battle_index, salt, [card_id], String(previous.get("theme_id", "")))
 		var after := terrain_counts(candidate)
 		var gap := 0
 		for key in targets:

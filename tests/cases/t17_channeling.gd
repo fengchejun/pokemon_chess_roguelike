@@ -33,7 +33,7 @@ func _player_fireball(t: TestContext) -> void:
 	enemy.cell = Vector2i(6, 3)
 	state.start_round()
 	t.eq(enemy.hp, old_hp, "敌人离开落点后躲避")
-	t.eq(ally.hp, ally_hp - 4, "留在九宫格内的友军受到四点误伤")
+	t.eq(ally.hp, ally_hp - SkillDB.damage_of("fire_burst"), "留在九宫格内的友军受到火球误伤")
 	t.eq(state.pending_casts.size(), 0, "结算后移除待发技能")
 	t.check(caster.moved and caster.skill_used, "结算当阶段施法者不能移动或施法")
 	state.start_round()
@@ -57,8 +57,8 @@ func _lightning_cells(t: TestContext) -> void:
 	ally.cell = Vector2i(4, 1)
 	state.start_round()
 	t.eq(enemy.hp, enemy.max_hp, "敌方离开固定落点后躲开打雷")
-	t.eq(ally.hp, ally.max_hp - 4, "友军走入固定落点受到误伤")
-	t.eq(state.unit_by_uid(101).hp, state.unit_by_uid(101).max_hp - 4, "全场远处敌人也受到打雷伤害")
+	t.eq(ally.hp, ally.max_hp - SkillDB.damage_of("lightning"), "友军走入固定落点受到误伤")
+	t.eq(state.unit_by_uid(101).hp, state.unit_by_uid(101).max_hp - Elements.direct_damage(SkillDB.damage_of("lightning"), "electric", "water"), "全场远处水系敌人受到克制打雷伤害")
 	t.eq(state.pending_casts.size(), 0, "闪电三格结算后清空警示")
 	var repeat := state.cast_skill(caster, "lightning", {"type": "cell", "cell": caster.cell})
 	t.check(not bool(repeat.get("ok", false)), "结算阶段不可再次行动")
@@ -102,7 +102,7 @@ func _interruptions(t: TestContext) -> void:
 	steam.add_steam(steamer.cell)
 	var target_hp := steam.unit_by_uid(100).hp
 	steam.start_round()
-	t.eq(steam.unit_by_uid(100).hp, target_hp - 4, "吟唱后进入蒸汽不打断落火球")
+	t.eq(steam.unit_by_uid(100).hp, target_hp - SkillDB.damage_of("fire_burst"), "吟唱后进入蒸汽不打断落火球")
 
 
 func _enemy_timing(t: TestContext) -> void:
@@ -117,7 +117,7 @@ func _enemy_timing(t: TestContext) -> void:
 	state.round = 2
 	state.phase = BattleState.PHASE_PLAYER
 	state.begin_enemy_phase()
-	t.eq(player.hp, hp - 4, "下一敌方阶段开始自动结算")
+	t.eq(player.hp, hp - Elements.direct_damage(Balance.skill_damage_for_side(SkillDB.damage_of("fire_burst"), "enemy"), "fire", "water"), "下一敌方阶段开始结算逆克制火球")
 	t.check(enemy.moved and enemy.skill_used, "敌方结算阶段失去行动")
 
 
@@ -128,11 +128,24 @@ func _multiple_and_ai(t: TestContext) -> void:
 	first.cell = Vector2i(0, 3)
 	second.cell = Vector2i(5, 0)
 	t.check(bool(together.cast_skill(first, "fire_burst", {"type": "cell", "cell": Vector2i(4, 3)}).get("ok", false)), "第一名火怪宣告吟唱")
-	t.check(bool(together.cast_skill(second, "fire_burst", {"type": "cell", "cell": Vector2i(5, 3)}).get("ok", false)), "第二名火怪同时吟唱")
-	t.eq(together.pending_casts.size(), 2, "可并存两项待发技能")
+	t.check(together.skill_targets(second, "fire_burst").is_empty(), "第二名火怪没有吟唱目标")
+	t.check(not bool(together.cast_skill(second, "fire_burst", {"type": "cell", "cell": Vector2i(5, 3)}).get("ok", false)), "第二名火怪本回合不能吟唱")
+	t.check(not second.skill_used and together.pending_casts.size() == 1, "拒绝后不消耗施法机会或新增待发技能")
+	var preview := together.preview_skill(second, "fire_burst", {"type": "cell", "cell": Vector2i(5, 3)})
+	t.check(not bool(preview.get("ok", false)), "克隆预览同样遵守吟唱名额")
+	together.cancel_channel(first, "测试中断")
+	t.check(not together.can_begin_channel(second), "首名吟唱者中断后本回合名额仍被占用")
+	t.check(together.can_begin_channel(first), "首名吟唱者仍是本回合唯一可吟唱的单位")
 	together.start_round()
-	t.eq(together.unit_by_uid(100).hp, 0, "两项按顺序结算，累计足以击倒目标")
-	t.eq(together.pending_casts.size(), 0, "战斗结束停止并清空待发技能")
+	t.check(together.can_begin_channel(second), "下一回合重置本方吟唱名额")
+	t.check(bool(together.cast_skill(second, "fire_burst", {"type": "cell", "cell": Vector2i(5, 3)}).get("ok", false)), "下一回合另一名火怪可以吟唱")
+	var independent := TestScenario.make_state(["fire_starter"], [["fire_wild1", Vector2i(6, 3)]])
+	var player_caster := independent.unit_by_uid(1)
+	var enemy_caster := independent.unit_by_uid(100)
+	player_caster.cell = Vector2i(2, 3)
+	t.check(bool(independent.cast_skill(player_caster, "fire_burst", {"type": "cell", "cell": enemy_caster.cell}).get("ok", false)), "我方占用自己的吟唱名额")
+	t.check(independent.can_begin_channel(enemy_caster), "敌方吟唱名额与我方独立")
+	t.check(bool(independent.cast_skill(enemy_caster, "fire_burst", {"type": "cell", "cell": player_caster.cell}).get("ok", false)), "敌方仍可在同一回合宣告吟唱")
 	var ai := TestScenario.make_state(["rock_starter"], [["fire_wild1", Vector2i(6, 3)]])
 	ai.trainer().cell = Vector2i(0, 6)
 	ai.unit_by_uid(1).cell = Vector2i(2, 3)
@@ -142,6 +155,17 @@ func _multiple_and_ai(t: TestContext) -> void:
 	var channels := actions.filter(func(action: Dictionary) -> bool:
 		return String(action.get("skill", {}).get("id", "")) == "fire_burst")
 	t.check(not channels.is_empty(), "远程敌人在无即时攻击时可选择吟唱")
+	var ai_two := TestScenario.make_state(["rock_starter"], [["fire_wild1", Vector2i(6, 3)], ["fire_wild1", Vector2i(5, 3)]])
+	ai_two.trainer().cell = Vector2i(0, 6)
+	ai_two.unit_by_uid(1).cell = Vector2i(2, 3)
+	ai_two.unit_by_uid(100).moved = true
+	ai_two.unit_by_uid(101).moved = true
+	var two_actions := EnemyAI.plan(ai_two)
+	var channel_casters: Dictionary = {}
+	for action in two_actions:
+		if bool(SkillDB.get_def(String(action.get("skill", {}).get("id", ""))).get("channel", false)):
+			channel_casters[int(action.get("uid", -1))] = true
+	t.eq(channel_casters.size(), 1, "两名火系敌人在可选吟唱时只规划一名吟唱者")
 	ai.round = Balance.MAX_ROUNDS
 	actions = EnemyAI.plan(ai)
 	channels = actions.filter(func(action: Dictionary) -> bool:
@@ -182,4 +206,15 @@ func _ui_pick_and_cancel(t: TestContext) -> void:
 	t.eq(screen.state.pending_casts.size(), 1, "界面点击施法者格后开始吟唱")
 	t.eq(screen.state.pending_casts[0]["cells"], [Vector2i(7, 6)], "界面宣告自动锁定远处敌方格")
 	t.check(caster.skill_used and caster.moved, "界面成功施放后锁定行动")
+	var second_screen = load("res://scripts/ui/battle_screen.gd").new()
+	second_screen.state = TestScenario.make_state(["fire_starter", "fire_starter"], [["rock_wild1", Vector2i(5, 3)]])
+	app._switch(second_screen)
+	var first: CombatUnit = second_screen.state.unit_by_uid(1)
+	var second: CombatUnit = second_screen.state.unit_by_uid(2)
+	first.cell = Vector2i(0, 3)
+	second.cell = Vector2i(5, 0)
+	second_screen.state.cast_skill(first, "fire_burst", {"type": "cell", "cell": Vector2i(4, 3)})
+	second_screen.select_unit(second.uid)
+	var blocked_button: Button = second_screen.skill_box.find_child("SkillButton_fire_burst", true, false)
+	t.check(blocked_button != null and blocked_button.disabled and blocked_button.text.contains("本方本回合已有吟唱者"), "第二名吟唱者的界面按钮明确提示名额已占用")
 	app.queue_free()

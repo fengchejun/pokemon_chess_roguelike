@@ -11,6 +11,7 @@ const PRIORITY_POKEMON := 100
 static func plan(state: BattleState) -> Array:
 	var work := state.clone()
 	var actions: Array = []
+	var cast_counts: Dictionary = {}
 	for uid in _action_order(work):
 		if work.ended:
 			break
@@ -27,7 +28,22 @@ static func plan(state: BattleState) -> Array:
 				break
 			_execute_on(work, action)
 			actions.append(action)
+			if not (action["skill"] as Dictionary).is_empty():
+				cast_counts[uid] = int(cast_counts.get(uid, 0)) + 1
 			work.check_battle_end()
+	# 后行动的风力引擎也能让先前已蓄力的友军兑现额外施法。
+	for uid in _action_order(work):
+		if work.ended or int(cast_counts.get(uid, 0)) >= 2:
+			continue
+		var unit := work.unit_by_uid(uid)
+		if unit == null or not unit.skill_used or unit.extra_casts <= 0 or not unit.can_act_skill():
+			continue
+		var action := _decide(work, unit)
+		if (action["skill"] as Dictionary).is_empty():
+			continue
+		_execute_on(work, action)
+		actions.append(action)
+		work.check_battle_end()
 	return actions
 
 
@@ -47,7 +63,8 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 	var best: Dictionary = {}
 	var positions: Array = [unit.cell]
 	var paths: Dictionary = {unit.cell: []}
-	if unit.can_move_now():
+	var free_paths: Dictionary = {unit.cell: false}
+	if work.can_move_unit_now(unit):
 		var options := PathFinder.stop_cells(work, unit)
 		var cells := options.keys()
 		# 稳定枚举顺序
@@ -60,6 +77,7 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 		for cell in sorted_cells:
 			positions.append(cell)
 			paths[cell] = options[cell]["path"]
+			free_paths[cell] = bool(options[cell].get("terrain_travel", false))
 	for position in positions:
 		var base := work.clone()
 		var base_unit := base.unit_by_uid(unit.uid)
@@ -68,7 +86,7 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 		var path: Array = paths[position]
 		base_unit.cell = position
 		if not path.is_empty():
-			base_unit.moved = true
+			base_unit.moved = unit.moved if bool(free_paths.get(position, false)) else true
 			base.apply_vine_on_landing(base_unit)
 		if not unit.fresh_spawn and unit.can_act_skill():
 			for skill_id in unit.skills:
@@ -87,6 +105,7 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 					var candidate := {
 						"uid": unit.uid,
 						"move_path": path,
+						"free_terrain_move": bool(free_paths.get(position, false)),
 						"skill": {"id": skill_id, "target": entry},
 						"score": score["total"] + channel_score + route_score + _exit_clearance_score(work, unit, position) + (30 if skill_id == "tree_man" else 0) - _pending_hazard(base, position, "player"),
 						"meta": result,
@@ -97,7 +116,7 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 	if not best.is_empty() and int(best["score"]) > 0:
 		return best
 	# 没有可得分攻击：向最近的己方单位接近。
-	return _approach_action(work, unit, positions, paths)
+	return _approach_action(work, unit, positions, paths, free_paths)
 
 
 static func _dedupe_entries(state: BattleState, unit: CombatUnit, skill_id: String) -> Array:
@@ -126,7 +145,7 @@ static func _dedupe_entries(state: BattleState, unit: CombatUnit, skill_id: Stri
 
 
 static func _channel_score(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary) -> int:
-	if not ["fire_burst", "lightning", "rock_slide", "tsunami"].has(skill_id):
+	if not ["fire_burst", "lightning", "rock_slide", "tsunami", "earth_shake"].has(skill_id):
 		return 0
 	var areas: Array = []
 	if skill_id == "lightning":
@@ -136,6 +155,8 @@ static func _channel_score(state: BattleState, caster: CombatUnit, skill_id: Str
 		areas = [entry["cell"]]
 	elif skill_id == "tsunami":
 		areas = SkillResolver.tsunami_cells(caster.cell, entry["dir"])
+	elif skill_id == "earth_shake":
+		areas = SkillResolver.front_area_cells(caster.cell, entry["dir"], 3)
 	else:
 		var center: Vector2i = entry["cell"]
 		for dx in range(-1, 2):
@@ -150,7 +171,7 @@ static func _channel_score(state: BattleState, caster: CombatUnit, skill_id: Str
 		if skill_id == "tsunami" and not TerrainDB.is_water_body(state.terrain_at(target.cell)):
 			continue
 		if target.side == caster.side:
-			if skill_id != "tsunami":
+			if skill_id != "tsunami" and (skill_id != "earth_shake" or (state.terrain_at(target.cell) == TerrainDB.FRAGILE and not target.has_buff("flight"))):
 				score -= 70
 		else:
 			score += 48 + (25 if target.is_trainer else 0)
@@ -162,7 +183,9 @@ static func _pending_hazard(state: BattleState, cell: Vector2i, source_side: Str
 		if String(cast["side"]) != source_side:
 			continue
 		for center in cast["cells"]:
-			if (String(cast["skill_id"]) == "lightning" or String(cast["skill_id"]) == "rock_slide") and cell == center:
+			if String(cast["skill_id"]) == "earth_shake" and cell == center:
+				return 120
+			if (String(cast["skill_id"]) == "lightning" or String(cast["skill_id"]) == "rock_slide" or String(cast["skill_id"]) == "tree_man") and cell == center:
 				return 120
 			if String(cast["skill_id"]) == "tsunami" and cell == center and TerrainDB.is_water_body(state.terrain_at(cell)):
 				return 120
@@ -173,7 +196,7 @@ static func _pending_hazard(state: BattleState, cell: Vector2i, source_side: Str
 
 static func _score(before: BattleState, after: BattleState, actor_uid: int) -> Dictionary:
 	if after.ended and after.end_reason == "forced_retreat":
-		# 训练家被击倒后固定保留 1 HP，单纯比较前后 HP 会漏判胜利。
+		# 训练家被击倒后直接结束本局，单纯比较前后 HP 会漏判胜利。
 		return {"total": 100000, "kills": 1}
 	var total := 0
 	var kills := 0
@@ -188,7 +211,7 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 			kills += 1
 			total += 1000 + _priority(before, unit)
 		elif later.hp < unit.hp:
-			total += (unit.hp - later.hp) * 10 + _damage_priority(before, unit)
+			total += (unit.hp - later.hp) + _damage_priority(before, unit)
 		if later != null and later.is_alive():
 			if later.root_pending and not unit.root_pending:
 				total += 14
@@ -213,12 +236,12 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 		if actor_after == null or not actor_after.is_alive():
 			total -= 100000
 		elif actor_after.hp < actor_before.hp:
-			total -= (actor_before.hp - actor_after.hp) * 50
+			total -= (actor_before.hp - actor_after.hp) * 5
 		elif actor_after.hp > actor_before.hp:
 			total += _heal_score(actor_before, actor_after, before)
 		if actor_after != null and actor_after.is_alive():
 			if actor_after.fire_amp_stacks > actor_before.fire_amp_stacks:
-				total += (actor_after.fire_amp_stacks - actor_before.fire_amp_stacks) * 11
+				total += actor_after.fire_amp_stacks - actor_before.fire_amp_stacks
 			if actor_after.ice_glide_until_round > actor_before.ice_glide_until_round and before.terrain_at(actor_after.cell) == TerrainDB.ICE:
 				total += 13
 			if actor_after.surf_until_round > actor_before.surf_until_round and TerrainDB.is_water_body(before.terrain_at(actor_after.cell)):
@@ -230,7 +253,7 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 		if later == null or not later.is_alive():
 			total -= 500
 		elif later.hp < unit.hp:
-			total -= (unit.hp - later.hp) * 10
+			total -= unit.hp - later.hp
 		elif later.hp > unit.hp:
 			total += _heal_score(unit, later, before)
 		if later != null and later.haste_ticks > unit.haste_ticks:
@@ -243,21 +266,24 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 
 
 static func _bonus_cast_available(state: BattleState, actor: CombatUnit, target: CombatUnit) -> bool:
-	if actor == null or target.reg_index <= actor.reg_index or target.skill_used or target.extra_casts > 0:
+	if actor == null or target.extra_casts > 0:
 		return false
-	if target.fresh_spawn or target.channel_lock_round == state.round or not target.can_act_skill():
+	var already_channeled := target.skill_used and target.channel_lock_round == state.round + 1
+	if target.reg_index <= actor.reg_index and not already_channeled:
+		return false
+	if target.skill_used and not already_channeled:
+		return false
+	if target.fresh_spawn or target.frozen or target.paralyzed_ticks > 0 or target.channel_lock_round == state.round:
 		return false
 	for skill_id in target.skills:
-		if bool(SkillDB.get_def(String(skill_id)).get("channel", false)):
-			continue
 		if not _dedupe_entries(state, target, String(skill_id)).is_empty():
 			return true
 	return false
 
 
 static func _heal_score(before_unit: CombatUnit, after_unit: CombatUnit, state: BattleState) -> int:
-	var score := (after_unit.hp - before_unit.hp) * 15
-	if before_unit.hp <= 2:
+	var score := roundi(float(after_unit.hp - before_unit.hp) * 1.5)
+	if before_unit.hp_ratio() <= 0.4:
 		for threat in state.alive_units("player"):
 			if GridSpec.manhattan(before_unit.cell, threat.cell) <= 3:
 				return score + 14
@@ -298,8 +324,23 @@ static func _route_opening_score(before: BattleState, after: BattleState, actor_
 		if later != null and later.cell != ally.cell:
 			ally_repositioned = true
 			break
-	if not ally_repositioned and before.terrain == after.terrain and before.obstacle_durability == after.obstacle_durability:
-		return 0
+	if not ally_repositioned and before.obstacle_durability == after.obstacle_durability:
+		if before.terrain == after.terrain:
+			return 0
+		var passability_changed := false
+		for cell in GridSpec.all_cells():
+			var old_terrain := before.terrain_at(cell)
+			var new_terrain := after.terrain_at(cell)
+			if old_terrain == new_terrain:
+				continue
+			for ally in before.alive_units("enemy"):
+				if TerrainDB.can_stand(old_terrain, ally.element) != TerrainDB.can_stand(new_terrain, ally.element):
+					passability_changed = true
+					break
+			if passability_changed:
+				break
+		if not passability_changed:
+			return 0
 	var score := 0
 	for ally in before.alive_units("enemy"):
 		var later := after.unit_by_uid(ally.uid)
@@ -372,6 +413,10 @@ static func _skill_key(action: Dictionary) -> String:
 	match String(entry.get("type", "")):
 		"multi":
 			return "%s|multi|%s" % [skill_id, str(entry.get("cells", []))]
+		"unit_pair":
+			var ids: Array = entry.get("units", []).duplicate()
+			ids.sort()
+			return "%s|pair|%08d,%08d" % [skill_id, int(ids[0]), int(ids[1])]
 		"unit":
 			return "%s|unit|%08d" % [skill_id, int(entry["unit"])]
 		"dir":
@@ -382,14 +427,14 @@ static func _skill_key(action: Dictionary) -> String:
 			return "%s|cell|%03d,%03d" % [skill_id, cell.y, cell.x]
 
 
-static func _approach_action(work: BattleState, unit: CombatUnit, positions: Array, paths: Dictionary) -> Dictionary:
+static func _approach_action(work: BattleState, unit: CombatUnit, positions: Array, paths: Dictionary, free_paths: Dictionary) -> Dictionary:
 	var targets := work.alive_units("player")
 	if targets.is_empty():
 		return {"uid": unit.uid, "move_path": [], "skill": {}}
 	if int(work.nest.get("pending_waves", 0)) > 0 and (work.nest.get("exits", []) as Array).has(unit.cell):
 		for position in positions:
 			if position != unit.cell and _pending_hazard(work, position, "player") == 0:
-				return {"uid": unit.uid, "move_path": paths[position], "skill": {}}
+				return {"uid": unit.uid, "move_path": paths[position], "free_terrain_move": bool(free_paths.get(position, false)), "skill": {}}
 	var best_cell := unit.cell
 	var best_distance := 1 << 30
 	var best_cost := 0
@@ -410,7 +455,14 @@ static func _approach_action(work: BattleState, unit: CombatUnit, positions: Arr
 			best_cell = position
 			best_cost = cost
 	var path: Array = paths.get(best_cell, [])
-	return {"uid": unit.uid, "move_path": path, "skill": {}}
+	var pursuit_uid := -1
+	var pursuit_distance := 1 << 30
+	for target in targets:
+		var distance := PathFinder.path_distance(work, best_cell, target.cell, unit.element, unit.has_buff("flight"))
+		if distance < pursuit_distance:
+			pursuit_distance = distance
+			pursuit_uid = target.uid
+	return {"uid": unit.uid, "move_path": path, "free_terrain_move": bool(free_paths.get(best_cell, false)), "skill": {}, "pursuit_uid": pursuit_uid}
 
 
 static func _execute_on(work: BattleState, action: Dictionary) -> void:
@@ -423,13 +475,14 @@ static func _execute_on(work: BattleState, action: Dictionary) -> void:
 		if not unit.has_buff("flight") and (work.terrain_at(cell) == TerrainDB.WATER or work.terrain_at(cell) == TerrainDB.DEEP):
 			unit.burn_ticks = 0
 	if not action.get("move_path", []).is_empty():
-		unit.moved = true
+		unit.moved = unit.moved if bool(action.get("free_terrain_move", false)) else true
 		work.apply_vine_on_landing(unit)
 	var skill: Dictionary = action.get("skill", {})
 	if not skill.is_empty():
+		var skill_used_before := unit.skill_used
 		var result := SkillResolver.apply(work, unit, String(skill["id"]), skill["target"], false)
 		if bool(result.get("ok", false)):
-			if unit.skill_used and unit.extra_casts > 0:
+			if skill_used_before and unit.extra_casts > 0:
 				unit.extra_casts -= 1
 			else:
 				unit.skill_used = true
@@ -449,6 +502,14 @@ static func describe(action: Dictionary, state: BattleState) -> String:
 		var entry: Dictionary = skill["target"]
 		if String(entry.get("type", "")) == "multi":
 			parts.append("吟唱%s → %s" % [SkillDB.name_of(String(skill["id"])), str(entry["cells"])])
+			return "%s：%s" % [name, "，".join(parts)]
+		if String(entry.get("type", "")) == "unit_pair":
+			var names: Array = []
+			for uid in entry["units"]:
+				var target := state.unit_by_uid(int(uid))
+				if target != null:
+					names.append(target.display_name)
+			parts.append("施放%s → %s" % [SkillDB.name_of(String(skill["id"])), "、".join(names)])
 			return "%s：%s" % [name, "，".join(parts)]
 		var target_cell: Vector2i = entry.get("cell", Vector2i.ZERO)
 		if String(entry.get("type", "")) == "unit":

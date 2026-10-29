@@ -29,6 +29,11 @@ func _run() -> void:
 	collection_start.pressed.emit()
 	await process_frame
 	await process_frame
+	await _shot("02_theme_choice")
+	var chosen_theme := String(app.run.offered_floor_themes[0])
+	var theme_button: Button = app.current_screen.find_child("ChooseTheme_%s" % chosen_theme, true, false)
+	theme_button.pressed.emit()
+	await process_frame
 	for uid in [1, 2, 3]:
 		var deploy_box: CheckBox = app.current_screen.find_child("Deploy_%d" % int(uid), true, false)
 		if deploy_box != null:
@@ -49,15 +54,41 @@ func _run() -> void:
 	await process_frame
 	var battle = app.current_screen
 	await _shot("05_battle")
+	app.toggle_debug_console()
+	await process_frame
+	await _shot("05_battle_debug")
+	app.toggle_debug_console()
 	battle.select_unit(1)
 	await process_frame
 	await _shot("06_battle_select")
+	var move_hover := Vector2i(-1, -1)
+	for cell in battle.board.movement_cells:
+		if (battle.board.movement_cells[cell]["path"] as Array).size() >= 2:
+			move_hover = cell
+			break
+	if GridSpec.is_inside(move_hover):
+		battle._on_board_hovered(move_hover)
+	await process_frame
+	await _shot("06_battle_move_hover")
 	battle._on_skill_pressed("fire_burst")
 	await process_frame
 	await _shot("07_battle_aim")
 	battle._on_board_hovered(Vector2i(6, 2))
 	await process_frame
 	await _shot("08_battle_preview")
+	var wind_preview_unit: CombatUnit = battle.state.unit_by_uid(1)
+	var original_preview_skills := wind_preview_unit.skills.duplicate()
+	wind_preview_unit.skills = ["wind_gust", "tailwind"]
+	battle._on_skill_pressed("wind_gust")
+	battle._on_board_hovered(wind_preview_unit.cell + Vector2i.RIGHT)
+	await process_frame
+	await _shot("08_wind_gust_area")
+	battle._on_skill_pressed("tailwind")
+	battle._on_board_hovered(wind_preview_unit.cell + Vector2i.RIGHT)
+	await process_frame
+	await _shot("08_tailwind_area")
+	battle._clear_aim()
+	wind_preview_unit.skills = original_preview_skills
 	battle.do_end_turn()
 	await create_timer(1.4).timeout
 	await _shot("09_enemy_phase")
@@ -79,6 +110,16 @@ func _run() -> void:
 	var capture_button: Button = settlement.find_child("CaptureToStorageButton", true, false)
 	if capture_button != null:
 		capture_button.pressed.emit()
+	while not app.run.pending_monster_levels().is_empty():
+		var level_entry: Dictionary = app.run.pending_monster_levels()[0]
+		var choices: Array = app.run.available_monster_upgrades(int(level_entry["uid"]))
+		if choices.is_empty() or not app.run.take_monster_level_choice(int(level_entry["uid"]), int(level_entry["level"]), String(choices[0])):
+			break
+	while app.run.pending_reward_choices > 0:
+		var offers: Array = app.run.reward_choices()
+		if offers.is_empty() or not app.run.choose_reward(String(offers[0])):
+			break
+	settlement._show_next_step()
 	await process_frame
 	await _shot("12_settlement_done")
 	settlement.continue_button.pressed.emit()
@@ -91,9 +132,22 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	await _shot("13_supply")
+	var supply_offers: Array = app.run.supply_choices()
+	if not supply_offers.is_empty():
+		app.run.choose_supply_item(String(supply_offers[0]))
 	app.leave_supply()
 	await process_frame
 	await process_frame
+	app.run.battle_index = Balance.BATTLES_PER_FLOOR - 1
+	app.show_preview([1, 2, 3])
+	await process_frame
+	await process_frame
+	await _shot("13_boss_preview")
+	var boss_preview = app.current_screen
+	app.begin_battle([1, 2, 3], boss_preview.map)
+	await process_frame
+	await process_frame
+	await _shot("13_boss_battle")
 	app.run.battle_index = Balance.BATTLES_PER_RUN
 	app.show_run_end()
 	await process_frame

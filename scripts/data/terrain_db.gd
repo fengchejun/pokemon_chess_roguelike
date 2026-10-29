@@ -71,7 +71,7 @@ static func blocks_move(terrain: int) -> bool:
 
 
 static func blocks_rays(terrain: int) -> bool:
-	return terrain == OBSTACLE
+	return terrain == OBSTACLE or terrain == TREE
 
 
 static func can_stand(terrain: int, element: String) -> bool:

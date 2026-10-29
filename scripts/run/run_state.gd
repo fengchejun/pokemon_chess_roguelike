@@ -3,23 +3,25 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 3
-const MAX_EQUIPPED_SKILLS := 4
+const SAVE_VERSION := 8
+const MAX_EQUIPPED_SKILLS := Balance.SKILL_SLOTS
 const RETIRED_GENERIC_UPGRADES := ["move_plus", "max_hp_plus", "direct_guard", "collision_guard", "grass_resilience", "recovery_plus"]
 
 const MONSTER_UPGRADES := {
 	"push_distance": {
 		"name": "推击距离 +1",
-		"desc": "推击额外推开 1 格，中途碰撞照常结算。",
+		"desc": "推击基础直伤 +7，并额外推开 1 格；中途碰撞照常结算。",
 		"key": "push_distance",
 		"value": 2,
+		"damage_bonus": 7,
 		"requires_skill": "rock_push",
 	},
 	"rock_create_width": {
 		"name": "造岩扩建",
-		"desc": "造岩横排由 3 格扩为 4 格。",
+		"desc": "造岩横排由 3 格扩为 4 格；命中单位时基础直伤 +5。",
 		"key": "rock_create_width",
 		"value": 4,
+		"damage_bonus": 5,
 		"requires_skill": "rock_create",
 	},
 	"rain_radius": {
@@ -29,23 +31,31 @@ const MONSTER_UPGRADES := {
 		"value": 1,
 		"requires_skill": "rain_call",
 	},
-	"fireball_damage": {"name": "炽烈火球", "desc": "我方火球术中心直接伤害 +1。", "key": "fireball_damage", "value": 1, "requires_skill": "fire_burst"},
-	"flame_jet_length": {"name": "长焰", "desc": "我方喷射火焰直线长度由 3 格增至 4 格。", "key": "flame_jet_length", "value": 1, "requires_skill": "flame_jet"},
-	"water_flow_push": {"name": "急流", "desc": "我方水炮击退距离由 1 格增至 2 格。", "key": "water_flow_push", "value": 1, "requires_skill": "water_flow"},
-	"drain_range": {"name": "蔓延吸取", "desc": "我方吸取射程由 2 格增至 3 格。", "key": "drain_range", "value": 1, "requires_skill": "drain"},
-	"herbal_heal_amount": {"name": "丰茂药草", "desc": "我方药草治疗每个目标回复 2 点生命。", "key": "herbal_heal_amount", "value": 1, "requires_skill": "herbal_heal"},
-	"ice_shard_damage": {"name": "尖锐冰锥", "desc": "我方冰锥基础伤害 +1。", "key": "ice_shard_damage", "value": 1, "requires_skill": "ice_shard"},
+	"fireball_damage": {"name": "炽烈火球", "desc": "火球术九宫格基础直伤 +5，中心再 +5。", "key": "fireball_damage", "value": 5, "damage_bonus": 5, "requires_skill": "fire_burst"},
+	"flame_jet_length": {"name": "长焰", "desc": "喷射火焰基础直伤 +8，直线长度由 3 格增至 4 格。", "key": "flame_jet_length", "value": 1, "damage_bonus": 8, "requires_skill": "flame_jet"},
+	"water_flow_push": {"name": "急流", "desc": "水炮基础直伤 +9，击退距离由 1 格增至 2 格。", "key": "water_flow_push", "value": 1, "damage_bonus": 9, "requires_skill": "water_flow"},
+	"drain_range": {"name": "蔓延吸取", "desc": "吸取基础直伤 +10，射程由 2 格增至 3 格。", "key": "drain_range", "value": 1, "damage_bonus": 10, "requires_skill": "drain"},
+	"herbal_heal_amount": {"name": "丰茂药草", "desc": "我方药草治疗每个目标回复 13 点生命。", "key": "herbal_heal_amount", "value": 5, "requires_skill": "herbal_heal"},
+	"ice_shard_damage": {"name": "尖锐冰锥", "desc": "冰锥基础直伤共 +10。", "key": "ice_shard_damage", "value": 5, "damage_bonus": 5, "requires_skill": "ice_shard"},
 	"ice_ground_reach": {"name": "冰面延展", "desc": "我方冰封大地向前延展至第 4 排。", "key": "ice_ground_reach", "value": 1, "requires_skill": "frozen_ground"},
 	"wind_gust_distance": {"name": "强劲推风", "desc": "我方推风击退距离由 1 格增至 2 格。", "key": "wind_gust_distance", "value": 1, "requires_skill": "wind_gust"},
-	"electric_arc_damage": {"name": "高压传导", "desc": "我方放电传导基础伤害 +1。", "key": "electric_arc_damage", "value": 1, "requires_skill": "electric_arc"},
+	"electric_arc_damage": {"name": "高压传导", "desc": "放电传导基础直伤共 +10。", "key": "electric_arc_damage", "value": 5, "damage_bonus": 5, "requires_skill": "electric_arc"},
 	"volt_replace_flex": {"name": "灵活换位", "desc": "伏特替换可与相距 1 或 2 格的单位交换位置。", "key": "volt_replace_flex", "value": 1, "requires_skill": "volt_replace"},
-	"tailwind_reach": {"name": "远风", "desc": "顺风的前方影响距离由 2 排扩为 3 排。", "key": "tailwind_reach", "value": 1, "requires_skill": "tailwind"},
-	"flame_charge_damage": {"name": "冲锋余焰", "desc": "闪焰冲锋撞击伤害增加 1 点。", "key": "flame_charge_damage", "value": 1, "requires_skill": "flame_charge"},
+	"tailwind_reach": {"name": "远风", "desc": "顺风的前方影响距离由 3 排扩为 4 排。", "key": "tailwind_reach", "value": 1, "requires_skill": "tailwind"},
+	"flame_charge_damage": {"name": "冲锋余焰", "desc": "闪焰冲锋撞击基础直伤共 +10，破障能力 +1。", "key": "flame_charge_damage", "value": 1, "damage_bonus": 5, "requires_skill": "flame_charge"},
 	"wild_vines_reach": {"name": "藤蔓延展", "desc": "疯狂藤蔓向前延长至第 3 格。", "key": "wild_vines_reach", "value": 1, "requires_skill": "wild_vines"},
-	"lightning_first_shock": {"name": "首击蓄电", "desc": "打雷锁定的第一个落点额外施加一层感电。", "key": "lightning_first_shock", "value": 1, "requires_skill": "lightning"},
-	"rock_break_range": {"name": "长距碎岩", "desc": "碎岩射程由 2 格增至 3 格。", "key": "rock_break_range", "value": 1, "requires_skill": "rock_break"},
+	"lightning_first_shock": {"name": "首击蓄电", "desc": "打雷基础直伤 +5，第一个落点额外施加一层感电。", "key": "lightning_first_shock", "value": 1, "damage_bonus": 5, "requires_skill": "lightning"},
+	"rock_break_range": {"name": "长距碎岩", "desc": "碎岩基础直伤 +10，射程由 2 格增至 3 格。", "key": "rock_break_range", "value": 1, "damage_bonus": 10, "requires_skill": "rock_break"},
 	"freeze_ray_range": {"name": "远距急冻", "desc": "急冻光线射程由 4 格增至 5 格。", "key": "freeze_ray_range", "value": 1, "requires_skill": "freeze_ray"},
-	"double_cast_range": {"name": "远距风力引擎", "desc": "风力引擎施放距离由 1 格增至 2 格。", "key": "double_cast_range", "value": 1, "requires_skill": "double_cast"},
+	"double_cast_range": {"name": "双重风力引擎", "desc": "风力引擎可同时选择两名相邻友军，各获得一次额外施法机会；施法距离仍为 1 格。", "key": "double_cast_range", "value": 1, "requires_skill": "double_cast"},
+	"fire_amplify_power": {"name": "炽焰积蓄", "desc": "火焰增幅每熄灭一格火焰改为积累 8 点直伤。", "key": "fire_amplify_power", "value": 8, "requires_skill": "fire_amplify"},
+	"surf_duration": {"name": "长浪", "desc": "冲浪的地形移动效果延长 1 回合。", "key": "surf_duration", "value": 1, "requires_skill": "surf"},
+	"tsunami_damage": {"name": "巨浪", "desc": "海啸基础直伤 +8。", "key": "tsunami_damage", "value": 1, "damage_bonus": 8, "requires_skill": "tsunami"},
+	"rock_slide_damage": {"name": "重岩", "desc": "岩崩基础直伤 +10。", "key": "rock_slide_damage", "value": 1, "damage_bonus": 10, "requires_skill": "rock_slide"},
+	"earth_shake_damage": {"name": "震源", "desc": "撼地基础直伤 +5，地形塌陷规则不变。", "key": "earth_shake_damage", "value": 1, "damage_bonus": 5, "requires_skill": "earth_shake"},
+	"leech_seed_tick_bonus": {"name": "深根", "desc": "寄生每轮伤害与施法者回复上限各 +2。", "key": "leech_seed_tick_bonus", "value": 2, "requires_skill": "leech_seed"},
+	"tree_man_hp_bonus": {"name": "坚根守卫", "desc": "大树守卫落点碰撞基础直伤 +5，召唤树人最大生命 +10。", "key": "tree_man_hp_bonus", "value": 10, "damage_bonus": 5, "requires_skill": "tree_man"},
+	"ice_glide_duration": {"name": "长滑", "desc": "溜冰的地形移动效果延长 1 回合。", "key": "ice_glide_duration", "value": 1, "requires_skill": "ice_glide"},
 }
 
 
@@ -53,7 +63,7 @@ static func upgrade_info(upgrade_id: String) -> Dictionary:
 	if upgrade_id.ends_with("_range"):
 		var skill_id := upgrade_id.trim_suffix("_range")
 		if SkillDB.is_placeholder(skill_id):
-			return {"name": "%s射程强化" % SkillDB.name_of(skill_id), "desc": "此试招射程由 2 格增至 3 格。", "key": upgrade_id, "value": 1, "requires_skill": skill_id}
+			return {"name": "%s强化" % SkillDB.name_of(skill_id), "desc": "此试招基础直伤 +10，射程由 2 格增至 3 格。", "key": upgrade_id, "value": 1, "damage_bonus": 10, "requires_skill": skill_id}
 	return MONSTER_UPGRADES.get(upgrade_id, {})
 
 
@@ -67,9 +77,12 @@ static func upgrade_id_for_skill(skill_id: String) -> String:
 
 var seed: int = 0
 var battle_index: int = 0
+var floor_themes: Array = []
+var offered_floor_themes: Array = []
 var in_battle: bool = false
 var run_failed: bool = false # 训练家倒下后整局终止；旧存档默认未失败。
-var trainer_hp: int = 6
+var debug_tainted: bool = false # 使用 F7 修改过本局；仍可存档，但不进入永久收藏统计。
+var trainer_hp: int = 35
 var carried: Array = []
 var storage: Array = []
 var pending_captures: Array = []
@@ -79,6 +92,9 @@ var cards: Array = [] # 旧存档字段；新规则不再免费选取站位卡�
 var environment_deck: Array = [] # 旧存档字段；读取时按已确认规则清空。
 var environment_reward_pending: bool = false # 旧结算字段。
 var reward_inventory: Array = []
+var relic_stacks: Dictionary = {}
+var claimed_supply_battles: Array = []
+var recovered_supply_battles: Array = []
 var selected_reward_item: String = ""
 var preview_used_reward_item: String = ""
 var preview_modifications: Array = []
@@ -105,13 +121,26 @@ static func new_run(seed_value: int = 0, starting_collection: Array = []) -> Run
 	if starting_collection.is_empty():
 		## 兼容旧代码与旧存档；实际新局由收藏界面传入三只。
 		for species_id in SpeciesDB.STARTER_TEAM:
-			run.carried.append(run._make_record(String(species_id)))
+			var record := run._make_record(String(species_id))
+			var opening_skills: Array = SpeciesDB.skills_of(String(species_id))
+			if not opening_skills.is_empty():
+				record["known_skills"] = [opening_skills[0]]
+				record["equipped_skills"] = [opening_skills[0]]
+			run.carried.append(record)
 	else:
 		for source in starting_collection:
 			var record := run._make_record(String(source["species_id"]))
 			record["collection_id"] = int(source["id"])
 			record["affinity"] = maxi(0, int(source.get("affinity", 0)))
+			var opening_skills: Array = SpeciesDB.skills_of(String(source["species_id"]))
+			var chosen_skill := String(source.get("starting_skill_id", ""))
+			if not opening_skills.has(chosen_skill) and not opening_skills.is_empty():
+				chosen_skill = String(opening_skills[0])
+			if chosen_skill != "":
+				record["known_skills"] = [chosen_skill]
+				record["equipped_skills"] = [chosen_skill]
 			run.carried.append(record)
+	run.refresh_theme_offers()
 	return run
 
 
@@ -126,12 +155,16 @@ func apply_supply_recovery() -> Dictionary:
 	## 补给点：训练家恢复 50% 生命上限（四舍五入，至少 1 点）。
 	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
 	var before := trainer_hp
+	if recovered_supply_battles.has(battle_index):
+		return {"trainer_from": before, "trainer_to": before}
 	var amount := maxi(1, roundi(float(trainer_max) * Balance.SUPPLY_TRAINER_RECOVERY_RATIO))
 	trainer_hp = mini(trainer_max, trainer_hp + amount)
+	recovered_supply_battles.append(battle_index)
 	return {"trainer_from": before, "trainer_to": trainer_hp}
 
 
 func _make_record(species_id: String, hp: int = -1) -> Dictionary:
+	var species_skills := SpeciesDB.skills_of(species_id)
 	var record := {
 		"uid": next_uid,
 		"species_id": species_id,
@@ -139,8 +172,8 @@ func _make_record(species_id: String, hp: int = -1) -> Dictionary:
 		"level": 1,
 		"xp": 0,
 		"affinity": 0,
-		"known_skills": SpeciesDB.skills_of(species_id).duplicate(),
-		"equipped_skills": SpeciesDB.skills_of(species_id).duplicate(),
+		"known_skills": species_skills.duplicate(),
+		"equipped_skills": species_skills.slice(0, MAX_EQUIPPED_SKILLS),
 		"upgrades": {},
 		"upgrades_taken": [],
 		"claimed_even_levels": [],
@@ -175,8 +208,45 @@ func battle_seed() -> int:
 	return hash("battle:%d:%d" % [seed, battle_index])
 
 
+func floor_index() -> int:
+	return BattleDB.floor_of(battle_index)
+
+
+func battle_in_floor() -> int:
+	return BattleDB.local_battle_of(battle_index)
+
+
+func needs_theme_choice() -> bool:
+	return not run_finished() and floor_themes.size() <= floor_index()
+
+
+func refresh_theme_offers() -> void:
+	if needs_theme_choice():
+		offered_floor_themes = BattleDB.theme_offers(seed, floor_index(), floor_themes)
+	else:
+		offered_floor_themes.clear()
+
+
+func choose_floor_theme(theme_id: String) -> bool:
+	if not needs_theme_choice() or not offered_floor_themes.has(theme_id):
+		return false
+	floor_themes.append(theme_id)
+	offered_floor_themes.clear()
+	return true
+
+
+func current_theme() -> String:
+	if floor_themes.size() <= floor_index():
+		return ""
+	return String(floor_themes[floor_index()])
+
+
+func battle_config() -> Dictionary:
+	return BattleDB.config_for(battle_index, seed, current_theme())
+
+
 func region_name() -> String:
-	return String(BattleDB.config_for(battle_index).get("region", "?"))
+	return String(battle_config().get("region", "待选择")) if not needs_theme_choice() else "待选择"
 
 
 func effects() -> Dictionary:
@@ -225,23 +295,37 @@ func consume_selected_reward_item() -> String:
 
 
 func reward_choices() -> Array:
-	return RewardDB.offer(seed, battle_index, reward_choice_index)
+	return RelicDB.offer(seed, battle_index, reward_choice_index, relic_stacks)
 
 
 func choose_reward(reward_id: String) -> bool:
 	if pending_reward_choices <= 0 or not reward_choices().has(reward_id):
 		return false
-	if not RewardDB.is_consumable(reward_id):
+	if not RelicDB.DEFINITIONS.has(reward_id) or RelicDB.rank(relic_stacks, reward_id) >= RelicDB.MAX_RANK:
 		return false
-	reward_inventory.append(reward_id)
+	relic_stacks[reward_id] = RelicDB.rank(relic_stacks, reward_id) + 1
 	pending_reward_choices -= 1
 	reward_choice_index += 1
 	return true
 
 
+func supply_choices() -> Array:
+	if not pending_supply or claimed_supply_battles.has(battle_index):
+		return []
+	return RewardDB.offer(seed, battle_index, 0)
+
+
+func choose_supply_item(item_id: String) -> bool:
+	if not supply_choices().has(item_id):
+		return false
+	reward_inventory.append(item_id)
+	claimed_supply_battles.append(battle_index)
+	return true
+
+
 static func recovery_amount(max_hp: int) -> int:
-	## 战后恢复：生命上限的 30%（四舍五入，至少 1 点）。
-	return maxi(1, roundi(float(max_hp) * Balance.BATTLE_RECOVERY_RATIO))
+	## 备战席恢复：生命上限的 50%（四舍五入，至少 1 点）。
+	return maxi(1, roundi(float(max_hp) * Balance.BENCH_RECOVERY_RATIO))
 
 
 func build_deploy_units(deploy_uids: Array) -> Array:
@@ -257,6 +341,7 @@ func build_deploy_units(deploy_uids: Array) -> Array:
 		unit.upgrades = (record.get("upgrades", {}) as Dictionary).duplicate()
 		unit.skills = (record.get("equipped_skills", SpeciesDB.skills_of(String(record["species_id"]))) as Array).duplicate()
 		unit.max_hp = monster_max_hp(record)
+		unit.combat_level = clampi(int(record.get("level", 1)), 1, MonsterProgression.MAX_LEVEL)
 		unit.hp = mini(int(record["hp"]), unit.max_hp)
 		units.append(unit)
 	return units
@@ -387,6 +472,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		"monster_affinity": [],
 		"kills": battle.enemy_kills.size(),
 		"captures": battle.captured.size(),
+		"boss_blood": 0,
 		"captured_names": [],
 		"deaths": battle.deaths.duplicate(true),
 		"flee_penalty": [],
@@ -397,6 +483,16 @@ func settle_battle(battle: BattleState) -> Dictionary:
 	for entry in battle.captured:
 		(outcome["captured_names"] as Array).append(SpeciesDB.name_of(String(entry.get("species_id", ""))))
 	var failure := battle.end_reason == "forced_retreat"
+	# 首领之血只属于捕获首领并清场获胜的路线；毁巢速通和逃离均不发放。
+	if battle.end_reason == "victory" and bool(battle.nest.get("alive", false)):
+		for entry in battle.captured:
+			if not bool(entry.get("was_boss", false)):
+				continue
+			if bool(entry.get("on_field", false)):
+				var survivor := battle.unit_by_uid(int(entry.get("uid", -1)))
+				if survivor == null or not survivor.is_alive() or survivor.side != "player":
+					continue
+			outcome["boss_blood"] = int(outcome["boss_blood"]) + 1
 	if failure:
 		run_failed = true
 		# 本场尚未战后收容的捕获失效；此前已在名单或仓库的收藏保留。
@@ -476,28 +572,18 @@ func settle_battle(battle: BattleState) -> Dictionary:
 					penalty.append({"name": SpeciesDB.name_of(String(record["species_id"])), "from": before, "to": after})
 				record["hp"] = after
 			outcome["flee_penalty"] = penalty
-	# 战后恢复：出战过的宝可梦 +30%（仅非失败结局）；留守基地的成员回满 100%；训练家每次出征回满。
-	var recovered: Array = []
-	for record in carried:
-		if deployed_uids.has(int(record["uid"])):
-			var max_hp := monster_max_hp(record)
-			var before := int(record["hp"])
-			if failure or before <= 0 or before >= max_hp:
-				continue
-			var after := mini(max_hp, before + recovery_amount(max_hp))
-			if after > before:
-				recovered.append({"name": SpeciesDB.name_of(String(record["species_id"])), "from": before, "to": after})
-			record["hp"] = after
-	outcome["recovery"] = recovered
+	# 出战成员保持战后生命；濒死成员留守一场后恢复到 BENCH_REVIVE_HP。
+	outcome["recovery"] = []
 	var rested: Array = []
 	for record in carried:
 		if deployed_uids.has(int(record["uid"])):
 			continue
 		var max_hp := monster_max_hp(record)
 		var before := int(record["hp"])
-		if before < max_hp:
-			rested.append({"name": SpeciesDB.name_of(String(record["species_id"])), "from": before, "to": max_hp})
-		record["hp"] = max_hp
+		var after := mini(max_hp, Balance.BENCH_REVIVE_HP) if before <= 0 else mini(max_hp, before + recovery_amount(max_hp))
+		if after > before:
+			rested.append({"name": SpeciesDB.name_of(String(record["species_id"])), "from": before, "to": after})
+		record["hp"] = after
 	outcome["base_rest"] = rested
 	var storage_healed := 0
 	for record in storage:
@@ -527,6 +613,7 @@ func advance_battle() -> void:
 	preview_used_reward_item = ""
 	preview_modifications.clear()
 	battle_index += 1
+	refresh_theme_offers()
 
 
 func run_finished() -> bool:
@@ -564,8 +651,11 @@ func available_new_skills(uid: int) -> Array:
 		return []
 	var known: Array = record.get("known_skills", SpeciesDB.skills_of(String(record["species_id"])))
 	var pool: Array = []
-	for skill_id in SkillDB.learnable_ids_for(SpeciesDB.element_of(String(record["species_id"]))):
+	for skill_id in SpeciesDB.skills_of(String(record["species_id"])):
 		if not known.has(skill_id):
+			pool.append(skill_id)
+	for skill_id in SkillDB.learnable_ids_for(SpeciesDB.element_of(String(record["species_id"]))):
+		if not known.has(skill_id) and not pool.has(skill_id):
 			pool.append(skill_id)
 	return pool
 
@@ -678,8 +768,11 @@ func to_dict() -> Dictionary:
 		"version": SAVE_VERSION,
 		"seed": seed,
 		"battle_index": battle_index,
+		"floor_themes": floor_themes.duplicate(),
+		"offered_floor_themes": offered_floor_themes.duplicate(),
 		"in_battle": in_battle,
 		"run_failed": run_failed,
+		"debug_tainted": debug_tainted,
 		"trainer_hp": trainer_hp,
 		"carried": carried.duplicate(true),
 		"storage": storage.duplicate(true),
@@ -689,6 +782,9 @@ func to_dict() -> Dictionary:
 		"environment_deck": environment_deck.duplicate(),
 		"environment_reward_pending": environment_reward_pending,
 		"reward_inventory": reward_inventory.duplicate(),
+		"relic_stacks": relic_stacks.duplicate(),
+		"claimed_supply_battles": claimed_supply_battles.duplicate(),
+		"recovered_supply_battles": recovered_supply_battles.duplicate(),
 		"selected_reward_item": selected_reward_item,
 		"preview_used_reward_item": preview_used_reward_item,
 		"preview_modifications": preview_modifications.duplicate(true),
@@ -711,11 +807,17 @@ static func from_dict(data: Dictionary) -> RunState:
 	var version := int(data.get("version", 1))
 	var legacy_growth := version < 2
 	var legacy_upgrade_style := version < 3
+	var old_hp_scale := version <= 6
 	run.seed = int(data.get("seed", 0))
 	run.battle_index = int(data.get("battle_index", 0))
+	run.floor_themes = (data.get("floor_themes", []) as Array).duplicate()
+	run.offered_floor_themes = (data.get("offered_floor_themes", []) as Array).duplicate()
+	if run.offered_floor_themes.is_empty():
+		run.refresh_theme_offers()
 	run.in_battle = bool(data.get("in_battle", false))
 	run.run_failed = bool(data.get("run_failed", false))
-	run.trainer_hp = clampi(int(data.get("trainer_hp", 6)), 0 if run.run_failed else 1, SpeciesDB.hp_of("trainer"))
+	run.debug_tainted = bool(data.get("debug_tainted", false))
+	run.trainer_hp = clampi(_migrate_hp(int(data.get("trainer_hp", 6)), _old_max_hp("trainer", 1, version), SpeciesDB.hp_of("trainer")) if old_hp_scale else int(data.get("trainer_hp", SpeciesDB.hp_of("trainer"))), 0 if run.run_failed else 1, SpeciesDB.hp_of("trainer"))
 	run.carried = (data.get("carried", []) as Array).duplicate(true)
 	run.storage = (data.get("storage", []) as Array).duplicate(true)
 	run.pending_captures = (data.get("pending_captures", []) as Array).duplicate(true)
@@ -730,6 +832,17 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.captured_applied = int(data.get("captured_applied", 0))
 	run.deployed_uids = (data.get("deployed_uids", []) as Array).duplicate()
 	run.pending_supply = bool(data.get("pending_supply", false))
+	for relic_id in (data.get("relic_stacks", {}) as Dictionary):
+		if RelicDB.DEFINITIONS.has(relic_id):
+			run.relic_stacks[relic_id] = clampi(int(data["relic_stacks"][relic_id]), 0, RelicDB.MAX_RANK)
+	for battle_number in data.get("claimed_supply_battles", []):
+		var number := int(battle_number)
+		if number > 0 and number % Balance.SUPPLY_INTERVAL == 0 and not run.claimed_supply_battles.has(number):
+			run.claimed_supply_battles.append(number)
+	for battle_number in data.get("recovered_supply_battles", []):
+		var number := int(battle_number)
+		if number > 0 and number % Balance.SUPPLY_INTERVAL == 0 and not run.recovered_supply_battles.has(number):
+			run.recovered_supply_battles.append(number)
 	run.options.merge((data.get("options", {}) as Dictionary), true)
 	run.cards = []
 	run.environment_deck = []
@@ -761,6 +874,7 @@ static func from_dict(data: Dictionary) -> RunState:
 	## 修复历史存档：补齐缺失的 uid（否则名单/仓库相关界面会取键失败）。
 	for group in [run.carried, run.storage, run.pending_captures]:
 		for record in (group as Array):
+			var old_hp := int(record.get("hp", 0))
 			run._ensure_uid(record)
 			if legacy_growth:
 				record["level"] = 1
@@ -768,7 +882,8 @@ static func from_dict(data: Dictionary) -> RunState:
 				record["affinity"] = 0
 			MonsterProgression.normalize_record(record)
 			run._normalize_record_growth(record, legacy_upgrade_style)
-			record["hp"] = mini(maxi(0, int(record.get("hp", 0))), run.monster_max_hp(record))
+			var new_max_hp := run.monster_max_hp(record)
+			record["hp"] = _migrate_hp(old_hp, _old_max_hp(String(record.get("species_id", "")), int(record.get("level", 1)), version), new_max_hp) if old_hp_scale else clampi(old_hp, 0, new_max_hp)
 	if legacy_growth and run.settlement_pending:
 		## 旧结算页中已累计的经验/等级文案不能在迁移后继续展示。
 		run.last_settlement["exp"] = 0
@@ -779,15 +894,32 @@ static func from_dict(data: Dictionary) -> RunState:
 	return run
 
 
+static func _old_max_hp(species_id: String, level: int, version: int) -> int:
+	var current_base := SpeciesDB.hp_of(species_id)
+	if version <= 4:
+		return maxi(1, roundi(float(current_base) / 5.0) + int((maxi(1, level) - 1) / 2))
+	if version == 5:
+		return maxi(1, current_base * 2 + int((maxi(1, level) - 1) / 2) * 10)
+	return maxi(1, current_base + (maxi(1, level) - 1) * 10)
+
+
+static func _migrate_hp(old_hp: int, old_max_hp: int, new_max_hp: int) -> int:
+	if old_hp <= 0:
+		return 0
+	return clampi(roundi(float(old_hp) / float(maxi(1, old_max_hp)) * float(new_max_hp)), 1, new_max_hp)
+
+
 func _normalize_record_growth(record: Dictionary, legacy_upgrade_style: bool) -> void:
 	var species_id := String(record.get("species_id", ""))
 	var base_skills: Array = SpeciesDB.skills_of(species_id).duplicate()
-	var known: Array = base_skills.duplicate()
-	if not legacy_upgrade_style:
-		for skill_id in record.get("known_skills", []):
-			var id := String(skill_id)
-			if not known.has(id) and not SkillDB.get_def(id).is_empty() and SkillDB.element_of(id) == SpeciesDB.element_of(species_id):
-				known.append(id)
+	var known: Array = []
+	var source_skills: Array = base_skills if legacy_upgrade_style or not record.has("known_skills") else record.get("known_skills", [])
+	for skill_id in source_skills:
+		var id := String(skill_id)
+		if not known.has(id) and not SkillDB.get_def(id).is_empty() and SkillDB.element_of(id) == SpeciesDB.element_of(species_id):
+			known.append(id)
+	if known.is_empty() and not base_skills.is_empty():
+		known.append(base_skills[0])
 	var equipped: Array = []
 	if not legacy_upgrade_style:
 		for skill_id in record.get("equipped_skills", []):
@@ -795,7 +927,7 @@ func _normalize_record_growth(record: Dictionary, legacy_upgrade_style: bool) ->
 			if known.has(id) and not equipped.has(id) and equipped.size() < MAX_EQUIPPED_SKILLS:
 				equipped.append(id)
 	if equipped.is_empty():
-		equipped = base_skills.duplicate()
+		equipped = known.slice(0, MAX_EQUIPPED_SKILLS)
 	record["known_skills"] = known
 	record["equipped_skills"] = equipped
 	var old_taken: Array = record.get("upgrades_taken", [])

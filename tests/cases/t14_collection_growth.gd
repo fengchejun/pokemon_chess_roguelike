@@ -38,7 +38,7 @@ func _test_collection(t: TestContext) -> void:
 func _test_new_skills(t: TestContext) -> void:
 	for species_id in ["grass_starter", "grass_wild1", "ice_starter", "ice_wild1", "wind_starter", "wind_wild1"]:
 		var skills := SpeciesDB.skills_of(species_id)
-		var expected := "drain" if SpeciesDB.element_of(species_id) == "grass" else ("ice_shard" if SpeciesDB.element_of(species_id) == "ice" else "wind_gust")
+		var expected := "drain" if species_id.begins_with("grass_") else ("ice_shard" if species_id.begins_with("ice_") else "wind_gust")
 		t.check(skills.has(expected), "%s 有基础进攻技" % species_id)
 	var ice := TestScenario.make_state(["ice_starter"], [["rock_wild1", Vector2i(2, 2)]])
 	var ice_unit := ice.unit_by_uid(1)
@@ -47,13 +47,13 @@ func _test_new_skills(t: TestContext) -> void:
 	var ice_hp := ice_target.hp
 	var ice_hit := SkillResolver.apply(ice, ice_unit, "ice_shard", {"type": "unit", "unit": 100, "cell": ice_target.cell}, false)
 	t.check(bool(ice_hit.get("ok", false)), "冰锥可命中目标")
-	t.eq(ice_target.hp, ice_hp - 1, "冰锥造成 1 点直伤")
+	t.eq(ice_target.hp, ice_hp - SkillDB.damage_of("ice_shard"), "冰锥造成配置的直伤")
 	var wind := TestScenario.make_state(["wind_starter"], [["rock_wild1", Vector2i(2, 2)]])
 	var wind_unit := wind.unit_by_uid(1)
 	wind_unit.cell = Vector2i(0, 2)
 	var pushed := wind.unit_by_uid(100)
-	var gust := SkillResolver.apply(wind, wind_unit, "wind_gust", {"type": "unit", "unit": 100, "cell": pushed.cell}, false)
-	t.check(bool(gust.get("ok", false)), "推风可命中两格内目标")
+	var gust := SkillResolver.apply(wind, wind_unit, "wind_gust", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(1, 2)}, false)
+	t.check(bool(gust.get("ok", false)), "推风可朝选定方向施放")
 	t.eq(pushed.cell, Vector2i(3, 2), "推风使目标位移一格")
 	var grass := TestScenario.make_state(["grass_starter"], [["rock_wild1", Vector2i(2, 2)]])
 	var grass_unit := grass.unit_by_uid(1)
@@ -61,7 +61,7 @@ func _test_new_skills(t: TestContext) -> void:
 	grass_unit.hp = 3
 	var drain := SkillResolver.apply(grass, grass_unit, "drain", {"type": "unit", "unit": 100, "cell": Vector2i(2, 2)}, false)
 	t.check(bool(drain.get("ok", false)), "吸取进入现行草系技能表")
-	t.eq(grass_unit.hp, 4, "吸取后回复一格生命")
+	t.eq(grass_unit.hp, 3 + Balance.DRAIN_HEAL, "吸取后回复配置的生命")
 
 
 func _test_skill_bound_growth(t: TestContext) -> void:
@@ -70,22 +70,23 @@ func _test_skill_bound_growth(t: TestContext) -> void:
 	t.check(run_state.available_monster_upgrades(1).has("fireball_damage"), "火系可强化已学火球术")
 	t.check(not run_state.available_monster_upgrades(2).has("fireball_damage"), "水系不会获得火系强化")
 	t.check(not run_state.available_monster_upgrades(1).has("direct_guard"), "永久通用减伤不再可选")
-	t.eq(run_state.available_new_skills(1), ["trial_fire_1", "trial_fire_2", "fire_amplify"], "火系两招占位技能及火焰增幅可学习")
+	t.eq(run_state.available_new_skills(1), ["flame_jet", "flame_charge", "trial_fire_1", "trial_fire_2", "fire_amplify"], "未选为开局技能的物种招式仍可学习")
 	var fire := run_state.record_by_uid(1)
 	MonsterProgression.award_xp(fire, 108)
 	t.check(run_state.enhance_monster_skill(1, 2, "fire_burst"), "Lv2 可以指定强化火球术")
 	t.check(not run_state.enhance_monster_skill(1, 4, "fire_burst"), "同一招不能再次强化")
 	t.check(run_state.learn_monster_skill(1, 4, "trial_fire_1"), "Lv4 可学习并装备第一招占位技能")
-	t.eq((fire.get("equipped_skills", []) as Array).size(), 4, "学招后恰好占满四个装备位")
-	t.check(not run_state.learn_monster_skill(1, 6, "trial_fire_2"), "满栏学招需先指定卸下招式")
-	t.check(run_state.learn_monster_skill(1, 6, "trial_fire_2", "flame_jet"), "满栏可卸下一招再学习第二招")
-	t.check((fire.get("known_skills", []) as Array).has("flame_jet"), "卸下的招式保留在本局招式库")
-	t.check(run_state.equip_monster_skill(1, 1, "flame_jet"), "战前可将旧招式重新换装")
-	t.check(not (fire.get("equipped_skills", []) as Array).has("trial_fire_2"), "换装后被替换的占位技能保留未装备")
-	t.check(run_state.enhance_monster_skill(1, 8, "trial_fire_2"), "未装备的已学招式仍可强化")
-	t.check(run_state.enhance_monster_skill(1, 10, "trial_fire_1"), "另一占位招式也能独立强化")
+	t.eq((fire.get("equipped_skills", []) as Array).size(), 2, "学习第一招后共装备两招")
+	t.check(run_state.learn_monster_skill(1, 6, "trial_fire_2"), "第三招可以直接装入最后一个技能格")
+	t.eq((fire.get("equipped_skills", []) as Array).size(), 3, "技能装备上限为三个")
+	t.check(not run_state.learn_monster_skill(1, 8, "flame_jet"), "三格满栏学招需先指定卸下招式")
+	t.check(run_state.learn_monster_skill(1, 8, "flame_jet", "trial_fire_2"), "三格满栏可卸下一招再学习")
+	t.check((fire.get("known_skills", []) as Array).has("trial_fire_2"), "卸下的招式保留在本局招式库")
+	t.check(run_state.equip_monster_skill(1, 2, "trial_fire_2"), "战前可将旧招式重新换装")
+	t.check(not (fire.get("equipped_skills", []) as Array).has("flame_jet"), "换装后被替换的招式保留未装备")
+	t.check(run_state.enhance_monster_skill(1, 10, "trial_fire_1"), "占位招式可以独立强化")
 	t.check(run_state.pending_monster_levels().is_empty(), "五次偶数级成长均能完成")
-	t.eq(Elements.counter_hint("fire"), "", "属性克制仍暂时关闭")
+	t.eq(Elements.counter_hint("fire"), "", "未启用克制时不显示克制提示")
 
 
 func _test_matchup_preview(t: TestContext) -> void:

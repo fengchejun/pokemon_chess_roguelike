@@ -22,9 +22,16 @@ func _test_collection_prep_and_run_end(t: TestContext) -> void:
 	for id in [1, 2, 3]:
 		var choice: CheckBox = app.current_screen.find_child("Collection_%d" % id, true, false)
 		choice.button_pressed = true
+	var starting_skill: OptionButton = app.current_screen.find_child("StartingSkill_1", true, false)
+	t.check(starting_skill != null and starting_skill.item_count > 1, "开局可为怪物选择一招起始技能")
+	if starting_skill != null:
+		starting_skill.select(1)
 	var start: Button = app.current_screen.find_child("StartFromCollectionButton", true, false)
 	start.pressed.emit()
+	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
 	var fire: Dictionary = app.run.record_by_uid(1)
+	if starting_skill != null:
+		t.eq(fire.get("equipped_skills", []), [SpeciesDB.skills_of("fire_starter")[1]], "开局只装备所选的一招")
 	t.eq(int(fire.get("affinity", 0)), 7, "开局继承永久亲密度")
 	MonsterProgression.award_xp(fire, 10)
 	fire["upgrades_taken"] = ["fireball_damage"]
@@ -70,18 +77,22 @@ func _test_ordered_settlement_choices(t: TestContext) -> void:
 		var entry: Dictionary = app.run.pending_monster_levels()[0]
 		t.eq([int(entry["uid"]), int(entry["level"])], expected, "战后界面按 UID 与等级顺序显示当前强化")
 		var category: Button = app.current_screen.find_child("MonsterGrowth_enhance_%d_%d" % [int(entry["uid"]), int(entry["level"])], true, false)
-		t.check(category != null, "当前怪物可选强化类别")
+		var learning := category == null
+		if learning:
+			category = app.current_screen.find_child("MonsterGrowth_learn_%d_%d" % [int(entry["uid"]), int(entry["level"])], true, false)
+		t.check(category != null, "当前怪物有可用的强化或学习类别")
 		if category == null:
 			break
 		category.pressed.emit()
-		var id := String(app.run.available_monster_upgrades(int(entry["uid"]))[0])
-		var skill_id := String(RunState.upgrade_info(id)["requires_skill"])
-		var button: Button = app.current_screen.find_child("MonsterEnhance_%d_%d_%s" % [int(entry["uid"]), int(entry["level"]), skill_id], true, false)
+		var id := String(app.run.available_new_skills(int(entry["uid"]))[0]) if learning else String(app.run.available_monster_upgrades(int(entry["uid"]))[0])
+		var skill_id := id if learning else String(RunState.upgrade_info(id)["requires_skill"])
+		var button_name := "MonsterLearn_%d_%d_%s" if learning else "MonsterEnhance_%d_%d_%s"
+		var button: Button = app.current_screen.find_child(button_name % [int(entry["uid"]), int(entry["level"]), skill_id], true, false)
 		t.check(button != null, "当前怪物的具体招式按钮存在")
 		if button == null:
 			break
 		button.pressed.emit()
-		t.check((app.run.record_by_uid(int(entry["uid"])).get("upgrades_taken", []) as Array).has(id), "选择记录到对应怪物")
+		t.check((app.run.record_by_uid(int(entry["uid"])).get("known_skills", []) as Array).has(id) if learning else (app.run.record_by_uid(int(entry["uid"])).get("upgrades_taken", []) as Array).has(id), "选择记录到对应怪物")
 	t.eq(app.run.pending_monster_levels().size(), 0, "全部怪物强化已逐项处理")
 	t.eq(app.run.pending_reward_choices, 1, "怪物升级完成后才进入战后卡牌选择")
 	var reward_id := String(app.run.reward_choices()[0])

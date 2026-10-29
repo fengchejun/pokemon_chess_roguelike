@@ -110,19 +110,14 @@ func _test_old_run_migration(t: TestContext) -> void:
 	file.store_string(JSON.stringify(data))
 	file.close()
 	var migrated := SaveSystem.load_run(path)
-	t.check(migrated != null, "SaveSystem 可以读取并迁移 v1 本局存档")
-	if migrated == null:
-		SaveSystem.delete_save(path)
-		return
-	t.eq(migrated.battle_index, 3, "旧本局迁移保留关卡进度")
-	t.eq(migrated.reward_inventory, ["map:water"], "旧本局迁移保留消耗卡背包")
-	t.eq(int(migrated.record_by_uid(1)["level"]), 1, "旧本局等级重置")
-	t.eq(int(migrated.record_by_uid(1)["xp"]), 0, "旧本局经验重置")
-	t.eq(int(migrated.record_by_uid(1)["hp"]), SpeciesDB.hp_of("fire_starter"), "旧本局生命被校正到新基础上限")
-	t.eq(migrated.trainer_hp, SpeciesDB.hp_of("trainer"), "旧训练家全局生命强化迁移后被校正")
-	t.check(migrated.upgrades.is_empty() and migrated.upgrades_taken.is_empty(), "旧全队强化全部清除")
-	t.eq(int(migrated.last_settlement.get("exp", -1)), 0, "旧待处理结算不再展示已清除的经验")
-	t.check(bool(migrated.last_settlement.get("growth_migrated", false)), "旧结算页会提示成长迁移")
+	t.eq(migrated, null, "旧六场本局不能继续，需重新开局")
+	t.check(SaveSystem.has_legacy_save(path), "菜单可以识别不兼容的旧本局存档")
+	var original_bytes := FileAccess.get_file_as_bytes(path)
+	var backup_path := SaveSystem.backup_old_save(path)
+	t.check(backup_path != "" and FileAccess.file_exists(backup_path), "不兼容本局存档先生成备份")
+	t.eq(FileAccess.get_file_as_bytes(backup_path), original_bytes, "备份与原存档字节一致")
+	t.check(not FileAccess.file_exists(path), "备份核对后移走旧本局存档")
+	SaveSystem.delete_save(backup_path)
 	SaveSystem.delete_save(path)
 
 

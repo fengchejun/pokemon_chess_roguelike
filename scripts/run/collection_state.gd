@@ -4,12 +4,14 @@ extends RefCounted
 ## 跨局收藏。每个实例有独立 ID 和永久亲密度；等级、经验与生命不会跨局继承。
 
 const SAVE_PATH := "user://collection_v1.json"
-const VERSION := 2
+const VERSION := 3
 
 var owned: Array = []
 var next_id: int = 1
 var skill_use_counts: Dictionary = {"player": {}, "enemy": {}}
 var recorded_skill_battles: Dictionary = {}
+var boss_blood: int = 0
+var credited_boss_battles: Dictionary = {}
 
 
 static func defaults() -> CollectionState:
@@ -30,10 +32,14 @@ static func load_profile(path: String = SAVE_PATH) -> CollectionState:
 	if not parsed is Dictionary:
 		return defaults()
 	var saved_version := int(parsed.get("version", -1))
-	if saved_version != 1 and saved_version != VERSION:
+	if not [1, 2, VERSION].has(saved_version):
 		return defaults()
 	var profile := CollectionState.new()
 	profile.next_id = maxi(1, int(parsed.get("next_id", 1)))
+	profile.boss_blood = maxi(0, int(parsed.get("boss_blood", 0)))
+	for key in (parsed.get("credited_boss_battles", {}) as Dictionary):
+		if bool(parsed["credited_boss_battles"][key]):
+			profile.credited_boss_battles[String(key)] = true
 	var saved_counts: Dictionary = parsed.get("skill_use_counts", {}) if parsed.get("skill_use_counts", {}) is Dictionary else {}
 	for side in ["player", "enemy"]:
 		var counts: Dictionary = saved_counts.get(side, {}) if saved_counts.get(side, {}) is Dictionary else {}
@@ -60,7 +66,7 @@ static func load_profile(path: String = SAVE_PATH) -> CollectionState:
 			"species_id": species_id,
 			"source": String(raw.get("source", "")),
 			## v1 的永久等级/经验已废止，迁移只继承实例与物种。
-			"affinity": maxi(0, int(raw.get("affinity", 0))) if saved_version == VERSION else 0,
+			"affinity": maxi(0, int(raw.get("affinity", 0))) if saved_version >= 2 else 0,
 		}
 		profile.owned.append(record)
 		profile.next_id = maxi(profile.next_id, id + 1)
@@ -82,7 +88,8 @@ func save(path: String = SAVE_PATH) -> bool:
 			"affinity": maxi(0, int(record.get("affinity", 0))),
 		})
 	file.store_string(JSON.stringify({"version": VERSION, "next_id": next_id, "owned": serialized,
-		"skill_use_counts": skill_use_counts, "recorded_skill_battles": recorded_skill_battles}, "\t"))
+		"skill_use_counts": skill_use_counts, "recorded_skill_battles": recorded_skill_battles,
+		"boss_blood": boss_blood, "credited_boss_battles": credited_boss_battles}, "\t"))
 	file.close()
 	return true
 
@@ -102,6 +109,20 @@ func record_battle_skill_usage(battle: BattleState) -> bool:
 				var skill_id := String(raw_id)
 				total[skill_id] = int(total.get(skill_id, 0)) + amount
 	recorded_skill_battles[key] = true
+	return true
+
+
+func credit_boss_capture(run: RunState, outcome: Dictionary) -> bool:
+	if run == null or run.debug_tainted or String(outcome.get("reason", "")) == "forced_retreat":
+		return false
+	var amount := maxi(0, int(outcome.get("boss_blood", 0)))
+	if amount <= 0:
+		return false
+	var key := "%d:%d" % [run.seed, run.battle_index]
+	if credited_boss_battles.has(key):
+		return false
+	credited_boss_battles[key] = true
+	boss_blood += amount
 	return true
 
 
@@ -143,9 +164,13 @@ func select_records(ids: Array) -> Array:
 
 func absorb_run(run: RunState) -> int:
 	## 战斗结束后同步亲密度，并登记携带与仓库（含濒死）里的新怪物。
+	if run.debug_tainted:
+		return 0
 	var added := 0
 	for group in [run.carried, run.storage]:
 		for record in group:
+			if bool(record.get("debug_spawned", false)):
+				continue
 			var collection_id := int(record.get("collection_id", -1))
 			var existing := record_by_id(collection_id)
 			if not existing.is_empty():

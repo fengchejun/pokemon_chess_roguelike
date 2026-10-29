@@ -20,21 +20,45 @@ const MOVE_DEFAULT := 3
 const MOVE_ROCK := 2
 const WATER_EXTRA_COST := 0 # 浅水在阶段交接时赋予浸湿；冰面滑入浅水在整轮结算时补发
 
-const COLLISION_DAMAGE := 1
-const PUSH_DAMAGE := 2
+const COLLISION_DAMAGE := 5
+const PUSH_DAMAGE := 13
 const PUSH_DISTANCE := 1
 const OBSTACLE_DURABILITY := 2
 const TREE_DURABILITY := 1
 const NEST_DURABILITY := 3
 
-const BURN_DAMAGE := 1
+const BURN_DAMAGE := 4
 const BURN_TICKS := 2
+
+# 战斗数值刻度：Lv1 普通敌人 20–30 HP，常规技能约 10–13 直伤。
+# 敌人通常成群行动，单次技能伤害按此比例结算，避免放大数字后集火过猛。
+const ENEMY_SKILL_DAMAGE_RATIO := 0.7
+const SKILL_DAMAGE_UPGRADE := 5
+const DIRECT_GUARD_REDUCTION := 4
+const PARASITE_DAMAGE := 4
+const PARASITE_HEAL := 4
+const DRAIN_HEAL := 5
+const HERBAL_HEAL := 8
+const HERBAL_HEAL_UPGRADE := 5
+const TREE_WATER_HP := 5
+const TREE_GRASS_HP := 10
+const BOSS_HP_BONUS := 20
+const INSPIRATION_HP_BONUS := 5
+const BENCH_REVIVE_HP := 5
+const CAPTURE_GUARANTEE_HP := 5
+const CAPTURE_DEBUFF_GUARANTEE_HP := 10
+
+static func skill_damage_for_side(base: int, side: String) -> int:
+	if base <= 0:
+		return 0
+	return maxi(1, roundi(float(base) * ENEMY_SKILL_DAMAGE_RATIO)) if side == "enemy" else base
 
 const EXP_PER_KILL := 2
 const EXP_PER_CAPTURE := 2
 
 const CARRIED_LIMIT := 6
 const DEPLOY_LIMIT := 3
+const SKILL_SLOTS := 3
 const STORAGE_LIMIT := 30
 const MOD_POINTS := 2
 
@@ -44,10 +68,12 @@ const CAPTURE_CHANCE_SLOPE := 0.55
 const CAPTURE_CHANCE_MIN := 0.05
 const CAPTURE_CHANCE_MAX := 0.95
 
-const BATTLES_PER_RUN := 6
+const FLOORS_PER_RUN := 3
+const BATTLES_PER_FLOOR := 6
+const BATTLES_PER_RUN := FLOORS_PER_RUN * BATTLES_PER_FLOOR
 
-# 每场战斗结束后的全体恢复比例（生命上限的 30%）
-const BATTLE_RECOVERY_RATIO := 0.30
+# 每场战斗结束时，未出战的携带怪物恢复生命上限的 50%。
+const BENCH_RECOVERY_RATIO := 0.50
 
 # 补给点：每完成 SUPPLY_INTERVAL 场战斗进入，训练家恢复 50% 生命上限
 const SUPPLY_INTERVAL := 2
@@ -62,4 +88,4 @@ const DEPLOY_CELLS := [Vector2i(0, 3), Vector2i(0, 2), Vector2i(0, 4), Vector2i(
 # 局内强化（只卖新解法）
 
 const FRUITS_PER_BATTLE := 2
-const FRUIT_HEAL := 2
+const FRUIT_HEAL := 10

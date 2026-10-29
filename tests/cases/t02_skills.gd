@@ -30,7 +30,7 @@ func _t_fire_seed_hit(t: TestContext) -> void:
 	var result := SkillResolver.apply(state, fire, "fire_seed", entry, false)
 	t.check(bool(result["ok"]), "火种施放成功")
 	var wild := state.unit_by_uid(100)
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 2, "属性克制停用后，火种中心造成基础 2 伤")
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - Elements.direct_damage(SkillDB.damage_of("fire_seed"), "fire", "grass"), "火种中心受火克草加伤")
 	t.eq(wild.burn_ticks, Balance.BURN_TICKS, "命中附加灼烧")
 
 
@@ -44,7 +44,7 @@ func _t_fire_seed_splash(t: TestContext) -> void:
 	t.check(bool(result["ok"]), "火种打空施放成功")
 	t.eq(result["hits"].size(), 1, "溅射命中 1 个单位")
 	var wild := state.unit_by_uid(100)
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 1, "属性克制停用后，火种溅射造成基础 1 伤")
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - Elements.direct_damage(int(SkillDB.get_def("fire_seed")["splash_damage"]), "fire", "grass"), "火种溅射也受属性克制")
 	t.eq(wild.burn_ticks, 0, "溅射不附加灼烧")
 
 
@@ -55,14 +55,14 @@ func _t_flame_charge(t: TestContext) -> void:
 	first_fire.cell = Vector2i(0, 3)
 	t.check(hit_first.skill_targets(first_fire, "flame_charge").has(entry), "被占据的冲锋方向仍可选择")
 	var preview := hit_first.preview_skill(first_fire, "flame_charge", entry)
-	t.eq(preview["hits"][0]["damage"], 1, "撞击预览显示一伤")
+	t.eq(preview["hits"][0]["damage"], Elements.direct_damage(SkillDB.damage_of("flame_charge"), "fire", "grass"), "撞击预览显示克制直伤")
 	t.eq(preview["hits"][0]["push"]["to"], Vector2i(2, 3), "撞击预览显示一格击退")
 	t.eq(first_fire.cell, Vector2i(0, 3), "冲锋预览不移动施法者")
 	var first_result := SkillResolver.apply(hit_first, first_fire, "flame_charge", entry, false)
 	t.check(bool(first_result["ok"]), "闪焰冲锋可以撞击第一格单位")
 	t.eq(first_fire.cell, Vector2i(0, 3), "第一格撞击时施法者原地停下")
 	t.eq(hit_first.unit_by_uid(100).cell, Vector2i(2, 3), "第一格单位被推开一格")
-	t.eq(hit_first.unit_by_uid(100).hp, hit_first.unit_by_uid(100).max_hp - 1, "第一格单位受到一伤")
+	t.eq(hit_first.unit_by_uid(100).hp, hit_first.unit_by_uid(100).max_hp - Elements.direct_damage(SkillDB.damage_of("flame_charge"), "fire", "grass"), "第一格单位受到克制冲锋直伤")
 	t.eq(hit_first.unit_by_uid(100).burn_ticks, 0, "冲锋不再附加沿途灼烧")
 	var hit_second := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(2, 3)]])
 	var second_fire := hit_second.unit_by_uid(1)
@@ -98,7 +98,7 @@ func _t_flame_charge(t: TestContext) -> void:
 	collision_fire.cell = Vector2i(0, 3)
 	var collision_result := SkillResolver.apply(collision_state, collision_fire, "flame_charge", entry, false)
 	t.eq(collision_state.unit_by_uid(100).cell, Vector2i(1, 3), "目标被后方障碍挡住时不发生重叠")
-	t.eq(collision_state.unit_by_uid(100).hp, collision_state.unit_by_uid(100).max_hp - 2, "撞击直伤和推击碰撞伤害分别结算")
+	t.eq(collision_state.unit_by_uid(100).hp, collision_state.unit_by_uid(100).max_hp - SkillDB.damage_of("flame_charge") - Balance.COLLISION_DAMAGE, "撞击直伤和推击碰撞伤害分别结算")
 	t.eq(collision_result["hits"][0]["push"]["collisions"][0]["kind"], "obstacle", "冲锋沿用共用推击碰撞规则")
 	var deep_terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(1, 3), TerrainDB.DEEP]])
 	var deep_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(7, 7)]], deep_terrain)
@@ -125,7 +125,7 @@ func _t_water_flow(t: TestContext) -> void:
 	var result := SkillResolver.apply(state, water_mon, "water_flow", {"type": "cell", "cell": Vector2i(2, 3)}, false)
 	t.check(bool(result["ok"]), "水流施放成功")
 	var wild := state.unit_by_uid(100)
-	t.eq(wild.hp, SpeciesDB.hp_of("rock_wild1") - 1, "水流不受克制影响：1 伤害")
+	t.eq(wild.hp, SpeciesDB.hp_of("rock_wild1") - SkillDB.damage_of("water_flow"), "水炮不受克制影响")
 	t.eq(wild.cell, Vector2i(3, 3), "命中后击退 1 格")
 	t.eq(wild.slow_ticks, 2, "命中后减速")
 	# 命中障碍在前方造水
@@ -175,7 +175,7 @@ func _t_discharge_root(t: TestContext) -> void:
 	var result := SkillResolver.apply(state, pika, "discharge", {"type": "unit", "unit": 100, "cell": Vector2i(2, 3)}, false)
 	t.check(bool(result["ok"]), "放电施放成功")
 	var wild := state.unit_by_uid(100)
-	t.eq(wild.hp, SpeciesDB.hp_of("water_wild1") - 2, "放电造成基础 2 伤")
+	t.eq(wild.hp, SpeciesDB.hp_of("water_wild1") - Elements.direct_damage(SkillDB.damage_of("discharge"), "electric", "water"), "放电受电克水加伤")
 	t.eq(wild.root_pending, true, "命中附加定身")
 
 
@@ -220,8 +220,8 @@ func _t_drain(t: TestContext) -> void:
 	grass_mon.hp = 3
 	var result := SkillResolver.apply(state, grass_mon, "drain", {"type": "unit", "unit": 100, "cell": Vector2i(2, 3)}, false)
 	t.check(bool(result["ok"]), "吸取施放成功")
-	t.eq(state.unit_by_uid(100).hp, SpeciesDB.hp_of("rock_wild1") - 1, "吸取造成基础 1 伤")
-	t.eq(grass_mon.hp, 4, "自身回复 1 生命")
+	t.eq(state.unit_by_uid(100).hp, SpeciesDB.hp_of("rock_wild1") - Elements.direct_damage(SkillDB.damage_of("drain"), "grass", "rock"), "吸取受草克岩加伤")
+	t.eq(grass_mon.hp, 3 + Balance.DRAIN_HEAL, "自身回复配置的生命")
 
 
 func _t_push_collision(t: TestContext) -> void:
@@ -232,7 +232,7 @@ func _t_push_collision(t: TestContext) -> void:
 	var result := SkillResolver.apply(state, rock, "push", {"type": "unit", "unit": 100, "cell": Vector2i(3, 3)}, false)
 	t.check(bool(result["ok"]), "推击施放成功")
 	var wild := state.unit_by_uid(100)
-	t.eq(wild.hp, SpeciesDB.hp_of("water_wild1") - 2, "推击 2 伤害（无克制关系）")
+	t.eq(wild.hp, SpeciesDB.hp_of("water_wild1") - SkillDB.damage_of("push"), "推击造成配置的直伤")
 	t.eq(wild.cell, Vector2i(4, 3), "推开 1 格")
 	# 推入障碍：碰撞加伤
 	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [
@@ -244,7 +244,7 @@ func _t_push_collision(t: TestContext) -> void:
 	rock2.cell = Vector2i(2, 3)
 	SkillResolver.apply(state2, rock2, "push", {"type": "unit", "unit": 100, "cell": Vector2i(3, 3)}, false)
 	var wild2 := state2.unit_by_uid(100)
-	t.eq(wild2.hp, SpeciesDB.hp_of("water_wild1") - 3, "碰撞追加 1 伤害")
+	t.eq(wild2.hp, SpeciesDB.hp_of("water_wild1") - SkillDB.damage_of("push") - Balance.COLLISION_DAMAGE, "碰撞追加配置的伤害")
 	t.eq(wild2.cell, Vector2i(3, 3), "被障碍挡住")
 	t.eq(state2.obstacle_durability.get(Vector2i(4, 3), 0), 1, "障碍耐久 −1")
 
@@ -278,7 +278,8 @@ func _t_rock_create(t: TestContext) -> void:
 
 func _t_attr_modifier(t: TestContext) -> void:
 	for pair in [["fire", "grass"], ["grass", "fire"], ["fire", "ice"], ["rock", "electric"], ["electric", "water"], ["water", "fire"]]:
-		t.eq(Elements.modifier(pair[0], pair[1]), 0, "%s 对 %s 无属性修正" % pair)
+		t.eq(Elements.modifier(pair[0], pair[1]), 0, "%s 对 %s 无直接伤害修正" % [pair[0], pair[1]])
 	t.eq(Elements.modifier("fire", "fire"), 0, "同属性无修正")
 	t.eq(Elements.modifier("", "fire"), 0, "无属性不参与克制")
-	t.eq(Elements.counter_pairs().size(), 0, "对局不暴露克制配对")
+	t.eq(Elements.LIST.size(), 7, "保留七种独立属性")
+	t.eq(Elements.counter_pairs().size(), 0, "当前不启用属性克制")

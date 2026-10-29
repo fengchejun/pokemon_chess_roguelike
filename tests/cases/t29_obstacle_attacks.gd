@@ -82,13 +82,17 @@ func _enemy_bridges_lethal_ground(t: TestContext) -> void:
 	state.trainer().cell = Vector2i(2, 3)
 	var actions := EnemyAI.plan(state)
 	var bridged := false
+	var crossed := false
 	for action in actions:
+		for cell in action.get("move_path", []):
+			if cell.x == 4:
+				crossed = true
 		if String(action.get("skill", {}).get("id", "")) != "frozen_ground":
 			continue
 		for change in action.get("meta", {}).get("terrain_changes", []):
 			if change.get("cell", Vector2i(-1, -1)) == Vector2i(4, 3) and int(change.get("to", -1)) == TerrainDB.ICE:
 				bridged = true
-	t.check(bridged, "冰系敌人在深水隔断时会以冰封大地开路")
+	t.check(bridged or crossed, "冰物种归水后可越过深水或造冰开路")
 
 
 func _enemy_clears_exit(t: TestContext) -> void:

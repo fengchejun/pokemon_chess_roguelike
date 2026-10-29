@@ -8,7 +8,9 @@ extends RefCounted
 static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> Array:
 	var def := SkillDB.get_def(skill_id)
 	var entries: Array = []
-	if def.is_empty() or unit == null or not unit.is_alive():
+	if def.is_empty() or unit == null or not unit.is_alive() or unit.channel_lock_round == state.round:
+		return entries
+	if bool(def.get("channel", false)) and not state.can_begin_channel(unit):
 		return entries
 	if state.steam_cells.has(unit.cell):
 		return entries
@@ -34,6 +36,8 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 		"direction":
 			for dir in GridSpec.DIRS4:
 				if skill_id == "tsunami" and tsunami_cells(unit.cell, dir).is_empty():
+					continue
+				if (skill_id == "wind_gust" or skill_id == "tailwind" or skill_id == "earth_shake") and front_area_cells(unit.cell, dir, 2 if skill_id == "wind_gust" else 3 + int(unit.upgrades.get("tailwind_reach", 0)) if skill_id == "tailwind" else 3).is_empty():
 					continue
 				entries.append({"type": "dir", "dir": dir, "cell": unit.cell + dir})
 		"self":
@@ -75,15 +79,11 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 		skill_range += int(unit.upgrades.get("drain_range", 0))
 	if skill_id == "rock_break":
 		skill_range += int(unit.upgrades.get("rock_break_range", 0))
-	if skill_id == "double_cast":
-		skill_range += int(unit.upgrades.get("double_cast_range", 0))
 	for other in state.units:
 		if other.uid == unit.uid or not other.is_alive():
 			continue
 		var distance := GridSpec.manhattan(unit.cell, other.cell)
 		if skill_id == "volt_replace" and distance != 2 and not (distance == 1 and int(unit.upgrades.get("volt_replace_flex", 0)) > 0):
-			continue
-		if skill_id == "wind_gust" and other.cell.x != unit.cell.x and other.cell.y != unit.cell.y:
 			continue
 		if skill_id == "lightning" and other.side == unit.side:
 			continue
@@ -95,11 +95,19 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 		if skill_id == "herbal_heal" or skill_id == "double_cast":
 			if other.side != unit.side:
 				continue
+			if skill_id == "double_cast" and other.channel_lock_round == state.round:
+				continue
 		elif skill_id != "volt_replace" and other.side == unit.side:
 			continue
 		if _concealed(state, skill_id, distance, other):
 			continue
 		entries.append({"type": "unit", "unit": other.uid, "cell": other.cell})
+	if skill_id == "double_cast" and int(unit.upgrades.get("double_cast_range", 0)) > 0 and entries.size() >= 2:
+		var adjacent_allies := entries.duplicate()
+		entries.clear()
+		for first_index in range(adjacent_allies.size() - 1):
+			for second_index in range(first_index + 1, adjacent_allies.size()):
+				entries.append({"type": "unit_pair", "units": [adjacent_allies[first_index]["unit"], adjacent_allies[second_index]["unit"]], "cell": adjacent_allies[second_index]["cell"]})
 	if int(def.get("damage", 0)) > 0 or skill_id == "rock_smash" or skill_id == "rock_break":
 		for cell in GridSpec.all_cells():
 			var distance := GridSpec.manhattan(unit.cell, cell)
@@ -143,7 +151,7 @@ static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String
 				entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "rock_slide":
 			entries.append({"type": "cell", "cell": cell})
-		elif skill_id == "tree_man" and state.active_summon(unit.uid) == null and state.unit_at(cell) == null and not state.is_nest_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), "grass"):
+		elif skill_id == "tree_man" and state.unit_at(cell) == null and not state.is_nest_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), "grass"):
 			entries.append({"type": "cell", "cell": cell})
 
 
@@ -226,7 +234,9 @@ static func _teleport_path_clear(state: BattleState, from: Vector2i, to: Vector2
 
 static func apply(state: BattleState, caster: CombatUnit, skill_id: String, target_entry: Dictionary, preview: bool) -> Dictionary:
 	var def := SkillDB.get_def(skill_id)
-	if def.is_empty() or caster == null or not caster.is_alive():
+	if def.is_empty() or caster == null or not caster.is_alive() or caster.channel_lock_round == state.round:
+		return {"ok": false}
+	if bool(def.get("channel", false)) and not state.can_begin_channel(caster):
 		return {"ok": false}
 	if state.steam_cells.has(caster.cell):
 		return {"ok": false}
@@ -236,6 +246,7 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 		return {"ok": false}
 	if not _entry_valid(state, caster, skill_id, target_entry):
 		return {"ok": false}
+	var movement_used_before := caster.moved
 	var summary := {
 		"ok": true,
 		"skill_id": skill_id,
@@ -253,7 +264,7 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 	}
 	if bool(def.get("channel", false)):
 		var cells: Array = []
-		if skill_id == "fire_burst" or skill_id == "rock_slide":
+		if skill_id == "fire_burst" or skill_id == "rock_slide" or skill_id == "tree_man":
 			cells = [target_entry["cell"]]
 		elif skill_id == "lightning":
 			for enemy in state.alive_units("enemy" if caster.side == "player" else "player"):
@@ -261,7 +272,10 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 					cells.append(enemy.cell)
 		elif skill_id == "tsunami":
 			cells = tsunami_cells(caster.cell, target_entry["dir"])
-		state.begin_channel(caster, skill_id, cells)
+		elif skill_id == "earth_shake":
+			cells = front_area_cells(caster.cell, target_entry["dir"], 3)
+		if not state.begin_channel(caster, skill_id, cells):
+			return {"ok": false}
 		for cell in cells:
 			if skill_id == "fire_burst":
 				for dx in range(-1, 2):
@@ -271,7 +285,12 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 							summary["area_cells"].append(area)
 			else:
 				summary["area_cells"].append(cell)
-		summary["text"] = "%s 吟唱中：第 %d 回合本方阶段开始命中固定落点。" % [SkillDB.name_of(skill_id), state.round + 1]
+		if skill_id == "tree_man":
+			summary["text"] = "大树守卫蓄力中：第 %d 回合本方阶段开始在固定落点召唤；若被单位占据则造成 %d 点基础伤害并取消召唤。" % [state.round + 1, int(SkillDB.get_def("tree_man").get("summon_collision_damage", 23))]
+		elif skill_id == "earth_shake":
+			summary["text"] = "撼地蓄力中：第 %d 回合本方阶段开始影响前方固定的 %d 格。" % [state.round + 1, cells.size()]
+		else:
+			summary["text"] = "%s 吟唱中：第 %d 回合本方阶段开始命中固定落点。" % [SkillDB.name_of(skill_id), state.round + 1]
 		if state.round >= Balance.MAX_ROUNDS:
 			summary["text"] += "本场将在结算前结束，此次吟唱不会生效。"
 		return summary
@@ -312,8 +331,6 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 						_apply_drain(state, caster, target_entry, summary)
 					"ice_shard":
 						_apply_ice_shard(state, caster, target_entry, summary)
-					"wind_gust":
-						_apply_wind_gust(state, caster, target_entry, summary)
 					"leech_seed":
 						_apply_leech_seed(state, caster, target_entry, summary)
 					"push", "rock_push":
@@ -327,8 +344,6 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 				_apply_electric_arc(state, caster, target_entry, summary)
 			elif skill_id == "rain_dance" or skill_id == "rain_call":
 				_apply_rain_dance(state, caster, target_entry, summary)
-			elif skill_id == "tree_man":
-				_apply_tree_man(state, caster, target_entry, summary)
 			else:
 				_apply_seed_sow(state, caster, target_entry, summary)
 		"teleport":
@@ -337,6 +352,8 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 			match skill_id:
 				"flame_jet", "wild_vines", "frozen_ground", "tailwind":
 					_apply_directional(state, caster, skill_id, target_entry, summary)
+				"wind_gust":
+					_apply_wind_gust(state, caster, target_entry, summary)
 				"rock_create":
 					_apply_rock_create(state, caster, target_entry, summary)
 		"self":
@@ -347,7 +364,7 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 	_consume_fire_amp_if_used(state, caster, summary)
 	if SkillDB.battle_limit_of(skill_id) > 0:
 		caster.battle_skill_uses[skill_id] = int(caster.battle_skill_uses.get(skill_id, 0)) + 1
-	caster.moved = true
+	caster.moved = movement_used_before if skill_id == "surf" or skill_id == "ice_glide" else true
 	return summary
 
 
@@ -375,7 +392,7 @@ static func resolve_channel(state: BattleState, caster: CombatUnit, skill_id: St
 			var target := state.unit_at(cell)
 			if target == null:
 				continue
-			var hit := _hit_entry(state, caster, "lightning", target, 4)
+			var hit := _hit_entry(state, caster, "lightning", target, SkillDB.damage_of("lightning"))
 			summary["hits"].append(hit)
 			if target.is_alive():
 				if target.shock_ticks > 0:
@@ -392,8 +409,24 @@ static func resolve_channel(state: BattleState, caster: CombatUnit, skill_id: St
 			_hit_obstacle(state, cells[0], summary)
 		var target := state.unit_at(cells[0])
 		if target != null:
-			summary["hits"].append(_hit_entry(state, caster, "rock_slide", target, 8))
+			summary["hits"].append(_hit_entry(state, caster, "rock_slide", target, SkillDB.damage_of("rock_slide")))
 		summary["text"] = "岩崩落下：%d 个单位受击。" % summary["hits"].size()
+	elif skill_id == "tree_man":
+		var cell: Vector2i = cells[0]
+		summary["area_cells"] = [cell]
+		var blocker := state.unit_at(cell)
+		if blocker != null:
+			var hit := _hit_entry(state, caster, "tree_man", blocker, int(SkillDB.get_def("tree_man").get("summon_collision_damage", 23)))
+			summary["hits"].append(hit)
+			summary["text"] = "大树守卫落点被 %s 阻挡：造成 %d 伤害，取消召唤。" % [blocker.display_name, hit["damage"]]
+		elif not state.is_nest_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), "grass"):
+			var summon := state.summon_tree(caster, cell)
+			if summon != null:
+				summary["text"] = "大树守卫召唤树人：生命 %d/%d，出生轮待机。" % [summon.hp, summon.max_hp]
+		else:
+			summary["text"] = "大树守卫落点已无法站立，取消召唤。"
+	elif skill_id == "earth_shake":
+		_resolve_earth_shake(state, caster, cells, summary)
 	elif skill_id == "tsunami":
 		summary["area_cells"] = cells.duplicate()
 		for cell in cells:
@@ -405,16 +438,49 @@ static func resolve_channel(state: BattleState, caster: CombatUnit, skill_id: St
 				continue
 			var target := state.unit_at(cell)
 			if target != null and target.side != caster.side:
-				summary["hits"].append(_hit_entry(state, caster, "tsunami", target, 4))
+				summary["hits"].append(_hit_entry(state, caster, "tsunami", target, SkillDB.damage_of("tsunami")))
 		summary["text"] = "海啸落下：%d 个水域内敌方单位受击。" % summary["hits"].size()
 	_consume_fire_amp_if_used(state, caster, summary)
 	return summary
 
 
+static func _resolve_earth_shake(state: BattleState, caster: CombatUnit, cells: Array, summary: Dictionary) -> void:
+	summary["area_cells"] = cells.duplicate()
+	var destroyed_obstacles := 0
+	for cell in cells:
+		if state.ended:
+			break
+		var target := state.unit_at(cell)
+		if target != null and target.side != caster.side:
+			summary["hits"].append(_hit_entry(state, caster, "earth_shake", target, SkillDB.damage_of("earth_shake")))
+		if state.ended:
+			break
+		if state.is_nest_cell(cell):
+			continue
+		if state.obstacle_durability.has(cell):
+			var durability := int(state.obstacle_durability[cell])
+			var destroyed := state.damage_obstacle(cell, durability)
+			summary["obstacles_damaged"].append({"cell": cell, "damage": durability, "destroyed": destroyed})
+			if destroyed:
+				destroyed_obstacles += 1
+			continue
+		var terrain_type := state.terrain_at(cell)
+		if terrain_type == TerrainDB.PLAIN:
+			state.set_terrain(cell, TerrainDB.FRAGILE)
+			summary["terrain_changes"].append({"cell": cell, "from": TerrainDB.PLAIN, "to": TerrainDB.FRAGILE})
+		elif terrain_type == TerrainDB.FRAGILE:
+			state.set_terrain(cell, TerrainDB.PIT)
+			summary["terrain_changes"].append({"cell": cell, "from": TerrainDB.FRAGILE, "to": TerrainDB.PIT})
+			var fallen := state.unit_at(cell)
+			if fallen != null and not fallen.has_buff("flight"):
+				state.kill_unit(fallen, "撼地造成地面塌陷", caster.side, caster.uid)
+	summary["text"] = "撼地结算：%d 名敌人受击，摧毁 %d 处障碍，改变 %d 格地形。" % [summary["hits"].size(), destroyed_obstacles, summary["terrain_changes"].size()]
+
+
 static func tsunami_cells(origin: Vector2i, dir: Vector2i) -> Array:
 	var cells: Array = []
 	var sideways := Vector2i(-dir.y, dir.x)
-	for length in range(1, 5):
+	for length in range(1, 6):
 		for offset in range(-2, 3):
 			var cell: Vector2i = origin + dir * length + sideways * offset
 			if GridSpec.is_inside(cell):
@@ -438,6 +504,12 @@ static func _entry_key(entry: Dictionary) -> String:
 	match String(entry.get("type", "")):
 		"unit":
 			return "unit:%d" % int(entry["unit"])
+		"unit_pair":
+			var ids: Array = entry.get("units", []).duplicate()
+			if ids.size() != 2:
+				return "invalid"
+			ids.sort()
+			return "unit_pair:%d,%d" % [int(ids[0]), int(ids[1])]
 		"dir":
 			var dir: Vector2i = entry["dir"]
 			return "dir:%d,%d" % [dir.x, dir.y]
@@ -466,16 +538,26 @@ static func _hit_obstacle(state: BattleState, cell: Vector2i, summary: Dictionar
 static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String, target: CombatUnit, base: int, extra_opts: Dictionary = {}) -> Dictionary:
 	var def := SkillDB.get_def(skill_id)
 	if base > 0:
+		base = upgraded_base_damage(caster, skill_id, base)
 		base += caster.fire_amp_stacks
 	var modifier := Elements.modifier(String(def.get("element", "")), target.element) if base > 0 else 0
+	var had_burn := target.burn_ticks > 0
+	var had_wet := target.slow_ticks > 0
 	var opts := {
+		"skill_id": skill_id,
 		"element": String(def.get("element", "")),
+		"skill_direct": true,
 		"ranged": SkillDB.is_ranged(skill_id),
 		"cause": SkillDB.name_of(skill_id),
 		"conductive": skill_id == "electric_arc",
 	}
 	opts.merge(extra_opts, true)
 	var result := state.damage_unit(caster, target, base, opts)
+	var relic_statuses: Array = []
+	if not had_burn and target.burn_ticks > 0:
+		relic_statuses.append("灼烧")
+	if not had_wet and target.slow_ticks > 0:
+		relic_statuses.append("浸湿")
 	return {
 		"uid": target.uid,
 		"name": target.display_name,
@@ -483,16 +565,24 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 		"damage": int(result.get("amount", 0)),
 		"modifier": modifier if int(result.get("amount", 0)) > 0 else 0,
 		"killed": bool(result.get("killed", false)),
-		"statuses": [],
+		"statuses": relic_statuses,
+		"relic_healed": int(result.get("relic_healed", 0)),
 		"push": null,
 	}
+
+
+static func upgraded_base_damage(caster: CombatUnit, skill_id: String, base: int) -> int:
+	if base <= 0:
+		return base
+	var upgrade_info := RunState.upgrade_info(RunState.upgrade_id_for_skill(skill_id))
+	return base + int(upgrade_info.get("damage_bonus", 0)) if not upgrade_info.is_empty() and caster.upgrades.has(String(upgrade_info.get("key", ""))) else base
 
 
 static func _apply_placeholder(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary, summary: Dictionary) -> void:
 	var target := state.unit_by_uid(int(entry["unit"]))
 	if target == null:
 		return
-	var hit := _hit_entry(state, caster, skill_id, target, 1)
+	var hit := _hit_entry(state, caster, skill_id, target, SkillDB.damage_of(skill_id))
 	summary["hits"].append(hit)
 	summary["text"] = "%s命中%s：%d伤害。" % [SkillDB.name_of(skill_id), target.display_name, int(hit["damage"])]
 
@@ -526,16 +616,16 @@ static func _apply_fire_seed(state: BattleState, caster: CombatUnit, entry: Dict
 		if state.obstacle_durability.has(hit_cell):
 			_hit_obstacle(state, hit_cell, summary)
 		elif state.is_nest_cell(hit_cell):
-			state.damage_nest(int(SkillDB.get_def("fire_seed").get("damage", 2)), caster.side)
+			state.damage_nest(2, caster.side, hit_cell)
 		var splash_cells := GridSpec.neighbors4(hit_cell)
 		for cell in splash_cells:
 			summary["area_cells"].append(cell)
 			var occupant := state.unit_at(cell)
 			if occupant == null:
 				continue
-			var hit := _hit_entry(state, caster, "fire_seed", occupant, 1)
+			var hit := _hit_entry(state, caster, "fire_seed", occupant, int(SkillDB.get_def("fire_seed").get("splash_damage", 15)))
 			summary["hits"].append(hit)
-		summary["text"] = "火种打空，终点格相邻 4 格各受 1 伤害"
+		summary["text"] = "火种打空，终点格相邻 4 格各受 %d 基础伤害" % int(SkillDB.get_def("fire_seed").get("splash_damage", 0))
 		if not summary["hits"].is_empty():
 			var names: Array = []
 			for hit in summary["hits"]:
@@ -573,7 +663,7 @@ static func _apply_water_flow(state: BattleState, caster: CombatUnit, entry: Dic
 			state.apply_slow(hit_unit)
 			(hit["statuses"] as Array).append("减速")
 			var push_distance := 1 + int(caster.upgrades.get("water_flow_push", 0)) + (1 if caster.has_buff("water_flow") else 0)
-			var push_result := PushResolver.push(state, hit_unit, dir, push_distance, 0, "水炮击退", caster.side, caster.uid)
+			var push_result := PushResolver.push(state, hit_unit, dir, push_distance, 0, "水炮击退", caster.side, caster.uid, "water_flow")
 			hit["push"] = push_result
 		summary["hits"].append(hit)
 		summary["text"] = "水炮命中 %s：%d 伤害，击退并减速" % [hit["name"], hit["damage"]]
@@ -585,9 +675,10 @@ static func _apply_water_flow(state: BattleState, caster: CombatUnit, entry: Dic
 		else:
 			summary["text"] = "水炮击中障碍"
 	elif hit_object == "nest":
-		var old_hp := int(state.nest["hp"])
-		state.damage_nest(1, caster.side)
-		summary["text"] = "水炮击中巢穴，造成 %d 点耐久伤害" % (old_hp - int(state.nest["hp"]))
+		var hit_nest: Dictionary = state.nest_at_cell(hit_cell)
+		var old_hp := int(hit_nest["hp"])
+		state.damage_nest(1, caster.side, hit_cell)
+		summary["text"] = "水炮击中巢穴，造成 %d 点耐久伤害" % (old_hp - int(hit_nest["hp"]))
 	else:
 		state.damage_reward_at(hit_cell)
 		if _convert_to_water(state, target_cell, summary):
@@ -619,7 +710,7 @@ static func _apply_leech_seed(state: BattleState, caster: CombatUnit, entry: Dic
 	target.parasite_source_uid = caster.uid
 	target.parasite_source_side = caster.side
 	summary["area_cells"].append(target.cell)
-	summary["text"] = "%s 被寄生；每次整轮结算失去 1 HP，受到其他伤害时解除。" % target.display_name
+	summary["text"] = "%s 被寄生；每次整轮结算失去 %d HP，受到其他伤害时解除。" % [target.display_name, Balance.PARASITE_DAMAGE + int(caster.upgrades.get("leech_seed_tick_bonus", 0))]
 	state.log_event(summary["text"])
 
 
@@ -631,24 +722,24 @@ static func _apply_fire_amplify(state: BattleState, caster: CombatUnit, summary:
 		state.burning_cells.erase(cell)
 		summary["area_cells"].append(cell)
 		absorbed += 1
-	caster.fire_amp_stacks += absorbed
+	caster.fire_amp_stacks += absorbed * int(caster.upgrades.get("fire_amplify_power", Balance.SKILL_DAMAGE_UPGRADE))
 	summary["text"] = "火焰增幅熄灭 %d 格火焰，当前蓄积 +%d 直伤。" % [absorbed, caster.fire_amp_stacks]
 	state.log_event(summary["text"])
 
 
 static func _apply_terrain_travel(state: BattleState, caster: CombatUnit, skill_id: String, summary: Dictionary) -> void:
 	if skill_id == "ice_glide":
-		caster.ice_glide_until_round = state.round + 2
+		caster.ice_glide_until_round = state.round + 2 + int(caster.upgrades.get("ice_glide_duration", 0))
 	else:
-		caster.surf_until_round = state.round + 2
-	summary["text"] = "%s 获得%s：接下来两个本方阶段可在连通%s上不限距离移动。" % [caster.display_name, SkillDB.name_of(skill_id), "冰面" if skill_id == "ice_glide" else "水域"]
+		caster.surf_until_round = state.round + 2 + int(caster.upgrades.get("surf_duration", 0))
+	summary["text"] = "%s 获得%s：本回合及后两回合沿连通%s移动不消耗普通移动机会，可重复移动并越过敌方单位。" % [caster.display_name, SkillDB.name_of(skill_id), "冰面" if skill_id == "ice_glide" else "水域"]
 	state.log_event(summary["text"])
 
 
 static func _apply_flame_charge(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var dest: Vector2i = entry["cell"]
 	var dir := Vector2i((dest.x - caster.cell.x) / 2, (dest.y - caster.cell.y) / 2)
-	var impact_damage := 1 + (1 if caster.has_buff("flame_charge") or int(caster.upgrades.get("flame_charge_damage", 0)) > 0 else 0)
+	var impact_damage := SkillDB.damage_of("flame_charge") + (Balance.SKILL_DAMAGE_UPGRADE if caster.has_buff("flame_charge") or int(caster.upgrades.get("flame_charge_damage", 0)) > 0 else 0)
 	for step in range(1, 3):
 		var next: Vector2i = caster.cell + dir
 		summary["ray_cells"].append(next)
@@ -656,7 +747,7 @@ static func _apply_flame_charge(state: BattleState, caster: CombatUnit, entry: D
 		if occupant != null:
 			var hit := _hit_entry(state, caster, "flame_charge", occupant, impact_damage)
 			if occupant.is_alive():
-				hit["push"] = PushResolver.push(state, occupant, dir, 1, 0, "闪焰冲锋", caster.side, caster.uid)
+				hit["push"] = PushResolver.push(state, occupant, dir, 1, 0, "闪焰冲锋", caster.side, caster.uid, "flame_charge")
 			summary["hits"].append(hit)
 			var outcome := ""
 			if hit["push"] != null:
@@ -669,16 +760,17 @@ static func _apply_flame_charge(state: BattleState, caster: CombatUnit, entry: D
 			summary["text"] = "闪焰冲锋撞击 %s：%d 伤害%s。" % [hit["name"], hit["damage"], outcome]
 			break
 		if state.is_nest_cell(next):
-			var old_hp := int(state.nest["hp"])
-			var destroyed := state.damage_nest(impact_damage, caster.side)
-			var actual := old_hp - int(state.nest["hp"])
+			var hit_nest: Dictionary = state.nest_at_cell(next)
+			var old_hp := int(hit_nest["hp"])
+			var destroyed := state.damage_nest(1 + (1 if caster.has_buff("flame_charge") or int(caster.upgrades.get("flame_charge_damage", 0)) > 0 else 0), caster.side, next)
+			var actual := old_hp - int(hit_nest["hp"])
 			summary["nest_damaged"] = {"damage": actual, "destroyed": destroyed}
 			summary["text"] = "闪焰冲锋撞击巢穴：耐久 −%d。" % actual
 			break
 		if TerrainDB.blocks_move(state.terrain_at(next)):
 			var obstacle_name := TerrainDB.name_of(state.terrain_at(next))
 			var old_hp := int(state.obstacle_durability.get(next, 0))
-			var destroyed := state.damage_obstacle(next, impact_damage)
+			var destroyed := state.damage_obstacle(next, 1 + (1 if caster.has_buff("flame_charge") or int(caster.upgrades.get("flame_charge_damage", 0)) > 0 else 0))
 			var actual := old_hp - int(state.obstacle_durability.get(next, 0))
 			summary["obstacles_damaged"].append({"cell": next, "damage": actual, "destroyed": destroyed})
 			summary["text"] = "闪焰冲锋撞击%s：耐久 −%d。" % [obstacle_name, actual]
@@ -744,7 +836,7 @@ static func _apply_drain(state: BattleState, caster: CombatUnit, entry: Dictiona
 		return
 	var hit := _hit_entry(state, caster, "drain", target, int(SkillDB.get_def("drain").get("damage", 1)))
 	summary["hits"].append(hit)
-	var healed := mini(caster.max_hp, caster.hp + 1)
+	var healed := mini(caster.max_hp, caster.hp + Balance.DRAIN_HEAL)
 	if healed > caster.hp:
 		summary["heal"] = {"uid": caster.uid, "amount": healed - caster.hp}
 		state.log_event("%s 回复 %d 生命。" % [caster.display_name, healed - caster.hp])
@@ -757,20 +849,45 @@ static func _apply_ice_shard(state: BattleState, caster: CombatUnit, entry: Dict
 	if target == null:
 		return
 	var bonus := int(caster.upgrades.get("ice_shard_damage", 0))
-	var hit := _hit_entry(state, caster, "ice_shard", target, 1 + bonus)
+	var hit := _hit_entry(state, caster, "ice_shard", target, SkillDB.damage_of("ice_shard") + bonus)
 	summary["hits"].append(hit)
 	summary["text"] = "冰锥命中 %s：%d 伤害。" % [hit["name"], hit["damage"]]
 
 
 static func _apply_wind_gust(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
-	var target := state.unit_by_uid(int(entry["unit"]))
-	if target == null:
-		return
-	var direction := Vector2i(signi(target.cell.x - caster.cell.x), signi(target.cell.y - caster.cell.y))
-	var distance := 1 + int(caster.upgrades.get("wind_gust_distance", 0))
-	var result := PushResolver.push(state, target, direction, distance, 0, "推风", caster.side, caster.uid)
-	summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": 0, "killed": not target.is_alive(), "statuses": [], "push": result})
-	summary["text"] = "推风：%s%s。" % [target.display_name, "被推离" if result["moved"] else "受阻"]
+	var direction: Vector2i = entry["dir"]
+	var cells := front_area_cells(caster.cell, direction, 2)
+	summary["area_cells"] = cells.duplicate()
+	var targets_in_area: Array = []
+	for target in state.alive_units("enemy" if caster.side == "player" else "player"):
+		if cells.has(target.cell):
+			targets_in_area.append(target)
+	# 先推动前排，再处理后排；同排依单位固定顺序结算。
+	targets_in_area.sort_custom(func(a: CombatUnit, b: CombatUnit) -> bool:
+		var a_depth: int = (a.cell.x - caster.cell.x) * direction.x + (a.cell.y - caster.cell.y) * direction.y
+		var b_depth: int = (b.cell.x - caster.cell.x) * direction.x + (b.cell.y - caster.cell.y) * direction.y
+		return a_depth > b_depth if a_depth != b_depth else a.reg_index < b.reg_index
+	)
+	var push_distance := 1 + int(caster.upgrades.get("wind_gust_distance", 0))
+	for target in targets_in_area:
+		if state.ended:
+			break
+		if not target.is_alive():
+			continue
+		var result := PushResolver.push(state, target, direction, push_distance, 0, "推风", caster.side, caster.uid, "wind_gust")
+		summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": 0, "killed": not target.is_alive(), "statuses": [], "push": result})
+	summary["text"] = "推风：范围内 %d 名敌人受到击退。" % summary["hits"].size()
+
+
+static func front_area_cells(origin: Vector2i, direction: Vector2i, length: int) -> Array:
+	var cells: Array = []
+	var sideways := Vector2i(-direction.y, direction.x)
+	for depth in range(1, length + 1):
+		for offset in [-1, 0, 1]:
+			var cell: Vector2i = origin + direction * depth + sideways * offset
+			if GridSpec.is_inside(cell):
+				cells.append(cell)
+	return cells
 
 
 static func _apply_push(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
@@ -788,7 +905,7 @@ static func _apply_push(state: BattleState, caster: CombatUnit, entry: Dictionar
 		var collision_bonus := 0
 		if caster.side == "player":
 			collision_bonus = int(state.effects.get("push_collision", 0))
-		var push_result := PushResolver.push(state, target, dir, push_distance, collision_bonus, "推击", caster.side, caster.uid)
+		var push_result := PushResolver.push(state, target, dir, push_distance, collision_bonus, "推击", caster.side, caster.uid, "rock_push")
 		hit["push"] = push_result
 	summary["hits"].append(hit)
 	var text := "推击 %s：%d 伤害" % [hit["name"], hit["damage"]]
@@ -814,9 +931,10 @@ static func _apply_rock_smash(state: BattleState, caster: CombatUnit, skill_id: 
 		return
 	var cell: Vector2i = entry["cell"]
 	if entry_type == "nest":
-		var old_hp := int(state.nest["hp"])
-		var destroyed := state.damage_nest(2, caster.side)
-		var actual := old_hp - int(state.nest["hp"])
+		var hit_nest: Dictionary = state.nest_at_cell(cell)
+		var old_hp := int(hit_nest["hp"])
+		var destroyed := state.damage_nest(2, caster.side, cell)
+		var actual := old_hp - int(hit_nest["hp"])
 		summary["nest_damaged"] = {"damage": actual, "destroyed": destroyed}
 		summary["text"] = "碎岩击中巢穴：耐久 −%d%s" % [actual, "，巢穴被摧毁" if destroyed else ""]
 		return
@@ -941,16 +1059,17 @@ static func _apply_fire_burst(state: BattleState, caster: CombatUnit, entry: Dic
 		var target := state.unit_at(cell)
 		if target != null:
 			var center_bonus := int(caster.upgrades.get("fireball_damage", 0)) if cell == center else 0
-			var hit := _hit_entry(state, caster, "fire_burst", target, 4 + center_bonus)
+			var hit := _hit_entry(state, caster, "fire_burst", target, SkillDB.damage_of("fire_burst") + center_bonus)
 			summary["hits"].append(hit)
 			if cell != center and target.is_alive() and caster.has_buff("fire_burst"):
 				state.apply_burn(target, caster)
 		if state.obstacle_durability.has(cell):
 			_hit_obstacle(state, cell, summary)
 		if state.is_nest_cell(cell):
-			var old_hp := int(state.nest["hp"])
-			state.damage_nest(4 + (int(caster.upgrades.get("fireball_damage", 0)) if cell == center else 0), caster.side)
-			nest_damage += old_hp - int(state.nest["hp"])
+			var hit_nest: Dictionary = state.nest_at_cell(cell)
+			var old_hp := int(hit_nest["hp"])
+			state.damage_nest(4, caster.side, cell)
+			nest_damage += old_hp - int(hit_nest["hp"])
 	summary["text"] = "火球术命中九宫格：%d 个单位受伤。" % summary["hits"].size()
 	if nest_damage > 0:
 		summary["text"] += "巢穴耐久 −%d。" % nest_damage
@@ -969,9 +1088,10 @@ static func _apply_line(state: BattleState, caster: CombatUnit, skill_id: String
 		if state.terrain_at(cell) == TerrainDB.OBSTACLE or state.terrain_at(cell) == TerrainDB.TREE or state.is_nest_cell(cell):
 			if skill_id == "flame_jet":
 				if state.is_nest_cell(cell):
-					var old_hp := int(state.nest["hp"])
-					state.damage_nest(1, caster.side)
-					summary["text"] = "喷射火焰击中巢穴：耐久 −%d。" % (old_hp - int(state.nest["hp"]))
+					var hit_nest: Dictionary = state.nest_at_cell(cell)
+					var old_hp := int(hit_nest["hp"])
+					state.damage_nest(1, caster.side, cell)
+					summary["text"] = "喷射火焰击中巢穴：耐久 −%d。" % (old_hp - int(hit_nest["hp"]))
 				else:
 					_hit_obstacle(state, cell, summary)
 			break
@@ -990,7 +1110,7 @@ static func _apply_line(state: BattleState, caster: CombatUnit, skill_id: String
 			state.cancel_channel(target, "冻结")
 			summary["text"] = "%s 被冰冻。" % target.display_name
 			break
-		var base_damage := 1 + (1 if skill_id == "flame_jet" and step == 1 else 0)
+		var base_damage := SkillDB.damage_of("flame_jet") + (int(SkillDB.get_def("flame_jet").get("adjacent_bonus", 5)) if skill_id == "flame_jet" and step == 1 else 0)
 		var hit := _hit_entry(state, caster, skill_id, target, base_damage)
 		if target.is_alive():
 			state.apply_burn(target, caster)
@@ -1025,15 +1145,13 @@ static func _apply_directional(state: BattleState, caster: CombatUnit, skill_id:
 				state.set_terrain(cell, TerrainDB.ICE)
 				summary["terrain_changes"].append({"cell": cell, "from": from, "to": TerrainDB.ICE})
 	elif skill_id == "tailwind":
-		for distance in range(1, 3 + int(caster.upgrades.get("tailwind_reach", 0))):
-			for offset in [-1, 0, 1]:
-				var cell: Vector2i = caster.cell + dir * distance + perpendicular * offset
-				if not GridSpec.is_inside(cell):
-					continue
-				var target := state.unit_at(cell)
-				if target != null and target.side == caster.side:
-					state.apply_haste(target)
-	summary["text"] = "%s 影响 %d 格。" % [SkillDB.name_of(skill_id), summary["terrain_changes"].size()]
+		var cells := front_area_cells(caster.cell, dir, 3 + int(caster.upgrades.get("tailwind_reach", 0)))
+		summary["area_cells"] = cells.duplicate()
+		for cell in cells:
+			var target := state.unit_at(cell)
+			if target != null and target.side == caster.side:
+				state.apply_haste(target)
+	summary["text"] = "%s 影响 %d 格。" % [SkillDB.name_of(skill_id), summary["area_cells"].size() if skill_id == "tailwind" else summary["terrain_changes"].size()]
 
 
 static func _apply_electric_arc(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
@@ -1045,7 +1163,7 @@ static func _apply_electric_arc(state: BattleState, caster: CombatUnit, entry: D
 		var target := state.unit_at(entry["cell"])
 		if target != null:
 			var bonus := int(caster.upgrades.get("electric_arc_damage", 0))
-			summary["hits"].append(_hit_entry(state, caster, "electric_arc", target, 1 + bonus))
+			summary["hits"].append(_hit_entry(state, caster, "electric_arc", target, SkillDB.damage_of("electric_arc") + bonus))
 			if target.is_alive() and caster.has_buff("electric_arc"):
 				state.apply_slow(target)
 			summary["area_cells"].append(target.cell)
@@ -1072,7 +1190,7 @@ static func _apply_electric_arc(state: BattleState, caster: CombatUnit, entry: D
 					break
 		if affected:
 				var bonus := int(caster.upgrades.get("electric_arc_damage", 0))
-				summary["hits"].append(_hit_entry(state, caster, "electric_arc", target, 1 + bonus))
+				summary["hits"].append(_hit_entry(state, caster, "electric_arc", target, SkillDB.damage_of("electric_arc") + bonus))
 				if target.is_alive() and caster.has_buff("electric_arc"):
 					state.apply_slow(target)
 	for cell in visited:
@@ -1113,27 +1231,18 @@ static func _apply_volt_replace_empty(state: BattleState, caster: CombatUnit, en
 	summary["text"] = "伏特替换：移动到 (%d,%d)。" % [dest.x, dest.y]
 
 
-static func _apply_tree_man(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
-	var cell: Vector2i = entry["cell"]
-	var summon := state.summon_tree(caster, cell)
-	if summon == null:
-		return
-	summary["area_cells"].append(cell)
-	summary["text"] = "召唤树人：生命 %d/%d，出生轮待机。" % [summon.hp, summon.max_hp]
-
-
 static func _apply_tree_wrath(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var target := state.unit_by_uid(int(entry["unit"]))
 	if target == null:
 		return
-	var hit := _hit_entry(state, caster, "tree_wrath", target, 1)
+	var hit := _hit_entry(state, caster, "tree_wrath", target, SkillDB.damage_of("tree_wrath"))
 	summary["hits"].append(hit)
 	summary["text"] = "大树之怒命中 %s：%d 伤害。" % [target.display_name, hit["damage"]]
 
 
 static func _apply_heal(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var center: Vector2i = caster.cell
-	var amount := 1 + int(caster.upgrades.get("herbal_heal_amount", 0))
+	var amount := Balance.HERBAL_HEAL + int(caster.upgrades.get("herbal_heal_amount", 0))
 	for target in state.alive_units(caster.side):
 		if absi(target.cell.x - center.x) <= 1 and absi(target.cell.y - center.y) <= 1 and target.hp < target.max_hp:
 			var healed := mini(amount, target.max_hp - target.hp)
@@ -1143,8 +1252,13 @@ static func _apply_heal(state: BattleState, caster: CombatUnit, entry: Dictionar
 
 
 static func _apply_double_cast(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
-	var target := state.unit_by_uid(int(entry["unit"]))
-	if target == null:
-		return
-	target.extra_casts += 1
-	summary["text"] = "%s 获得一次额外施法机会。" % target.display_name
+	var ids: Array = entry.get("units", []) if String(entry.get("type", "")) == "unit_pair" else [entry["unit"]]
+	var names: Array = []
+	for uid in ids:
+		var target := state.unit_by_uid(int(uid))
+		if target == null:
+			continue
+		target.extra_casts += 1
+		names.append(target.display_name)
+		summary["area_cells"].append(target.cell)
+	summary["text"] = "%s各获得一次额外施法机会。" % "、".join(names)

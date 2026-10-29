@@ -27,6 +27,7 @@ func _ready() -> void:
 	])
 	lines.append("经验由每只怪物独立累计；等级与强化在新局重置，亲密度永久保留。")
 	lines.append("剩余消耗卡：%d 张（本局结束后清除）" % run.reward_inventory.size())
+	lines.append("永久首领之血：%d 份（5 份可在未来合成首领血浆）" % app.collection.boss_blood)
 	if run.pending_bonus_choices > 0:
 		lines.append("旧存档待领额外选择：%d 次（本局结束后清除）" % run.pending_bonus_choices)
 	lines.append("本局携带队伍：" if not run.carried.is_empty() else "本局携带队伍：无")

@@ -75,6 +75,7 @@ func _t_skill_choice(t: TestContext) -> void:
 	heal.trainer().cell = Vector2i(0, 0)
 	heal.unit_by_uid(1).cell = Vector2i(4, 6)
 	heal.unit_by_uid(100).moved = true
+	heal.unit_by_uid(100).skills = SpeciesDB.skills_of("grass_wild1").duplicate()
 	heal.unit_by_uid(101).hp = 1
 	var heal_plan := EnemyAI.plan(heal)
 	t.check(not heal_plan.is_empty(), "草怪可规划行动")
@@ -84,6 +85,7 @@ func _t_skill_choice(t: TestContext) -> void:
 	var freeze := TestScenario.make_state([], [["ice_wild1", Vector2i(4, 4)]])
 	freeze.trainer().cell = Vector2i(4, 2)
 	freeze.unit_by_uid(100).moved = true
+	freeze.unit_by_uid(100).skills = SpeciesDB.skills_of("ice_wild1").duplicate()
 	var freeze_plan := EnemyAI.plan(freeze)
 	t.check(not freeze_plan.is_empty(), "冰怪可规划行动")
 	if not freeze_plan.is_empty():
@@ -93,6 +95,7 @@ func _t_skill_choice(t: TestContext) -> void:
 	rain.trainer().cell = Vector2i(0, 0)
 	rain.unit_by_uid(1).cell = Vector2i(3, 3)
 	rain.unit_by_uid(100).moved = true
+	rain.unit_by_uid(100).skills = SpeciesDB.skills_of("water_wild1").duplicate()
 	var rain_plan := EnemyAI.plan(rain)
 	t.check(not rain_plan.is_empty(), "水怪可规划行动")
 	if not rain_plan.is_empty():
@@ -114,6 +117,8 @@ func _t_double_cast(t: TestContext) -> void:
 	state.trainer().cell = Vector2i(2, 3)
 	state.unit_by_uid(100).moved = true
 	state.unit_by_uid(101).moved = true
+	state.unit_by_uid(100).skills = SpeciesDB.skills_of("wind_wild1").duplicate()
+	state.unit_by_uid(101).skills = SpeciesDB.skills_of("rock_wild1").duplicate()
 	var forecast := EnemyAI.plan(state)
 	var rock_actions := 0
 	for action in forecast:
@@ -134,6 +139,8 @@ func _t_double_cast(t: TestContext) -> void:
 	late_support.trainer().cell = Vector2i(2, 3)
 	late_support.unit_by_uid(100).moved = true
 	late_support.unit_by_uid(101).moved = true
+	late_support.unit_by_uid(100).skills = SpeciesDB.skills_of("rock_wild1").duplicate()
+	late_support.unit_by_uid(101).skills = SpeciesDB.skills_of("wind_wild1").duplicate()
 	var late_plan := EnemyAI.plan(late_support)
 	for action in late_plan:
 		if int(action["uid"]) == 101:
@@ -146,6 +153,8 @@ func _t_double_cast(t: TestContext) -> void:
 	finished.trainer().hp = 1
 	finished.unit_by_uid(100).moved = true
 	finished.unit_by_uid(101).moved = true
+	finished.unit_by_uid(100).skills = SpeciesDB.skills_of("wind_wild1").duplicate()
+	finished.unit_by_uid(101).skills = SpeciesDB.skills_of("rock_wild1").duplicate()
 	var ended_actions := finished.begin_enemy_phase()
 	while not finished.enemy_phase_finished():
 		finished.step_enemy_phase()

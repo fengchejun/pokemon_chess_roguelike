@@ -65,6 +65,7 @@ func _test_ui_flow(t: TestContext) -> void:
 		choice.button_pressed = true
 	var collection_start: Button = app.current_screen.find_child("StartFromCollectionButton", true, false)
 	collection_start.pressed.emit()
+	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
 	app.run.reward_inventory = ["map:water", RewardDB.MOD_ITEM]
 	app.show_prep()
 	t.check(app.current_screen.find_child("RewardItemOption", true, false) == null, "整备页没有消耗品入口")
@@ -85,7 +86,7 @@ func _test_ui_flow(t: TestContext) -> void:
 	var saved_terrain: Array = app.current_screen.map["terrain"].duplicate()
 	var restored_run := RunState.from_dict(app.run.to_dict())
 	t.eq(restored_run.preview_used_reward_item, "map:water", "存档恢复后仍记得本场已用卡")
-	var restored_map := MapGenerator.generate_card_preview(restored_run.seed, restored_run.battle_index, "water", MapGenerator.generate(restored_run.seed, restored_run.battle_index))
+	var restored_map := MapGenerator.generate_card_preview(restored_run.seed, restored_run.battle_index, "water", MapGenerator.generate(restored_run.seed, restored_run.battle_index, 0, [], restored_run.current_theme()))
 	t.eq((restored_map["map"] as Dictionary)["terrain"], saved_terrain, "读档后可复原同一张地貌卡地图")
 	var back: Button = app.current_screen.find_child("BackButton", true, false)
 	back.pressed.emit()
@@ -110,6 +111,7 @@ func _test_modification_ui(t: TestContext) -> void:
 		choice.button_pressed = true
 	var collection_start: Button = app.current_screen.find_child("StartFromCollectionButton", true, false)
 	collection_start.pressed.emit()
+	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
 	app.run.reward_inventory = [RewardDB.MOD_ITEM]
 	app.show_prep()
 	app.show_preview([1, 2, 3])

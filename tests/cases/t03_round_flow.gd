@@ -31,10 +31,10 @@ func _t_burn(t: TestContext) -> void:
 	state.apply_burn(wild, fire)
 	t.eq(wild.burn_ticks, 2, "灼烧初始 2 回合")
 	state.settle_round()
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 1, "第一次结算 1 伤害")
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - Balance.BURN_DAMAGE, "第一次结算灼烧伤害")
 	t.eq(wild.burn_ticks, 1, "灼烧剩余 1 回合")
 	state.settle_round()
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - 2, "第二次结算 1 伤害")
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - Balance.BURN_DAMAGE * 2, "第二次结算灼烧伤害")
 	t.eq(wild.burn_ticks, 0, "灼烧结束")
 	# 火系免疫
 	var state2 := TestScenario.make_state([], [["fire_wild1", Vector2i(4, 3)]])
@@ -309,7 +309,7 @@ func _t_pickups(t: TestContext) -> void:
 	fruits_state.fruits.append(Vector2i(1, 1))
 	fmon.cell = Vector2i(1, 1)
 	fruits_state.settle_round()
-	t.eq(fmon.hp, 4, "拾取恢复果实回复 2 生命")
+	t.eq(fmon.hp, 2 + Balance.FRUIT_HEAL, "拾取恢复果实回复配置的生命")
 	t.eq(fruits_state.fruits.size(), 0, "果实被消耗")
 	# 踩上即拾取；撤销移动时连同果实一起回滚
 	var move_state := TestScenario.make_state(["fire_starter"], [])
@@ -319,7 +319,7 @@ func _t_pickups(t: TestContext) -> void:
 	mmon.hp = 2
 	move_state.fruits.append(Vector2i(2, 3))
 	t.eq(move_state.move_unit(mmon, Vector2i(2, 3)), true, "移动到果实格")
-	t.eq(mmon.hp, 4, "踩上即拾取并回复 2 生命")
+	t.eq(mmon.hp, 2 + Balance.FRUIT_HEAL, "踩上即拾取并回复配置的生命")
 	t.eq(move_state.fruits.size(), 0, "果实立即被消耗")
 	t.eq(move_state.undo_last_move(), true, "撤回移动")
 	t.eq(mmon.hp, 2, "撤回后回复被回滚")

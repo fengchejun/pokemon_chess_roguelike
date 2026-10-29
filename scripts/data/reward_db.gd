@@ -1,7 +1,7 @@
 class_name RewardDB
 extends RefCounted
 
-## 战后奖励统一 ID。当前奖励池只有本局消耗品；强化由经验阈值另行解锁。
+## 补给点消耗品 ID；遗物与怪物升级分别由 RelicDB 和成长系统管理。
 const MOD_ITEM := "mod:field_kit"
 
 
@@ -41,7 +41,7 @@ static func description_of(reward_id: String) -> String:
 
 
 static func offer(seed_value: int, battle_index: int, choice_index: int, count: int = 3) -> Array:
-	## 三张不同消耗品；同种卡可在不同战斗再次获得。
+	## 三张不同消耗品；同种卡可在不同补给点再次获得。
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("reward:%d:%d:%d" % [seed_value, battle_index, choice_index])
 	var pool := consumable_ids()

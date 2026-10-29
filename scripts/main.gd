@@ -11,6 +11,8 @@ const SettlementScreen = preload("res://scripts/ui/settlement_screen.gd")
 const SupplyScreen = preload("res://scripts/ui/supply_screen.gd")
 const RunEndScreen = preload("res://scripts/ui/run_end_screen.gd")
 const SkillStatsScreen = preload("res://scripts/ui/skill_stats_screen.gd")
+const FloorThemeScreen = preload("res://scripts/ui/floor_theme_screen.gd")
+const DebugConsoleScreen = preload("res://scripts/ui/debug_console.gd")
 const MusicDirectorScript = preload("res://scripts/ui/music_director.gd")
 
 var run: RunState = null
@@ -21,6 +23,7 @@ var pending_settlement: Dictionary = {}
 var battle_settled := false
 var prep_deploy_preset: Array = []
 var autosave_enabled: bool = true # UI 自动化在挂载场景前设为 false，避免覆盖玩家单槽存档。
+var debug_console: Control = null
 
 
 func _ready() -> void:
@@ -43,6 +46,8 @@ func _fit_to_window() -> void:
 
 
 func _switch(screen: Control) -> void:
+	if debug_console != null:
+		debug_console.hide()
 	if current_screen != null:
 		remove_child(current_screen)
 		current_screen.queue_free()
@@ -52,6 +57,30 @@ func _switch(screen: Control) -> void:
 	current_screen = screen
 	if music_director != null:
 		music_director.play_track(_track_for_screen(screen.name))
+
+
+func _input(event: InputEvent) -> void:
+	if not OS.is_debug_build() or not (event is InputEventKey):
+		return
+	if event.pressed and not event.echo and event.keycode == KEY_F7:
+		get_viewport().set_input_as_handled()
+		toggle_debug_console()
+
+
+func toggle_debug_console() -> void:
+	if not OS.is_debug_build() or current_screen == null or not ["PrepScreen", "BattleScreen"].has(current_screen.name):
+		return
+	if debug_console == null:
+		debug_console = DebugConsoleScreen.new()
+		debug_console.app = self
+		add_child(debug_console)
+		return
+	if debug_console.visible:
+		debug_console.hide()
+	else:
+		debug_console.rebuild()
+		debug_console.show()
+		debug_console.move_to_front()
 
 
 func _track_for_screen(screen_name: String) -> String:
@@ -77,6 +106,10 @@ func start_new_run() -> void:
 		if previous != null:
 			collection.absorb_run(previous)
 			collection.save()
+		else:
+			# 当前流程无法续读的旧本局文件必须先留底，避免新局自动存档覆盖。
+			if SaveSystem.backup_old_save() == "":
+				return
 	_switch(CollectionScreen.new())
 
 
@@ -102,6 +135,8 @@ func continue_run() -> void:
 		_switch(SettlementScreen.new())
 	elif run.pending_supply and not run.run_lost():
 		show_supply()
+	elif run.needs_theme_choice():
+		show_floor_theme()
 	else:
 		show_prep()
 
@@ -119,8 +154,15 @@ func sync_and_save(battle: BattleState) -> void:
 
 
 func show_prep() -> void:
+	if run != null and run.needs_theme_choice():
+		show_floor_theme()
+		return
 	battle_settled = false
 	_switch(PrepScreen.new())
+
+
+func show_floor_theme() -> void:
+	_switch(FloorThemeScreen.new())
 
 
 func show_preview(deploy_uids: Array) -> void:
@@ -136,11 +178,14 @@ func back_to_prep(deploy_uids: Array) -> void:
 
 
 func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
-	var cfg := BattleDB.config_for(run.battle_index)
+	if run.needs_theme_choice():
+		show_floor_theme()
+		return
+	var cfg := run.battle_config()
 	var player_units := run.build_deploy_units(deploy_uids)
 	var state := BattleState.new()
 	var card_effects := run.effects()
-	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, card_effects, {}, cfg.get("reinforce", []), run.options)
+	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, card_effects, {}, cfg.get("reinforce", []), run.options, run.relic_stacks)
 	## 消耗品已经在预览页使用时扣除；开战不再二次扣卡。
 	run.selected_reward_item = ""
 	run.mark_deployed(deploy_uids)
@@ -157,8 +202,11 @@ func finish_battle(battle: BattleState) -> void:
 	battle_settled = true
 	run.sync_from_battle(battle)
 	var outcome := run.settle_battle(battle)
-	if collection != null and collection.record_battle_skill_usage(battle) and autosave_enabled:
-		collection.save()
+	if collection != null and not run.debug_tainted:
+		var collection_changed := collection.record_battle_skill_usage(battle)
+		collection_changed = collection.credit_boss_capture(run, outcome) or collection_changed
+		if collection_changed and autosave_enabled:
+			collection.save()
 	pending_settlement = {"battle": battle, "outcome": outcome}
 	autosave()
 	if run.run_failed:
@@ -196,9 +244,14 @@ func show_supply() -> void:
 
 func leave_supply() -> void:
 	if run != null:
+		if run.supply_choices().size() > 0:
+			return
 		run.pending_supply = false
 		autosave()
-	show_prep()
+	if run != null and run.needs_theme_choice():
+		show_floor_theme()
+	else:
+		show_prep()
 
 
 func show_run_end() -> void:

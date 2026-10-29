@@ -61,6 +61,10 @@ static func modifier(attacker: String, defender: String) -> int:
 	return 0
 
 
+static func direct_damage(base: int, _attacker: String, _defender: String) -> int:
+	return base
+
+
 static func name_of(element: String) -> String:
 	return NAMES.get(element, "无")
 

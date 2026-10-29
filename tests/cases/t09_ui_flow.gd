@@ -35,6 +35,11 @@ func run(t: TestContext) -> void:
 	var collection_start: Button = app.current_screen.find_child("StartFromCollectionButton", true, false)
 	t.check(collection_start != null and not collection_start.disabled, "选三只后可开始本局")
 	collection_start.pressed.emit()
+	t.eq(app.current_screen.name, "FloorThemeScreen", "开局先选择本层主题")
+	var first_theme := String(app.run.offered_floor_themes[0])
+	var theme_button: Button = app.current_screen.find_child("ChooseTheme_%s" % first_theme, true, false)
+	t.check(theme_button != null, "主题二选一按钮存在")
+	theme_button.pressed.emit()
 	t.eq(app.current_screen.name, "PrepScreen", "进入编队界面")
 	t.eq(app.music_director.current_track, "prep", "整备页播放整备音乐")
 	var music_player: MusicDirector = app.music_director
@@ -108,6 +113,32 @@ func run(t: TestContext) -> void:
 	t.check(battle_screen.status_label.text.contains("奖励已持有"), "战斗界面显示奖励持有状态")
 	if unit != null:
 		battle_screen.select_unit(unit.uid)
+		state.set_terrain(unit.cell, TerrainDB.VINES)
+		battle_screen.refresh_all()
+		t.check(battle_screen.unit_body.text.contains("藤蔓束缚（仅限制移动）"), "藤蔓详情说明不禁止施法")
+		t.eq(battle_screen._skill_phase_block_reason(unit), "", "藤蔓本身不禁用技能")
+		state.add_steam(unit.cell)
+		battle_screen.refresh_all()
+		t.check(battle_screen.unit_body.text.contains("不可用（雾中禁用）"), "真正因雾无法施法时显示明确原因")
+		state.steam_cells.erase(unit.cell)
+		state.set_terrain(unit.cell, TerrainDB.PLAIN)
+		battle_screen.refresh_all()
+		var original_skills := unit.skills.duplicate()
+		unit.skills = ["wind_gust", "tailwind"]
+		battle_screen._on_skill_pressed("wind_gust")
+		t.check(not battle_screen.board.area_cells.is_empty(), "推风瞄准时显示方向范围")
+		battle_screen._on_board_hovered(unit.cell + Vector2i.RIGHT)
+		t.eq(battle_screen.board.area_cells, SkillResolver.front_area_cells(unit.cell, Vector2i.RIGHT, 2), "推风悬停显示宽三长二的实际范围")
+		battle_screen._on_skill_pressed("tailwind")
+		t.check(not battle_screen.board.area_cells.is_empty(), "顺风瞄准时显示方向范围")
+		battle_screen._on_board_hovered(unit.cell + Vector2i.RIGHT)
+		t.eq(battle_screen.board.area_cells, SkillResolver.front_area_cells(unit.cell, Vector2i.RIGHT, 3), "顺风悬停显示前方三排范围")
+		unit.skills = ["earth_shake"]
+		battle_screen._on_skill_pressed("earth_shake")
+		battle_screen._on_board_hovered(unit.cell + Vector2i.RIGHT)
+		t.eq(battle_screen.board.area_cells, SkillResolver.front_area_cells(unit.cell, Vector2i.RIGHT, 3), "撼地悬停显示蓄力锁定的三乘三范围")
+		battle_screen._clear_aim()
+		unit.skills = original_skills
 		var from_cell := unit.cell
 		var options: Dictionary = battle_screen.state.move_options(unit)
 		var dest := Vector2i(-1, -1)
@@ -151,7 +182,8 @@ func run(t: TestContext) -> void:
 	_claim_pending_monster_levels(t, app)
 	_claim_pending_rewards(t, app)
 	t.eq(continue_button.disabled, false, "奖励处理完成后可以继续")
-	t.check(app.run.reward_inventory.size() >= 1, "三选一消耗卡已进入背包")
+	t.check(not app.run.relic_stacks.is_empty(), "三选一遗物已进入构筑")
+	app.run.reward_inventory.append("position:forest")
 	var index_before: int = app.run.battle_index
 	continue_button.pressed.emit()
 	t.eq(app.run.battle_index, index_before + 1, "进入下一场")
@@ -212,6 +244,11 @@ func run(t: TestContext) -> void:
 	t.eq(app.run.trainer_hp, 1 + supply_amount, "补给点：训练家恢复 50%% 上限")
 	var leave_supply: Button = app.current_screen.find_child("LeaveSupplyButton", true, false)
 	t.check(leave_supply != null, "补给界面有继续出发按钮")
+	var supply_choice := String(app.run.supply_choices()[0])
+	var supply_button: Button = app.current_screen.find_child("SupplyChoice_%s" % supply_choice.replace(":", "_"), true, false)
+	t.check(supply_button != null, "补给点提供消耗卡")
+	if supply_button != null:
+		supply_button.pressed.emit()
 	leave_supply.pressed.emit()
 	t.eq(app.current_screen.name, "PrepScreen", "离开补给点进入整备")
 	t.eq(app.run.pending_supply, false, "补给待办已完成")
@@ -231,14 +268,14 @@ func _claim_pending_rewards(t: TestContext, app: Control) -> void:
 		var choices: Array = app.run.reward_choices()
 		t.eq(choices.size(), 3, "每次战后奖励展示三种选择")
 		var id := String(choices[0])
-		t.check(RewardDB.is_consumable(id), "战后池只给可留存的消耗卡")
+		t.check(RelicDB.DEFINITIONS.has(id), "战后池只给本局遗物")
 		var reward_button: Button = app.current_screen.find_child("RewardChoice_%s" % id.replace(":", "_"), true, false)
 		t.check(reward_button != null, "战后奖励按钮与待选项目一致")
 		if reward_button == null:
 			break
-		var before: int = app.run.reward_inventory.size()
+		var before: int = RelicDB.rank(app.run.relic_stacks, id)
 		reward_button.pressed.emit()
-		t.eq(app.run.reward_inventory.size(), before + 1, "领取后卡加入本局背包")
+		t.eq(RelicDB.rank(app.run.relic_stacks, id), before + 1, "领取后遗物升级")
 		count += 1
 	t.eq(app.run.pending_reward_choices, 0, "本场奖励选择全部处理完成")
 
