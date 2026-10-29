@@ -65,6 +65,7 @@ func _test_ui_flow(t: TestContext) -> void:
 		choice.button_pressed = true
 	var collection_start: Button = app.current_screen.find_child("StartFromCollectionButton", true, false)
 	collection_start.pressed.emit()
+	app.run.region_mode = false
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
 	app.run.reward_inventory = ["map:water", RewardDB.MOD_ITEM]
 	app.show_prep()
@@ -111,6 +112,7 @@ func _test_modification_ui(t: TestContext) -> void:
 		choice.button_pressed = true
 	var collection_start: Button = app.current_screen.find_child("StartFromCollectionButton", true, false)
 	collection_start.pressed.emit()
+	app.run.region_mode = false
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
 	app.run.reward_inventory = [RewardDB.MOD_ITEM]
 	app.show_prep()

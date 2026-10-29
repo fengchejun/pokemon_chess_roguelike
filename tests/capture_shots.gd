@@ -27,6 +27,7 @@ func _run() -> void:
 		collection_box.button_pressed = true
 	var collection_start: Button = app.current_screen.find_child("StartFromCollectionButton", true, false)
 	collection_start.pressed.emit()
+	app.run.region_mode = false
 	await process_frame
 	await process_frame
 	await _shot("02_theme_choice")

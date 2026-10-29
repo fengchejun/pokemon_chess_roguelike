@@ -69,6 +69,10 @@ func _ready() -> void:
 	start.name = "PreviewButton"
 	start.pressed.connect(_on_start)
 	right.add_child(start)
+	if run.region_mode:
+		var back := UIKit.small_button("返回区域路线")
+		back.pressed.connect(func() -> void: app.show_region())
+		right.add_child(back)
 
 
 func _capture_settings_box(run: RunState) -> Control:

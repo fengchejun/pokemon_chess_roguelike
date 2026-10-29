@@ -25,6 +25,7 @@ var card_use_button: Button = null
 var card_status_label: Label = null
 var card_header_label: Label = null
 var card_result: Dictionary = {}
+var persistent_node := false
 
 
 func _ready() -> void:
@@ -32,6 +33,18 @@ func _ready() -> void:
 	UIKit.fill_background(self)
 	var run: RunState = app.run
 	map = MapGenerator.generate(run.seed, run.battle_index, 0, [], run.current_theme())
+	if run.region_mode:
+		var region = run.get_region()
+		var saved: BattleState = region.load_battle(region.active_node)
+		if saved != null:
+			persistent_node = true
+			map["terrain"] = saved.terrain.duplicate()
+			map["nest_cell"] = saved.nest["cell"]
+			map["nest_exits"] = saved.nest.get("exits", []).duplicate()
+			map["nest_alive"] = bool(saved.nest.get("alive", false))
+			map["nest_hp"] = int(saved.nest.get("hp", 0))
+			map["reward_cell"] = saved.reward.get("cell", Vector2i(-1, -1))
+			map["obstacle_cells"] = saved.obstacle_durability.keys()
 	if run.preview_used_reward_item.begins_with("map:"):
 		card_result = MapGenerator.generate_card_preview(run.seed, run.battle_index, run.preview_used_reward_item.trim_prefix("map:"), map)
 		map = (card_result["map"] as Dictionary).duplicate(true)
@@ -211,6 +224,8 @@ func _cards_box() -> Control:
 
 
 func _on_use_reward_item() -> void:
+	if persistent_node:
+		return
 	var run: RunState = app.run
 	var index := card_selector.selected - 1
 	if index < 0 or index >= run.reward_inventory.size():
@@ -268,6 +283,9 @@ func _set_mod_kind(kind: String) -> void:
 
 
 func _on_cell_clicked(cell: Vector2i) -> void:
+	if persistent_node:
+		hint_label.text = "重访节点保留已有地形，不能重新进行战前改造。"
+		return
 	var run: RunState = app.run
 	if mod_used >= run.mod_points():
 		hint_label.text = "未使用地形改造工具，或本场改造次数已用尽。"
@@ -317,6 +335,8 @@ func _mod_hover_text(cell: Vector2i) -> String:
 
 
 func _on_reset() -> void:
+	if persistent_node:
+		return
 	map = base_map.duplicate(true)
 	mod_used = 0
 	app.run.preview_modifications.clear()
@@ -338,6 +358,11 @@ func _refresh() -> void:
 
 func _preview_units(run: RunState) -> Array:
 	var units: Array = []
+	if run.region_mode:
+		var region = run.get_region()
+		var saved: BattleState = region.load_battle(region.active_node)
+		if saved != null:
+			return saved.alive_units("enemy")
 	var cfg := run.battle_config()
 	var index := 0
 	for pair in cfg.get("enemies", []):

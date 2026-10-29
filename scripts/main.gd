@@ -161,6 +161,7 @@ func begin_new_run_with_collection(chosen: Array) -> void:
 	if chosen.size() != Balance.DEPLOY_LIMIT:
 		return
 	run = RunState.new_run(0, chosen)
+	run.region_mode = true
 	autosave()
 	show_prep()
 
@@ -189,6 +190,8 @@ func continue_run() -> void:
 		show_supply()
 	elif run.needs_theme_choice():
 		show_floor_theme()
+	elif run.region_mode:
+		show_region()
 	else:
 		show_prep()
 
@@ -318,12 +321,17 @@ func finish_battle(battle: BattleState) -> void:
 	battle_settled = true
 	run.battle_snapshot = {}
 	run.sync_from_battle(battle)
+	if run.region_mode:
+		var region = run.get_region()
+		battle.reward["node_reward_available"] = battle.end_reason == "victory" and not bool(region.nodes[region.active_node].get("reward_claimed", false))
 	var outcome := run.settle_battle(battle)
 	if run.region_mode:
 		if battle.node_kind != "event" and not run.run_failed:
 			run.food += 1
 		var region = run.get_region()
 		region.store_battle(region.active_node, battle)
+		if bool(battle.reward.get("node_reward_available", false)):
+			region.nodes[region.active_node]["reward_claimed"] = true
 		run.region_data = region.to_dict()
 	if collection != null and not run.debug_tainted:
 		var collection_changed := collection.record_battle_skill_usage(battle)

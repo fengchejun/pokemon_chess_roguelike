@@ -19,7 +19,7 @@ func _ready() -> void:
 	var column := UIKit.vbox(18)
 	margin.add_child(column)
 	column.add_child(UIKit.title("第 %d 层 · 选择主题" % (run.floor_index() + 1), 32))
-	column.add_child(UIKit.wrapped("本层共六场战斗，主题决定地形倾向和主要敌人。两个候选由本局种子确定；本局已经选择过的主题不会再出现。", 16))
+	column.add_child(UIKit.wrapped("本层含营地、五个普通战斗、两个非战斗区域及首领节点。主题决定地形倾向和主要敌人。" if run.region_mode else "本层共六场战斗，主题决定地形倾向和主要敌人。", 16))
 	var row := UIKit.hbox(20)
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(row)
@@ -45,7 +45,10 @@ func _ready() -> void:
 		choose.pressed.connect(func() -> void:
 			if app.run.choose_floor_theme(theme_id):
 				app.autosave()
-				app.show_prep()
+				if app.run.region_mode:
+					app.show_region()
+				else:
+					app.show_prep()
 		)
 		content.add_child(choose)
 

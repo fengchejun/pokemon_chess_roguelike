@@ -36,6 +36,7 @@ func run(t: TestContext) -> void:
 	var collection_start: Button = app.current_screen.find_child("StartFromCollectionButton", true, false)
 	t.check(collection_start != null and not collection_start.disabled, "选三只后可开始本局")
 	collection_start.pressed.emit()
+	app.run.region_mode = false # 此用例保留旧逐场流程覆盖；区域流程由 t36 验证。
 	t.eq(app.current_screen.name, "FloorThemeScreen", "开局先选择本层主题")
 	var first_theme := String(app.run.offered_floor_themes[0])
 	var theme_button: Button = app.current_screen.find_child("ChooseTheme_%s" % first_theme, true, false)

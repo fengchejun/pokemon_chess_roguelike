@@ -276,7 +276,15 @@ func rest_at_region_camp() -> bool:
 
 
 func battle_config() -> Dictionary:
-	return BattleDB.config_for(battle_index, seed, current_theme())
+	var cfg := BattleDB.config_for(battle_index, seed, current_theme())
+	if region_mode and not region_data.is_empty():
+		var region = get_region()
+		if region.active_node != "" and region.node_mode(region.active_node) == "event":
+			cfg = cfg.duplicate(true)
+			cfg["enemies"] = []
+			cfg["reinforce"] = []
+			cfg["boss_index"] = -1
+	return cfg
 
 
 func region_name() -> String:
@@ -537,7 +545,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		pending_reward_choices = 0
 		pending_bonus_choices = 0
 	var bonus_earned := not failure and battle.reward_bonus_earned() and not bool(battle.reward.get("credited", false))
-	if not failure:
+	if not failure and (not region_mode or battle.node_kind != "event"):
 		var gains: Dictionary = {}
 		var original: Dictionary = {}
 		for uid in deployed_uids:
@@ -583,7 +591,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		pending_bonus_choices += 1
 		battle.reward["credited"] = true
 	outcome["bonus_choice_earned"] = bonus_earned
-	if not failure:
+	if not failure and (not region_mode or bool(battle.reward.get("node_reward_available", false))):
 		pending_reward_choices += 1
 	pending_reward_choices += pending_bonus_choices
 	pending_bonus_choices = 0
@@ -664,6 +672,8 @@ func run_finished() -> bool:
 func run_lost() -> bool:
 	if run_failed:
 		return true
+	if region_mode:
+		return trainer_hp <= 0
 	## 全员濒死（无可出战成员）即本局结束；濒死成员需留守基地休养一场才能恢复。
 	for record in carried:
 		if int(record["hp"]) > 0:

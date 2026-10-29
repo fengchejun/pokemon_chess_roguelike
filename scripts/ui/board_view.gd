@@ -81,8 +81,8 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	nest = {
 		"cell": map.get("nest_cell", Vector2i(-1, -1)),
 		"exits": map.get("nest_exits", []).duplicate(),
-		"hp": Balance.NEST_DURABILITY,
-		"alive": true,
+		"hp": int(map.get("nest_hp", Balance.NEST_DURABILITY)),
+		"alive": bool(map.get("nest_alive", true)),
 	}
 	pending_casts = []
 	battle_round = 0
