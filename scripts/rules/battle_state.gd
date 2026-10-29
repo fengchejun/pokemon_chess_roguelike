@@ -1166,7 +1166,7 @@ func settle_round() -> void:
 	if check_battle_end():
 		return
 	if round >= Balance.MAX_ROUNDS and alive_enemy_count() > 0:
-		end_battle("escape")
+		end_battle("boss_timeout" if boss_uid >= 0 else "escape")
 		return
 	log_event("环境结算完成。")
 
@@ -1293,6 +1293,11 @@ func _player_unit_at(cell: Vector2i) -> CombatUnit:
 func check_battle_end() -> bool:
 	if ended:
 		return true
+	if boss_uid >= 0:
+		var boss := unit_by_uid(boss_uid)
+		if boss != null and (not boss.is_alive() or boss.side == "player"):
+			end_battle("victory")
+			return true
 	if alive_enemy_count() == 0:
 		var any_resolved := not enemy_kills.is_empty() or not captured.is_empty()
 		if any_resolved:
@@ -1311,13 +1316,14 @@ func end_battle(reason: String) -> void:
 	var text: String = {
 		"victory": "全部敌人被击败或捕获，胜利！",
 		"forced_retreat": "训练家倒下，本局失败。",
+		"boss_timeout": "第 8 回合结束，未能击败首领，本局失败。",
 		"escape": "第 %d 回合结束，野生宝可梦逃离。" % Balance.MAX_ROUNDS,
 	}.get(reason, reason)
 	log_event("战斗结束：" + text)
 
 
 func battle_exp() -> int:
-	if end_reason == "forced_retreat":
+	if end_reason in ["forced_retreat", "boss_timeout"]:
 		return 0
 	var kills := 0
 	for entry in enemy_kills:

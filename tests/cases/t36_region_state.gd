@@ -35,4 +35,21 @@ func run(t: TestContext) -> void:
 	var visits_before := floor_region.visits
 	t.check(floor_region.record_entry("boss"), "路线推进后首领解锁")
 	t.eq(floor_region.visits, visits_before, "进入首领自身不增加强化次数")
+	var boss_battle := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)], ["water_wild1", Vector2i(6, 4)]])
+	var boss: CombatUnit = boss_battle.alive_units("enemy")[0]
+	boss_battle.boss_uid = boss.uid
+	boss_battle.round = 7
+	boss_battle.end_enemy_phase()
+	t.check(not boss_battle.ended, "首领战第七回合不超时")
+	boss_battle.round = 8
+	boss_battle.end_enemy_phase()
+	t.eq(boss_battle.end_reason, "boss_timeout", "第八回合首领存活判失败")
+	var failed_run := RunState.new_run(42)
+	failed_run.settle_battle(boss_battle)
+	t.check(failed_run.run_failed, "首领超时终止本局")
+	var win := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)], ["water_wild1", Vector2i(6, 4)]])
+	var defeated: CombatUnit = win.alive_units("enemy")[0]
+	win.boss_uid = defeated.uid
+	defeated.hp = 0
+	t.check(win.check_battle_end() and win.end_reason == "victory", "首领被击败即可获胜，无需清空其余敌人")
 	t.finish()
