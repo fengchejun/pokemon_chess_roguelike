@@ -25,6 +25,7 @@ var skill_box: VBoxContainer = null
 var capture_button: Button = null
 var end_turn_button: Button = null
 var undo_button: Button = null
+var leave_node_button: Button = null
 var hint_label: Label = null
 var channel_warning_box: Control = null
 var channel_warning_list: VBoxContainer = null
@@ -180,6 +181,14 @@ func _action_row() -> Control:
 	end_turn_button.name = "EndTurnButton"
 	end_turn_button.pressed.connect(do_end_turn)
 	row1.add_child(end_turn_button)
+	if state.node_kind != "":
+		leave_node_button = UIKit.small_button("返回区域")
+		leave_node_button.pressed.connect(func() -> void:
+			if not busy and state.can_leave_node():
+				state.end_battle("explored" if state.node_kind == "event" else "victory")
+				refresh_all()
+		)
+		column.add_child(leave_node_button)
 	return column
 
 
@@ -628,6 +637,8 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 
 
 func _update_action_buttons() -> void:
+	if leave_node_button != null:
+		leave_node_button.disabled = busy or state.ended or not state.can_leave_node()
 	if end_turn_button != null:
 		end_turn_button.disabled = busy or state.ended or state.phase != BattleState.PHASE_PLAYER
 	if undo_button != null:

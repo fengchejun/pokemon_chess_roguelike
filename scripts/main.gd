@@ -270,6 +270,16 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 	var state := BattleState.new()
 	var card_effects := run.effects()
 	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, card_effects, {}, cfg.get("reinforce", []), run.options, run.relic_stacks)
+	if run.region_mode:
+		run.captured_applied = 0
+		var region = run.get_region()
+		var node_id: String = region.active_node
+		if not (region.nodes[node_id]["snapshot"] as Dictionary).is_empty():
+			state = region.resume_node(node_id, run.build_deploy_units(deploy_uids))
+			if state == null:
+				show_region()
+				return
+		state.node_kind = region.node_mode(node_id)
 	run.battle_snapshot = BattleSnapshot.save_state(state)
 	## 消耗品已经在预览页使用时扣除；开战不再二次扣卡。
 	run.selected_reward_item = ""
@@ -288,6 +298,10 @@ func finish_battle(battle: BattleState) -> void:
 	run.battle_snapshot = {}
 	run.sync_from_battle(battle)
 	var outcome := run.settle_battle(battle)
+	if run.region_mode:
+		var region = run.get_region()
+		region.store_battle(region.active_node, battle)
+		run.region_data = region.to_dict()
 	if collection != null and not run.debug_tainted:
 		var collection_changed := collection.record_battle_skill_usage(battle)
 		collection_changed = collection.credit_boss_capture(run, outcome) or collection_changed
@@ -312,6 +326,22 @@ func continue_after_settlement() -> void:
 		collection.absorb_run(run)
 		if autosave_enabled:
 			collection.save()
+	if run.region_mode:
+		run.settlement_pending = false
+		run.last_settlement = {}
+		var region = run.get_region()
+		if region.active_node == "boss" and bool(region.nodes["boss"]["cleared"]):
+			run.battle_index = (region.floor_index + 1) * 6
+			run.region_data = {}
+			run.refresh_theme_offers()
+		autosave()
+		if run.run_finished() or run.run_lost():
+			show_run_end()
+		elif run.needs_theme_choice():
+			show_floor_theme()
+		else:
+			show_region()
+		return
 	run.advance_battle()
 	autosave()
 	if run.run_finished() or run.run_lost():

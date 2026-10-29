@@ -86,6 +86,54 @@ func load_battle(id: String) -> BattleState:
 	return Snapshot.load_state(nodes[id]["snapshot"])
 
 
+func resume_node(id: String, players: Array) -> BattleState:
+	var battle := load_battle(id)
+	if battle == null:
+		return null
+	var survivors: Array = []
+	for unit in battle.units:
+		if unit.side != "enemy":
+			continue
+		if unit.is_alive():
+			var fresh := CombatUnit.make(unit.species_id, "enemy", unit.uid)
+			for field in ["cell", "max_hp", "move_points", "skills", "enemy_level", "combat_level", "is_boss", "upgrades", "reg_index"]:
+				fresh.set(field, unit.get(field))
+			fresh.hp = fresh.max_hp
+			survivors.append(fresh)
+		else:
+			survivors.append(unit)
+	battle.units = survivors
+	for player in players:
+		var placed := false
+		var candidates: Array = battle.deploy_cells.duplicate()
+		candidates.append_array(GridSpec.all_cells())
+		for cell in candidates:
+			if battle.unit_at(cell) == null and not battle.is_nest_cell(cell) and TerrainDB.can_stand(battle.terrain_at(cell), player.element):
+				player.cell = cell
+				battle.units.append(player)
+				placed = true
+				break
+		if not placed:
+			return null
+	battle.round = 0
+	battle.phase = BattleState.PHASE_PLAYER
+	battle.ended = false
+	battle.end_reason = ""
+	battle.node_kind = node_mode(id)
+	battle.enemy_kills.clear()
+	battle.captured.clear()
+	battle.deaths.clear()
+	battle.undo_stack.clear()
+	battle.pending_casts.clear()
+	battle.channel_claims.clear()
+	battle.skill_use_counts = {"player": {}, "enemy": {}}
+	battle.events.clear()
+	battle.reward.erase("run_settled_outcome")
+	battle.nest["destroyed_by_player"] = false
+	battle.start_round()
+	return battle
+
+
 func to_dict() -> Dictionary:
 	return {"floor": floor_index, "theme": theme, "visits": visits, "active_node": active_node, "nodes": nodes.duplicate(true)}
 

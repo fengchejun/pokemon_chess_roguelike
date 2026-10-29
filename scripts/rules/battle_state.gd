@@ -16,6 +16,7 @@ var round: int = 0
 var phase: String = PHASE_PLAYER
 var ended: bool = false
 var end_reason: String = ""
+var node_kind: String = "" # 空值沿用旧逐场流程；battle / boss / event 使用区域规则。
 
 var terrain: Array = []
 var obstacle_durability: Dictionary = {}
@@ -727,7 +728,8 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 		target_nest["destroyed_by_player"] = source_side == "player"
 		set_terrain(target_nest["cell"], TerrainDB.PLAIN)
 		log_event("巢穴被摧毁，永久停止生成。")
-		end_battle("victory")
+		if node_kind == "":
+			end_battle("victory")
 		return true
 	log_event("巢穴耐久 -1（剩 %d）。" % target_nest["hp"])
 	return false
@@ -977,8 +979,12 @@ func start_round() -> void:
 					log_event("根息：%s 恢复 %d HP。" % [unit.display_name, restored])
 	if Balance.nest_warning_due(round):
 		log_event("巢穴预警：下回合将尝试产怪。")
-	if Balance.nest_wave_due(round):
+	var scheduled: Array = nest.get("scheduled_waves", [])
+	if Balance.nest_wave_due(round) and (node_kind == "" or not scheduled.has(round)):
 		nest["pending_waves"] = int(nest.get("pending_waves", 0)) + 1
+		if node_kind != "":
+			scheduled.append(round)
+			nest["scheduled_waves"] = scheduled
 	if int(nest.get("pending_waves", 0)) > 0:
 		_try_spawn_wave()
 	_resolve_due_channels("player")
@@ -1165,7 +1171,7 @@ func settle_round() -> void:
 	# 6. 胜负与时限
 	if check_battle_end():
 		return
-	if round >= Balance.MAX_ROUNDS and alive_enemy_count() > 0:
+	if round >= Balance.MAX_ROUNDS and (alive_enemy_count() > 0 or node_kind == "battle"):
 		end_battle("boss_timeout" if boss_uid >= 0 else "escape")
 		return
 	log_event("环境结算完成。")
@@ -1298,12 +1304,18 @@ func check_battle_end() -> bool:
 		if boss != null and (not boss.is_alive() or boss.side == "player"):
 			end_battle("victory")
 			return true
+	if node_kind in ["battle", "event"]:
+		return false
 	if alive_enemy_count() == 0:
 		var any_resolved := not enemy_kills.is_empty() or not captured.is_empty()
 		if any_resolved:
 			end_battle("victory")
 			return true
 	return ended
+
+
+func can_leave_node() -> bool:
+	return node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not bool(nest.get("alive", false)))
 
 
 func end_battle(reason: String) -> void:

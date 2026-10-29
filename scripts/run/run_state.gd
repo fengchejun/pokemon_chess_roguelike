@@ -610,6 +610,8 @@ func settle_battle(battle: BattleState) -> Dictionary:
 	outcome["recovery"] = []
 	var rested: Array = []
 	for record in carried:
+		if region_mode:
+			continue
 		if deployed_uids.has(int(record["uid"])):
 			continue
 		var max_hp := monster_max_hp(record)
@@ -621,6 +623,8 @@ func settle_battle(battle: BattleState) -> Dictionary:
 	outcome["base_rest"] = rested
 	var storage_healed := 0
 	for record in storage:
+		if region_mode:
+			continue
 		var max_hp := monster_max_hp(record)
 		if int(record["hp"]) < max_hp:
 			storage_healed += 1
@@ -628,7 +632,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 	outcome["storage_rest"] = storage_healed
 	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
 	outcome["trainer_from"] = trainer_hp
-	if not failure:
+	if not failure and not region_mode:
 		trainer_hp = trainer_max
 	outcome["trainer_to"] = trainer_hp
 	in_battle = false

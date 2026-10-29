@@ -12,7 +12,7 @@ func run(t: TestContext) -> void:
 	var battle := TestScenario.make_state(["fire_starter"], [["water_wild1", Vector2i(6, 2)]])
 	var enemy: CombatUnit = battle.alive_units("enemy")[0]
 	enemy.hp -= 3
-	battle.nest = {"alive": true, "hp": 2, "pending_waves": 1}
+	battle.nest = {"cell": Vector2i(7, 0), "exits": [], "alive": true, "hp": 2, "pending_waves": 1}
 	t.check(region.store_battle("a", battle), "战场可保存至所属节点")
 	var json: Dictionary = JSON.parse_string(JSON.stringify(region.to_dict()))
 	var loaded := Region.from_dict(json)
@@ -20,6 +20,18 @@ func run(t: TestContext) -> void:
 	t.eq(restored.unit_by_uid(enemy.uid).hp, enemy.hp, "重读区域保留敌人生命")
 	t.eq(restored.nest, battle.nest, "保留巢穴耐久和产敌额度")
 	t.eq(loaded.visits, 3, "访问次数经存档保留")
+	var reentry := loaded.resume_node("a", [CombatUnit.make("trainer", "player", Balance.TRAINER_UID)])
+	t.check(reentry != null, "节点重访可重新部署我方")
+	t.eq(reentry.unit_by_uid(enemy.uid).hp, enemy.max_hp, "重访时存活敌人回满生命")
+	t.eq(reentry.unit_by_uid(enemy.uid).cell, enemy.cell, "重访保留敌人位置")
+	t.eq(reentry.nest["hp"], 2, "重访不修复巢穴损耗")
+	t.check(not reentry.can_leave_node(), "未清空战斗不能提前返回区域")
+	for member in reentry.alive_units("enemy"):
+		member.hp = 0
+	t.check(not reentry.can_leave_node(), "清敌但未毁巢不能提前离开")
+	reentry.nest["alive"] = false
+	t.check(reentry.can_leave_node(), "敌人与巢穴清空后允许离开")
+	t.check(not reentry.check_battle_end(), "清空后等待玩家主动离开，保留收集机会")
 	for member in battle.alive_units("enemy"):
 		member.hp = 0
 	region.store_battle("a", battle)
