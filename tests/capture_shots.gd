@@ -67,6 +67,21 @@ func _run() -> void:
 	battle.select_unit(1)
 	await process_frame
 	await _shot("06_battle_select")
+	battle._show_terrain(Vector2i(2, 3))
+	await _shot("06_battle_terrain")
+	battle._show_unit_detail(battle.state.unit_by_uid(1))
+	await _shot("06_battle_detail")
+	battle._close_modal()
+	battle._open_menu()
+	await _shot("06_battle_menu")
+	battle._close_modal()
+	DisplayServer.window_set_size(Vector2i(1600, 900))
+	await process_frame
+	await process_frame
+	await _shot("06_battle_1600")
+	DisplayServer.window_set_size(Vector2i(1280, 720))
+	await process_frame
+	await process_frame
 	var move_hover := Vector2i(-1, -1)
 	for cell in battle.board.movement_cells:
 		if (battle.board.movement_cells[cell]["path"] as Array).size() >= 2:

@@ -1,4 +1,5 @@
 extends RefCounted
+const BattleSnapshot = preload("res://scripts/run/battle_snapshot.gd")
 
 ## 界面冒烟：主菜单 → 编队 → 地图预览 → 战斗 → 结算 → 下一场
 
@@ -219,6 +220,50 @@ func run(t: TestContext) -> void:
 	start2.pressed.emit()
 	var battle2 = app.current_screen
 	t.eq(battle2.name, "BattleScreen", "第二场进入战斗")
+	var trainer_before: int = battle2.state.units[0].hp
+	battle2.state.units[0].hp -= 3
+	battle2.state.undo_stack.append({"uid": battle2.state.units[0].uid, "from": Vector2i(1, 2)})
+	battle2.state.pending_casts.append({"uid": 100, "side": "enemy", "skill_id": "rock_slide", "cells": [Vector2i(2, 3)], "due_round": 2})
+	battle2.state.burning_cells[Vector2i(2, 3)] = 2
+	var battle_snapshot := BattleSnapshot.save_state(battle2.state)
+	var json_snapshot: Variant = JSON.parse_string(JSON.stringify(battle_snapshot))
+	var restored_battle := BattleSnapshot.load_state(json_snapshot)
+	t.check(restored_battle != null, "战斗快照可经 JSON 往返恢复")
+	if restored_battle != null:
+		t.eq(restored_battle.units.size(), battle2.state.units.size(), "战斗单位完整恢复")
+		t.eq(restored_battle.units[0].cell, battle2.state.units[0].cell, "单位站位完整恢复")
+		t.eq(restored_battle.units[0].hp, battle2.state.units[0].hp, "单位生命完整恢复")
+		t.eq(restored_battle.terrain, battle2.state.terrain, "战场地形完整恢复")
+		t.eq(restored_battle.capture_rng.state, battle2.state.capture_rng.state, "捕获随机数进度完整恢复")
+		t.eq(restored_battle.spawn_rng.state, battle2.state.spawn_rng.state, "产敌随机数进度完整恢复")
+		t.eq(restored_battle.undo_stack, battle2.state.undo_stack, "撤回栈完整恢复")
+		t.eq(restored_battle.pending_casts, battle2.state.pending_casts, "蓄力落点完整恢复")
+		t.eq(restored_battle.burning_cells, battle2.state.burning_cells, "燃烧地块完整恢复")
+	app.run.battle_snapshot = battle_snapshot
+	var resume_path := "res://.test_midbattle_save.json"
+	t.check(SaveSystem.save_run(app.run, resume_path), "战斗中存档写入成功")
+	var resumed_run := SaveSystem.load_run(resume_path)
+	t.check(resumed_run != null and not resumed_run.battle_snapshot.is_empty(), "战斗中存档可读取")
+	if resumed_run != null:
+		var resumed_battle := BattleSnapshot.load_state(resumed_run.battle_snapshot)
+		t.check(resumed_battle != null, "从本局存档恢复战场")
+		if resumed_battle != null:
+			t.eq(resumed_battle.units[0].cell, battle2.state.units[0].cell, "存档后的站位一致")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(resume_path))
+	var legacy_data: Dictionary = app.run.to_dict()
+	legacy_data["version"] = 8
+	legacy_data.erase("battle_snapshot")
+	var legacy_path := "res://.test_v8_battle_save.json"
+	var legacy_file := FileAccess.open(legacy_path, FileAccess.WRITE)
+	if legacy_file != null:
+		legacy_file.store_string(JSON.stringify(legacy_data))
+		legacy_file.close()
+		t.check(SaveSystem.load_run(legacy_path) != null, "v8 逐场存档仍可读取")
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(legacy_path))
+	battle2.state.units[0].hp = trainer_before
+	battle2.state.undo_stack.clear()
+	battle2.state.pending_casts.clear()
+	battle2.state.burning_cells.clear()
 	t.eq(app.run.reward_inventory.size(), inventory_before_battle - 1, "开战不重复消耗卡")
 	t.eq(app.run.selected_reward_item, "", "开战后已选卡清空")
 	t.eq(app.run.carried.size(), 6, "名单不受出战选择影响")
