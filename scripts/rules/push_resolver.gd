@@ -16,6 +16,10 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 	}
 	if not target.is_alive():
 		return summary
+	if target.is_boss:
+		summary["blocked"] = true
+		state.log_event("%s 不会被推动。" % target.display_name)
+		return summary
 	if state.has_hazard_guard(target):
 		summary["blocked"] = true
 		state.log_event("%s 站稳脚跟，没有被推离。" % target.display_name)

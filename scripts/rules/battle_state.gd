@@ -33,6 +33,7 @@ var vine_origin: Dictionary = {}
 var vine_expire_round: Dictionary = {}
 var nest: Dictionary = {}
 var boss_uid: int = -1
+var boss_portal_cell: Vector2i = Vector2i(-1, -1)
 var inspiration_triggered: bool = false
 var reward: Dictionary = {}
 var fruits: Array = []
@@ -988,10 +989,10 @@ func start_round() -> void:
 				if restored > 0:
 					unit.hp += restored
 					log_event("根息：%s 恢复 %d HP。" % [unit.display_name, restored])
-	if Balance.nest_warning_due(round):
+	if boss_portal_cell == Vector2i(-1, -1) and Balance.nest_warning_due(round):
 		log_event("巢穴预警：下回合将尝试产怪。")
 	var scheduled: Array = nest.get("scheduled_waves", [])
-	if Balance.nest_wave_due(round) and (node_kind == "" or not scheduled.has(round)):
+	if boss_portal_cell == Vector2i(-1, -1) and Balance.nest_wave_due(round) and (node_kind == "" or not scheduled.has(round)):
 		nest["pending_waves"] = int(nest.get("pending_waves", 0)) + 1
 		if node_kind != "":
 			scheduled.append(round)
@@ -1182,7 +1183,7 @@ func settle_round() -> void:
 	# 6. 胜负与时限
 	if check_battle_end():
 		return
-	if round >= Balance.MAX_ROUNDS and (alive_enemy_count() > 0 or node_kind in ["battle", "event"]):
+	if boss_portal_cell == Vector2i(-1, -1) and round >= Balance.MAX_ROUNDS and (alive_enemy_count() > 0 or node_kind in ["battle", "event"]):
 		end_battle("boss_timeout" if boss_uid >= 0 else "escape")
 		return
 	log_event("环境结算完成。")
@@ -1284,7 +1285,7 @@ func try_pickup_fruit(unit: CombatUnit) -> Dictionary:
 func _pickups() -> void:
 	for cell in food_cells.duplicate():
 		var picker := _player_unit_at(cell)
-		if picker != null and int(food_wait.get(cell, -1)) == picker.uid:
+		if picker != null and (node_kind == "event" or int(food_wait.get(cell, -1)) == picker.uid):
 			food_cells.erase(cell)
 			food_wait.erase(cell)
 			food_collected += 1
@@ -1312,8 +1313,17 @@ func check_battle_end() -> bool:
 	if boss_uid >= 0:
 		var boss := unit_by_uid(boss_uid)
 		if boss != null and (not boss.is_alive() or boss.side == "player"):
-			end_battle("victory")
-			return true
+			if node_kind != "boss":
+				end_battle("victory")
+				return true
+			if boss_portal_cell == Vector2i(-1, -1):
+				boss_portal_cell = boss.cell
+				units = units.filter(func(unit: CombatUnit) -> bool: return unit.side != "enemy" or not unit.is_alive())
+				nest["alive"] = false
+				nest["pending_waves"] = 0
+				pending_casts = pending_casts.filter(func(cast: Dictionary) -> bool: return String(cast.get("side", "")) != "enemy")
+				log_event("首领已被击败，剩余敌人撤离。点击传送门前往下一层。")
+			return false
 	if node_kind in ["battle", "event"]:
 		return false
 	if alive_enemy_count() == 0:
@@ -1476,6 +1486,7 @@ func clone() -> BattleState:
 	copy.vine_expire_round = vine_expire_round.duplicate()
 	copy.nest = nest.duplicate(true)
 	copy.boss_uid = boss_uid
+	copy.boss_portal_cell = boss_portal_cell
 	copy.inspiration_triggered = inspiration_triggered
 	copy.reward = reward.duplicate(true)
 	copy.fruits = fruits.duplicate()

@@ -383,7 +383,9 @@ func _update_header() -> void:
 	objective_label.text = "战斗目标\n敌人 %d · 击败 %d · 捕获 %d\n%s" % [state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text.strip_edges()]
 	if state.node_kind == "event":
 		objective_label.text = "收集区 · 剩余 %d 回合\n本次收集食物 %d\n可随时返回区域" % [maxi(0, Balance.MAX_ROUNDS - state.round + 1), state.food_collected]
-	if state.node_kind != "" and state.round >= 6:
+	if GridSpec.is_inside(state.boss_portal_cell):
+		objective_label.text = "首领已击败 · 敌军撤离\n点击首领位置的传送门前往下一层。"
+	elif state.node_kind != "" and state.round >= 6:
 		objective_label.text += "\n%s" % ("本回合结束将强制撤离。" if state.round >= 8 else "即将到达第 8 回合强制撤离期限。")
 
 
@@ -717,6 +719,8 @@ func _update_selection_overlay() -> void:
 
 
 func _update_channel_warnings() -> void:
+	if GridSpec.is_inside(state.boss_portal_cell):
+		board.markers.append({"cell": state.boss_portal_cell, "kind": "text", "text": "门", "color": Color.GOLD, "size": 24})
 	if channel_warning_list == null:
 		return
 	UIKit.clear_children(channel_warning_list)
@@ -794,6 +798,10 @@ func _update_log() -> void:
 
 func _on_board_clicked(cell: Vector2i) -> void:
 	if busy or state.ended:
+		return
+	if cell == state.boss_portal_cell and not capture_mode and aim_skill == "" and action_mode != "move":
+		state.end_battle("victory")
+		refresh_all()
 		return
 	var occupant := state.unit_at(cell)
 	if capture_mode:

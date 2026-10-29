@@ -8,13 +8,14 @@ func run(t: TestContext) -> void:
 	var picker := state.unit_by_uid(1)
 	state.food_cells.append(picker.cell)
 	state._pickups()
+	t.eq(state.food_collected, 1, "收集区首次回合结算即拾取食物")
 	var origin := picker.cell
 	var options := state.move_options(picker)
 	var destination: Vector2i = options.keys()[0]
 	t.check(state.move_unit(picker, destination), "自由收集可以移动")
 	t.check(not state.food_wait.has(origin), "离开食物格打断停留计时")
 	t.check(state.undo_last_move(), "自由收集可以撤回移动")
-	t.eq(state.food_wait.get(origin, -1), picker.uid, "撤回恢复原有停留计时")
+	t.check(not state.food_wait.has(origin), "收集区不留下多余的停留计时")
 	state._pickups()
 	t.eq(state.food_collected, 1, "恢复的计时仅领取一次食物")
 	var cell := Vector2i(4, 4)
