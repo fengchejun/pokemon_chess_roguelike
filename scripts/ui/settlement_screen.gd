@@ -37,9 +37,11 @@ func _ready() -> void:
 	step_label = UIKit.label("", 19, UIKit.ACCENT)
 	right.add_child(step_label)
 	var scroll := UIKit.scroll()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	right.add_child(scroll)
 	choice_box = UIKit.vbox(8)
 	choice_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	choice_box.custom_minimum_size.x = 500
 	scroll.add_child(choice_box)
 	continue_button = UIKit.button("继续", 18)
 	continue_button.name = "ContinueButton"
@@ -243,6 +245,7 @@ func _show_growth_options(run: RunState, uid: int, level: int, mode: String) -> 
 					app.autosave()
 					_show_next_step()
 			)
+			_fit_growth_button(button)
 			choice_box.add_child(button)
 	else:
 		choice_box.add_child(UIKit.wrapped("未学的物种基础招式也可在此选择；试招Ⅰ／Ⅱ效果相同，仅作临时占位。每只怪物最多装备三招。", 13, UIKit.TEXT_DIM))
@@ -259,8 +262,16 @@ func _show_growth_options(run: RunState, uid: int, level: int, mode: String) -> 
 					app.autosave()
 					_show_next_step()
 			)
+			_fit_growth_button(button)
 			choice_box.add_child(button)
 	continue_button.disabled = true
+
+
+func _fit_growth_button(button: Button) -> void:
+	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	button.clip_text = true
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.custom_minimum_size.x = 0
 
 
 func _show_growth_replace(run: RunState, uid: int, level: int, new_skill_id: String) -> void:

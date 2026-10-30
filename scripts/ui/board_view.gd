@@ -208,7 +208,7 @@ func _draw() -> void:
 	_draw_pending_casts(font)
 	_draw_nest_status(font)
 	if GridSpec.is_inside(merchant_cell):
-		_draw_marker(font, {"cell": merchant_cell, "kind": "text", "text": "商", "color": UIKit.ACCENT, "size": 24})
+		_draw_marker(font, {"cell": merchant_cell, "kind": "facility", "text": "商人", "color": Color("257a70")})
 	# 标记与箭头
 	for arrow in arrows:
 		_draw_arrow(arrow)
@@ -461,7 +461,16 @@ func _draw_marker(font: Font, marker: Dictionary) -> void:
 		return
 	var center := cell_center(cell)
 	var kind := String(marker.get("kind", "damage"))
-	if kind == "lethal":
+	if kind == "facility":
+		var box := Rect2(center - Vector2(33, 29), Vector2(66, 58))
+		draw_rect(box, Color(0.06, 0.09, 0.13, 0.94))
+		draw_rect(Rect2(box.position + Vector2(3, 3), box.size - Vector2(6, 6)), marker.get("color", UIKit.ACCENT))
+		draw_rect(box, Color(0.94, 0.91, 0.73), false, 2.0)
+		var label := String(marker.get("text", ""))
+		var font_size := 17 if label.length() >= 3 else 21
+		var baseline := center.y + font.get_ascent(font_size) * 0.35
+		draw_string(font, Vector2(box.position.x + 2, baseline), label, HORIZONTAL_ALIGNMENT_CENTER, box.size.x - 4, font_size, Color.WHITE)
+	elif kind == "lethal":
 		_skull(center + Vector2(22, -22))
 	elif kind == "damage":
 		var text := String(marker.get("text", "?"))

@@ -41,6 +41,9 @@ var terrain_panel: Control = null
 var terrain_label: Label = null
 var terrain_scroll: ScrollContainer = null
 var objective_panel: Control = null
+var relic_panel: PanelContainer = null
+var relic_list: VBoxContainer = null
+var relic_scroll: ScrollContainer = null
 var objective_label: Label = null
 var corner_top_left: Control = null
 var team_panel: Control = null
@@ -110,6 +113,18 @@ func _ready() -> void:
 	objective_label.custom_minimum_size.x = 270
 	objective_panel.add_child(objective_label)
 	objective_panel.set_meta("corner", "top_right")
+	relic_panel = UIKit.panel(UIKit.PANEL)
+	relic_panel.name = "RelicBonusPanel"
+	add_child(relic_panel)
+	var relic_column := UIKit.vbox(5)
+	relic_panel.add_child(relic_column)
+	relic_column.add_child(UIKit.label("遗物加成", 15, UIKit.ACCENT))
+	relic_scroll = ScrollContainer.new()
+	relic_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	relic_column.add_child(relic_scroll)
+	relic_list = UIKit.vbox(5)
+	relic_list.custom_minimum_size.x = 250
+	relic_scroll.add_child(relic_list)
 	unit_panel = _unit_box()
 	add_child(unit_panel)
 	unit_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -308,13 +323,17 @@ func _layout_overlays() -> void:
 	corner_top_left.custom_minimum_size.x = side_space - 28.0
 	objective_panel.position = Vector2(size.x - side_space + 10.0, 12)
 	objective_panel.custom_minimum_size = Vector2(side_space - 24.0, 105)
+	relic_panel.position = Vector2(size.x - side_space + 10.0, 130)
+	relic_panel.custom_minimum_size.x = side_space - 24.0
+	relic_scroll.custom_minimum_size = Vector2(260, minf(170.0, maxf(50.0, size.y * 0.22)))
+	relic_panel.reset_size()
 	team_panel.position = Vector2(14, maxf(178, corner_top_left.position.y + corner_top_left.get_combined_minimum_size().y + 10))
 	team_panel.custom_minimum_size.x = side_space - 28.0
 	_fit_team_panel()
 	_layout_corner_cards()
 	hint_label.position = Vector2(board.position.x, size.y - 34)
 	hint_label.custom_minimum_size.x = board_size
-	channel_warning_box.position = Vector2(size.x - side_space + 10.0, 130)
+	channel_warning_box.position = Vector2(size.x - side_space + 10.0, relic_panel.position.y + relic_panel.size.y + 8.0)
 	channel_warning_box.custom_minimum_size.x = side_space - 24.0
 	_position_action_panel()
 
@@ -378,6 +397,7 @@ func refresh_all() -> void:
 	board.selected_uid = selected_uid
 	board.clear_overlays()
 	_update_header()
+	_update_relic_panel()
 	_update_team_list()
 	_update_unit_card()
 	_rebuild_skill_buttons()
@@ -480,6 +500,36 @@ func _update_header() -> void:
 	elif state.node_kind != "" and state.round >= 6:
 		objective_label.text += "\n%s" % ("本回合结束将强制撤离。" if state.round >= 8 else "即将到达第 8 回合强制撤离期限。")
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
+
+
+func _update_relic_panel() -> void:
+	if relic_list == null:
+		return
+	UIKit.clear_children(relic_list)
+	var stacks: Dictionary = _display_state().relic_stacks
+	var owned: Array = []
+	for relic_id in stacks:
+		if RelicDB.rank(stacks, String(relic_id)) > 0:
+			owned.append(String(relic_id))
+	owned.sort()
+	if owned.is_empty():
+		relic_list.add_child(UIKit.wrapped("暂无遗物", 13, UIKit.TEXT_DIM))
+	else:
+		for relic_id in owned:
+			var rank := RelicDB.rank(stacks, relic_id)
+			var line := UIKit.wrapped("%s Lv.%d  %s" % [RelicDB.name_of(relic_id), rank, RelicDB.description_of(relic_id)], 12, UIKit.TEXT)
+			line.custom_minimum_size.x = 248
+			relic_list.add_child(line)
+	call_deferred("_fit_relic_panel")
+
+
+func _fit_relic_panel() -> void:
+	if relic_list == null or relic_scroll == null:
+		return
+	relic_scroll.custom_minimum_size.y = minf(170.0, maxf(34.0, relic_list.get_combined_minimum_size().y))
+	relic_panel.reset_size()
+	if channel_warning_box != null:
+		channel_warning_box.position.y = relic_panel.position.y + relic_panel.size.y + 8.0
 
 
 func _update_unit_card() -> void:
@@ -874,7 +924,7 @@ func _update_selection_overlay() -> void:
 func _update_channel_warnings() -> void:
 	var state := _display_state()
 	if GridSpec.is_inside(state.boss_portal_cell):
-		board.markers.append({"cell": state.boss_portal_cell, "kind": "text", "text": "门", "color": Color.GOLD, "size": 24})
+		board.markers.append({"cell": state.boss_portal_cell, "kind": "facility", "text": "传送门", "color": Color("694ca2")})
 	if channel_warning_list == null:
 		return
 	UIKit.clear_children(channel_warning_list)
