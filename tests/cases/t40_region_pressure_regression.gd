@@ -107,6 +107,9 @@ func run(t: TestContext) -> void:
 	restored.round = 8
 	restored.end_enemy_phase()
 	t.check(not restored.ended, "击败首领后不再受八回合限制")
+	var portal_neighbor: Vector2i = GridSpec.neighbors4(boss_cell)[0]
+	boss_battle.set_terrain(portal_neighbor, TerrainDB.PLAIN)
+	boss_battle.trainer().cell = portal_neighbor
 	boss_app.current_screen._on_board_clicked(boss_cell)
 	t.eq(boss_battle.end_reason, "victory", "点击传送门才开始胜利结算")
 	boss_app.current_screen.report_end_now()

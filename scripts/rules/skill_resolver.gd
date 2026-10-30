@@ -21,10 +21,10 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 			_ray_targets(state, unit, skill_id, def, entries)
 		"charge":
 			for dir in GridSpec.DIRS4:
-				var cell: Vector2i = unit.cell + dir * 2
-				if not GridSpec.is_inside(cell):
-					continue
-				entries.append({"type": "cell", "cell": cell})
+				for distance in [1, 2]:
+					var cell: Vector2i = unit.cell + dir * distance
+					if GridSpec.is_inside(cell):
+						entries.append({"type": "cell", "cell": cell})
 		"unit":
 			_unit_targets(state, unit, skill_id, def, entries)
 			if skill_id == "volt_replace":
@@ -123,12 +123,6 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 
 static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
 	var skill_range := int(def.get("range", 3)) + _range_bonus(state, unit, skill_id)
-	var water_in_range := false
-	if skill_id == "electric_arc":
-		for water_cell in GridSpec.all_cells():
-			if GridSpec.manhattan(unit.cell, water_cell) <= skill_range and TerrainDB.is_water_body(state.terrain_at(water_cell)):
-				water_in_range = true
-				break
 	for cell in GridSpec.all_cells():
 		var distance := GridSpec.manhattan(unit.cell, cell)
 		if distance > skill_range or (distance == 0 and (skill_id == "rock_slide" or skill_id == "tree_man")):
@@ -145,13 +139,13 @@ static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String
 			entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "electric_arc" and (state.obstacle_durability.has(cell) or (state.is_nest_cell(cell) and state.unit_at(cell) == null)):
 			entries.append({"type": "cell", "cell": cell})
-		elif skill_id == "electric_arc" and not water_in_range:
+		elif skill_id == "electric_arc":
 			var target := state.unit_at(cell)
 			if target != null and target.uid != unit.uid:
 				entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "rock_slide":
 			entries.append({"type": "cell", "cell": cell})
-		elif skill_id == "tree_man" and state.unit_at(cell) == null and TerrainDB.can_stand(state.terrain_at(cell), "grass"):
+		elif skill_id == "tree_man" and state.unit_at(cell) == null and not state.is_interaction_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), "grass"):
 			entries.append({"type": "cell", "cell": cell})
 
 
@@ -161,7 +155,7 @@ static func _volt_empty_targets(state: BattleState, unit: CombatUnit, def: Dicti
 		var distance := GridSpec.manhattan(unit.cell, cell)
 		if distance != skill_range and not (distance == 1 and int(unit.upgrades.get("volt_replace_flex", 0)) > 0):
 			continue
-		if state.unit_at(cell) != null:
+		if state.unit_at(cell) != null or state.is_interaction_cell(cell):
 			continue
 		if TerrainDB.can_stand(state.terrain_at(cell), unit.element):
 			entries.append({"type": "cell", "cell": cell})
@@ -173,7 +167,7 @@ static func _teleport_targets(state: BattleState, unit: CombatUnit, def: Diction
 		var distance := GridSpec.manhattan(unit.cell, cell)
 		if distance == 0 or distance > skill_range:
 			continue
-		if state.unit_at(cell) != null:
+		if state.unit_at(cell) != null or state.is_interaction_cell(cell):
 			continue
 		if not TerrainDB.can_stand(state.terrain_at(cell), unit.element):
 			continue
@@ -451,7 +445,7 @@ static func _resolve_channel_rules(state: BattleState, caster: CombatUnit, skill
 			var hit := _hit_entry(state, caster, "tree_man", blocker, int(SkillDB.get_def("tree_man").get("summon_collision_damage", 23)))
 			summary["hits"].append(hit)
 			summary["text"] = "大树守卫落点被 %s 阻挡：造成 %d 伤害，取消召唤。" % [blocker.display_name, hit["damage"]]
-		elif TerrainDB.can_stand(state.terrain_at(cell), "grass"):
+		elif not state.is_interaction_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), "grass"):
 			var summon := state.summon_tree(caster, cell)
 			if summon != null:
 				summary["text"] = "大树守卫召唤树人：生命 %d/%d，出生轮待机。" % [summon.hp, summon.max_hp]
@@ -785,10 +779,12 @@ static func _apply_terrain_travel(state: BattleState, caster: CombatUnit, skill_
 
 static func _apply_flame_charge(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var dest: Vector2i = entry["cell"]
-	var dir := Vector2i((dest.x - caster.cell.x) / 2, (dest.y - caster.cell.y) / 2)
+	var dir := _axis_dir(caster.cell, dest)
 	var impact_damage := SkillDB.damage_of("flame_charge") + (Balance.SKILL_DAMAGE_UPGRADE if caster.has_buff("flame_charge") or int(caster.upgrades.get("flame_charge_damage", 0)) > 0 else 0)
 	for step in range(1, 3):
 		var next: Vector2i = caster.cell + dir
+		if not GridSpec.is_inside(next):
+			break
 		summary["ray_cells"].append(next)
 		var occupant := state.unit_at(next)
 		if occupant != null:
@@ -805,6 +801,9 @@ static func _apply_flame_charge(state: BattleState, caster: CombatUnit, entry: D
 				else:
 					outcome = "，击退受阻"
 			summary["text"] = "闪焰冲锋撞击 %s：%d 伤害%s。" % [hit["name"], hit["damage"], outcome]
+			break
+		if state.is_interaction_cell(next):
+			summary["text"] = "设施阻挡了冲锋。"
 			break
 		if state.is_nest_cell(next):
 			var hit_nest: Dictionary = state.nest_at_cell(next)
@@ -1035,6 +1034,8 @@ static func _apply_rock_create(state: BattleState, caster: CombatUnit, entry: Di
 		if not GridSpec.is_inside(cell):
 			continue
 		summary["area_cells"].append(cell)
+		if state.is_interaction_cell(cell):
+			continue
 		if state.terrain_at(cell) == TerrainDB.FRAGILE:
 			state.damage_reward_at(cell)
 			state.set_terrain(cell, TerrainDB.PIT)

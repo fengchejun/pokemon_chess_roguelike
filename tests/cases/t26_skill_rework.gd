@@ -167,4 +167,4 @@ func _electric(t: TestContext) -> void:
 	var wet := TestScenario.make_state(["electric_starter"], [["rock_wild1", Vector2i(3, 2)]],
 		TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(1, 3), TerrainDB.WATER]]))
 	wet.unit_by_uid(1).cell = Vector2i(1, 2)
-	t.check(not wet.skill_targets(wet.unit_by_uid(1), "electric_arc").has({"type": "cell", "cell": Vector2i(3, 2)}), "范围内有水时仍使用水域传导规则")
+	t.check(wet.skill_targets(wet.unit_by_uid(1), "electric_arc").has({"type": "cell", "cell": Vector2i(3, 2)}), "范围内有水也允许直接选旱地单位")

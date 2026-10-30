@@ -38,6 +38,9 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 		if not GridSpec.is_inside(next):
 			summary["collisions"].append({"kind": "edge", "cell": next})
 			break
+		if state.is_interaction_cell(next):
+			_summarize_collision(state, summary, target, null, next, collision_bonus, source_side, source_uid, other_relic_bonus)
+			break
 		var terrain: int = state.terrain_at(next)
 		var occupant: CombatUnit = state.unit_at(next)
 		if occupant != null:
@@ -76,7 +79,7 @@ static func _summarize_collision(state, summary: Dictionary, target: CombatUnit,
 		"other_damage": other_damage if occupant != null else 0,
 	}
 	summary["collisions"].append(entry)
-	var blocker_name := "障碍"
+	var blocker_name := "设施" if state.is_interaction_cell(cell) else "障碍"
 	if occupant != null:
 		blocker_name = occupant.display_name
 	state.log_event("%s 撞上%s，受到 %d 伤害。" % [target.display_name, blocker_name, target_damage])

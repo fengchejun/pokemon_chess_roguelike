@@ -476,7 +476,7 @@ func _update_header() -> void:
 	if state.node_kind == "event":
 		objective_label.text = "收集区 · 剩余 %d 回合\n本次收集食物 %d\n可随时返回区域" % [maxi(0, Balance.MAX_ROUNDS - state.round + 1), state.food_collected]
 	if GridSpec.is_inside(state.boss_portal_cell):
-		objective_label.text = "首领已击败 · 敌军撤离\n点击首领位置的传送门前往下一层。"
+		objective_label.text = "首领已击败 · 敌军撤离\n训练师相邻后，点击传送门或行动按钮前往下一层。"
 	elif state.node_kind != "" and state.round >= 6:
 		objective_label.text += "\n%s" % ("本回合结束将强制撤离。" if state.round >= 8 else "即将到达第 8 回合强制撤离期限。")
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
@@ -695,6 +695,16 @@ func _rebuild_skill_buttons() -> void:
 		skills_button.pressed.connect(_on_choose_skill_pressed)
 		skill_box.add_child(skills_button)
 	else:
+		if not state.merchant.is_empty() and state.can_interact_at(state.merchant["cell"]):
+			var merchant_action := UIKit.small_button("与商人交易")
+			merchant_action.name = "MerchantInteractButton"
+			merchant_action.pressed.connect(_interact_with_merchant)
+			skill_box.add_child(merchant_action)
+		if state.can_interact_at(state.boss_portal_cell):
+			var portal_action := UIKit.small_button("进入传送门")
+			portal_action.name = "PortalInteractButton"
+			portal_action.pressed.connect(_request_portal)
+			skill_box.add_child(portal_action)
 		capture_button = UIKit.small_button("捕获")
 		capture_button.name = "CaptureButton"
 		capture_button.disabled = unit.capture_used or _capture_targets(unit).is_empty()
@@ -938,24 +948,11 @@ func _on_board_clicked(cell: Vector2i) -> void:
 		var target := state.unit_at(cell)
 		_use_trainer_item(item_aim, target.uid if target != null else -1)
 		return
-	if not state.merchant.is_empty() and state.node_kind == "event" and cell == state.merchant["cell"] and aim_skill == "" and not capture_mode:
-		var trainer := state.unit_by_uid(Balance.TRAINER_UID)
-		if GridSpec.manhattan(trainer.cell, cell) == 1:
-			_show_merchant()
+	if aim_skill == "" and not capture_mode and state.is_interaction_cell(cell):
+		if cell == state.boss_portal_cell:
+			_request_portal()
 		else:
-			hint_label.text = "训练师走到商人相邻格后可交易。"
-		return
-	if cell == state.boss_portal_cell and not capture_mode and aim_skill == "" and action_mode != "move":
-		if app.run.storage.is_empty():
-			_enter_boss_portal()
-		else:
-			var dialog := ConfirmationDialog.new()
-			dialog.title = "前往下一层"
-			dialog.dialog_text = "营地留守的 %d 只宝可梦将被抛弃，无法进入永久收藏。确认前往下一层？" % app.run.storage.size()
-			dialog.confirmed.connect(_enter_boss_portal)
-			dialog.popup_hide.connect(func() -> void: dialog.queue_free())
-			add_child(dialog)
-			dialog.popup_centered()
+			_interact_with_merchant()
 		return
 	var occupant := state.unit_at(cell)
 	if capture_mode:
@@ -988,10 +985,36 @@ func _on_board_clicked(cell: Vector2i) -> void:
 		_position_action_panel()
 
 
+func _interact_with_merchant() -> void:
+	if busy or _playback_active():
+		return
+	if state.merchant.is_empty() or not state.can_interact_at(state.merchant["cell"]):
+		hint_label.text = "训练师需走到商人相邻格才能交易。"
+		return
+	_clear_aim()
+	_show_merchant()
+
+func _request_portal() -> void:
+	if busy or _playback_active():
+		return
+	if not state.can_interact_at(state.boss_portal_cell):
+		hint_label.text = "训练师需走到传送门相邻格才能进入。"
+		return
+	if app.run.storage.is_empty():
+		_enter_boss_portal()
+		return
+	_show_modal("前往下一层", "营地留守的 %d 只宝可梦将被抛弃，无法进入永久收藏。确认前往下一层？" % app.run.storage.size())
+	var confirm := UIKit.small_button("确认前往下一层")
+	confirm.name = "ConfirmPortalButton"
+	confirm.pressed.connect(_enter_boss_portal)
+	modal_layer.get_child(0).get_child(0).add_child(confirm)
+
 func _enter_boss_portal() -> void:
+	if busy or _playback_active() or not state.can_interact_at(state.boss_portal_cell):
+		return
+	_close_modal()
 	state.end_battle("victory")
 	refresh_all()
-
 
 func _on_board_hovered(cell: Vector2i) -> void:
 	if busy or _playback_active() or state.ended:
@@ -1120,6 +1143,8 @@ func _show_terrain(cell: Vector2i) -> void:
 	var selected := state.unit_by_uid(selected_uid)
 	var move_cost := state.move_cost_for(selected, cell) if selected != null else TerrainDB.move_cost(value, "")
 	lines.append("移动消耗：%s" % (str(move_cost) if move_cost >= 0 else "不可进入"))
+	if state.is_interaction_cell(cell):
+		lines.append(("传送门" if cell == state.boss_portal_cell else "商人") + "：此格不能站立；训练师相邻后，点击设施或选择训练师行动栏中的互动按钮。")
 	if state.burning_cells.has(cell):
 		lines.append("燃烧：%s" % str(state.burning_cells[cell]))
 	if state.vine_expire_round.has(cell):
@@ -1295,16 +1320,28 @@ func _show_merchant(message: String = "") -> void:
 		var rarity := String(Merchant.RARITIES[Merchant.rarity(String(record["species_id"]))][0])
 		var caption := "%s · %s · Lv.%d · HP%d · %d原质" % [SpeciesDB.name_of(String(record["species_id"])), rarity, int(record["level"]), int(record["hp"]), Merchant.monster_price(record)]
 		var button := UIKit.small_button("出售 " + caption)
-		button.pressed.connect(func() -> void:
-			var confirm := ConfirmationDialog.new()
-			confirm.title = "出售宝可梦"
-			confirm.dialog_text = caption + "\n出售后移除本局成员，本次捕获不进入永久收藏；开局前已有收藏保留。"
-			confirm.confirmed.connect(func() -> void: _trade("monster", str(uid)))
-			confirm.popup_hide.connect(func() -> void: confirm.queue_free())
-			add_child(confirm)
-			confirm.popup_centered()
-		)
+		button.name = "SellMonster_%d" % uid
+		button.pressed.connect(_confirm_monster_sale.bind(uid))
 		list.add_child(button)
+
+
+func _confirm_monster_sale(uid: int) -> void:
+	var record: Dictionary = app.run.record_by_uid(uid)
+	if record.is_empty():
+		_show_merchant("该宝可梦已不在背包中。")
+		return
+	var caption := "%s · Lv.%d · %d原质" % [SpeciesDB.name_of(String(record["species_id"])), int(record["level"]), Merchant.monster_price(record)]
+	_show_modal("出售宝可梦", caption + "\n出售后移除本局成员，本次捕获不进入永久收藏；开局前已有收藏保留。")
+	var content = modal_layer.get_child(0).get_child(0)
+	var cancel: Button = content.get_child(content.get_child_count() - 1)
+	cancel.name = "CancelMonsterSaleButton"
+	cancel.text = "取消并返回商店"
+	cancel.pressed.disconnect(_close_modal)
+	cancel.pressed.connect(_show_merchant)
+	var confirm := UIKit.small_button("确认出售")
+	confirm.name = "ConfirmMonsterSaleButton"
+	confirm.pressed.connect(func() -> void: _trade("monster", str(uid)))
+	content.add_child(confirm)
 
 
 func _trade(operation: String, id: String, quantity: int = 1) -> void:

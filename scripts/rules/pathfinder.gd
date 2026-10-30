@@ -61,7 +61,7 @@ static func _connected_terrain_paths(state, unit: CombatUnit, terrain_mode: int)
 		var current: Vector2i = queue.pop_front()
 		for dir in GridSpec.DIRS4:
 			var next: Vector2i = current + dir
-			if not GridSpec.is_inside(next) or routes.has(next) or TerrainDB.blocks_move(state.terrain_at(next)):
+			if not GridSpec.is_inside(next) or routes.has(next) or state.is_interaction_cell(next) or TerrainDB.blocks_move(state.terrain_at(next)):
 				continue
 			var occupant: CombatUnit = state.unit_at(next)
 			if occupant != null and occupant.side == unit.side:
@@ -82,7 +82,7 @@ static func stop_cells(state, unit: CombatUnit) -> Dictionary:
 	var cells := {}
 	var options := reachable(state, unit)
 	for cell in options:
-		if state.unit_at(cell) == null and not TerrainDB.blocks_move(state.terrain_at(cell)):
+		if state.unit_at(cell) == null and not state.is_interaction_cell(cell) and not TerrainDB.blocks_move(state.terrain_at(cell)):
 			cells[cell] = options[cell]
 	return cells
 
@@ -106,7 +106,7 @@ static func path_distance(state, from_cell: Vector2i, to_cell: Vector2i, element
 			var next: Vector2i = current + dir
 			if not GridSpec.is_inside(next):
 				continue
-			if not flying and (TerrainDB.blocks_move(state.terrain_at(next))):
+			if state.is_interaction_cell(next) or (not flying and TerrainDB.blocks_move(state.terrain_at(next))):
 				continue
 			var cost := 1 if flying else TerrainDB.move_cost(state.terrain_at(next), element)
 			if cost < 0:

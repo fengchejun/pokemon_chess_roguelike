@@ -371,8 +371,16 @@ func is_blocking_ray(cell: Vector2i) -> bool:
 	return unit_at(cell) != null
 
 
+func is_interaction_cell(cell: Vector2i) -> bool:
+	return (GridSpec.is_inside(boss_portal_cell) and cell == boss_portal_cell) or (node_kind == "event" and not merchant.is_empty() and cell == merchant["cell"])
+
+func can_interact_at(cell: Vector2i) -> bool:
+	var actor := trainer()
+	return not ended and phase == PHASE_PLAYER and is_interaction_cell(cell) and actor != null and actor.is_alive() and GridSpec.manhattan(actor.cell, cell) == 1
+
+
 func move_cost_for(unit: CombatUnit, cell: Vector2i) -> int:
-	if node_kind == "event" and not merchant.is_empty() and merchant["cell"] == cell:
+	if is_interaction_cell(cell):
 		return -1
 	## 主动移动进入该格的消耗；-1 表示不可进入。
 	## 潮汐效果：我方单位进入水面不额外消耗移动力。
@@ -1125,7 +1133,7 @@ func _try_spawn_wave() -> void:
 	for cell in candidates:
 		if not GridSpec.is_inside(cell):
 			continue
-		if TerrainDB.blocks_move(terrain_at(cell)):
+		if is_interaction_cell(cell) or TerrainDB.blocks_move(terrain_at(cell)):
 			continue
 		if unit_at(cell) != null:
 			continue
@@ -1351,7 +1359,7 @@ func ice_slide_outcome(unit: CombatUnit) -> Dictionary:
 	var next: Vector2i = unit.cell + unit.last_move_direction
 	var blocked := not GridSpec.is_inside(next)
 	if not blocked:
-		blocked = unit_at(next) != null or TerrainDB.blocks_move(terrain_at(next))
+		blocked = unit_at(next) != null or is_interaction_cell(next) or TerrainDB.blocks_move(terrain_at(next))
 	var lethal := false
 	if not blocked:
 		lethal = TerrainDB.is_lethal(terrain_at(next)) and (terrain_at(next) != TerrainDB.DEEP or unit.element != "water")
@@ -1487,7 +1495,7 @@ func check_battle_end() -> bool:
 				nest["alive"] = false
 				nest["pending_waves"] = 0
 				pending_casts = pending_casts.filter(func(cast: Dictionary) -> bool: return String(cast.get("side", "")) != "enemy")
-				log_event("首领已被击败，剩余敌人撤离。点击传送门前往下一层。")
+				log_event("首领已被击败，剩余敌人撤离。训练师相邻后可点击传送门或使用互动行为前往下一层。")
 			return false
 	if node_kind in ["battle", "event"]:
 		return false
@@ -1512,7 +1520,7 @@ func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) 
 	for cell in cells:
 		if added >= count:
 			break
-		if not GridSpec.is_inside(cell) or unit_at(cell) != null or species_pool.is_empty():
+		if not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or species_pool.is_empty():
 			continue
 		var species_id := String(species_pool[next_enemy_uid % species_pool.size()])
 		if not TerrainDB.can_stand(terrain_at(cell), SpeciesDB.element_of(species_id)):

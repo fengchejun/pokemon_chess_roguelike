@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 七系目标技能与旧版兼容技能。kind 决定瞄准方式：
 ##  ray       行列射线（被第一个单位或障碍截断）
-##  charge    闪焰冲锋：正交两格方向，逐格前进并在撞击时停下
+##  charge    闪焰冲锋：正交1至2格选方向，逐格前进并在撞击时停下
 ##  unit      单体选中
 ##  cell      指定落点
 ##  teleport  自身瞬移
@@ -21,7 +21,7 @@ const DEFS := {
 	"rock_slide": {"name": "岩崩", "element": "rock", "kind": "cell", "range": 3, "damage": 30, "ranged": true, "channel": true, "desc": "锁定曼哈顿 3 格内一格；下次本方阶段开始，对该格当时的单位造成 30 点基础伤害，可误伤友军。"},
 	"earth_shake": {"name": "撼地", "element": "rock", "kind": "direction", "damage": 18, "ranged": true, "channel": true, "desc": "蓄力锁定前方 3×3 格；下一本方阶段开始，对范围内敌人造成 18 点基础伤害，摧毁岩障和树木；平地变易碎地块、易碎地块变深坑。破障格本次不再改变地形，站在塌陷格上的地面单位立即坠落。"},
 	"lightning": {"name": "打雷", "element": "electric", "kind": "self", "damage": 18, "ranged": true, "channel": true, "desc": "锁定全场所有敌方单位当前格子；下次本方阶段开始，对固定落点上的单位造成 18 点基础伤害并感电，可误伤友军。"},
-	"electric_arc": {"name": "放电", "element": "electric", "kind": "cell", "range": 2, "damage": 10, "ranged": true, "desc": "指定两格内水域沿连通水域传导；若射程内没有水域，也可指定一名单位造成 10 点基础伤害。"},
+	"electric_arc": {"name": "放电", "element": "electric", "kind": "cell", "range": 2, "damage": 10, "ranged": true, "desc": "可指定曼哈顿距离两格内的单位造成 10 点基础伤害，也可选择水域沿连通水域传导；附近存在水域不限制旱地目标。"},
 	"volt_replace": {"name": "伏特替换", "element": "electric", "kind": "unit", "range": 2, "damage": 0, "ranged": false, "desc": "与相隔恰好两格的单位交换位置；也可移动到两格内可站立的空格，无视途中障碍。"},
 	"wild_vines": {"name": "疯狂藤蔓", "element": "grass", "kind": "direction", "damage": 0, "ranged": false, "desc": "在前方两格生成藤蔓；障碍阻挡生成。生成时或后来停在藤蔓上的地面单位，下一次移动机会受阻。"},
 	"herbal_heal": {"name": "药草治疗", "element": "grass", "kind": "self", "damage": 0, "ranged": false, "desc": "自身周围 3×3 范围内所有己方单位回复 8 HP。"},
@@ -53,7 +53,7 @@ const DEFS := {
 		"distance": 2,
 		"damage": 11,
 		"ranged": false,
-		"desc": "沿正交方向冲撞最多 2 格；撞到单位或障碍就停下。单位受 11 点基础伤害并被推 1 格，障碍受 1 点耐久伤害；沿途致死地形仍会使地面单位倒下。",
+		"desc": "选择正交 1～2 格内的位置作为方向，冲撞最多 2 格；撞到单位或障碍就停下。单位受 11 点基础伤害并被推 1 格，障碍受 1 点耐久伤害；沿途致死地形仍会使地面单位倒下。",
 	},
 	"water_flow": {
 		"name": "水炮",

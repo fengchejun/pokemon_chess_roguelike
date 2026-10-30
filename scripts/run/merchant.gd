@@ -63,7 +63,7 @@ static func ensure_region(region: RegionState, seed_value: int) -> void:
 
 static func trade(run: RunState, state: BattleState, operation: String, id: String, quantity: int = 1) -> Dictionary:
 	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
-	if state.ended or state.phase != BattleState.PHASE_PLAYER or state.node_kind != "event" or state.merchant.is_empty() or trainer == null or not trainer.is_alive() or GridSpec.manhattan(trainer.cell, state.merchant["cell"]) != 1:
+	if state.ended or state.phase != BattleState.PHASE_PLAYER or state.node_kind != "event" or state.merchant.is_empty() or trainer == null or not trainer.is_alive() or not state.can_interact_at(state.merchant["cell"]):
 		return {"ok": false, "reason": "训练师需在收集区商人相邻格交易。"}
 	if quantity <= 0:
 		return {"ok": false, "reason": "数量必须大于零。"}
