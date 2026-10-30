@@ -124,14 +124,11 @@ static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget:
 	for pair in cfg.get("enemies", []):
 		enemy_cells.append(pair[1])
 	var nest_cell: Vector2i = cfg["nest_cell"]
-	var nest_exits: Array = cfg["nest_exits"]
 	for cell in Balance.DEPLOY_CELLS:
 		protected[cell] = true
 	for cell in enemy_cells:
 		protected[cell] = true
 	protected[nest_cell] = true
-	for cell in nest_exits:
-		protected[cell] = true
 	_scatter(terrain, protected, rng, cfg, lethal_budget, environment_deck)
 	_convert_deep(terrain, protected, rng, lethal_budget)
 	var reward := _pick_cell(rng, terrain, protected, func(cell: Vector2i) -> bool:
@@ -144,6 +141,7 @@ static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget:
 	var required: Array = []
 	required.append_array(enemy_cells)
 	required.append(reward)
+	required.append(nest_cell)
 	required.append_array(fruits)
 	if not _validate(terrain, required):
 		return {}
@@ -170,7 +168,7 @@ static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget:
 		"tree_cells": tree_cells,
 		"steam_cells": steam_cells,
 		"nest_cell": nest_cell,
-		"nest_exits": nest_exits.duplicate(),
+		"nest_exits": [],
 		"reward_cell": reward,
 		"fruit_cells": fruits,
 		"deploy_cells": Balance.DEPLOY_CELLS.duplicate(),
@@ -331,7 +329,7 @@ static func _fallback(cfg: Dictionary) -> Dictionary:
 		"tree_cells": [],
 		"steam_cells": {},
 		"nest_cell": nest_cell,
-		"nest_exits": (cfg["nest_exits"] as Array).duplicate(),
+		"nest_exits": [],
 		"reward_cell": reward,
 		"fruit_cells": [],
 		"deploy_cells": Balance.DEPLOY_CELLS.duplicate(),
@@ -346,7 +344,6 @@ static func mod_protected(map: Dictionary, cell: Vector2i) -> bool:
 	var protected_cells: Array = []
 	protected_cells.append_array(map.get("deploy_cells", Balance.DEPLOY_CELLS))
 	protected_cells.append(map["nest_cell"])
-	protected_cells.append_array(map["nest_exits"])
 	protected_cells.append(map["reward_cell"])
 	protected_cells.append_array(map.get("fruit_cells", []))
 	return protected_cells.has(cell)

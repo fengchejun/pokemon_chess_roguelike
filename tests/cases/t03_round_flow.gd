@@ -233,7 +233,7 @@ func _t_nest_spawn(t: TestContext) -> void:
 	t.check(spawned != null, "找到生成单位")
 	if spawned != null:
 		t.eq(spawned.fresh_spawn, true, "新生成单位本回合不能再次行动")
-		t.check(not spawned.moved and spawned.cell == state.nest["exits"][0], "新生成单位在出口待机且本轮不能移动")
+		t.check(not spawned.moved and spawned.cell == state.nest["cell"], "新生成单位在巢穴格待机且本轮不能移动")
 		spawned.cell = Vector2i(5, 7)
 		state.start_round()
 		t.eq(state.alive_enemy_count(), 2, "第 3 回合不产怪")
@@ -252,10 +252,10 @@ func _t_nest_spawn(t: TestContext) -> void:
 	t.eq(state2.nest["alive"], false, "巢穴被摧毁")
 	state2.start_round()
 	t.eq(state2.alive_enemy_count(), 1, "摧毁后不再生成")
-	# 出口被占：生成被阻止
+	# 巢穴格被占：生成被阻止
 	var state3 := TestScenario.make_state([], [["fire_wild1", Vector2i(5, 4)]], [], {}, {}, ["fire_wild1"])
 	var nest_cell: Vector2i = state3.nest["cell"]
-	var exits: Array = state3.nest["exits"]
+	var exits: Array = [state3.nest["cell"]]
 	for cell in exits:
 		var blocker := CombatUnit.make("fire_wild1", "enemy", 900 + exits.find(cell))
 		blocker.cell = cell
@@ -267,19 +267,19 @@ func _t_nest_spawn(t: TestContext) -> void:
 		state3.units.append(blocker2)
 	var before := state3.alive_enemy_count()
 	state3.start_round()
-	t.eq(state3.alive_enemy_count(), before, "出口与相邻格全被占时生成被阻止")
+	t.eq(state3.alive_enemy_count(), before, "巢穴格与相邻格全被占时生成被阻止")
 	var queued := TestScenario.make_state([], [["fire_wild1", Vector2i(5, 4)]], [], {}, {}, ["fire_wild1"])
 	var gate := CombatUnit.make("water_starter", "player", 901)
-	gate.cell = queued.nest["exits"][0]
+	gate.cell = queued.nest["cell"]
 	queued.units.append(gate)
 	for _turn in range(2, 7):
 		queued.start_round()
-	t.eq(queued.round, 6, "堵口持续到第 6 回合")
+	t.eq(queued.round, 6, "占巢持续到第 6 回合")
 	t.eq(int(queued.nest["pending_waves"]), 3, "第 2、4、6 回合的三次产怪均排队保留")
-	t.eq(queued.alive_enemy_count(), 1, "堵口期间没有怪物穿过出口")
+	t.eq(queued.alive_enemy_count(), 1, "占巢期间没有怪物穿过巢穴格")
 	gate.cell = Vector2i(0, 0)
 	queued.start_round()
-	t.eq(int(queued.nest["pending_waves"]), 2, "第 7 回合出口空出后只补产一只")
+	t.eq(int(queued.nest["pending_waves"]), 2, "第 7 回合巢穴格空出后只补产一只")
 	queued.units.back().cell = Vector2i(4, 7)
 	queued.start_round()
 	t.eq(int(queued.nest["pending_waves"]), 1, "第 8 回合不新增波次，但继续补产队列中的一只")

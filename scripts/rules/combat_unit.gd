@@ -155,7 +155,7 @@ var fire_amp_stacks: int = 0:
 			feedback_changed.emit("buff" if active else "clear", "火焰增幅" + ("解除" if not active else ""), int(value), cell)
 
 # 其他
-var fresh_spawn: bool = false       # 本回合新生成：在出口待机，不能移动或施法
+var fresh_spawn: bool = false       # 本回合新生成：在巢穴格待机，不能移动或施法
 var summon_owner_uid: int = -1
 
 

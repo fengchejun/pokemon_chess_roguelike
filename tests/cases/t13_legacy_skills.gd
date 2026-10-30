@@ -73,7 +73,7 @@ func _electric(t: TestContext) -> void:
 	t.check(bool(preview.get("ok", false)), "打雷预览可用")
 	t.eq(state.pending_casts.size(), 0, "预览不会开始真实吟唱")
 	t.check(bool(state.cast_skill(caster, "lightning", entry).get("ok", false)), "打雷锁定当前所有敌方落点")
-	t.eq(state.pending_casts[0]["cells"], [target.cell], "只有敌方所在格被锁定")
+	t.eq(state.pending_casts[0]["cells"], [target.cell, state.nest["cell"]], "锁定敌方与空置巢穴格")
 	t.eq(target.hp, target.max_hp, "闪电宣告后目标暂不受伤")
 	state.round = 2
 	state._resolve_due_channels("player")

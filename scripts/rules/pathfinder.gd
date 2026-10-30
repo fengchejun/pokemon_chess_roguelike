@@ -2,7 +2,7 @@ class_name PathFinder
 extends RefCounted
 
 ## 主动移动寻路：Dijkstra。地面单位中途可穿过己方单位，不能停在其格上；
-## 飞行可越过单位、障碍与致死地形，但终点仍需空置且非障碍、非巢穴。
+## 飞行可越过单位、障碍与致死地形，但终点仍需空置且非障碍。
 
 
 static func reachable(state, unit: CombatUnit) -> Dictionary:
@@ -27,7 +27,7 @@ static func reachable(state, unit: CombatUnit) -> Dictionary:
 			var next: Vector2i = current + dir
 			if not GridSpec.is_inside(next):
 				continue
-			if not unit.has_buff("flight") and (state.is_nest_cell(next) or TerrainDB.blocks_move(state.terrain_at(next))):
+			if not unit.has_buff("flight") and (TerrainDB.blocks_move(state.terrain_at(next))):
 				continue
 			var occupant: CombatUnit = state.unit_at(next)
 			if not unit.has_buff("flight") and occupant != null and occupant.side != unit.side:
@@ -61,7 +61,7 @@ static func _connected_terrain_paths(state, unit: CombatUnit, terrain_mode: int)
 		var current: Vector2i = queue.pop_front()
 		for dir in GridSpec.DIRS4:
 			var next: Vector2i = current + dir
-			if not GridSpec.is_inside(next) or routes.has(next) or state.is_nest_cell(next) or TerrainDB.blocks_move(state.terrain_at(next)):
+			if not GridSpec.is_inside(next) or routes.has(next) or TerrainDB.blocks_move(state.terrain_at(next)):
 				continue
 			var occupant: CombatUnit = state.unit_at(next)
 			if occupant != null and occupant.side == unit.side:
@@ -78,11 +78,11 @@ static func _connected_terrain_paths(state, unit: CombatUnit, terrain_mode: int)
 
 
 static func stop_cells(state, unit: CombatUnit) -> Dictionary:
-	## 可作为移动终点的格子（必须没有单位、不是巢穴）。
+	## 可作为移动终点的格子（必须没有单位、不是障碍）。
 	var cells := {}
 	var options := reachable(state, unit)
 	for cell in options:
-		if state.unit_at(cell) == null and not state.is_nest_cell(cell) and not TerrainDB.blocks_move(state.terrain_at(cell)):
+		if state.unit_at(cell) == null and not TerrainDB.blocks_move(state.terrain_at(cell)):
 			cells[cell] = options[cell]
 	return cells
 
@@ -106,7 +106,7 @@ static func path_distance(state, from_cell: Vector2i, to_cell: Vector2i, element
 			var next: Vector2i = current + dir
 			if not GridSpec.is_inside(next):
 				continue
-			if not flying and (TerrainDB.blocks_move(state.terrain_at(next)) or state.is_nest_cell(next)):
+			if not flying and (TerrainDB.blocks_move(state.terrain_at(next))):
 				continue
 			var cost := 1 if flying else TerrainDB.move_cost(state.terrain_at(next), element)
 			if cost < 0:

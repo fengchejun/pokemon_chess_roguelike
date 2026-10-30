@@ -109,7 +109,7 @@ func _t_budget_and_protection(t: TestContext) -> void:
 		var cfg := BattleDB.config_for(battle_index)
 		var budget := int(cfg.get("lethal_budget", 2))
 		var map := MapGenerator.generate(2468, battle_index)
-		t.eq((map["nest_exits"] as Array).size(), 1, "第 %d 场只有一个巢穴出口" % (battle_index + 1))
+		t.eq((map["nest_exits"] as Array).size(), 0, "第 %d 场不再保留巢穴出口" % (battle_index + 1))
 		t.check(int(map["lethal_count"]) <= budget, "第 %d 场致死地形不超预算" % (battle_index + 1))
 		var terrain: Array = map["terrain"]
 		for cell in map["deploy_cells"]:

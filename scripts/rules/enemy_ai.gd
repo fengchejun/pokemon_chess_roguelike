@@ -107,7 +107,7 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 						"move_path": path,
 						"free_terrain_move": bool(free_paths.get(position, false)),
 						"skill": {"id": skill_id, "target": entry},
-						"score": score["total"] + channel_score + route_score + _exit_clearance_score(work, unit, position) + (30 if skill_id == "tree_man" else 0) - _pending_hazard(base, position, "player"),
+						"score": score["total"] + channel_score + route_score + _nest_clearance_score(work, unit, position) + (30 if skill_id == "tree_man" else 0) - _pending_hazard(base, position, "player"),
 						"meta": result,
 						"lethal": score["kills"],
 					}
@@ -371,11 +371,10 @@ static func _route_opening_score(before: BattleState, after: BattleState, actor_
 	return mini(score, 72)
 
 
-static func _exit_clearance_score(state: BattleState, unit: CombatUnit, position: Vector2i) -> int:
+static func _nest_clearance_score(state: BattleState, unit: CombatUnit, position: Vector2i) -> int:
 	if int(state.nest.get("hp", 0)) <= 0 or int(state.nest.get("pending_waves", 0)) <= 0:
 		return 0
-	var exits: Array = state.nest.get("exits", [])
-	return 24 if exits.has(unit.cell) and position != unit.cell else 0
+	return 24 if state.is_nest_cell(unit.cell) and position != unit.cell else 0
 
 
 static func _priority(state: BattleState, unit: CombatUnit) -> int:
@@ -431,7 +430,7 @@ static func _approach_action(work: BattleState, unit: CombatUnit, positions: Arr
 	var targets := work.alive_units("player")
 	if targets.is_empty():
 		return {"uid": unit.uid, "move_path": [], "skill": {}}
-	if int(work.nest.get("pending_waves", 0)) > 0 and (work.nest.get("exits", []) as Array).has(unit.cell):
+	if int(work.nest.get("pending_waves", 0)) > 0 and work.is_nest_cell(unit.cell):
 		for position in positions:
 			if position != unit.cell and _pending_hazard(work, position, "player") == 0:
 				return {"uid": unit.uid, "move_path": paths[position], "free_terrain_move": bool(free_paths.get(position, false)), "skill": {}}

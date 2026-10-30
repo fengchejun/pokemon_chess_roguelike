@@ -82,7 +82,7 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 		obstacle_durability[cell] = Balance.TREE_DURABILITY if terrain[GridSpec.index(cell)] == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
 	nest = {
 		"cell": map.get("nest_cell", Vector2i(-1, -1)),
-		"exits": map.get("nest_exits", []).duplicate(),
+		"exits": [],
 		"hp": int(map.get("nest_hp", Balance.NEST_DURABILITY)),
 		"alive": bool(map.get("nest_alive", true)),
 	}
@@ -204,7 +204,7 @@ func _draw() -> void:
 		if TerrainDB.is_lethal(base):
 			draw_string(font, Vector2(cell.x * TILE + 6, cell.y * TILE + 16), "危", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
 	_draw_pending_casts(font)
-	_draw_nest_exit(font)
+	_draw_nest_status(font)
 	if GridSpec.is_inside(merchant_cell):
 		_draw_marker(font, {"cell": merchant_cell, "kind": "text", "text": "商", "color": UIKit.ACCENT, "size": 24})
 	# 标记与箭头
@@ -294,27 +294,20 @@ func _draw_objects(font: Font) -> void:
 		draw_string(UIKit.font(), center + Vector2(-10, 7), "粮", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
 
 
-func _draw_nest_exit(font: Font) -> void:
+func _draw_nest_status(font: Font) -> void:
 	if not bool(nest.get("alive", false)):
 		return
-	for cell in nest.get("exits", []):
-		if not GridSpec.is_inside(cell):
-			continue
-		var occupant: CombatUnit = null
-		for unit in units:
-			if unit.is_alive() and unit.cell == cell:
-				occupant = unit
-				break
-		var color := Color(0.95, 0.75, 0.25)
-		if occupant != null:
-			color = Color(1.0, 0.35, 0.36) if occupant.side == "enemy" else Color(0.4, 0.85, 1.0)
-		elif int(nest.get("pending_waves", 0)) > 0 or Balance.nest_warning_due(battle_round):
-			color = Color(1.0, 0.5, 0.18)
-		var rect := Rect2(cell.x * TILE + 3, cell.y * TILE + 3, TILE - 6, TILE - 6)
-		draw_rect(rect, color, false, 4.0)
-		# 单位占据出口时，角标仍绘制在其上方。
-		draw_rect(Rect2(rect.position + Vector2(2, 2), Vector2(35, 16)), Color(0.08, 0.10, 0.13, 0.92))
-		draw_string(font, rect.position + Vector2(4, 15), "出口", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+	var cell: Vector2i = nest["cell"]
+	var occupied := false
+	for unit in units:
+		if unit.is_alive() and unit.cell == cell:
+			occupied = true
+			break
+	var color := Color(0.75, 0.58, 1.0) if not occupied else Color(1.0, 0.72, 0.32)
+	var rect := Rect2(Vector2(cell) * TILE + Vector2(3, 3), Vector2.ONE * (TILE - 6))
+	draw_rect(rect, color, false, 2.0)
+	draw_rect(Rect2(rect.position, Vector2(62, 17)), Color(0.08, 0.10, 0.13, 0.92))
+	draw_string(font, rect.position + Vector2(2, 13), "巢%d%s" % [int(nest.get("hp", 0)), "·占据" if occupied else "·待产" if int(nest.get("pending_waves", 0)) > 0 else ""], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
 
 
 func _draw_pending_casts(font: Font) -> void:

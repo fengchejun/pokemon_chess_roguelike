@@ -56,7 +56,7 @@ func _main_resolution(t: TestContext) -> void:
 	t.eq(state.terrain_at(Vector2i(4, 2)), TerrainDB.PLAIN, "树木破坏后的格子本次不再碎裂")
 	t.eq(state.terrain_at(Vector2i(3, 3)), TerrainDB.WATER, "水面不受地形变化")
 	t.eq(state.terrain_at(Vector2i(4, 4)), TerrainDB.GRASS, "巢穴格不受地形变化")
-	t.eq(int(state.nest["hp"]), nest_hp, "撼地不伤害巢穴")
+	t.eq(int(state.nest["hp"]), nest_hp - 1, "撼地命中空置巢穴扣1耐久")
 	t.check(caster.moved and caster.skill_used and state.pending_casts.is_empty(), "结算轮施法者失去行动并清除预警")
 
 

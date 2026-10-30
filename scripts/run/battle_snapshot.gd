@@ -74,6 +74,7 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		for key in member:
 			unit.set(key, decode(member[key]))
 		state.units.append(unit)
+	state.nest["exits"] = [] # Old exits no longer affect movement, targeting or spawning.
 	var rng: Dictionary = snapshot["rng"]
 	state.spawn_rng.seed = int(rng["spawn_seed"])
 	state.spawn_rng.state = int(rng["spawn_state"])

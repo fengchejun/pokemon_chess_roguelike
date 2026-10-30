@@ -1,14 +1,14 @@
 extends RefCounted
 
-## 缩短射程、独立树木遮挡及单出口守口规则。
+## 缩短射程、独立树木遮挡及单巢穴格占巢规则。
 
 
 func run(t: TestContext) -> void:
-	t.begin("走位、射线掩体与巢穴出口")
+	t.begin("走位、射线掩体与巢穴占位")
 	_test_ranges(t)
 	_test_first_contact(t)
 	_test_tree_cover(t)
-	_test_single_exit_guard(t)
+	_test_nest_cover(t)
 	t.finish()
 
 
@@ -104,36 +104,22 @@ func _test_tree_cover(t: TestContext) -> void:
 	t.check(lightning.pending_casts[0]["cells"].has(enemy_cell), "打雷不按射线受树木阻挡")
 
 
-func _test_single_exit_guard(t: TestContext) -> void:
-	var state := TestScenario.make_state([], [["rock_wild1", Vector2i(6, 7)]], [], {}, {}, ["fire_wild1"])
-	t.eq((state.nest["exits"] as Array).size(), 1, "巢穴只有一个出口")
-	t.check(state.nest_exit_guarded(), "敌人守在出口时提供巢穴防御")
-	var preview_state := TestScenario.make_state(["rock_starter"], [["rock_wild1", Vector2i(6, 7)]])
-	preview_state.unit_by_uid(1).cell = Vector2i(5, 7)
-	var preview := preview_state.preview_skill(preview_state.unit_by_uid(1), "rock_break", {"type": "nest", "cell": Vector2i(7, 7)})
-	t.eq(int(preview.get("nest_damaged", {}).get("damage", -1)), 1, "守口碎岩预览显示实际 1 点耐久伤害")
-	t.eq(int(preview_state.nest["hp"]), Balance.NEST_DURABILITY, "守口预览不会修改巢穴耐久")
+func _test_nest_cover(t: TestContext) -> void:
+	var state := TestScenario.make_state(["rock_starter"], [["rock_wild1", Vector2i(7, 7)]])
+	t.eq((state.nest["exits"] as Array).size(), 0, "巢穴不再有巢穴格")
+	t.check(state.nest_covered(), "敌方覆盖巢穴")
 	state.damage_nest(1)
-	t.eq(int(state.nest["hp"]), Balance.NEST_DURABILITY, "守口时 1 伤被完全抵消")
-	state.damage_nest(2)
-	t.eq(int(state.nest["hp"]), Balance.NEST_DURABILITY - 1, "守口时 2 伤只扣 1 耐久")
-	state.damage_nest(4)
-	t.eq(int(state.nest["hp"]), Balance.NEST_DURABILITY - 2, "守口时 4 伤也只扣 1 耐久")
+	state.damage_nest(99)
+	t.eq(int(state.nest["hp"]), Balance.NEST_DURABILITY, "覆盖时所有伤害均无法损伤巢穴")
 	state.unit_by_uid(100).cell = Vector2i(5, 7)
-	t.check(not state.nest_exit_guarded(), "敌人离开出口立即失去防御")
-	var unguarded := TestScenario.make_state([], [["rock_wild1", Vector2i(5, 7)]])
-	unguarded.damage_nest(4)
-	t.eq(int(unguarded.nest["hp"]), Balance.NEST_DURABILITY - 1, "无守口时高伤命中也只扣 1 耐久")
-	unguarded.damage_nest(1)
-	t.eq(int(unguarded.nest["hp"]), Balance.NEST_DURABILITY - 2, "无守口时 1 伤正常生效")
-	state.trainer().cell = Vector2i(6, 7)
-	t.check(not state.nest_exit_guarded(), "我方堵口不提供防御")
+	t.check(not state.nest_covered(), "移开后暴露巢穴")
+	state.damage_nest(99)
+	t.eq(int(state.nest["hp"]), Balance.NEST_DURABILITY - 1, "空置时高伤只扣1耐久")
+	state.trainer().cell = state.nest["cell"]
 	state.damage_nest(1)
-	t.check(state.ended and state.end_reason == "victory", "我方堵口时仍可摧毁巢穴获胜")
-	var fireball := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 7)]])
-	fireball.unit_by_uid(1).cell = Vector2i(3, 7)
-	fireball.unit_by_uid(100).hp = 10
-	var cast := fireball.cast_skill(fireball.unit_by_uid(1), "fire_burst", {"type": "cell", "cell": Vector2i(7, 7)})
-	t.check(bool(cast.get("ok", false)), "火球可将巢穴格作为落点")
-	fireball.start_round()
-	t.eq(int(fireball.nest["hp"]), Balance.NEST_DURABILITY - 1, "火球原始 4 伤通过守口门槛，但巢穴只掉 1 耐久")
+	t.eq(int(state.nest["hp"]), Balance.NEST_DURABILITY - 1, "己方覆盖同样保护巢穴")
+	state.trainer().cell = Vector2i.ZERO
+	state.unit_by_uid(1).cell = Vector2i(6, 7)
+	var preview := state.preview_skill(state.unit_by_uid(1), "rock_break", {"type": "nest", "cell": Vector2i(7, 7)})
+	t.eq(int(preview.get("nest_damaged", {}).get("damage", -1)), 1, "碎岩预览显示1耐久")
+	t.eq(int(state.nest["hp"]), Balance.NEST_DURABILITY - 1, "预览不改实际耐久")

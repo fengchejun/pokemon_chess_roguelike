@@ -39,12 +39,9 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 			summary["collisions"].append({"kind": "edge", "cell": next})
 			break
 		var terrain: int = state.terrain_at(next)
-		if state.is_nest_cell(next):
-			_summarize_collision(state, summary, target, null, next, collision_bonus, true, source_side, source_uid, other_relic_bonus)
-			break
 		var occupant: CombatUnit = state.unit_at(next)
 		if occupant != null:
-			_summarize_collision(state, summary, target, occupant, next, collision_bonus, false, source_side, source_uid, other_relic_bonus)
+			_summarize_collision(state, summary, target, occupant, next, collision_bonus, source_side, source_uid, other_relic_bonus)
 			break
 		if not target.has_buff("flight") and TerrainDB.is_lethal(terrain) and (terrain != TerrainDB.DEEP or target.element != "water"):
 			target.last_move_direction = direction
@@ -56,7 +53,7 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 			summary["death"] = true
 			break
 		if TerrainDB.blocks_move(terrain):
-			_summarize_collision(state, summary, target, null, next, collision_bonus, false, source_side, source_uid, other_relic_bonus)
+			_summarize_collision(state, summary, target, null, next, collision_bonus, source_side, source_uid, other_relic_bonus)
 			break
 		target.cell = next
 		target.last_move_direction = direction
@@ -69,11 +66,11 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 	return summary
 
 
-static func _summarize_collision(state, summary: Dictionary, target: CombatUnit, occupant, cell: Vector2i, collision_bonus: int, is_nest: bool, source_side: String, source_uid: int, other_relic_bonus: int) -> void:
+static func _summarize_collision(state, summary: Dictionary, target: CombatUnit, occupant, cell: Vector2i, collision_bonus: int, source_side: String, source_uid: int, other_relic_bonus: int) -> void:
 	var target_damage := Balance.COLLISION_DAMAGE + collision_bonus
 	var other_damage := Balance.COLLISION_DAMAGE + (other_relic_bonus if occupant != null and occupant.side == "enemy" else 0)
 	var entry := {
-		"kind": "unit" if occupant != null else ("nest" if is_nest else "obstacle"),
+		"kind": "unit" if occupant != null else "obstacle",
 		"cell": cell,
 		"target_damage": target_damage,
 		"other_damage": other_damage if occupant != null else 0,
@@ -82,13 +79,9 @@ static func _summarize_collision(state, summary: Dictionary, target: CombatUnit,
 	var blocker_name := "障碍"
 	if occupant != null:
 		blocker_name = occupant.display_name
-	elif is_nest:
-		blocker_name = "巢穴"
 	state.log_event("%s 撞上%s，受到 %d 伤害。" % [target.display_name, blocker_name, target_damage])
 	state.damage_unit(null, target, target_damage, {"no_element": true, "cause": "碰撞", "collision": true, "killer_side": source_side, "killer_uid": source_uid})
 	if occupant != null:
 		state.damage_unit(null, occupant, other_damage, {"no_element": true, "cause": "被撞", "collision": true, "killer_side": source_side, "killer_uid": source_uid})
-	elif is_nest:
-		state.damage_nest(1, source_side, cell)
 	else:
 		state.damage_obstacle(cell, 1, source_side)

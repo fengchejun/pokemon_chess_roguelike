@@ -45,7 +45,7 @@ func _ready() -> void:
 			persistent_node = true
 			map["terrain"] = saved.terrain.duplicate()
 			map["nest_cell"] = saved.nest["cell"]
-			map["nest_exits"] = saved.nest.get("exits", []).duplicate()
+			map["nest_exits"] = []
 			map["nest_alive"] = bool(saved.nest.get("alive", false))
 			map["nest_hp"] = int(saved.nest.get("hp", 0))
 			map["reward_cell"] = saved.reward.get("cell", Vector2i(-1, -1))
@@ -195,7 +195,7 @@ func _enemy_box(run: RunState) -> Control:
 	var reinforce_names: Array = []
 	for species_id in cfg.get("reinforce", []):
 		reinforce_names.append(SpeciesDB.name_of(String(species_id)))
-	column.add_child(UIKit.wrapped("巢穴增援池：%s（第 2、4、6 回合各尝试 1 只；堵口则排队）" % "、".join(reinforce_names), 13))
+	column.add_child(UIKit.wrapped("巢穴增援池：%s（第 2、4、6 回合各尝试 1 只；巢穴被占则排队）" % "、".join(reinforce_names), 13))
 	if int(cfg.get("boss_index", -1)) >= 0:
 		column.add_child(UIKit.wrapped("首领 +20 最大生命；首次降至半血及以下且仍存活时，其他敌人和随后出生的增援获得本场鼓舞：移动 +1、当前生命和生命上限各 +5。毁巢或第八回合逃离可过关但不发首领之血；捕获首领并清场获胜才得 1 份永久首领之血。", 13, UIKit.BAD))
 	return box
@@ -327,8 +327,8 @@ func _mod_hover_text(cell: Vector2i) -> String:
 	var run: RunState = app.run
 	var rule: Dictionary = MOD_RULES.get(mod_kind, {})
 	var tool_name := String(rule.get("name", mod_kind))
-	if (map.get("nest_exits", []) as Array).has(cell):
-		return "巢穴唯一出口：第 2、4、6 回合尝试产怪；出生轮在出口待机，不能移动或施法。堵住后排队，移开后下回合继续尝试。敌方守口时 1 点伤害无效，2 点以上命中只掉 1 耐久。"
+	if cell == map.get("nest_cell", Vector2i(-1, -1)):
+		return "巢穴：第 2、4、6 回合直接在本格尝试产怪；出生轮待机。可站上阻挡生成，积压保留；任何单位覆盖时保护巢穴，空置时任意有效伤害每次扣 1 耐久。"
 	if MapGenerator.mod_protected(map, cell):
 		return "【%s】该格受保护（部署区 / 巢穴 / 奖励 / 果实），不能改造。" % tool_name
 	var terrain := int(map["terrain"][GridSpec.index(cell)])

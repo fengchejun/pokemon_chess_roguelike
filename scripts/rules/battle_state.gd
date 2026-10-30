@@ -195,7 +195,7 @@ func load_map(map_data: Dictionary) -> void:
 	natural_essence_cells = obstacle_durability.keys().duplicate()
 	nest = {
 		"cell": map_data["nest_cell"],
-		"exits": map_data["nest_exits"].duplicate(),
+		"exits": [], # Legacy snapshot field; spawning uses cell only.
 		"hp": Balance.NEST_DURABILITY,
 		"alive": true,
 		"pending_waves": 0,
@@ -804,11 +804,12 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 		return false
 	if amount <= 0:
 		return false
-	if nest_exit_guarded(target_cell) and amount == 1:
-		log_event("敌方守住巢穴出口，抵消了 %d 点伤害。" % amount)
+	if nest_covered(target_cell):
+		log_event("单位覆盖巢穴，巢穴未受到这次伤害（%d）。" % amount)
 		return false
-	# 守口只决定这次命中能否破防；巢穴每次命中最多损失 1 点耐久。
+	# 任意有效伤害命中均扣 1 耐久；占位单位覆盖巢穴。
 	target_nest["hp"] = maxi(0, int(target_nest["hp"]) - 1)
+	_relay_feedback("damage", "耐久 -1", 1, target_nest["cell"], -1)
 	if int(target_nest["hp"]) <= 0:
 		if source_side == "player":
 			earn_essence("nest", 8, target_nest["cell"])
@@ -823,15 +824,9 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 	return false
 
 
-func nest_exit_guarded(target_cell: Vector2i = Vector2i(-1, -1)) -> bool:
+func nest_covered(target_cell: Vector2i = Vector2i(-1, -1)) -> bool:
 	var target_nest: Dictionary = nest if target_cell.x < 0 else nest_at_cell(target_cell)
-	if not bool(target_nest.get("alive", false)):
-		return false
-	for cell in target_nest.get("exits", []):
-		var occupant := unit_at(cell)
-		if occupant != null and occupant.side == "enemy":
-			return true
-	return false
+	return bool(target_nest.get("alive", false)) and unit_at(target_nest["cell"]) != null
 
 
 func place_temp_obstacle(cell: Vector2i, origin: int, expire_round: int) -> void:
@@ -1094,13 +1089,11 @@ func _try_spawn_wave() -> void:
 	if not bool(nest.get("alive", false)) or reinforcement_pool.is_empty():
 		return
 	var species_id: String = reinforcement_pool[spawn_rng.randi_range(0, reinforcement_pool.size() - 1)]
-	var candidates: Array = []
-	for exit_cell in nest.get("exits", []):
-		candidates.append(exit_cell)
+	var candidates: Array = [nest["cell"]]
 	for cell in candidates:
 		if not GridSpec.is_inside(cell):
 			continue
-		if is_nest_cell(cell) or TerrainDB.blocks_move(terrain_at(cell)):
+		if TerrainDB.blocks_move(terrain_at(cell)):
 			continue
 		if unit_at(cell) != null:
 			continue
@@ -1116,9 +1109,9 @@ func _try_spawn_wave() -> void:
 		_watch_feedback(enemy)
 		nest["pending_waves"] = maxi(0, int(nest.get("pending_waves", 0)) - 1)
 		apply_vine_on_landing(enemy)
-		log_event("巢穴生成 1 只野生宝可梦（%s）；出生轮在出口待机，下一回合才能行动。" % enemy.display_name)
+		log_event("巢穴生成 1 只野生宝可梦（%s）；出生轮在巢穴格待机，下一回合才能行动。" % enemy.display_name)
 		return
-	log_event("巢穴出口被占，本次产怪排队至下一回合。")
+	log_event("巢穴格被占，本次产怪排队至下一回合。")
 
 
 func _cell_order(cell: Vector2i) -> int:
@@ -1287,7 +1280,7 @@ func ice_slide_outcome(unit: CombatUnit) -> Dictionary:
 	var next: Vector2i = unit.cell + unit.last_move_direction
 	var blocked := not GridSpec.is_inside(next)
 	if not blocked:
-		blocked = unit_at(next) != null or is_nest_cell(next) or TerrainDB.blocks_move(terrain_at(next))
+		blocked = unit_at(next) != null or TerrainDB.blocks_move(terrain_at(next))
 	var lethal := false
 	if not blocked:
 		lethal = TerrainDB.is_lethal(terrain_at(next)) and (terrain_at(next) != TerrainDB.DEEP or unit.element != "water")
@@ -1323,6 +1316,8 @@ func _settle_burning_cells() -> void:
 				newly_lit.append(near)
 				spread_sources[near] = burning_sources.get(cell, "")
 		var occupant := unit_at(cell)
+		if occupant == null and is_nest_cell(cell):
+			damage_nest(1, String(burning_sources.get(cell, "")), cell)
 		if occupant != null and not occupant.has_buff("flight"):
 			apply_burn(occupant, null)
 			occupant.burn_source_side = String(burning_sources.get(cell, ""))
@@ -1446,7 +1441,7 @@ func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) 
 	for cell in cells:
 		if added >= count:
 			break
-		if not GridSpec.is_inside(cell) or unit_at(cell) != null or is_nest_cell(cell) or species_pool.is_empty():
+		if not GridSpec.is_inside(cell) or unit_at(cell) != null or species_pool.is_empty():
 			continue
 		var species_id := String(species_pool[next_enemy_uid % species_pool.size()])
 		if not TerrainDB.can_stand(terrain_at(cell), SpeciesDB.element_of(species_id)):

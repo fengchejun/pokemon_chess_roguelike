@@ -8,7 +8,7 @@ func run(t: TestContext) -> void:
 	_rock_create(t)
 	_enemy_opens_route(t)
 	_enemy_bridges_lethal_ground(t)
-	_enemy_clears_exit(t)
+	_enemy_clears_nest(t)
 	t.finish()
 
 
@@ -95,11 +95,11 @@ func _enemy_bridges_lethal_ground(t: TestContext) -> void:
 	t.check(bridged or crossed, "冰物种归水后可越过深水或造冰开路")
 
 
-func _enemy_clears_exit(t: TestContext) -> void:
-	var state := TestScenario.make_state([], [["rock_wild1", Vector2i(6, 7)]])
+func _enemy_clears_nest(t: TestContext) -> void:
+	var state := TestScenario.make_state([], [["rock_wild1", Vector2i(7, 7)]])
 	state.nest["pending_waves"] = 1
 	state.trainer().cell = Vector2i(0, 0)
 	var actions := EnemyAI.plan(state)
-	t.check(not actions.is_empty(), "巢穴积压增援时守口敌人仍规划行动")
+	t.check(not actions.is_empty(), "巢穴积压增援时占巢敌人仍规划行动")
 	if not actions.is_empty():
-		t.check(not (actions[0].get("move_path", []) as Array).is_empty(), "可移动时守口敌人主动让出出口")
+		t.check(not (actions[0].get("move_path", []) as Array).is_empty(), "可移动时占巢敌人主动让出巢穴格")

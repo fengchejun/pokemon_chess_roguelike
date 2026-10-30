@@ -179,7 +179,7 @@ func resume_node(id: String, players: Array) -> BattleState:
 		var candidates: Array = battle.deploy_cells.duplicate()
 		candidates.append_array(GridSpec.all_cells())
 		for cell in candidates:
-			if battle.unit_at(cell) == null and not battle.is_nest_cell(cell) and TerrainDB.can_stand(battle.terrain_at(cell), player.element):
+			if battle.unit_at(cell) == null and TerrainDB.can_stand(battle.terrain_at(cell), player.element):
 				player.cell = cell
 				battle.units.append(player)
 				placed = true

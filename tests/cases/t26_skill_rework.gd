@@ -55,7 +55,7 @@ func _rock(t: TestContext) -> void:
 		["rock_wild1", Vector2i(6, 3)], ["rock_wild1", Vector2i(7, 4)]])
 	storm.unit_by_uid(1).cell = Vector2i(1, 1)
 	storm.cast_skill(storm.unit_by_uid(1), "lightning", {"type": "cell", "cell": Vector2i(1, 1)})
-	t.eq(storm.pending_casts[0]["cells"].size(), 4, "打雷锁定数不受原三格上限限制")
+	t.eq(storm.pending_casts[0]["cells"].size(), 5, "打雷锁定数不受原三格上限限制")
 
 
 func _tree(t: TestContext) -> void:

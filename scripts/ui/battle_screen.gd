@@ -984,12 +984,9 @@ func _on_board_hovered(cell: Vector2i) -> void:
 			hint_label.add_theme_color_override("font_color", UIKit.TEXT)
 		board.queue_redraw()
 		return
-	if bool(state.nest.get("alive", false)) and (state.nest.get("exits", []) as Array).has(cell):
-		var occupant := state.unit_at(cell)
-		var detail := "空置" if occupant == null else "敌方守口：1 点伤害无效，2 点以上命中掉 1 耐久" if occupant.side == "enemy" else "我方堵口，产怪排队"
-		if occupant == null and (Balance.nest_warning_due(state.round) or int(state.nest.get("pending_waves", 0)) > 0):
-			detail += "；%s" % ("末轮仍有积压，本场不再产怪" if state.round >= Balance.MAX_ROUNDS else "下回合将尝试产怪")
-		hint_label.text = "巢穴唯一出口：%s。" % detail
+	if state.is_nest_cell(cell):
+		var detail := "单位覆盖巢穴：暂时不能伤害巢穴，生成排队" if state.nest_covered() else "空置：任意伤害命中扣 1 耐久，可站上阻挡生成"
+		hint_label.text = "巢穴：%s。" % detail
 		hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	var unit := state.unit_by_uid(selected_uid)
 	if action_mode == "move" and unit != null and state.can_move_unit_now(unit):
@@ -1028,9 +1025,9 @@ func _preview_overlays(preview: Dictionary) -> void:
 	if String(preview.get("skill_id", "")) == "flame_charge":
 		for obstacle in preview.get("obstacles_damaged", []):
 			board.markers.append({"cell": obstacle["cell"], "kind": "damage", "text": str(int(obstacle["damage"]))})
-		var nest_hit = preview.get("nest_damaged")
-		if nest_hit != null and not state.nest.is_empty():
-			board.markers.append({"cell": state.nest["cell"], "kind": "damage", "text": str(int(nest_hit.get("damage", 0)))})
+	var nest_hit = preview.get("nest_damaged")
+	if nest_hit != null and not state.nest.is_empty():
+		board.markers.append({"cell": state.nest["cell"], "kind": "damage", "text": str(int(nest_hit.get("damage", 0)))})
 	if preview.get("self_move") != null:
 		var unit := state.unit_by_uid(selected_uid)
 		if unit != null:
@@ -1066,18 +1063,9 @@ func _show_terrain(cell: Vector2i) -> void:
 	if state.steam_cells.has(cell):
 		lines.append("蒸汽：剩余 %d 次整轮结算；站在其中不能施放技能。" % int(state.steam_cells[cell]))
 	if state.is_nest_cell(cell):
-		lines.append("巢穴耐久：%d/3（第 2、4、6 回合各尝试生成 1 只；堵口排队）" % int(state.nest.get("hp", 3)))
-		lines.append("敌人守住出口时，单次 1 点伤害无效；2 点以上命中仍只掉 1 耐久。我方堵口不提供防御。")
-	if bool(state.nest.get("alive", false)) and (state.nest.get("exits", []) as Array).has(cell):
-		var holder := state.unit_at(cell)
-		var status := "空置"
-		if holder != null:
-			status = "敌方守口：1 伤无效" if holder.side == "enemy" else "我方堵口：延迟产怪"
-		elif int(state.nest.get("pending_waves", 0)) > 0:
-			status = "待产怪：末轮无法继续补产" if state.round >= Balance.MAX_ROUNDS else "待产怪：下回合尝试出现"
-		elif Balance.nest_warning_due(state.round):
-			status = "预警：下回合将产怪"
-		lines.append("巢穴唯一出口：%s。积压 %d 只。" % [status, int(state.nest.get("pending_waves", 0))])
+		lines.append("巢穴耐久：%d/%d；第 2、4、6 回合尝试直接在巢穴格生成。" % [int(state.nest.get("hp", 0)), Balance.NEST_DURABILITY])
+		lines.append("可移动、停留在巢穴格。任何单位覆盖时均阻挡生成与巢穴受伤；击杀或移开覆盖者的那次攻击不会穿透巢穴。空置时任意有效伤害每次扣 1 耐久。")
+		lines.append("当前：%s；积压 %d 只。" % ["被单位覆盖" if state.nest_covered() else "空置", int(state.nest.get("pending_waves", 0))])
 	if cell == state.reward.get("cell", Vector2i(-1, -1)):
 		match String(state.reward.get("state", "")):
 			"map", "guarding":
