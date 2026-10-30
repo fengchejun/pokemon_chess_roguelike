@@ -1,112 +1,49 @@
-extends Control
-
-var app = null
+extends "res://scripts/ui/preview_screen.gd"
 
 const MAX_DEPLOY := Balance.DEPLOY_LIMIT
-
 var deploy_selection: Array = []
 var check_boxes: Dictionary = {}
-var hint_label: Label = null
-
+var team_box: VBoxContainer
+var team_scroll: ScrollContainer
 
 func _ready() -> void:
+	var desired: Array = app.prep_deploy_preset if not app.prep_deploy_preset.is_empty() else app.run.deployed_uids
+	app.prep_deploy_preset = []
+	for record in app.run.carried:
+		var uid := int(record["uid"])
+		if deploy_selection.size() < MAX_DEPLOY and int(record["hp"]) > 0 and desired.has(uid):
+			deploy_selection.append(uid)
+	deploy_uids = deploy_selection.duplicate()
+	super._ready()
 	name = "PrepScreen"
-	UIKit.fill_background(self)
-	var run: RunState = app.run
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 20)
-	margin.add_theme_constant_override("margin_right", 20)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_bottom", 16)
-	add_child(margin)
-	var columns := UIKit.hbox(16)
-	margin.add_child(columns)
-	var left := UIKit.vbox(10)
-	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	columns.add_child(left)
-	left.add_child(UIKit.label("整备 · 第 %d 层 %d/6 战（%s）" % [run.floor_index() + 1, run.battle_in_floor() + 1, run.region_name()], 24, UIKit.ACCENT))
-	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
-	var recovery_text := "训练家生命：%d / %d。营地消耗 3 食物恢复受伤成员，濒死成员复活至半血。" if run.region_mode else "训练家生命：%d / %d（每次冒险前回满）。出战者战后不自动回血，留守成员每场恢复 50%% 最大生命；濒死成员留守一场后恢复到 5 HP。"
-	left.add_child(UIKit.wrapped(recovery_text % [run.trainer_hp, trainer_max], 14, UIKit.TEXT_DIM))
-	left.add_child(UIKit.label("出战名单（%d/%d）——每场最多勾选 %d 只出战；其余在备战席休养；濒死成员本场不能出战：" % [run.carried.size(), Balance.CARRIED_LIMIT, MAX_DEPLOY], 16))
-	var team_scroll := UIKit.scroll()
-	left.add_child(team_scroll)
-	var team_box := UIKit.vbox(6)
+
+func _build_roster() -> Control:
+	var column := UIKit.vbox(8)
+	column.name = "TeamPreparationPanel"
+	column.add_child(UIKit.label("队伍与招式", 18, UIKit.ACCENT))
+	column.add_child(UIKit.wrapped("训练师生命 %d/%d · 最多选择 %d 只出战；濒死成员不可选。" % [app.run.trainer_hp, SpeciesDB.hp_of("trainer"), MAX_DEPLOY], 13))
+	team_scroll = UIKit.scroll()
+	column.add_child(team_scroll)
+	team_box = UIKit.vbox(6)
 	team_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	team_scroll.add_child(team_box)
-	for record in run.carried:
+	_rebuild_roster()
+	return column
+
+func _rebuild_roster() -> void:
+	check_boxes.clear()
+	UIKit.clear_children(team_box)
+	for record in app.run.carried:
 		team_box.add_child(_team_row(record))
-	if run.carried.is_empty():
-		team_box.add_child(UIKit.label("没有可出战的宝可梦。", 16, UIKit.BAD))
-	hint_label = UIKit.label("", 14, UIKit.BAD)
-	left.add_child(hint_label)
-	var preset: Array = app.prep_deploy_preset
-	app.prep_deploy_preset = []
-	var desired: Array = preset if not preset.is_empty() else run.deployed_uids
-	for record in run.carried:
-		if deploy_selection.size() >= MAX_DEPLOY:
-			break
-		if int(record["hp"]) <= 0:
-			continue
-		if desired.has(int(record["uid"])):
-			deploy_selection.append(int(record["uid"]))
-			var box: CheckBox = check_boxes[int(record["uid"])]
-			box.set_pressed_no_signal(true)
-	var right := UIKit.vbox(10)
-	right.custom_minimum_size = Vector2(440, 0)
-	columns.add_child(right)
-	var right_scroll := UIKit.scroll()
-	right_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right.add_child(right_scroll)
-	var right_content := UIKit.vbox(10)
-	right_scroll.add_child(right_content)
-	right_content.add_child(UIKit.wrapped("消耗品统一在下一页地图预览中选择并使用；返回整备不会重置已使用的卡和地图。背包现有 %d 张。" % run.reward_inventory.size(), 13, UIKit.TEXT_DIM))
-	right_content.add_child(_capture_settings_box(run))
-	right_content.add_child(_archive_box(run))
-	right_content.add_child(_storage_box(run))
-	right_content.add_child(_next_box(run))
-	var start := UIKit.button("前往地图预览", 18)
-	start.name = "PreviewButton"
-	start.pressed.connect(_on_start)
-	right.add_child(start)
-	if run.region_mode:
-		var back := UIKit.small_button("返回区域路线")
-		back.pressed.connect(func() -> void: app.cancel_region_entry())
-		right.add_child(back)
-
-
-func _capture_settings_box(run: RunState) -> Control:
-	var box := UIKit.panel(UIKit.PANEL)
-	var column := UIKit.vbox(5)
-	box.add_child(column)
-	column.add_child(UIKit.label("本局捕获设置", 17, UIKit.ACCENT))
-	column.add_child(UIKit.wrapped("训练家周围八格可捕获。下面两项独立选择；关闭时使用 v2 的概率与离场处理。", 13))
-	var low_hp := CheckBox.new()
-	low_hp.name = "CaptureLowHpOption"
-	low_hp.text = "半血以下才可尝试；5 HP 或减益 10 HP 必成"
-	low_hp.button_pressed = bool(run.options.get("capture_low_hp", false))
-	low_hp.toggled.connect(func(value: bool) -> void:
-		run.options["capture_low_hp"] = value
-		app.autosave()
-	)
-	column.add_child(low_hp)
-	var field_join := CheckBox.new()
-	field_join.name = "CaptureFieldJoinOption"
-	field_join.text = "成功后原地转我方，本轮可行动；战中倒下不入队"
-	field_join.button_pressed = bool(run.options.get("capture_field_join", false))
-	field_join.toggled.connect(func(value: bool) -> void:
-		run.options["capture_field_join"] = value
-		app.autosave()
-	)
-	column.add_child(field_join)
-	return box
-
+	for uid in deploy_selection:
+		if check_boxes.has(uid):
+			check_boxes[uid].set_pressed_no_signal(true)
 
 func show_prep_after_mode_change() -> void:
-	app.prep_deploy_preset = deploy_selection.duplicate()
-	app.show_prep()
-
+	var scroll := team_scroll.scroll_vertical
+	_rebuild_roster()
+	team_scroll.set_deferred("scroll_vertical", scroll)
+	_refresh()
 
 func _team_row(record: Dictionary) -> Control:
 	var species_id := String(record["species_id"])
@@ -176,56 +113,6 @@ func _team_row(record: Dictionary) -> Control:
 	return row
 
 
-func _archive_box(run: RunState) -> Control:
-	var box := UIKit.panel(UIKit.PANEL)
-	var column := UIKit.vbox(6)
-	box.add_child(column)
-	column.add_child(UIKit.label("战损记录（倒下即濒死，基地休养后恢复）", 17, UIKit.BAD))
-	if run.deaths.is_empty():
-		column.add_child(UIKit.label("尚无战损。", 13, UIKit.TEXT_DIM))
-	else:
-		var lines: Array = []
-		for entry in run.deaths:
-			lines.append("- %s（第 %d 场，%s）" % [entry.get("name", "?"), int(entry.get("battle", 0)), entry.get("cause", "?")])
-		column.add_child(UIKit.wrapped("\n".join(lines), 13))
-	return box
-
-
-func _storage_box(run: RunState) -> Control:
-	var box := UIKit.panel(UIKit.PANEL)
-	var column := UIKit.vbox(6)
-	box.add_child(column)
-	if run.region_mode:
-		column.add_child(UIKit.label("营地留守：%d 只" % run.storage.size(), 17, UIKit.ACCENT))
-		column.add_child(UIKit.wrapped("仅能在营地交换队伍；进入下一层后留守成员将被抛弃。", 13))
-		return box
-	column.add_child(UIKit.label("仓库（%d/%d）" % [run.storage.size(), Balance.STORAGE_LIMIT], 17, UIKit.ACCENT))
-	column.add_child(UIKit.wrapped("仓库成员不参战、不受战损，沿用每场战后回满规则；携带名单中的留守成员每场恢复 50%% 最大生命，濒死者留守一场后恢复到 5 HP。名单满员时，捕获可替换或放入仓库。", 13))
-	if not run.storage.is_empty():
-		var names: Array = []
-		for record in run.storage:
-			names.append(SpeciesDB.name_of(String(record["species_id"])))
-		column.add_child(UIKit.wrapped("成员：" + "、".join(names), 13, UIKit.TEXT_DIM))
-	return box
-
-
-func _next_box(run: RunState) -> Control:
-	var box := UIKit.panel(UIKit.PANEL)
-	var column := UIKit.vbox(6)
-	box.add_child(column)
-	var cfg := run.battle_config()
-	column.add_child(UIKit.label("下一场：%s" % run.region_name(), 18, UIKit.ACCENT))
-	var level_bonus := int(cfg.get("enemy_level_bonus", 0))
-	column.add_child(UIKit.wrapped("敌人 %d 名 · 普通 Lv.%d%s" % [(cfg.get("enemies", []) as Array).size(), int(cfg.get("enemy_level", 1)) + level_bonus, " · 首领 Lv.%d" % (int(cfg.get("enemy_level", 1)) + level_bonus + 1) if int(cfg.get("boss_index", -1)) >= 0 else ""], 14, UIKit.TEXT_DIM))
-	var enemy_names: Array = []
-	for pair in cfg.get("enemies", []):
-		var species_id := String(pair[0])
-		enemy_names.append("%s【%s】" % [SpeciesDB.name_of(species_id), Elements.name_of(SpeciesDB.element_of(species_id))])
-	column.add_child(UIKit.wrapped("敌方：%s（共 %d 只，另有巢穴增援）" % [", ".join(enemy_names), enemy_names.size()], 14))
-	column.add_child(UIKit.wrapped("巢穴：耐久 3，第 2、4、6 回合各尝试生成 1 只；堵口则排队，摧毁后立即获胜。", 13))
-	return box
-
-
 func _on_toggle(uid: int, pressed: bool) -> void:
 	if pressed:
 		var record: Dictionary = app.run.record_by_uid(uid)
@@ -244,6 +131,8 @@ func _on_toggle(uid: int, pressed: bool) -> void:
 	else:
 		deploy_selection.erase(uid)
 	hint_label.text = ""
+	deploy_uids = deploy_selection.duplicate()
+	_refresh()
 
 
 func _on_start() -> void:
@@ -253,4 +142,5 @@ func _on_start() -> void:
 	if deploy_selection.is_empty():
 		hint_label.text = "至少选择 1 只出战宝可梦。"
 		return
-	app.show_preview(deploy_selection)
+	deploy_uids = deploy_selection.duplicate()
+	super._on_start()

@@ -69,7 +69,7 @@ func _test_ui_flow(t: TestContext) -> void:
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
 	app.run.reward_inventory = ["map:water", RewardDB.MOD_ITEM]
 	app.show_prep()
-	t.check(app.current_screen.find_child("RewardItemOption", true, false) == null, "整备页没有消耗品入口")
+	t.check(app.current_screen.find_child("RewardItemOption", true, false) != null, "合并整备页包含可展开的消耗品入口")
 	app.show_preview([1, 2, 3])
 	var selector: OptionButton = app.current_screen.find_child("RewardItemOption", true, false)
 	t.check(selector != null and selector.item_count == 3, "预览页提供两张背包消耗卡")
@@ -89,8 +89,7 @@ func _test_ui_flow(t: TestContext) -> void:
 	t.eq(restored_run.preview_used_reward_item, "map:water", "存档恢复后仍记得本场已用卡")
 	var restored_map := MapGenerator.generate_card_preview(restored_run.seed, restored_run.battle_index, "water", MapGenerator.generate(restored_run.seed, restored_run.battle_index, 0, [], restored_run.current_theme()))
 	t.eq((restored_map["map"] as Dictionary)["terrain"], saved_terrain, "读档后可复原同一张地貌卡地图")
-	var back: Button = app.current_screen.find_child("BackButton", true, false)
-	back.pressed.emit()
+	app.back_to_prep(app.current_screen.deploy_uids)
 	app.show_preview([1, 2, 3])
 	t.eq(app.current_screen.map["terrain"], saved_terrain, "返回整备后再进预览保留已用卡地图")
 	var start: Button = app.current_screen.find_child("StartBattleButton", true, false)
@@ -138,8 +137,7 @@ func _test_modification_ui(t: TestContext) -> void:
 		t.eq(int(preview.map["terrain"][GridSpec.index(valid_cell)]), TerrainDB.WATER, "改造工具在预览页真正改变所选地形")
 		t.eq(preview.mod_used, 1, "改造成功消耗一次工具使用额度")
 		t.eq((RunState.from_dict(app.run.to_dict()).preview_modifications as Array).size(), 1, "改造记录可随本局存档恢复")
-		var back: Button = preview.find_child("BackButton", true, false)
-		back.pressed.emit()
+		app.back_to_prep(preview.deploy_uids)
 		app.show_preview([1, 2, 3])
 		preview = app.current_screen
 		t.eq(int(preview.map["terrain"][GridSpec.index(valid_cell)]), TerrainDB.WATER, "返回整备后改造地形仍保留")

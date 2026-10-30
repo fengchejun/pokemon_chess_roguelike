@@ -6,7 +6,6 @@ const BattleSnapshot = preload("res://scripts/run/battle_snapshot.gd")
 const MenuScreen = preload("res://scripts/ui/menu_screen.gd")
 const CollectionScreen = preload("res://scripts/ui/collection_screen.gd")
 const PrepScreen = preload("res://scripts/ui/prep_screen.gd")
-const PreviewScreen = preload("res://scripts/ui/preview_screen.gd")
 const BattleScreen = preload("res://scripts/ui/battle_screen.gd")
 const SettlementScreen = preload("res://scripts/ui/settlement_screen.gd")
 const SupplyScreen = preload("res://scripts/ui/supply_screen.gd")
@@ -308,13 +307,12 @@ func enter_region_node(id: String) -> void:
 
 
 func show_preview(deploy_uids: Array) -> void:
-	var screen: Control = PreviewScreen.new()
-	screen.deploy_uids = deploy_uids
-	_switch(screen)
+	prep_deploy_preset = deploy_uids.duplicate()
+	show_prep()
 
 
 func back_to_prep(deploy_uids: Array) -> void:
-	## 从地图预览返回整备：保留已选编成。
+	## 兼容旧入口，在合并页恢复已选编成和本场预览。
 	prep_deploy_preset = deploy_uids.duplicate()
 	show_prep()
 

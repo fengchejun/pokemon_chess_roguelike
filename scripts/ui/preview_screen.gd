@@ -26,6 +26,9 @@ var card_status_label: Label = null
 var card_header_label: Label = null
 var card_result: Dictionary = {}
 var persistent_node := false
+var start_button: Button
+var board_host: Control
+var tools_scroll: ScrollContainer
 
 
 func _ready() -> void:
@@ -63,32 +66,54 @@ func _ready() -> void:
 			mod_used += 1
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 16)
-	margin.add_theme_constant_override("margin_right", 16)
-	margin.add_theme_constant_override("margin_top", 12)
-	margin.add_theme_constant_override("margin_bottom", 12)
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 16)
 	add_child(margin)
+	var page := UIKit.vbox(8)
+	margin.add_child(page)
+	var location: String = run.get_region().display_name(run.get_region().active_node) if run.region_mode else "%d/6 战" % (run.battle_in_floor() + 1)
+	page.add_child(UIKit.label("战前整备与地图预览 · 第 %d 层 · %s · %s" % [run.floor_index() + 1, location, run.region_name()], 22, UIKit.ACCENT))
 	var columns := UIKit.hbox(14)
-	margin.add_child(columns)
-	var board_column := UIKit.vbox(6)
-	columns.add_child(board_column)
+	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(columns)
+	var roster := _build_roster()
+	if roster != null:
+		roster.custom_minimum_size.x = 400
+		roster.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		roster.size_flags_stretch_ratio = 1.0
+		columns.add_child(roster)
+	var preview := UIKit.vbox(6)
+	preview.name = "MapPreviewPanel"
+	preview.custom_minimum_size.x = 520
+	preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	preview.size_flags_stretch_ratio = 1.2
+	columns.add_child(preview)
+	board_host = Control.new()
+	board_host.custom_minimum_size.y = 280
+	board_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	preview.add_child(board_host)
 	board = BoardView.new()
 	board.name = "BoardView"
 	board.cell_clicked.connect(_on_cell_clicked)
 	board.cell_hovered.connect(_on_cell_hovered)
-	board_column.add_child(board)
-	board_column.add_child(_legend())
-	var right := UIKit.vbox(8)
-	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	columns.add_child(right)
-	right.add_child(UIKit.label("地图预览 · 第 %d 层 %d/6 战（%s）" % [run.floor_index() + 1, run.battle_in_floor() + 1, run.region_name()], 22, UIKit.ACCENT))
-	var scroll := UIKit.scroll()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right.add_child(scroll)
+	board_host.add_child(board)
+	board_host.resized.connect(_layout_preview_board)
+	preview.add_child(UIKit.wrapped("蓝框：部署区 · 紫色：巢穴 · ★：奖励 · 粮：食物；悬停单位查看招式。", 12))
+	var tools_toggle := UIKit.small_button("消耗品与地图改造 ▸")
+	tools_toggle.name = "PreviewToolsToggle"
+	preview.add_child(tools_toggle)
+	tools_scroll = UIKit.scroll()
+	tools_scroll.custom_minimum_size.y = 180
+	tools_scroll.size_flags_vertical = Control.SIZE_FILL
+	tools_scroll.visible = false
+	preview.add_child(tools_scroll)
+	tools_toggle.pressed.connect(func() -> void:
+		tools_scroll.visible = not tools_scroll.visible
+		tools_toggle.text = "消耗品与地图改造 ▾" if tools_scroll.visible else "消耗品与地图改造 ▸"
+	)
 	var content := UIKit.vbox(8)
-	scroll.add_child(content)
-	content.add_child(UIKit.wrapped("所有消耗品在此页使用；使用后立即消耗，本场限一张。地貌卡会重新生成地图，并增加对应地形。返回整备再进入时保留结果。", 13))
-	content.add_child(_enemy_box(run))
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tools_scroll.add_child(content)
 	content.add_child(_cards_box())
 	var mod_box := UIKit.panel(UIKit.PANEL)
 	var mod_column := UIKit.vbox(6)
@@ -125,80 +150,34 @@ func _ready() -> void:
 	reset_button.pressed.connect(_on_reset)
 	mod_actions.add_child(reset_button)
 	content.add_child(mod_box)
-	hint_label = UIKit.label("", 14, UIKit.BAD)
-	right.add_child(hint_label)
+	hint_label = UIKit.wrapped("", 13, UIKit.TEXT_DIM)
+	hint_label.custom_minimum_size.y = 34
+	page.add_child(hint_label)
 	var actions := UIKit.hbox(8)
-	right.add_child(actions)
-	var back := UIKit.small_button("返回整备")
-	back.name = "BackButton"
-	back.custom_minimum_size = Vector2(130, 38)
-	back.pressed.connect(func() -> void: app.back_to_prep(deploy_uids))
-	actions.add_child(back)
-	var start := UIKit.button("开始战斗", 18)
-	start.name = "StartBattleButton"
-	start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	start.pressed.connect(_on_start)
-	actions.add_child(start)
+	page.add_child(actions)
+	if run.region_mode:
+		var back := UIKit.small_button("返回区域路线")
+		back.name = "BackButton"
+		back.pressed.connect(func() -> void: app.cancel_region_entry())
+		actions.add_child(back)
+	start_button = UIKit.button("开始战斗", 18)
+	start_button.name = "StartBattleButton"
+	start_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	start_button.pressed.connect(_on_start)
+	actions.add_child(start_button)
 	_refresh()
+	call_deferred("_layout_preview_board")
 
 
-func _legend() -> Control:
-	var box := UIKit.hbox(10)
-	var entries: Array = [
-		[TerrainDB.PLAIN, "平地"], [TerrainDB.WATER, "水面"], [TerrainDB.DEEP, "深水"],
-		[TerrainDB.GRASS, "草丛"], [TerrainDB.OBSTACLE, "障碍"], [TerrainDB.FRAGILE, "易碎"],
-	]
-	for entry in entries:
-		var swatch := ColorRect.new()
-		swatch.color = TerrainDB.color_of(int(entry[0]))
-		swatch.custom_minimum_size = Vector2(14, 14)
-		box.add_child(swatch)
-		box.add_child(UIKit.label(String(entry[1]), 12, UIKit.TEXT_DIM))
-	box.add_child(UIKit.label("　蓝框=部署区　紫=巢穴　金星=奖励　粮=可收集食物", 12, UIKit.TEXT_DIM))
-	return box
+func _build_roster() -> Control:
+	return null
 
-
-func _enemy_box(run: RunState) -> Control:
-	var box := UIKit.panel(UIKit.PANEL)
-	var column := UIKit.vbox(4)
-	box.add_child(column)
-	column.add_child(UIKit.label("敌方配置（可复现）", 17, UIKit.ACCENT))
-	var cfg := run.place_region_enemies(run.battle_config(), map)
-	var enemy_index := 0
-	for pair in cfg.get("enemies", []):
-		var species_id := String(pair[0])
-		var unit := CombatUnit.make(species_id, "enemy", 100 + enemy_index)
-		BattleDB.configure_enemy(unit, run.seed, run.battle_index, enemy_index, enemy_index == int(cfg.get("boss_index", -1)))
-		var bonus := int(cfg.get("enemy_level_bonus", 0))
-		if bonus > 0:
-			unit.enemy_level += bonus
-			unit.combat_level = unit.enemy_level
-			unit.skills = BattleDB.enemy_skills_for_level(species_id, unit.enemy_level)
-			unit.max_hp = MonsterProgression.max_hp(species_id, unit.enemy_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0)
-			unit.hp = unit.max_hp
-		var skill_names: Array = []
-		for skill_id in unit.skills:
-			skill_names.append(SkillDB.name_of(String(skill_id)))
-		var line := UIKit.hbox(8)
-		line.add_child(UIKit.label(("首领·" if unit.is_boss else "") + SpeciesDB.name_of(species_id), 15))
-		line.add_child(UIKit.element_chip(SpeciesDB.element_of(species_id)))
-		line.add_child(UIKit.label("Lv.%d · 生命 %d · 移动 %d · %s" % [
-			unit.enemy_level, unit.max_hp, unit.effective_move(), "、".join(skill_names),
-		], 13, UIKit.TEXT_DIM))
-		column.add_child(line)
-		var upgrade_names: Array = []
-		for upgrade_id in BattleDB.enemy_upgrade_ids(run.seed, run.battle_index, enemy_index, species_id, unit.is_boss):
-			upgrade_names.append(String(RunState.upgrade_info(String(upgrade_id)).get("name", upgrade_id)))
-		if not upgrade_names.is_empty():
-			column.add_child(UIKit.wrapped("技能强化：%s" % "、".join(upgrade_names), 12, UIKit.TEXT_DIM))
-		enemy_index += 1
-	var reinforce_names: Array = []
-	for species_id in cfg.get("reinforce", []):
-		reinforce_names.append(SpeciesDB.name_of(String(species_id)))
-	column.add_child(UIKit.wrapped("巢穴增援池：%s（第 2、4、6 回合各尝试 1 只；巢穴被占则排队）" % "、".join(reinforce_names), 13))
-	if int(cfg.get("boss_index", -1)) >= 0:
-		column.add_child(UIKit.wrapped("首领 +20 最大生命；首次降至半血及以下且仍存活时，其他敌人和随后出生的增援获得本场鼓舞：移动 +1、当前生命和生命上限各 +5。毁巢或第八回合逃离可过关但不发首领之血；捕获首领并清场获胜才得 1 份永久首领之血。", 13, UIKit.BAD))
-	return box
+func _layout_preview_board() -> void:
+	if board_host == null or board == null:
+		return
+	var factor := minf(board_host.size.x / (GridSpec.W * BoardView.TILE), board_host.size.y / (GridSpec.H * BoardView.TILE))
+	board.scale = Vector2.ONE * factor
+	board.position = (board_host.size - Vector2(GridSpec.W, GridSpec.H) * BoardView.TILE * factor) * 0.5
 
 
 func _cards_box() -> Control:
@@ -318,7 +297,18 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 func _on_cell_hovered(cell: Vector2i) -> void:
 	if cell == Vector2i(-1, -1):
 		return
-	hint_label.text = _mod_hover_text(cell)
+	var unit: CombatUnit = null
+	for candidate in board.units:
+		if candidate.cell == cell:
+			unit = candidate
+			break
+	if unit != null:
+		var skills: Array = []
+		for id in unit.skills:
+			skills.append(SkillDB.name_of(String(id)))
+		hint_label.text = "%s · Lv.%d · HP %d/%d · %s" % [unit.display_name, unit.combat_level, unit.hp, unit.max_hp, "、".join(skills)]
+	else:
+		hint_label.text = _mod_hover_text(cell)
 	hint_label.add_theme_color_override("font_color", UIKit.TEXT)
 	board.queue_redraw()
 
@@ -360,6 +350,8 @@ func _on_reset() -> void:
 func _refresh() -> void:
 	var run: RunState = app.run
 	board.set_map_preview(map, _preview_units(run))
+	if start_button != null:
+		start_button.text = "开始战斗（已选 %d/%d）" % [deploy_uids.size(), Balance.DEPLOY_LIMIT]
 	mod_count_label.text = "剩余改造次数：%d / %d" % [maxi(0, run.mod_points() - mod_used), run.mod_points()]
 	for button in mod_buttons.values():
 		(button as Button).disabled = run.mod_points() <= 0 or mod_used >= run.mod_points()
@@ -375,11 +367,18 @@ func _preview_units(run: RunState) -> Array:
 		var saved: BattleState = region.load_battle(region.active_node)
 		if saved != null:
 			return saved.alive_units("enemy")
-	var cfg := run.battle_config()
+	var cfg := run.place_region_enemies(run.battle_config(), map)
 	var index := 0
 	for pair in cfg.get("enemies", []):
 		var unit := CombatUnit.make(String(pair[0]), "enemy", 100 + index)
 		BattleDB.configure_enemy(unit, run.seed, run.battle_index, index, index == int(cfg.get("boss_index", -1)))
+		var bonus := int(cfg.get("enemy_level_bonus", 0))
+		if bonus > 0:
+			unit.enemy_level += bonus
+			unit.combat_level = unit.enemy_level
+			unit.skills = BattleDB.enemy_skills_for_level(unit.species_id, unit.enemy_level)
+			unit.max_hp = MonsterProgression.max_hp(unit.species_id, unit.enemy_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0)
+			unit.hp = unit.max_hp
 		unit.cell = pair[1]
 		units.append(unit)
 		index += 1

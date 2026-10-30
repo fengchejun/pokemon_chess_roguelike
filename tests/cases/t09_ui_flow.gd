@@ -46,51 +46,23 @@ func run(t: TestContext) -> void:
 	t.eq(app.music_director.current_track, "prep", "整备页播放整备音乐")
 	var music_player: MusicDirector = app.music_director
 	t.check(app.run != null and app.run.carried.size() == 3, "本局由永久收藏选三只开局")
-	var low_hp_option: CheckBox = app.current_screen.find_child("CaptureLowHpOption", true, false)
-	var field_join_option: CheckBox = app.current_screen.find_child("CaptureFieldJoinOption", true, false)
-	t.check(low_hp_option != null and field_join_option != null, "捕获两项设置在整备页可见")
-	if low_hp_option != null and field_join_option != null:
-		t.eq(low_hp_option.button_pressed, false, "低血量选项默认关闭")
-		t.eq(field_join_option.button_pressed, false, "原地转阵营选项默认关闭")
-		low_hp_option.button_pressed = true
-		field_join_option.button_pressed = true
-		t.eq(bool(app.run.options.get("capture_low_hp", false)), true, "整备页低血量设置写入本局")
-		t.eq(bool(app.run.options.get("capture_field_join", false)), true, "整备页原地转阵营设置写入本局")
-	var preview_button: Button = app.current_screen.find_child("PreviewButton", true, false)
-	t.check(preview_button != null, "前往预览按钮存在")
-	preview_button.pressed.emit()
-	t.eq(app.current_screen.name, "PrepScreen", "开局未选择宝可梦时不能进入地图预览")
+	t.check(app.current_screen.find_child("CaptureLowHpOption", true, false) == null and app.current_screen.find_child("CaptureFieldJoinOption", true, false) == null, "整备不再显示右侧捕获设置")
+	t.check(app.current_screen.find_child("PreviewButton", true, false) == null, "不再需要前往预览的中间按钮")
+	app.run.options["capture_low_hp"] = true
+	app.run.options["capture_field_join"] = true
+	var start_button: Button = app.current_screen.find_child("StartBattleButton", true, false)
+	t.check(start_button != null, "合并页直接提供开始战斗")
+	start_button.pressed.emit()
+	t.eq(app.current_screen.name, "PrepScreen", "没有选择队伍不能开战")
 	var deploy_1: CheckBox = app.current_screen.find_child("Deploy_1", true, false)
 	var deploy_2: CheckBox = app.current_screen.find_child("Deploy_2", true, false)
 	var deploy_3: CheckBox = app.current_screen.find_child("Deploy_3", true, false)
-	t.check(deploy_1 != null and deploy_2 != null and deploy_3 != null, "编成行存在")
 	t.eq(deploy_1.button_pressed or deploy_2.button_pressed or deploy_3.button_pressed, false, "初始出战选择为空")
 	deploy_1.button_pressed = true
 	deploy_2.button_pressed = true
 	deploy_3.button_pressed = true
-	var prep_screen = app.current_screen
-	t.eq(prep_screen.deploy_selection.size(), 3, "已选定三只出战宝可梦")
-	preview_button.pressed.emit()
-	t.eq(app.current_screen.name, "PreviewScreen", "选定宝可梦后进入地图预览")
-	t.check(app.music_director == music_player and app.music_director.current_track == "prep", "整备与预览共用持续播放的音乐")
-	t.check(app.current_screen.find_child("CardToggle_forest", true, false) == null, "预览界面不再免费选择站位卡")
-	t.eq(app.run.mod_points(), 0, "未使用工具时预览页没有免费改造次数")
-	var start_button: Button = app.current_screen.find_child("StartBattleButton", true, false)
-	t.check(start_button != null, "开始战斗按钮存在")
-	# 返回整备：保留出战编成
-	var back_button: Button = app.current_screen.find_child("BackButton", true, false)
-	t.check(back_button != null, "预览界面有返回按钮")
-	back_button.pressed.emit()
-	t.eq(app.current_screen.name, "PrepScreen", "返回整备界面")
-	t.check(app.current_screen.find_child("RewardItemOption", true, false) == null, "整备页不再使用消耗品")
-	deploy_1 = app.current_screen.find_child("Deploy_1", true, false)
-	deploy_2 = app.current_screen.find_child("Deploy_2", true, false)
-	deploy_3 = app.current_screen.find_child("Deploy_3", true, false)
-	t.eq(deploy_1.button_pressed and deploy_2.button_pressed and deploy_3.button_pressed, true, "返回时保留出战编成")
-	preview_button = app.current_screen.find_child("PreviewButton", true, false)
-	preview_button.pressed.emit()
-	t.eq(app.current_screen.name, "PreviewScreen", "重新进入地图预览")
-	start_button = app.current_screen.find_child("StartBattleButton", true, false)
+	t.eq(app.current_screen.deploy_selection.size(), 3, "在同页选择三只成员")
+	t.check(app.current_screen.board != null and not app.current_screen.map.is_empty(), "同页始终有地图预览")
 	start_button.pressed.emit()
 	t.eq(app.current_screen.name, "BattleScreen", "不使用消耗卡也能进入战斗")
 	t.eq(app.music_director.current_track, "battle", "进入战斗切换战斗音乐")

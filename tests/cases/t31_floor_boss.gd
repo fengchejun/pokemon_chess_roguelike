@@ -81,7 +81,7 @@ func _eighteen_battle_route(t: TestContext) -> void:
 	for index in Balance.BATTLES_PER_RUN:
 		t.eq(app.current_screen.name, "PrepScreen", "第 %d 战从整备开始" % (index + 1))
 		app.show_preview([1, 2, 3])
-		t.eq(app.current_screen.name, "PreviewScreen", "第 %d 战可以预览" % (index + 1))
+		t.eq(app.current_screen.name, "PrepScreen", "第 %d 战在合并页可以预览" % (index + 1))
 		var preview_map: Dictionary = app.current_screen.map.duplicate(true)
 		app.begin_battle([1, 2, 3], preview_map)
 		t.eq(app.current_screen.name, "BattleScreen", "第 %d 战可以启动" % (index + 1))
