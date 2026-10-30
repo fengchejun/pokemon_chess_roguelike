@@ -91,3 +91,9 @@ Godot 调试运行时，在整备选人页或战斗页按 **F7** 打开、再次
 - `tests/`：`run_all.gd` 全量检查、`cases/` 用例、`capture_shots.gd` 截图验证。
 - `docs/`：设计方案原文与《实现说明》（规则解释点、验收清单映射）。
 - `artifacts/`：截图输出（不纳入版本管理）。
+
+### 技能播放与验证
+
+战斗顶部显示当前技能，依次播放施法者高亮、属性色效果、命中及结果；左上角“速度：1×/2×”可切换，同次启动跨战斗保留。播放中可打开菜单暂停或查看单位详情，提交新行动需等待当前展示完成。
+
+逐次播放专项：`godot --headless --path . --script res://tests/run_all.gd -- t47`。窗口连续行动录制：`godot --path . --write-movie artifacts/skill_playback.avi --fixed-fps 30 --script res://tests/capture_playback.gd`。Godot 录像尺寸以启动时的项目视口设置为准；1600×900 录制使用独立临时项目配置，不修改正式项目视口。

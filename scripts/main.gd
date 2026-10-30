@@ -18,6 +18,7 @@ const CampScreen = preload("res://scripts/ui/camp_screen.gd")
 const DebugConsoleScreen = preload("res://scripts/ui/debug_console.gd")
 const MusicDirectorScript = preload("res://scripts/ui/music_director.gd")
 
+var battle_playback_speed := 1.0 # Session-only presentation preference.
 var run: RunState = null
 var collection: CollectionState = null
 var current_screen: Control = null

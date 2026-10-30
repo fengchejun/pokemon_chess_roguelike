@@ -1,6 +1,8 @@
 extends Control
 ## Transient presentation only; event cells are immutable even after death/movement.
 var elapsed := 0.0
+var playback_speed := 1.0
+var paused := false
 var entries: Array = []
 var slots: Dictionary = {}
 const COLORS := {"effective": Color("ffd26d"), "resisted": Color("a4b9dc"), "experience": Color("80c9ff"), "essence": Color("ffdd75"), "damage": Color("ff6868"), "heal": Color("72ed9a"), "zero": Color("bbc4d0"), "status": Color("ffc45d"), "clear": Color("9fd9ed"), "buff": Color("89e6b0"), "death": Color("ff995e"), "action": Color("c8bcff")}
@@ -37,6 +39,9 @@ func remaining_time() -> float:
 	return remaining
 
 func _process(delta: float) -> void:
+	if paused:
+		return
+	delta *= playback_speed
 	elapsed += delta
 	for i in range(entries.size() - 1, -1, -1):
 		var entry: Dictionary = entries[i]
@@ -61,3 +66,9 @@ func _process(delta: float) -> void:
 	for cell in slots.keys():
 		if float(slots[cell]) < elapsed:
 			slots.erase(cell)
+
+func clear() -> void:
+	for entry in entries:
+		entry["label"].queue_free()
+	entries.clear()
+	slots.clear()

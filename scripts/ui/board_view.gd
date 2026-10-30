@@ -60,7 +60,9 @@ func set_from_state(state: BattleState) -> void:
 	fruits = []
 	food_cells = state.food_cells.duplicate()
 	merchant_cell = state.merchant.get("cell", Vector2i(-1, -1)) if state.node_kind == "event" else Vector2i(-1, -1)
-	units = state.units.duplicate()
+	units = []
+	for unit in state.units:
+		units.append(unit.dup())
 	deploy_cells = state.deploy_cells.duplicate()
 	ice_slides = []
 	if not state.ended:

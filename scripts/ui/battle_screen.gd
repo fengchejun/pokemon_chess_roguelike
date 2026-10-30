@@ -7,6 +7,8 @@ var deploy_uids: Array = []
 var board: BoardView = null
 var feedback_layer: Control = null
 var skill_banner: PanelContainer = null
+var playback: Control = null
+var speed_button: Button = null
 var selected_uid: int = 0
 var viewed_enemy_uid: int = 0
 var action_mode: String = "main" # main / move / skills；仅界面状态，不写入战斗快照。
@@ -66,6 +68,12 @@ func _ready() -> void:
 	feedback_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	skill_banner = preload("res://scripts/ui/skill_banner.gd").new()
 	add_child(skill_banner)
+	playback = preload("res://scripts/ui/battle_playback.gd").new()
+	playback.screen = self
+	board.add_child(playback)
+	playback.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	state.presentation_started.connect(playback.begin)
+	state.presentation_finished.connect(playback.finish)
 	state.feedback.connect(_on_feedback)
 	state.enable_feedback()
 	state.enemy_defeated.connect(_on_enemy_defeated)
@@ -78,6 +86,9 @@ func _ready() -> void:
 	menu_button = UIKit.small_button("☰ 菜单")
 	menu_button.pressed.connect(_open_menu)
 	top_left.add_child(menu_button)
+	speed_button = UIKit.small_button("速度：%d×" % int(app.battle_playback_speed))
+	speed_button.pressed.connect(_toggle_speed)
+	top_left.add_child(speed_button)
 	top_left.add_child(_header_box())
 	top_left.add_child(_action_row())
 	top_left.set_meta("corner", "top_left")
@@ -129,17 +140,52 @@ func _ready() -> void:
 	log_scroll.add_child(log_label)
 	log_scroll.visible = false
 	add_child(log_scroll)
-	board.set_from_state(state)
+	board.set_from_state(_display_state())
 	refresh_all()
 	resized.connect(_layout_overlays)
 	call_deferred("_layout_overlays")
 
 
 func _on_feedback(event: Dictionary) -> void:
+	playback.capture(event)
+
+
+func _show_feedback(event: Dictionary) -> void:
 	if event["kind"] == "skill":
-		skill_banner.push(String(event["text"]))
+		skill_banner.present(String(event["text"]))
 	else:
 		feedback_layer.push(event)
+
+
+func _playback_active() -> bool:
+	return playback != null and playback.active()
+
+func _display_state() -> BattleState:
+	return playback.visual if _playback_active() else state
+
+func _toggle_speed() -> void:
+	app.battle_playback_speed = 2.0 if app.battle_playback_speed == 1.0 else 1.0
+	speed_button.text = "速度：%d×" % int(app.battle_playback_speed)
+
+func _render_playback(snapshot: BattleState) -> void:
+	board.set_from_state(snapshot)
+	board.clear_overlays()
+	_update_header()
+	_update_team_list()
+	_update_unit_card()
+	_update_channel_warnings()
+	_update_log()
+	_update_action_buttons()
+	action_panel.visible = false
+
+func _playback_finished() -> void:
+	_update_action_buttons()
+	_rebuild_skill_buttons()
+	_position_action_panel()
+
+func _wait_playback() -> void:
+	while (_playback_active() or modal_layer != null) and is_inside_tree():
+		await get_tree().process_frame
 
 
 func _on_enemy_defeated(entry: Dictionary) -> void:
@@ -162,6 +208,9 @@ func _on_enemy_defeated(entry: Dictionary) -> void:
 
 
 func _process(_delta: float) -> void:
+	if feedback_layer != null:
+		feedback_layer.playback_speed = app.battle_playback_speed
+		feedback_layer.paused = modal_layer != null
 	if unit_panel == null or terrain_panel == null:
 		return
 	var pointer := get_global_mouse_position()
@@ -229,7 +278,7 @@ func _action_row() -> Control:
 	if state.node_kind != "":
 		leave_node_button = UIKit.small_button("返回区域")
 		leave_node_button.pressed.connect(func() -> void:
-			if not busy and state.can_leave_node():
+			if not busy and not _playback_active() and state.can_leave_node():
 				state.end_battle("explored" if state.node_kind == "event" else "victory")
 				refresh_all()
 		)
@@ -293,7 +342,7 @@ func _fit_terrain_panel() -> void:
 func _position_action_panel() -> void:
 	if action_panel == null or board == null:
 		return
-	action_panel.visible = selected_uid > 0 and action_mode != "move" and item_aim == "" and aim_skill == "" and not capture_mode and not busy and not state.ended and state.phase == BattleState.PHASE_PLAYER
+	action_panel.visible = selected_uid > 0 and action_mode != "move" and item_aim == "" and aim_skill == "" and not capture_mode and not busy and not _playback_active() and not state.ended and state.phase == BattleState.PHASE_PLAYER
 	if not action_panel.visible:
 		return
 	var unit := state.unit_by_uid(selected_uid)
@@ -323,7 +372,9 @@ func _position_action_panel() -> void:
 
 func refresh_all() -> void:
 	state.check_battle_end()
-	board.set_from_state(state)
+	if playback != null and not playback.active():
+		playback.visual = state.clone()
+	board.set_from_state(_display_state())
 	board.selected_uid = selected_uid
 	board.clear_overlays()
 	_update_header()
@@ -341,6 +392,7 @@ func refresh_all() -> void:
 
 
 func _update_team_list() -> void:
+	var state := _display_state()
 	if team_list == null:
 		return
 	UIKit.clear_children(team_list)
@@ -366,6 +418,7 @@ func _fit_team_panel() -> void:
 
 
 func _add_battle_xp_bar(unit: CombatUnit) -> void:
+	var state := _display_state()
 	var record: Dictionary = app.run.record_by_uid(unit.uid)
 	if record.is_empty() or not app.run.deployed_uids.has(unit.uid):
 		return
@@ -399,6 +452,7 @@ func _add_battle_xp_bar(unit: CombatUnit) -> void:
 
 
 func _update_header() -> void:
+	var state := _display_state()
 	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
 	var region_name := "收集区" if state.node_kind == "event" else "首领区" if state.node_kind == "boss" else "%d/6 战" % (BattleDB.local_battle_of(state.battle_index) + 1)
 	round_label.text = "第 %d 层 · %s\n第 %d/%d 回合 · %s" % [BattleDB.floor_of(state.battle_index) + 1, region_name, maxi(1, state.round), Balance.MAX_ROUNDS, phase_text]
@@ -425,10 +479,11 @@ func _update_header() -> void:
 		objective_label.text = "首领已击败 · 敌军撤离\n点击首领位置的传送门前往下一层。"
 	elif state.node_kind != "" and state.round >= 6:
 		objective_label.text += "\n%s" % ("本回合结束将强制撤离。" if state.round >= 8 else "即将到达第 8 回合强制撤离期限。")
-	objective_label.text += "\n原质 %d%s" % [app.run.essence + maxi(0, state.essence_earned - state.essence_applied), " · 捕获辅助生效" if state.capture_aid else ""]
+	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
 
 
 func _update_unit_card() -> void:
+	var state := _display_state()
 	if unit_title == null:
 		return
 	var unit: CombatUnit = null
@@ -669,6 +724,8 @@ func _fit_action_panel() -> void:
 
 
 func _on_move_pressed() -> void:
+	if busy or _playback_active():
+		return
 	var unit := state.unit_by_uid(selected_uid)
 	if unit == null or not state.can_move_unit_now(unit):
 		return
@@ -681,6 +738,8 @@ func _on_move_pressed() -> void:
 
 
 func _on_choose_skill_pressed() -> void:
+	if busy or _playback_active():
+		return
 	action_mode = "skills"
 	hint_label.text = "选择具体技能；右键或 Esc 返回行动。"
 	_rebuild_skill_buttons()
@@ -770,7 +829,7 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 
 func _update_action_buttons() -> void:
 	if leave_node_button != null:
-		leave_node_button.disabled = busy or state.ended or not state.can_leave_node()
+		leave_node_button.disabled = busy or _playback_active() or state.ended or not state.can_leave_node()
 	if end_turn_button != null:
 		end_turn_button.disabled = busy or state.ended or state.phase != BattleState.PHASE_PLAYER
 	if undo_button != null:
@@ -793,6 +852,7 @@ func _update_selection_overlay() -> void:
 
 
 func _update_channel_warnings() -> void:
+	var state := _display_state()
 	if GridSpec.is_inside(state.boss_portal_cell):
 		board.markers.append({"cell": state.boss_portal_cell, "kind": "text", "text": "门", "color": Color.GOLD, "size": 24})
 	if channel_warning_list == null:
@@ -862,6 +922,7 @@ func _mark_action_on_board(action: Dictionary) -> void:
 
 
 func _update_log() -> void:
+	var state := _display_state()
 	if log_label == null:
 		return
 	log_label.text = "\n".join(state.events)
@@ -871,7 +932,7 @@ func _update_log() -> void:
 
 
 func _on_board_clicked(cell: Vector2i) -> void:
-	if busy or state.ended or modal_layer != null:
+	if busy or _playback_active() or state.ended or modal_layer != null:
 		return
 	if item_aim != "":
 		var target := state.unit_at(cell)
@@ -933,7 +994,8 @@ func _enter_boss_portal() -> void:
 
 
 func _on_board_hovered(cell: Vector2i) -> void:
-	if busy or state.ended:
+	if busy or _playback_active() or state.ended:
+		_show_terrain(cell)
 		return
 	var hover_unit := state.unit_at(cell)
 	var next_hover_uid := hover_unit.uid if hover_unit != null else 0
@@ -1050,6 +1112,7 @@ func _preview_overlays(preview: Dictionary) -> void:
 
 
 func _show_terrain(cell: Vector2i) -> void:
+	var state := _display_state()
 	if terrain_label == null:
 		return
 	var value := state.terrain_at(cell)
@@ -1107,9 +1170,9 @@ func select_unit(uid: int) -> void:
 
 
 func _on_board_double_clicked(cell: Vector2i) -> void:
-	if busy or aim_skill != "" or capture_mode or item_aim != "" or modal_layer != null:
+	if modal_layer != null:
 		return
-	var unit := state.unit_at(cell)
+	var unit := _display_state().unit_at(cell)
 	if unit != null:
 		_show_unit_detail(unit)
 
@@ -1174,6 +1237,8 @@ func _close_modal() -> void:
 
 
 func _use_trainer_item(id: String, uid: int = -1) -> void:
+	if busy or _playback_active():
+		return
 	var result := Merchant.use_item(app.run, state, id, uid)
 	hint_label.text = String(result["reason"])
 	if result["ok"]:
@@ -1243,6 +1308,8 @@ func _show_merchant(message: String = "") -> void:
 
 
 func _trade(operation: String, id: String, quantity: int = 1) -> void:
+	if busy or _playback_active():
+		return
 	var result: Dictionary = app.merchant_trade(state, operation, id, quantity)
 	selected_uid = 0
 	refresh_all()
@@ -1250,17 +1317,18 @@ func _trade(operation: String, id: String, quantity: int = 1) -> void:
 
 
 func _open_menu() -> void:
-	if busy or state.phase != BattleState.PHASE_PLAYER:
-		return
 	_show_modal("战斗菜单", "对战记录、游戏设置和保存返回标题")
 	var content := modal_layer.get_child(0).get_child(0)
-	for entry in [["对战记录", func() -> void: _show_modal("本场对战记录", "\n".join(state.events))], ["游戏设置", func() -> void: _open_settings()], ["保存并回到标题", func() -> void: _confirm_return()]]:
+	for entry in [["对战记录", func() -> void: _show_modal("本场对战记录", "\n".join(_display_state().events))], ["游戏设置", func() -> void: _open_settings()], ["保存并回到标题", func() -> void: _confirm_return()]]:
 		var button := UIKit.small_button(String(entry[0]))
 		button.pressed.connect(entry[1])
 		content.add_child(button)
 
 
 func _confirm_return() -> void:
+	if busy or state.phase != BattleState.PHASE_PLAYER:
+		_show_modal("暂不能保存返回", "敌方回合结束后可以保存并返回。关闭菜单即可继续播放。")
+		return
 	_show_modal("保存并回到标题", "将保存当前回合、站位与战斗记录。下次点击继续上一局即可续战。")
 	var button := UIKit.small_button("确认保存并返回")
 	button.pressed.connect(func() -> void:
@@ -1292,7 +1360,7 @@ func _open_settings() -> void:
 
 
 func _on_skill_pressed(skill_id: String) -> void:
-	if busy or state.ended:
+	if busy or _playback_active() or state.ended:
 		return
 	var unit := state.unit_by_uid(selected_uid)
 	if unit == null or unit.channel_lock_round == state.round or not unit.can_act_skill() or not unit.can_use_in_battle(skill_id):
@@ -1332,7 +1400,7 @@ func _on_skill_pressed(skill_id: String) -> void:
 
 
 func _on_capture_pressed() -> void:
-	if busy or state.ended:
+	if busy or _playback_active() or state.ended:
 		return
 	var trainer := state.unit_by_uid(selected_uid)
 	if trainer == null or not trainer.is_trainer or trainer.capture_used:
@@ -1465,7 +1533,7 @@ func _capture_targets(unit: CombatUnit) -> Array:
 
 
 func do_move(cell: Vector2i) -> bool:
-	if busy or state.ended:
+	if busy or _playback_active() or state.ended:
 		return false
 	var unit := state.unit_by_uid(selected_uid)
 	if unit == null:
@@ -1482,7 +1550,7 @@ func do_move(cell: Vector2i) -> bool:
 
 
 func do_cast(skill_id: String, entry: Dictionary) -> bool:
-	if busy or state.ended:
+	if busy or _playback_active() or state.ended:
 		return false
 	var unit := state.unit_by_uid(selected_uid)
 	if unit == null:
@@ -1505,7 +1573,7 @@ func do_cast(skill_id: String, entry: Dictionary) -> bool:
 
 
 func do_capture(target_uid: int) -> bool:
-	if busy or state.ended:
+	if busy or _playback_active() or state.ended:
 		return false
 	var trainer := state.unit_by_uid(selected_uid)
 	var target := state.unit_by_uid(target_uid)
@@ -1525,7 +1593,7 @@ func do_capture(target_uid: int) -> bool:
 
 
 func do_undo() -> bool:
-	if busy or state.ended:
+	if busy or _playback_active() or state.ended:
 		return false
 	if not state.undo_last_move():
 		return false
@@ -1538,7 +1606,7 @@ func do_undo() -> bool:
 
 
 func do_end_turn() -> void:
-	if busy or state.ended or state.phase != BattleState.PHASE_PLAYER:
+	if busy or _playback_active() or state.ended or state.phase != BattleState.PHASE_PLAYER:
 		return
 	action_mode = "main"
 	_clear_aim()
@@ -1550,21 +1618,23 @@ func _enemy_phase() -> void:
 	busy = true
 	_update_action_buttons()
 	state.begin_enemy_phase()
+	await _wait_playback()
 	_update_header()
 	_update_channel_warnings()
 	_update_log()
 	while not state.enemy_phase_finished() and not state.ended:
 		state.step_enemy_phase()
-		board.set_from_state(state)
+		await _wait_playback()
+		board.set_from_state(_display_state())
 		_update_header()
 		_update_team_list()
 		_update_log()
 		app.sync_and_save(state)
 		if state.ended:
 			break
-		await get_tree().create_timer(0.42).timeout
 	if not state.ended:
 		state.end_enemy_phase()
+		await _wait_playback()
 		app.sync_and_save(state)
 	busy = false
 	if selected_uid != 0:
@@ -1578,7 +1648,7 @@ func _enemy_phase() -> void:
 
 
 func _refresh_after_action() -> void:
-	board.set_from_state(state)
+	board.set_from_state(_display_state())
 	_update_header()
 	_update_team_list()
 	_update_unit_card()
@@ -1602,11 +1672,13 @@ func report_end_now() -> void:
 func _report_end() -> void:
 	if not is_inside_tree() or is_queued_for_deletion():
 		return
-	var delay := minf(1.5, feedback_layer.remaining_time()) if feedback_layer != null else 0.0
-	if skill_banner != null:
-		delay = minf(1.5, maxf(delay, skill_banner.remaining_time()))
-	if delay > 0.0:
-		await get_tree().create_timer(delay).timeout
+	await _wait_playback()
+	if not is_inside_tree():
+		return
+	var tail := minf(0.5, feedback_layer.remaining_time())
+	if tail > 0.0:
+		await get_tree().create_timer(tail / app.battle_playback_speed).timeout
+	await _wait_playback()
 	if state != null and state.ended and is_inside_tree():
 		app.finish_battle(state)
 

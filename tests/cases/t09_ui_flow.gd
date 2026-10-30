@@ -133,6 +133,7 @@ func run(t: TestContext) -> void:
 		t.check(battle_screen.skill_box.find_child("SkillButton_fire_burst", true, false) != null, "点击技能后才显示招式")
 		battle_screen._return_to_main_actions()
 		state.set_terrain(unit.cell, TerrainDB.VINES)
+		battle_screen.playback.finish_all()
 		battle_screen.refresh_all()
 		t.check(battle_screen.unit_body.text.contains("藤蔓束缚（仅限制移动）"), "藤蔓详情说明不禁止施法")
 		t.eq(battle_screen._skill_phase_block_reason(unit), "", "藤蔓本身不禁用技能")
@@ -141,6 +142,7 @@ func run(t: TestContext) -> void:
 		t.check(battle_screen.unit_body.text.contains("不可用（雾中禁用）"), "真正因雾无法施法时显示明确原因")
 		state.steam_cells.erase(unit.cell)
 		state.set_terrain(unit.cell, TerrainDB.PLAIN)
+		battle_screen.playback.finish_all()
 		battle_screen.refresh_all()
 		var original_skills := unit.skills.duplicate()
 		unit.skills = ["wind_gust", "tailwind"]
@@ -174,6 +176,7 @@ func run(t: TestContext) -> void:
 		battle_screen._on_move_pressed()
 		battle_screen._on_board_clicked(dest)
 		t.eq(unit.cell, dest, "移动位置正确")
+		battle_screen.playback.finish_all()
 		t.check(battle_screen.action_panel.visible and battle_screen.action_mode == "main", "移动完成后重新显示主行动窗")
 		t.eq(battle_screen.do_undo(), true, "撤回移动成功")
 		t.eq(unit.cell, from_cell, "撤回后回位")

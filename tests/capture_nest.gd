@@ -64,6 +64,7 @@ func _run() -> void:
 	screen.refresh_all()
 	screen._show_terrain(nest_cell)
 	screen._cancel_action()
+	await screen._wait_playback()
 	await _shot("nest_player_block")
 	if state.unit_at(nest_cell) != ally or state.nest["pending_waves"] != 1:
 		push_error("Nest blocking failed")

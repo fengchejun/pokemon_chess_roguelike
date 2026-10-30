@@ -4,6 +4,7 @@ var pending: Array[String] = []
 var caption: Label
 var remaining := 0.0
 var duration := 0.0
+var controlled := false
 
 func _ready() -> void:
 	name = "SkillBanner"
@@ -54,6 +55,8 @@ func remaining_time() -> float:
 	return remaining + pending.size() * 1.1
 
 func _process(delta: float) -> void:
+	if controlled:
+		return
 	if remaining <= 0.0:
 		return
 	remaining -= delta
@@ -61,3 +64,16 @@ func _process(delta: float) -> void:
 		_next()
 	else:
 		modulate.a = minf(1.0, remaining / 0.18)
+
+func present(text: String) -> void:
+	controlled = true
+	pending.clear()
+	caption.text = text
+	modulate.a = 1.0
+	visible = true
+
+func dismiss() -> void:
+	controlled = false
+	remaining = 0.0
+	pending.clear()
+	visible = false

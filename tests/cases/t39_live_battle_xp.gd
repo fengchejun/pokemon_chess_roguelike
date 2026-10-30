@@ -25,6 +25,7 @@ func run(t: TestContext) -> void:
 	t.eq(app.run.battle_kill_xp_for(battle, 2), 2, "未击杀的存活出战者即时获得等量经验")
 	t.eq(app.run.battle_kill_xp_for(battle, 3), 0, "濒死出战者不获得经验")
 	battle.kill_unit(foes[1], "经验验收", "player", 2)
+	screen.playback.finish_all()
 	screen._refresh_after_action()
 	t.eq(app.run.battle_kill_xp_for(battle, 1), 4, "两次击杀即时累计到升级门槛")
 	t.eq(battle.unit_by_uid(1).combat_level, 1, "战斗内等级不提前生效")

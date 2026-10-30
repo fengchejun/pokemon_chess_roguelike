@@ -233,6 +233,15 @@ static func _teleport_path_clear(state: BattleState, from: Vector2i, to: Vector2
 
 
 static func apply(state: BattleState, caster: CombatUnit, skill_id: String, target_entry: Dictionary, preview: bool) -> Dictionary:
+	if state.feedback_enabled:
+		state.presentation_started.emit({"kind": "skill", "uid": caster.uid if caster != null else -1, "skill": skill_id, "release": false, "target": target_entry.duplicate(true)})
+	var result := _apply_rules(state, caster, skill_id, target_entry, preview)
+	if state.feedback_enabled:
+		state.presentation_finished.emit(result)
+	return result
+
+
+static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: String, target_entry: Dictionary, preview: bool) -> Dictionary:
 	var def := SkillDB.get_def(skill_id)
 	if def.is_empty() or caster == null or not caster.is_alive() or caster.channel_lock_round == state.round:
 		return {"ok": false}
@@ -388,6 +397,15 @@ static func _entry_valid(state: BattleState, caster: CombatUnit, skill_id: Strin
 
 
 static func resolve_channel(state: BattleState, caster: CombatUnit, skill_id: String, cells: Array) -> Dictionary:
+	if state.feedback_enabled:
+		state.presentation_started.emit({"kind": "skill", "uid": caster.uid if caster != null else -1, "skill": skill_id, "release": true, "cells": cells.duplicate()})
+	var result := _resolve_channel_rules(state, caster, skill_id, cells)
+	if state.feedback_enabled:
+		state.presentation_finished.emit(result)
+	return result
+
+
+static func _resolve_channel_rules(state: BattleState, caster: CombatUnit, skill_id: String, cells: Array) -> Dictionary:
 	state.emit_feedback(caster, "skill", "%s使用了%s" % [caster.display_name, SkillDB.name_of(skill_id)])
 	var summary := {"ok": true, "skill_id": skill_id, "caster_uid": caster.uid, "hits": [],
 		"area_cells": [], "ray_cells": [], "terrain_changes": [], "obstacles_damaged": [], "nest_damaged": null, "_nest_covered": state.nest_covered(), "_nest_hit": false, "text": ""}

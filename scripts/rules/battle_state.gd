@@ -1,6 +1,8 @@
 class_name BattleState
 extends RefCounted
 
+signal presentation_started(info: Dictionary)
+signal presentation_finished(meta: Dictionary)
 signal feedback(event: Dictionary)
 signal enemy_defeated(entry: Dictionary)
 var feedback_enabled := false
@@ -487,6 +489,14 @@ func log_event(text: String) -> void:
 
 
 func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "", killer_uid: int = -1) -> void:
+	if feedback_enabled:
+		presentation_started.emit({"kind": "result", "uid": unit.uid})
+	_kill_unit_rules(unit, cause, killer_side, killer_uid)
+	if feedback_enabled:
+		presentation_finished.emit({})
+
+
+func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "", killer_uid: int = -1) -> void:
 	var terrain_kind := terrain_at(unit.cell)
 	var text := "消散" if unit.summon_owner_uid >= 0 else "倒下"
 	if unit.hp > 0 and terrain_kind == TerrainDB.PIT:
@@ -848,6 +858,16 @@ func move_options(unit: CombatUnit) -> Dictionary:
 
 
 func move_unit(unit: CombatUnit, dest: Vector2i) -> bool:
+	if feedback_enabled:
+		var options := move_options(unit) if unit != null else {}
+		presentation_started.emit({"kind": "move", "uid": unit.uid if unit != null else -1, "path": options.get(dest, {}).get("path", [dest])})
+	var result := _move_unit_rules(unit, dest)
+	if feedback_enabled:
+		presentation_finished.emit({"ok": result})
+	return result
+
+
+func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 	if phase != PHASE_PLAYER or ended or not can_move_unit_now(unit):
 		return false
 	var options := PathFinder.stop_cells(self, unit)
@@ -1040,6 +1060,15 @@ func capture_attempt(trainer_unit: CombatUnit, target: CombatUnit, forced_roll: 
 # ---------------------------------------------------------------- 阶段流程
 
 func start_round() -> void:
+	var info := {"kind": "environment", "uid": -1}
+	if feedback_enabled:
+		presentation_started.emit(info)
+	_start_round_rules()
+	if feedback_enabled:
+		presentation_finished.emit({})
+
+
+func _start_round_rules() -> void:
 	round += 1
 	for unit in units:
 		if not unit.is_alive():
@@ -1122,6 +1151,16 @@ func _cell_order(cell: Vector2i) -> int:
 
 
 func begin_enemy_phase() -> Array:
+	var info := {"kind": "environment", "uid": -1}
+	if feedback_enabled:
+		presentation_started.emit(info)
+	var result := _begin_enemy_phase_rules()
+	if feedback_enabled:
+		presentation_finished.emit({})
+	return result
+
+
+func _begin_enemy_phase_rules() -> Array:
 	if ended or phase != PHASE_PLAYER:
 		return []
 	commit_actions()
@@ -1146,6 +1185,17 @@ func enemy_phase_finished() -> bool:
 
 
 func step_enemy_phase() -> Dictionary:
+	var action: Dictionary = _pending_actions[_pending_index] if not enemy_phase_finished() else {}
+	var info := {"kind": "move", "uid": int(action.get("uid", -1)), "path": action.get("move_path", [])}
+	if feedback_enabled:
+		presentation_started.emit(info)
+	var result := _step_enemy_phase_rules()
+	if feedback_enabled:
+		presentation_finished.emit(result if result is Dictionary else {})
+	return result
+
+
+func _step_enemy_phase_rules() -> Dictionary:
 	if ended or phase != PHASE_ENEMY or enemy_phase_finished():
 		return {}
 	var action: Dictionary = _pending_actions[_pending_index]
@@ -1180,6 +1230,15 @@ func step_enemy_phase() -> Dictionary:
 
 
 func end_enemy_phase() -> void:
+	var info := {"kind": "environment", "uid": -1}
+	if feedback_enabled:
+		presentation_started.emit(info)
+	_end_enemy_phase_rules()
+	if feedback_enabled:
+		presentation_finished.emit({})
+
+
+func _end_enemy_phase_rules() -> void:
 	if ended:
 		return
 	_finish_movement_effects("enemy")
@@ -1200,6 +1259,15 @@ func _finish_round() -> void:
 
 
 func settle_round() -> void:
+	var info := {"kind": "environment", "uid": -1}
+	if feedback_enabled:
+		presentation_started.emit(info)
+	_settle_round_rules()
+	if feedback_enabled:
+		presentation_finished.emit({})
+
+
+func _settle_round_rules() -> void:
 	var ice_sources: Array = []
 	for cell in GridSpec.all_cells():
 		if terrain_at(cell) == TerrainDB.ICE:

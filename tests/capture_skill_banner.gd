@@ -28,7 +28,7 @@ func _run() -> void:
 		state.set_terrain(Vector2i(x, 3), TerrainDB.PLAIN)
 	SkillResolver.apply(state, caster, "fire_seed", {"type": "cell", "cell": target.cell}, false)
 	screen.refresh_all()
-	await create_timer(0.4).timeout
+	await create_timer(0.75).timeout
 	await RenderingServer.frame_post_draw
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://artifacts"))
 	root.get_texture().get_image().save_png("res://artifacts/skill_banner_effective.png")
@@ -39,7 +39,7 @@ func _run() -> void:
 	target.element = "water"
 	SkillResolver.apply(state, caster, "fire_seed", {"type": "cell", "cell": target.cell}, false)
 	screen.refresh_all()
-	await create_timer(0.4).timeout
+	await create_timer(0.75).timeout
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://artifacts/skill_banner_resisted.png")
 	await create_timer(1.5).timeout
