@@ -75,7 +75,7 @@ func _test_new_skill_upgrades(t: TestContext) -> void:
 	caster.cell = Vector2i(2, 2)
 	var target := electric.unit_by_uid(100)
 	var entry := {"type": "unit", "unit": target.uid, "cell": target.cell}
-	t.eq(SkillResolver.targets(electric, caster, "volt_replace").has(entry), false, "普通伏特替换仍要求相距两格")
+	t.eq(SkillResolver.targets(electric, caster, "volt_replace").has(entry), true, "普通伏特替换已允许相邻单位")
 	caster.upgrades = {"volt_replace_flex": 1}
 	t.check(SkillResolver.targets(electric, caster, "volt_replace").has(entry), "灵活换位使相邻单位成为合法目标")
 	var swap := SkillResolver.apply(electric, caster, "volt_replace", entry, false)
@@ -85,7 +85,7 @@ func _test_new_skill_upgrades(t: TestContext) -> void:
 	wind_caster.cell = Vector2i(1, 2)
 	wind.unit_by_uid(2).cell = Vector2i(4, 2)
 	wind_caster.upgrades = {"tailwind_reach": 1}
-	var gust := SkillResolver.apply(wind, wind_caster, "tailwind", {"type": "dir", "dir": Vector2i(1, 0), "cell": Vector2i(2, 2)}, false)
+	var gust := SkillResolver.apply(wind, wind_caster, "tailwind", {"type": "cell", "cell": wind_caster.cell}, false)
 	t.check(bool(gust.get("ok", false)), "远风可实际施放")
 	t.check(wind.unit_by_uid(2).haste_ticks > 0, "远风影响正前方第三排友军")
 

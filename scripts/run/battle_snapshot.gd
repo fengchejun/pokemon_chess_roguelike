@@ -73,6 +73,12 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		var unit := CombatUnit.new()
 		for key in member:
 			unit.set(key, decode(member[key]))
+		var had_retired_skill := unit.skills.has("wind_gust")
+		unit.skills = unit.skills.filter(func(id): return not SkillDB.get_def(String(id)).is_empty())
+		if had_retired_skill and unit.skills.is_empty():
+			unit.skills = SpeciesDB.skills_of(unit.species_id).slice(0, 1)
+		unit.upgrades.erase("wind_gust_distance")
+		unit.upgrades.erase("volt_replace_flex")
 		state.units.append(unit)
 	state.nest["exits"] = [] # Old exits no longer affect movement, targeting or spawning.
 	var rng: Dictionary = snapshot["rng"]

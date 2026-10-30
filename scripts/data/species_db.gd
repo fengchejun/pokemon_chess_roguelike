@@ -21,7 +21,7 @@ const SPECIES := {
 		"skills": ["wild_vines", "herbal_heal", "drain"],
 	},
 	"tree_summon": {
-		"name": "树人", "glyph": "树", "element": "grass", "hp": 15, "move": 2,
+		"name": "树人", "glyph": "树", "element": "grass", "hp": 10, "move": 2,
 		"skills": ["tree_wrath"],
 	},
 	"electric_starter": {
@@ -38,7 +38,7 @@ const SPECIES := {
 	},
 	"wind_starter": {
 		"name": "波波", "glyph": "风", "element": "electric", "hp": 25, "move": 4,
-		"skills": ["tailwind", "double_cast", "wind_gust"],
+		"skills": ["tailwind", "double_cast"],
 	},
 	"fire_wild1": {
 		"name": "六尾", "glyph": "狐", "element": "fire", "hp": 25, "move": 3,
@@ -86,7 +86,7 @@ const SPECIES := {
 	},
 	"wind_wild1": {
 		"name": "波波", "glyph": "鸟", "element": "electric", "hp": 20, "move": 4,
-		"skills": ["tailwind", "double_cast", "wind_gust"],
+		"skills": ["tailwind", "double_cast"],
 	},
 }
 

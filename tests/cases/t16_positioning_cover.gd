@@ -22,8 +22,8 @@ func _has_target(entries: Array, cell: Vector2i) -> bool:
 func _test_ranges(t: TestContext) -> void:
 	var cases := [
 		["fire_starter", "fire_burst", Vector2i(0, 0), Vector2i(0, 4), Vector2i(0, 5)],
-		["water_starter", "water_flow", Vector2i(0, 0), Vector2i(0, 4), Vector2i(0, 5)],
-		["ice_starter", "freeze_ray", Vector2i(0, 0), Vector2i(0, 4), Vector2i(0, 5)],
+		["water_starter", "water_flow", Vector2i(0, 0), Vector2i(0, 3), Vector2i(0, 4)],
+		["ice_starter", "freeze_ray", Vector2i(0, 0), Vector2i(0, 6), Vector2i(0, 7)],
 		["fire_starter", "fire_seed", Vector2i(0, 0), Vector2i(0, 6), Vector2i(0, 7)],
 	]
 	for item in cases:
@@ -60,10 +60,10 @@ func _test_first_contact(t: TestContext) -> void:
 	water.trainer().cell = Vector2i(7, 6)
 	water.unit_by_uid(1).cell = Vector2i(0, 3)
 	t.check(not _has_target(SkillResolver.targets(water, water.unit_by_uid(1), "water_flow"), Vector2i(7, 3)), "固定地图：水流初始 7 格无法直接交火")
-	water.unit_by_uid(1).cell = Vector2i(3, 3)
-	t.check(_has_target(SkillResolver.targets(water, water.unit_by_uid(1), "water_flow"), Vector2i(7, 3)), "固定地图：水怪前进 3 格后可交火")
-	water.set_terrain(Vector2i(4, 3), TerrainDB.TREE)
-	water.obstacle_durability[Vector2i(4, 3)] = 1
+	water.unit_by_uid(1).cell = Vector2i(4, 3)
+	t.check(_has_target(SkillResolver.targets(water, water.unit_by_uid(1), "water_flow"), Vector2i(7, 3)), "固定地图：水怪前进 4 格后可交火")
+	water.set_terrain(Vector2i(5, 3), TerrainDB.TREE)
+	water.obstacle_durability[Vector2i(5, 3)] = 1
 	t.check(not _has_target(SkillResolver.targets(water, water.unit_by_uid(1), "water_flow"), Vector2i(7, 3)), "固定地图：距离足够仍需先清树或绕射线")
 
 

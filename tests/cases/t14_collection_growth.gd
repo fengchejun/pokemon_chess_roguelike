@@ -38,8 +38,8 @@ func _test_collection(t: TestContext) -> void:
 func _test_new_skills(t: TestContext) -> void:
 	for species_id in ["grass_starter", "grass_wild1", "ice_starter", "ice_wild1", "wind_starter", "wind_wild1"]:
 		var skills := SpeciesDB.skills_of(species_id)
-		var expected := "drain" if species_id.begins_with("grass_") else ("ice_shard" if species_id.begins_with("ice_") else "wind_gust")
-		t.check(skills.has(expected), "%s 有基础进攻技" % species_id)
+		var expected := "drain" if species_id.begins_with("grass_") else ("ice_shard" if species_id.begins_with("ice_") else "tailwind")
+		t.check(skills.has(expected), "%s 有有效初始技" % species_id)
 	var ice := TestScenario.make_state(["ice_starter"], [["rock_wild1", Vector2i(2, 2)]])
 	var ice_unit := ice.unit_by_uid(1)
 	ice_unit.cell = Vector2i(0, 2)
@@ -53,8 +53,8 @@ func _test_new_skills(t: TestContext) -> void:
 	wind_unit.cell = Vector2i(0, 2)
 	var pushed := wind.unit_by_uid(100)
 	var gust := SkillResolver.apply(wind, wind_unit, "wind_gust", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(1, 2)}, false)
-	t.check(bool(gust.get("ok", false)), "推风可朝选定方向施放")
-	t.eq(pushed.cell, Vector2i(3, 2), "推风使目标位移一格")
+	t.check(not bool(gust.get("ok", false)), "已删除推风无法施放")
+	t.eq(pushed.cell, Vector2i(2, 2), "删除的技能不改变站位")
 	var grass := TestScenario.make_state(["grass_starter"], [["rock_wild1", Vector2i(2, 2)]])
 	var grass_unit := grass.unit_by_uid(1)
 	grass_unit.cell = Vector2i(0, 2)

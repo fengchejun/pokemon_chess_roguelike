@@ -117,15 +117,11 @@ func run(t: TestContext) -> void:
 		battle_screen.playback.finish_all()
 		battle_screen.refresh_all()
 		var original_skills := unit.skills.duplicate()
-		unit.skills = ["wind_gust", "tailwind"]
-		battle_screen._on_skill_pressed("wind_gust")
-		t.check(not battle_screen.board.area_cells.is_empty(), "推风瞄准时显示方向范围")
-		battle_screen._on_board_hovered(unit.cell + Vector2i.RIGHT)
-		t.eq(battle_screen.board.area_cells, SkillResolver.front_area_cells(unit.cell, Vector2i.RIGHT, 2), "推风悬停显示宽三长二的实际范围")
+		unit.skills = ["tailwind"]
 		battle_screen._on_skill_pressed("tailwind")
-		t.check(not battle_screen.board.area_cells.is_empty(), "顺风瞄准时显示方向范围")
-		battle_screen._on_board_hovered(unit.cell + Vector2i.RIGHT)
-		t.eq(battle_screen.board.area_cells, SkillResolver.front_area_cells(unit.cell, Vector2i.RIGHT, 3), "顺风悬停显示前方三排范围")
+		t.eq(battle_screen.board.area_cells, SkillResolver.support_area(unit.cell, 2, true), "磁场加速瞄准显示自身周围区域")
+		battle_screen._on_board_hovered(unit.cell)
+		t.eq(battle_screen.board.area_cells, SkillResolver.support_area(unit.cell, 2, true), "磁场加速悬停范围与结算一致")
 		unit.skills = ["earth_shake"]
 		battle_screen._on_skill_pressed("earth_shake")
 		battle_screen._on_board_hovered(unit.cell + Vector2i.RIGHT)

@@ -31,7 +31,7 @@ static func plan(state: BattleState) -> Array:
 			if not (action["skill"] as Dictionary).is_empty():
 				cast_counts[uid] = int(cast_counts.get(uid, 0)) + 1
 			work.check_battle_end()
-	# 后行动的风力引擎也能让先前已蓄力的友军兑现额外施法。
+	# 后行动的电力引擎也能让先前已蓄力的友军兑现额外施法。
 	for uid in _action_order(work):
 		if work.ended or int(cast_counts.get(uid, 0)) >= 2:
 			continue
@@ -145,6 +145,12 @@ static func _dedupe_entries(state: BattleState, unit: CombatUnit, skill_id: Stri
 
 
 static func _channel_score(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary) -> int:
+	if skill_id == "herbal_heal":
+		var healing := 0
+		for ally in state.alive_units(caster.side):
+			if GridSpec.manhattan(ally.cell, caster.cell) <= 2:
+				healing += mini(Balance.HERBAL_HEAL + int(caster.upgrades.get("herbal_heal_amount", 0)), ally.max_hp - ally.hp)
+		return healing * 2
 	if not ["fire_burst", "lightning", "rock_slide", "tsunami", "earth_shake"].has(skill_id):
 		return 0
 	var areas: Array = []
@@ -185,7 +191,7 @@ static func _pending_hazard(state: BattleState, cell: Vector2i, source_side: Str
 		for center in cast["cells"]:
 			if String(cast["skill_id"]) == "earth_shake" and cell == center:
 				return 120
-			if (String(cast["skill_id"]) == "lightning" or String(cast["skill_id"]) == "rock_slide" or String(cast["skill_id"]) == "tree_man") and cell == center:
+			if (String(cast["skill_id"]) == "lightning" or String(cast["skill_id"]) == "rock_slide") and cell == center:
 				return 120
 			if String(cast["skill_id"]) == "tsunami" and cell == center and TerrainDB.is_water_body(state.terrain_at(cell)):
 				return 120
@@ -230,7 +236,7 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 			if later.vine_ticks > unit.vine_ticks:
 				total += 16
 			if later.cell != unit.cell:
-				# 推风与交换位置即使没有碰撞伤害，也能改变下一次交火位置。
+				# 击退与交换位置即使没有碰撞伤害，也能改变下一次交火位置。
 				total += 6
 	if actor_before != null and actor_before.is_alive():
 		if actor_after == null or not actor_after.is_alive():

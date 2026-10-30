@@ -59,78 +59,63 @@ func _rock(t: TestContext) -> void:
 
 
 func _tree(t: TestContext) -> void:
-	t.check(SkillDB.learnable_ids_for("grass").has("tree_man"), "大树守卫进入草系学习池")
 	var cell := Vector2i(3, 2)
-	var mixed_terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [
+	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[cell, TerrainDB.GRASS], [Vector2i(2, 2), TerrainDB.WATER],
 		[Vector2i(4, 2), TerrainDB.DEEP], [Vector2i(3, 1), TerrainDB.VINES],
-		[Vector2i(3, 3), TerrainDB.GRASS]])
-	var state := TestScenario.make_state(["grass_starter", "grass_starter"], [["rock_wild1", Vector2i(6, 5)]], mixed_terrain)
+		[Vector2i(3, 3), TerrainDB.GRASS], [Vector2i(4, 3), TerrainDB.TREE]])
+	var state := TestScenario.make_state(["grass_starter", "grass_starter"], [["rock_wild1", Vector2i(6, 5)]], terrain)
 	var caster := state.unit_by_uid(1)
 	caster.cell = Vector2i(1, 2)
 	caster.skills.append("tree_man")
-	var preview := state.preview_skill(caster, "tree_man", {"type": "cell", "cell": cell})
-	t.check(bool(preview.get("ok", false)) and state.active_summon(caster.uid) == null, "大树守卫预览不污染真实战场")
-	var cast := state.cast_skill(caster, "tree_man", {"type": "cell", "cell": cell})
-	t.check(bool(cast.get("ok", false)), "大树守卫可在三格内指定合法空格")
-	t.eq(state.pending_casts[0]["cells"], [cell], "蓄力固定召唤落点")
-	t.check(state.active_summon(caster.uid) == null and caster.moved and caster.skill_used, "宣告轮不立即召唤且消耗行动")
-	state.start_round()
+	var entry := {"type": "cell", "cell": cell}
+	var signature := state._signature()
+	t.check(bool(state.preview_skill(caster, "tree_man", entry).get("ok", false)), "即时召唤可预览")
+	t.eq(state._signature(), signature, "召唤预览不改变实战")
+	t.check(bool(state.cast_skill(caster, "tree_man", entry).get("ok", false)), "大树守卫立即召唤")
+	t.check(state.pending_casts.is_empty(), "即时召唤不占吟唱位")
 	var summon := state.active_summon(caster.uid)
-	t.check(summon != null, "第二回合本方阶段开始召唤树人")
-	if summon != null:
-		t.eq(summon.max_hp, 55, "中心和四邻的水草地形分别累加生命上限")
-		t.eq(summon.hp, 55, "地形加成同时提高当前生命")
-		t.eq(summon.move_points, 2, "树人基础移动力为二")
-		t.eq(summon.skills, ["tree_wrath"], "树人只拥有大树之怒")
-		t.check(summon.fresh_spawn and not summon.can_move_now() and not summon.can_act_skill(), "召唤出生轮不能移动或施法")
-	t.eq(state.terrain_at(Vector2i(4, 2)), TerrainDB.DEEP, "吸取地形力量不会消耗深水")
-	t.eq(state.terrain_at(Vector2i(3, 1)), TerrainDB.VINES, "吸取地形力量不会消耗藤蔓")
-	t.check(caster.moved and caster.skill_used, "蓄力结算轮施法者不能行动")
-	state._finish_round()
-	if summon != null:
-		t.check(not summon.fresh_spawn and summon.can_move_now() and summon.can_act_skill(), "再下一轮树人可移动和施法")
-	t.check(state.skill_targets(caster, "tree_man").has({"type": "cell", "cell": Vector2i(2, 2)}), "已有活树人不限制再次召唤")
-	t.check(bool(state.cast_skill(caster, "tree_man", {"type": "cell", "cell": Vector2i(2, 2)}).get("ok", false)), "同一施法者可再次宣告大树守卫")
-	state.start_round()
-	var summon_count := 0
-	for unit in state.units:
-		if unit.summon_owner_uid == caster.uid and unit.is_alive():
-			summon_count += 1
-	t.eq(summon_count, 2, "同一施法者可同时维持多个树人")
-	var edge := TestScenario.make_state(["grass_starter"], [["rock_wild1", Vector2i(6, 5)]],
-		TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(1, 0), TerrainDB.DEEP], [Vector2i(0, 1), TerrainDB.VINES]]))
-	var edge_tree := edge.summon_tree(edge.unit_by_uid(1), Vector2i(0, 0))
-	t.eq(edge_tree.max_hp, 30, "边界格只统计地图内四邻，深水和藤蔓均生效")
-	var enhanced_owner := edge.unit_by_uid(1)
-	enhanced_owner.upgrades["tree_man_hp_bonus"] = 10
-	var stronger_tree := edge.summon_tree(enhanced_owner, Vector2i(5, 5))
-	t.eq(stronger_tree.max_hp, 25, "强化大树守卫使新召唤树人生命额外增加十点")
-	var blocked := TestScenario.make_state(["grass_starter", "grass_starter"], [["rock_wild1", Vector2i(6, 5)]])
-	var blocked_caster := blocked.unit_by_uid(1)
-	blocked_caster.cell = Vector2i(1, 2)
-	blocked_caster.skills.append("tree_man")
-	var ally := blocked.unit_by_uid(2)
-	ally.cell = Vector2i(5, 2)
-	ally.max_hp = 100
-	ally.hp = 100
-	blocked.cast_skill(blocked_caster, "tree_man", {"type": "cell", "cell": cell})
-	ally.cell = cell
-	blocked.start_round()
-	t.eq(ally.hp, 100 - int(SkillDB.get_def("tree_man")["summon_collision_damage"]), "友军占据固定落点受到召唤碰撞伤害")
-	t.check(blocked.active_summon(blocked_caster.uid) == null and blocked.pending_casts.is_empty(), "落点被挡即取消召唤")
-	var enemy_blocked := TestScenario.make_state(["grass_starter"], [["grass_wild1", Vector2i(6, 5)]])
-	var enemy_caster := enemy_blocked.unit_by_uid(1)
-	enemy_caster.cell = Vector2i(1, 2)
-	enemy_caster.skills.append("tree_man")
-	enemy_blocked.cast_skill(enemy_caster, "tree_man", {"type": "cell", "cell": cell})
-	var enemy_blocker := enemy_blocked.unit_by_uid(100)
-	enemy_blocker.hp = 100
-	enemy_blocker.max_hp = 100
-	enemy_blocker.cell = cell
-	enemy_blocked.start_round()
-	t.eq(enemy_blocker.hp, 100 - int(SkillDB.get_def("tree_man")["summon_collision_damage"]), "敌军占据落点同样受到召唤碰撞伤害")
-	t.check(enemy_blocked.active_summon(enemy_caster.uid) == null, "敌军挡位也取消召唤")
+	t.check(summon != null, "施放后立即存在树人")
+	if summon == null:
+		return
+	t.eq(summon.max_hp, 31, "八邻格两处水+6、两处草+10、一棵树+5；中心草不计")
+	t.eq(summon.hp, 31, "出生生命包含全部环境加成")
+	var damage_sim := state.clone()
+	var attacker := damage_sim.active_summon(caster.uid)
+	attacker.fresh_spawn = false
+	var victim := damage_sim.unit_by_uid(100)
+	victim.cell = Vector2i(4, 2)
+	damage_sim.set_terrain(victim.cell, TerrainDB.PLAIN)
+	victim.max_hp = 100
+	victim.hp = 100
+	var hit := SkillResolver.apply(damage_sim, attacker, "tree_wrath", {"type": "unit", "unit": victim.uid, "cell": victim.cell}, false)
+	t.eq(hit["hits"][0]["damage"], Elements.direct_damage(15, "grass", "rock"), "地形威力进入真实命中并继续计算属性克制")
+	t.eq(summon.summon_power_bonus, 5, "对角树格提供五技能威力")
+	t.eq(SkillResolver.upgraded_base_damage(summon, "tree_wrath", 10), 15, "树木加成进入真实基础伤害")
+	t.check(summon.fresh_spawn and not summon.can_move_now() and not summon.can_act_skill(), "出生轮不能行动")
+	t.eq(state.clone().active_summon(caster.uid).summon_power_bonus, 5, "AI副本保留召唤威力")
+	t.eq(BattleSnapshot.load_state(BattleSnapshot.save_state(state)).active_summon(caster.uid).summon_power_bonus, 5, "存读档保留召唤威力")
+	caster.skill_used = false
+	caster.moved = false
+	t.check(state.skill_targets(caster, "tree_man").is_empty(), "已有存活召唤物禁用目标")
+	t.check(not bool(state.cast_skill(caster, "tree_man", {"type": "cell", "cell": Vector2i(5, 2)}).get("ok", false)), "已有存活召唤物阻止实际释放")
+	t.check(state.summon_tree(caster, Vector2i(5, 2)) == null, "底层召唤入口也执行上限")
+	var other := state.unit_by_uid(2)
+	other.cell = Vector2i(6, 6)
+	t.check(state.summon_tree(other, Vector2i(5, 5)) != null, "不同主人分别拥有召唤额度")
+	state.kill_unit(summon, "测试")
+	t.check(not state.skill_targets(caster, "tree_man").is_empty(), "召唤物消失后恢复额度")
+	caster.upgrades["tree_man_hp_bonus"] = 10
+	var replacement := state.summon_tree(caster, Vector2i(0, 0))
+	t.eq(replacement.max_hp, 20, "空地基础十血加坚根十血")
+	t.eq(state.terrain_at(Vector2i(4, 3)), TerrainDB.TREE, "吸收加成不消耗树格")
+	var blocked := TestScenario.make_state(["grass_starter"], [["rock_wild1", cell]])
+	var blocker := blocked.unit_by_uid(100)
+	var blocker_hp := blocker.hp
+	t.check(blocked.summon_tree(blocked.unit_by_uid(1), cell) == null, "单位覆盖落点不能召唤")
+	t.eq(blocker.hp, blocker_hp, "取消召唤不造成旧版碰撞伤害")
+	var edge := TestScenario.make_state(["grass_starter"], [["rock_wild1", Vector2i(6, 5)]], TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(1, 0), TerrainDB.DEEP], [Vector2i(0, 1), TerrainDB.VINES], [Vector2i(1, 1), TerrainDB.TREE]]))
+	t.eq(edge.summon_tree(edge.unit_by_uid(1), Vector2i(0, 0)).max_hp, 23, "角落统计地图内三个邻格")
 	var wrath := TestScenario.make_state(["grass_starter"], [["rock_wild1", Vector2i(4, 2)]])
 	var owner := wrath.unit_by_uid(1)
 	owner.cell = Vector2i(1, 2)

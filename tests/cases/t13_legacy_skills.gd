@@ -118,11 +118,13 @@ func _grass_ice_wind(t: TestContext) -> void:
 	var wind := state.unit_by_uid(3)
 	wind.cell = Vector2i(1, 2)
 	t.eq(wind.move_points, 4, "风怪基础移动力为 4")
-	t.check(bool(SkillResolver.apply(state, wind, "tailwind", {"type": "dir", "dir": Vector2i(1, 0), "cell": Vector2i(2, 2)}, false).get("ok", false)), "风怪加速可施放")
+	t.check(bool(SkillResolver.apply(state, wind, "tailwind", {"type": "cell", "cell": wind.cell}, false).get("ok", false)), "风怪加速可施放")
 	t.check(grass.haste_ticks > 0, "风怪给前方友军加速")
 	grass.hp = grass.max_hp - 1
 	t.check(bool(SkillResolver.apply(state, grass, "herbal_heal", {"type": "cell", "cell": grass.cell}, false).get("ok", false)), "药草治疗以自身为中心施放")
-	t.eq(grass.hp, grass.max_hp, "药草治疗恢复友军")
+	t.eq(grass.hp, grass.max_hp - 1, "药草治疗宣告不提前恢复")
+	SkillResolver.resolve_channel(state, grass, "herbal_heal", [grass.cell])
+	t.eq(grass.hp, grass.max_hp, "药草治疗结算恢复友军")
 
 
 func _ice_slide(t: TestContext) -> void:
@@ -169,7 +171,7 @@ func _matchup_damage(t: TestContext) -> void:
 	t.eq(int(fire_result["hits"][0]["modifier"]), -1, "冰物种归水后被水克制")
 	t.check(not fire.events.any(func(line: String) -> bool: return line.contains("属性克制")), "战斗日志不再写出克制修正")
 	var water := TestScenario.make_state(["water_starter"], [["fire_wild1", Vector2i(4, 3)]])
-	water.unit_by_uid(1).cell = Vector2i(0, 3)
+	water.unit_by_uid(1).cell = Vector2i(1, 3)
 	var water_result := SkillResolver.apply(water, water.unit_by_uid(1), "water_flow", {"type": "cell", "cell": Vector2i(4, 3)}, false)
 	t.eq(int(water_result["hits"][0]["damage"]), Elements.direct_damage(SkillDB.damage_of("water_flow"), "water", "fire"), "水炮打火系：克制伤害")
 	var rock := TestScenario.make_state(["rock_starter"], [["electric_wild1", Vector2i(5, 4)]])

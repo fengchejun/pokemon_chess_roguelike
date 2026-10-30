@@ -27,9 +27,6 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 	var other_relic_bonus := 0
 	if source_side == "player" and target.side == "enemy":
 		other_relic_bonus += 4 * RelicDB.rank(state.relic_stacks, "wall_crash")
-		if skill_id == "wind_gust" and RelicDB.rank(state.relic_stacks, "wind_pressure") > 0:
-			distance += 1
-			other_relic_bonus += 3 * RelicDB.rank(state.relic_stacks, "wind_pressure")
 		collision_bonus += other_relic_bonus
 	for step in distance:
 		if not target.is_alive():

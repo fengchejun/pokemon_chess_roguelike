@@ -157,6 +157,7 @@ var fire_amp_stacks: int = 0:
 # 其他
 var fresh_spawn: bool = false       # 本回合新生成：在巢穴格待机，不能移动或施法
 var summon_owner_uid: int = -1
+var summon_power_bonus: int = 0
 
 
 func is_alive() -> bool:
@@ -244,6 +245,7 @@ func dup() -> CombatUnit:
 	copy.fire_amp_stacks = fire_amp_stacks
 	copy.fresh_spawn = fresh_spawn
 	copy.summon_owner_uid = summon_owner_uid
+	copy.summon_power_bonus = summon_power_bonus
 	return copy
 
 

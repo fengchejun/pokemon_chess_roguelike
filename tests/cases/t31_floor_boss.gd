@@ -131,7 +131,11 @@ func _enemy_levels_and_boss(t: TestContext) -> void:
 			var skills := BattleDB.enemy_skills_for_level(String(species_id), level)
 			t.eq(skills.size(), BattleDB.enemy_skill_count(level), "敌人各等级拥有规定数量的技能")
 			var upgrades := BattleDB.enemy_upgrade_ids_at_level(seed_value, 0, 0, String(species_id), level)
-			t.eq(upgrades.size(), clampi((level - 4) / 2, 0, 3), "Lv6/8/10 各增加一次技能强化")
+			var available := 0
+			for skill in skills:
+				if RunState.upgrade_id_for_skill(String(skill)) != "":
+					available += 1
+			t.eq(upgrades.size(), mini(available, clampi((level - 4) / 2, 0, 3)), "高等级强化数受实际有效技能强化数量限制")
 			var unique_upgrades := {}
 			for upgrade_id in upgrades:
 				var required_skill := String(RunState.upgrade_info(String(upgrade_id)).get("requires_skill", ""))

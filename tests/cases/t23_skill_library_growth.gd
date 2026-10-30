@@ -79,12 +79,12 @@ func _test_missing_skill_upgrades(t: TestContext) -> void:
 	t.check(rock.skill_targets(rock_caster, "rock_break").is_empty(), "碎岩原射程不足三格")
 	rock_caster.upgrades["rock_break_range"] = 1
 	t.check(not rock.skill_targets(rock_caster, "rock_break").is_empty(), "碎岩强化射程达到三格")
-	var ice := TestScenario.make_state(["ice_starter"], [["fire_wild1", Vector2i(6, 3)]])
+	var ice := TestScenario.make_state(["ice_starter"], [["fire_wild1", Vector2i(7, 3)]])
 	var ice_caster := ice.unit_by_uid(1)
-	ice_caster.cell = Vector2i(1, 3)
-	t.check(not ice.skill_targets(ice_caster, "freeze_ray").has({"type": "cell", "cell": Vector2i(6, 3)}), "急冻原射程不足五格")
+	ice_caster.cell = Vector2i(0, 3)
+	t.check(not ice.skill_targets(ice_caster, "freeze_ray").has({"type": "cell", "cell": Vector2i(7, 3)}), "急冻原射程不足七格")
 	ice_caster.upgrades["freeze_ray_range"] = 1
-	t.check(ice.skill_targets(ice_caster, "freeze_ray").has({"type": "cell", "cell": Vector2i(6, 3)}), "急冻强化射程达到五格")
+	t.check(ice.skill_targets(ice_caster, "freeze_ray").has({"type": "cell", "cell": Vector2i(6, 3)}), "急冻强化射程达到七格")
 	var wind := TestScenario.make_state(["wind_starter", "fire_starter", "grass_starter"], [["rock_wild1", Vector2i(7, 7)]])
 	var wind_caster := wind.unit_by_uid(1)
 	wind_caster.cell = Vector2i(1, 3)

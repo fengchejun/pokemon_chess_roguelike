@@ -317,10 +317,15 @@ func _draw_pending_casts(font: Font) -> void:
 	var labels := {}
 	for cast in pending_casts:
 		var color := Color(0.35, 0.88, 1.0) if String(cast["side"]) == "player" else Color(1.0, 0.32, 0.32)
+		var is_heal := String(cast["skill_id"]) == "herbal_heal"
+		if is_heal:
+			color = Color(0.4, 1.0, 0.5)
 		var is_tsunami := String(cast["skill_id"]) == "tsunami"
 		var first_cell: Vector2i = cast["cells"][0] if not cast["cells"].is_empty() else Vector2i(-1, -1)
 		for center in cast["cells"]:
 			var cells: Array = [center]
+			if is_heal:
+				cells = SkillResolver.support_area(center, 2, false)
 			if String(cast["skill_id"]) == "fire_burst":
 				cells = []
 				for dx in range(-1, 2):
@@ -333,7 +338,7 @@ func _draw_pending_casts(font: Font) -> void:
 				draw_rect(rect, color, false, 3.0)
 				marked[cell] = int(marked.get(cell, 0)) + 1
 				if not is_tsunami or cell == first_cell:
-					labels[cell] = "海啸" if is_tsunami else ""
+					labels[cell] = "治疗" if is_heal else "海啸" if is_tsunami else ""
 		var caster: CombatUnit = null
 		for unit in units:
 			if unit.uid == int(cast["uid"]) and unit.is_alive():
@@ -346,7 +351,7 @@ func _draw_pending_casts(font: Font) -> void:
 			continue
 		var count := int(marked[cell])
 		var label := String(labels[cell]) if String(labels[cell]) != "" else ("蓄%d" % count if count > 1 else "蓄")
-		draw_rect(Rect2(cell.x * TILE + 2, cell.y * TILE + 2, 36 if label == "海啸" else (32 if count > 1 else 20), 17), Color(0.08, 0.10, 0.13, 0.92))
+		draw_rect(Rect2(cell.x * TILE + 2, cell.y * TILE + 2, 36 if label in ["海啸", "治疗"] else (32 if count > 1 else 20), 17), Color(0.08, 0.10, 0.13, 0.92))
 		draw_string(font, Vector2(cell.x * TILE + 4, cell.y * TILE + 15), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 
 

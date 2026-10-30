@@ -74,7 +74,7 @@ func _collection_row(record: Dictionary) -> Control:
 		skills.append(skill_name)
 		skill_selector.add_item(skill_name)
 		skill_selector.set_item_metadata(skill_selector.item_count - 1, String(skill_id))
-		if (species_id.begins_with("ice_") and String(skill_id) == "ice_shard") or (species_id.begins_with("wind_") and String(skill_id) == "wind_gust"):
+		if (species_id.begins_with("ice_") and String(skill_id) == "ice_shard"):
 			skill_selector.select(skill_selector.item_count - 1)
 	skill_selectors[id] = skill_selector
 	content.add_child(UIKit.wrapped("开局从以下技能中携带一招；其他招式可在局内升级时学习：" + "、".join(skills), 13))

@@ -18,7 +18,7 @@ func _learning(t: TestContext) -> void:
 		"fire": ["fire_amplify"],
 		"grass": ["leech_seed"],
 		"water": ["surf", "tsunami", "ice_glide"],
-		"electric": ["tailwind", "double_cast", "wind_gust"],
+		"electric": ["tailwind", "double_cast"],
 	}
 	for element in expectations:
 		var choices := SkillDB.learnable_ids_for(element)
@@ -225,54 +225,19 @@ func _tsunami(t: TestContext) -> void:
 
 
 func _range_changes(t: TestContext) -> void:
-	var gust_state := TestScenario.make_state(["wind_starter"], [["rock_wild1", Vector2i(4, 3)]])
-	var wind := gust_state.unit_by_uid(1)
-	wind.cell = Vector2i(1, 3)
-	wind.skills.append("wind_gust")
-	var right := {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(2, 3)}
-	t.check(gust_state.skill_targets(wind, "wind_gust").has(right), "推风可选前方方向")
-	var gust_area := SkillResolver.front_area_cells(wind.cell, Vector2i.RIGHT, 2)
-	t.eq(gust_area.size(), 6, "推风覆盖宽三长二的六格")
-	var gust_preview := gust_state.preview_skill(wind, "wind_gust", right)
-	t.eq(gust_preview.get("area_cells", []), gust_area, "推风预览与范围函数一致")
-	gust_state.unit_by_uid(100).cell = Vector2i(5, 3)
-	var empty_gust := gust_state.preview_skill(wind, "wind_gust", right)
-	t.eq((empty_gust.get("hits", []) as Array).size(), 0, "范围外敌人不受推风影响")
+	t.check(SkillDB.get_def("wind_gust").is_empty(), "推风定义已删除")
 	var tailwind_state := TestScenario.make_state(["wind_starter", "fire_starter"], [["rock_wild1", Vector2i(7, 7)]])
 	var tailwind_caster := tailwind_state.unit_by_uid(1)
 	tailwind_caster.cell = Vector2i(1, 3)
 	tailwind_caster.skills.append("tailwind")
 	var ally := tailwind_state.unit_by_uid(2)
-	ally.cell = Vector2i(4, 4)
-	var tailwind_preview := tailwind_state.preview_skill(tailwind_caster, "tailwind", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(2, 3)})
-	t.eq(tailwind_preview.get("area_cells", []), SkillResolver.front_area_cells(tailwind_caster.cell, Vector2i.RIGHT, 3), "顺风预览显示实际范围")
-	SkillResolver.apply(tailwind_state, tailwind_caster, "tailwind", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(2, 3)}, false)
-	t.check(ally.haste_ticks > 0, "顺风前方第三排侧格也获得加速")
+	ally.cell = Vector2i(3, 4)
+	var tailwind_preview := tailwind_state.preview_skill(tailwind_caster, "tailwind", {"type": "cell", "cell": tailwind_caster.cell})
+	t.eq(tailwind_preview.get("area_cells", []), SkillResolver.support_area(tailwind_caster.cell, 2, true), "顺风预览显示实际范围")
+	SkillResolver.apply(tailwind_state, tailwind_caster, "tailwind", {"type": "cell", "cell": tailwind_caster.cell}, false)
+	t.check(ally.haste_ticks > 0, "磁场两格内侧格也获得加速")
 
 
 func _multi_gust(t: TestContext) -> void:
-	var state := TestScenario.make_state(["wind_starter", "water_starter"], [
-		["rock_wild1", Vector2i(2, 3)], ["fire_wild1", Vector2i(3, 3)],
-		["grass_wild1", Vector2i(2, 4)], ["ice_wild1", Vector2i(4, 2)],
-	], TestScenario.plain_terrain())
-	var caster := state.unit_by_uid(1)
-	caster.cell = Vector2i(1, 3)
-	caster.skills.append("wind_gust")
-	var ally := state.unit_by_uid(2)
-	ally.cell = Vector2i(2, 2)
-	var entry := {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(2, 3)}
-	var preview := state.preview_skill(caster, "wind_gust", entry)
-	t.eq((preview.get("hits", []) as Array).size(), 3, "推风预览列出范围内三名敌人")
-	t.eq(state.unit_by_uid(100).cell, Vector2i(2, 3), "预览不改变真实站位")
-	var result := state.cast_skill(caster, "wind_gust", entry)
-	t.check(bool(result.get("ok", false)), "推风可正式结算")
-	t.eq(result.get("area_cells", []), preview.get("area_cells", []), "推风预览与实际作用格一致")
-	t.eq(state.unit_by_uid(101).cell, Vector2i(4, 3), "前排先被推开")
-	t.eq(state.unit_by_uid(100).cell, Vector2i(3, 3), "后排随后被推一格")
-	t.eq(state.unit_by_uid(102).cell, Vector2i(3, 4), "侧列敌人同样被推")
-	t.eq(state.unit_by_uid(103).cell, Vector2i(4, 2), "范围外敌人不位移")
-	t.eq(ally.cell, Vector2i(2, 2), "推风不影响范围内友军")
-	var edge := TestScenario.make_state(["wind_starter"], [["rock_wild1", Vector2i(1, 1)]])
-	var edge_caster := edge.unit_by_uid(1)
-	edge_caster.cell = Vector2i(7, 3)
-	t.check(not edge.skill_targets(edge_caster, "wind_gust").has({"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(8, 3)}), "推风不能向完全越界方向空放")
+	var state := TestScenario.make_state(["wind_starter"], [["rock_wild1", Vector2i(2, 3)]])
+	t.check(state.skill_targets(state.unit_by_uid(1), "wind_gust").is_empty(), "推风不能进入目标或预览队列")

@@ -54,7 +54,7 @@ static func ensure_region(region: RegionState, seed_value: int) -> void:
 	var id := "event_%d" % rng.randi_range(1, 2)
 	if region.nodes[id].has("merchant"):
 		return
-	var pool: Array = RelicDB.DEFINITIONS.keys()
+	var pool: Array = RelicDB.ids()
 	var stock := {"potion": 2, "capture_aid": 2}
 	for i in 3:
 		var relic: String = pool.pop_at(rng.randi_range(0, pool.size() - 1))

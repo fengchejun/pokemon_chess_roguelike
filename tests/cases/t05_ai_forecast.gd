@@ -80,7 +80,7 @@ func _t_skill_choice(t: TestContext) -> void:
 	var heal_plan := EnemyAI.plan(heal)
 	t.check(not heal_plan.is_empty(), "草怪可规划行动")
 	if not heal_plan.is_empty():
-		t.eq(String(heal_plan[0]["skill"].get("id", "")), "herbal_heal", "濒危友军在攻击范围内时，草怪优先治疗")
+		t.check(EnemyAI._channel_score(heal, heal.unit_by_uid(100), "herbal_heal", {"cell": heal.unit_by_uid(100).cell}) > 0, "草怪会评估固定区域吟唱治疗的收益")
 
 	var freeze := TestScenario.make_state([], [["ice_wild1", Vector2i(4, 4)]])
 	freeze.trainer().cell = Vector2i(4, 2)

@@ -41,23 +41,21 @@ const MONSTER_UPGRADES := {
 	"herbal_heal_amount": {"name": "丰茂药草", "desc": "我方药草治疗每个目标回复 13 点生命。", "key": "herbal_heal_amount", "value": 5, "requires_skill": "herbal_heal"},
 	"ice_shard_damage": {"name": "尖锐冰锥", "desc": "冰锥基础直伤共 +10。", "key": "ice_shard_damage", "value": 5, "damage_bonus": 5, "requires_skill": "ice_shard"},
 	"ice_ground_reach": {"name": "冰面延展", "desc": "我方冰封大地向前延展至第 4 排。", "key": "ice_ground_reach", "value": 1, "requires_skill": "frozen_ground"},
-	"wind_gust_distance": {"name": "强劲推风", "desc": "我方推风击退距离由 1 格增至 2 格。", "key": "wind_gust_distance", "value": 1, "requires_skill": "wind_gust"},
 	"electric_arc_damage": {"name": "高压传导", "desc": "放电传导基础直伤共 +10。", "key": "electric_arc_damage", "value": 5, "damage_bonus": 5, "requires_skill": "electric_arc"},
-	"volt_replace_flex": {"name": "灵活换位", "desc": "伏特替换可与相距 1 或 2 格的单位交换位置。", "key": "volt_replace_flex", "value": 1, "requires_skill": "volt_replace"},
-	"tailwind_reach": {"name": "远风", "desc": "顺风的前方影响距离由 3 排扩为 4 排。", "key": "tailwind_reach", "value": 1, "requires_skill": "tailwind"},
+	"tailwind_reach": {"name": "扩域磁场", "desc": "磁场加速半径从 2 格扩大至 3 格，覆盖自身周围 7×7 区域。", "key": "tailwind_reach", "value": 1, "requires_skill": "tailwind"},
 	"flame_charge_damage": {"name": "冲锋余焰", "desc": "闪焰冲锋撞击基础直伤共 +10，破障能力 +1。", "key": "flame_charge_damage", "value": 1, "damage_bonus": 5, "requires_skill": "flame_charge"},
 	"wild_vines_reach": {"name": "藤蔓延展", "desc": "疯狂藤蔓向前延长至第 3 格。", "key": "wild_vines_reach", "value": 1, "requires_skill": "wild_vines"},
 	"lightning_first_shock": {"name": "首击蓄电", "desc": "打雷基础直伤 +5，第一个落点额外施加一层感电。", "key": "lightning_first_shock", "value": 1, "damage_bonus": 5, "requires_skill": "lightning"},
 	"rock_break_range": {"name": "长距碎岩", "desc": "碎岩基础直伤 +10，射程由 2 格增至 3 格。", "key": "rock_break_range", "value": 1, "damage_bonus": 10, "requires_skill": "rock_break"},
-	"freeze_ray_range": {"name": "远距急冻", "desc": "急冻光线射程由 4 格增至 5 格。", "key": "freeze_ray_range", "value": 1, "requires_skill": "freeze_ray"},
-	"double_cast_range": {"name": "双重风力引擎", "desc": "风力引擎可同时选择两名相邻友军，各获得一次额外施法机会；施法距离仍为 1 格。", "key": "double_cast_range", "value": 1, "requires_skill": "double_cast"},
+	"freeze_ray_range": {"name": "远距急冻", "desc": "急冻光线射程由 6 格增至 7 格。", "key": "freeze_ray_range", "value": 1, "requires_skill": "freeze_ray"},
+	"double_cast_range": {"name": "双重电力引擎", "desc": "电力引擎可同时选择两名相邻友军，各获得一次额外施法机会；施法距离仍为 1 格。", "key": "double_cast_range", "value": 1, "requires_skill": "double_cast"},
 	"fire_amplify_power": {"name": "炽焰积蓄", "desc": "火焰增幅每熄灭一格火焰改为积累 8 点直伤。", "key": "fire_amplify_power", "value": 8, "requires_skill": "fire_amplify"},
 	"surf_duration": {"name": "长浪", "desc": "冲浪的地形移动效果延长 1 回合。", "key": "surf_duration", "value": 1, "requires_skill": "surf"},
 	"tsunami_damage": {"name": "巨浪", "desc": "海啸基础直伤 +8。", "key": "tsunami_damage", "value": 1, "damage_bonus": 8, "requires_skill": "tsunami"},
 	"rock_slide_damage": {"name": "重岩", "desc": "岩崩基础直伤 +10。", "key": "rock_slide_damage", "value": 1, "damage_bonus": 10, "requires_skill": "rock_slide"},
 	"earth_shake_damage": {"name": "震源", "desc": "撼地基础直伤 +5，地形塌陷规则不变。", "key": "earth_shake_damage", "value": 1, "damage_bonus": 5, "requires_skill": "earth_shake"},
 	"leech_seed_tick_bonus": {"name": "深根", "desc": "寄生每轮伤害与施法者回复上限各 +2。", "key": "leech_seed_tick_bonus", "value": 2, "requires_skill": "leech_seed"},
-	"tree_man_hp_bonus": {"name": "坚根守卫", "desc": "大树守卫落点碰撞基础直伤 +5，召唤树人最大生命 +10。", "key": "tree_man_hp_bonus", "value": 10, "damage_bonus": 5, "requires_skill": "tree_man"},
+	"tree_man_hp_bonus": {"name": "坚根守卫", "desc": "大树守卫召唤树人最大生命 +10。", "key": "tree_man_hp_bonus", "value": 10, "requires_skill": "tree_man"},
 	"ice_glide_duration": {"name": "长滑", "desc": "溜冰的地形移动效果延长 1 回合。", "key": "ice_glide_duration", "value": 1, "requires_skill": "ice_glide"},
 }
 
@@ -1176,6 +1174,14 @@ func _normalize_record_growth(record: Dictionary, legacy_upgrade_style: bool) ->
 			var level := int(level_value)
 			if [2, 4, 6, 8, 10].has(level) and level <= int(record.get("level", 1)) and not kept_claimed.has(level):
 				kept_claimed.append(level)
+	if not legacy_upgrade_style:
+		var retired_count := 0
+		for retired in ["wind_gust_distance", "volt_replace_flex"]:
+			if old_taken.has(retired):
+				retired_count += 1
+		kept_claimed.sort()
+		for index in range(mini(retired_count, kept_claimed.size())):
+			kept_claimed.pop_back()
 	var values := {}
 	for upgrade_id in kept_taken:
 		var info := upgrade_info(String(upgrade_id))

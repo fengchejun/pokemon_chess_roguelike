@@ -286,6 +286,6 @@ func _t_attr_modifier(t: TestContext) -> void:
 	t.eq(SpeciesDB.element_of("ice_starter"), "water", "冰物种归水系")
 	t.eq(SpeciesDB.element_of("wind_starter"), "electric", "风物种归电系")
 	t.eq(SkillDB.element_of("ice_shard"), "water", "冰技能归水系")
-	t.eq(SkillDB.element_of("wind_gust"), "electric", "风技能归电系")
+	t.eq(SkillDB.element_of("tailwind"), "electric", "风技能归电系")
 	t.eq(Elements.direct_damage(20, "fire", "grass"), 25, "克制直伤乘 1.25")
 	t.eq(Elements.direct_damage(20, "fire", "water"), 15, "被克直伤乘 0.75")

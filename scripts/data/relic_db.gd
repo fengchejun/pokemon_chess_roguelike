@@ -17,13 +17,13 @@ const DEFINITIONS := {
 	"rock_armor": ["岩甲", "紧邻障碍的我方单位受到敌方技能直伤每级 −2。"],
 	"wall_crash": ["冲壁", "我方推击敌人时碰撞伤害每级 +4。"],
 	"frost_wet": ["霜寒", "冰系技能对已浸湿敌人直伤每级 +5。"],
-	"wind_pressure": ["风压", "风系技能推动敌人距离 +1；碰撞伤害每级 +3。"],
+	"wind_pressure": ["风压", "旧版遗物（推风已移除，不再生效；可出售）。"],
 	"first_strike": ["猎手", "技能对满血敌人的首次直伤每级 +4。"],
 }
 
 
 static func ids() -> Array:
-	return DEFINITIONS.keys()
+	return DEFINITIONS.keys().filter(func(id): return id != "wind_pressure")
 
 
 static func rank(stacks: Dictionary, relic_id: String) -> int:
@@ -40,7 +40,7 @@ static func description_of(relic_id: String) -> String:
 
 static func offer(seed_value: int, battle_index: int, choice_index: int, stacks: Dictionary, count: int = 3) -> Array:
 	var pool: Array = []
-	for relic_id in DEFINITIONS:
+	for relic_id in ids():
 		if rank(stacks, relic_id) < MAX_RANK:
 			pool.append(relic_id)
 	var rng := RandomNumberGenerator.new()

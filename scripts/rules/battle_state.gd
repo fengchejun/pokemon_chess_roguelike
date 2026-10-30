@@ -450,7 +450,7 @@ func active_summon(owner_uid: int) -> CombatUnit:
 
 
 func summon_tree(owner: CombatUnit, cell: Vector2i) -> CombatUnit:
-	if owner == null or not owner.is_alive():
+	if owner == null or not owner.is_alive() or active_summon(owner.uid) != null or not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or not TerrainDB.can_stand(terrain_at(cell), "grass"):
 		return null
 	var next_uid := 1
 	for existing in units:
@@ -462,14 +462,21 @@ func summon_tree(owner: CombatUnit, cell: Vector2i) -> CombatUnit:
 	summon.reg_index = units.size()
 	summon.fresh_spawn = true
 	summon.max_hp += int(owner.upgrades.get("tree_man_hp_bonus", 0))
-	var absorb_cells: Array = [cell]
-	absorb_cells.append_array(GridSpec.neighbors4(cell))
+	var absorb_cells: Array = []
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			var neighbor := cell + Vector2i(dx, dy)
+			if (dx != 0 or dy != 0) and GridSpec.is_inside(neighbor):
+				absorb_cells.append(neighbor)
 	for absorb_cell in absorb_cells:
 		var terrain_type := terrain_at(absorb_cell)
 		if terrain_type == TerrainDB.WATER or terrain_type == TerrainDB.DEEP:
 			summon.max_hp += Balance.TREE_WATER_HP
 		elif terrain_type == TerrainDB.GRASS or terrain_type == TerrainDB.VINES:
 			summon.max_hp += Balance.TREE_GRASS_HP
+		elif terrain_type == TerrainDB.TREE:
+			summon.max_hp += 5
+			summon.summon_power_bonus += 5
 	summon.hp = summon.max_hp
 	if inspiration_triggered:
 		_grant_inspiration(summon)
@@ -1457,14 +1464,12 @@ func try_pickup_fruit(unit: CombatUnit) -> Dictionary:
 func _pickups() -> void:
 	for cell in food_cells.duplicate():
 		var picker := _player_unit_at(cell)
-		if picker != null and (node_kind == "event" or int(food_wait.get(cell, -1)) == picker.uid):
+		if picker != null:
 			food_cells.erase(cell)
 			food_wait.erase(cell)
 			food_collected += 1
 			emit_feedback(picker, "buff", "食物 +1")
 			log_event("%s 收集了 1 份食物。" % picker.display_name)
-		elif picker != null:
-			food_wait[cell] = picker.uid
 		else:
 			food_wait.erase(cell)
 	for fruit_cell in fruits.duplicate():
@@ -1625,6 +1630,7 @@ func _signature() -> String:
 		parts.append("buff:%d:%s" % [unit.uid, str(unit.battle_buffs)])
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
+		parts.append("summon_power:%d:%d" % [unit.uid, unit.summon_power_bonus])
 		parts.append("vine_source:%d:%s:%d" % [unit.uid, str(unit.vine_sources), unit.vine_ticks])
 	parts.append("pending:%s" % str(pending_casts))
 	parts.append("relics:%s" % str(relic_stacks))

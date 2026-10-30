@@ -143,11 +143,7 @@ func _push_effects(t: TestContext) -> void:
 	var baseline := PushResolver.push(base, base.unit_by_uid(100), Vector2i.RIGHT, 1, 0, "测试", "player", 1, "rock_push")
 	var enhanced := PushResolver.push(boosted, boosted.unit_by_uid(100), Vector2i.RIGHT, 1, 0, "测试", "player", 1, "rock_push")
 	t.eq(int(enhanced["collisions"][0]["target_damage"]) - int(baseline["collisions"][0]["target_damage"]), 8, "冲壁二级只加推击碰撞伤害")
-	var wind := TestScenario.make_state(["wind_starter"], [["rock_wild1", Vector2i(3, 3)]], TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(5, 3), TerrainDB.OBSTACLE]]))
-	wind.relic_stacks = {"wind_pressure": 2}
-	var gust := PushResolver.push(wind, wind.unit_by_uid(100), Vector2i.RIGHT, 1, 0, "测试", "player", 1, "wind_gust")
-	t.eq(wind.unit_by_uid(100).cell, Vector2i(4, 3), "风压一旦拥有即额外推一格")
-	t.eq(int(gust["collisions"][0]["target_damage"]), Balance.COLLISION_DAMAGE + 6, "风压二级碰撞再 +6")
+	t.check(not RelicDB.ids().has("wind_pressure"), "风压停止加入新遗物池，旧遗物仍可出售")
 	var two_enemies := TestScenario.make_state(["rock_starter"], [["rock_wild1", Vector2i(3, 3)], ["fire_wild1", Vector2i(4, 3)]])
 	two_enemies.relic_stacks = {"wall_crash": 2}
 	var collision := PushResolver.push(two_enemies, two_enemies.unit_by_uid(100), Vector2i.RIGHT, 1, 0, "测试", "player", 1, "rock_push")

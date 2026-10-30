@@ -587,6 +587,8 @@ func _update_unit_card() -> void:
 	if unit.summon_owner_uid >= 0:
 		var owner := state.unit_by_uid(unit.summon_owner_uid)
 		lines.append("召唤物：施法者 %s；战斗结束后消失" % (owner.display_name if owner != null else "未知"))
+	if unit.summon_power_bonus > 0:
+		lines.append("地形赋予技能威力 +%d" % unit.summon_power_bonus)
 	for skill_id in unit.skills:
 		var id := String(skill_id)
 		var used_text := "（本场已用尽）" if not unit.can_use_in_battle(id) else ""
@@ -673,6 +675,9 @@ func _rebuild_skill_buttons() -> void:
 			elif not unit.can_use_in_battle(id):
 				button.disabled = true
 				button.tooltip_text += "\n（本场使用次数已耗尽）"
+			elif id == "tree_man" and state.active_summon(unit.uid) != null:
+				button.disabled = true
+				button.tooltip_text += "\n（已有存活召唤物）"
 			elif entries.is_empty():
 				button.disabled = true
 				button.tooltip_text += "\n（蒸汽中无法施法）" if state.steam_cells.has(unit.cell) else "\n（当前没有有效目标）"
@@ -805,7 +810,12 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	elif skill_id == "ice_glide" or skill_id == "surf":
 		parts.append("地形免费移动 %d 回合" % (3 + int(unit.upgrades.get("ice_glide_duration", 0)) if skill_id == "ice_glide" else 3 + int(unit.upgrades.get("surf_duration", 0))))
 	elif skill_id == "tree_man":
-		parts.append("蓄力召唤 · 被占格时伤害 %d" % Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, int(def.get("summon_collision_damage", 23))), unit.side))
+		parts.append("即时召唤 · 上限 1")
+	elif skill_id == "herbal_heal":
+		parts.append("吟唱治疗 %d · 固定曼哈顿 2 格" % (Balance.HERBAL_HEAL + int(unit.upgrades.get("herbal_heal_amount", 0))))
+	elif skill_id == "tailwind":
+		var width := 5 + 2 * int(unit.upgrades.get("tailwind_reach", 0))
+		parts.append("自身周围 %d×%d · 移动力 +2" % [width, width])
 	elif skill_id == "fire_burst" and int(unit.upgrades.get("fireball_damage", 0)) > 0:
 		parts.append("伤害 %d · 中心 %d" % [damage, Balance.skill_damage_for_side(base_damage + int(unit.upgrades["fireball_damage"]), unit.side)])
 	elif skill_id == "double_cast" and int(unit.upgrades.get("double_cast_range", 0)) > 0:
@@ -814,7 +824,7 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("伤害 %d" % damage)
 	var kind := String(def.get("kind", ""))
 	if kind == "ray":
-		parts.append("射线 %d-%d" % [int(def.get("min_range", 1)), int(def.get("max_range", 8))])
+		parts.append("射线 %d-%d" % [int(def.get("min_range", 1)), int(def.get("max_range", 8)) + SkillResolver._range_bonus(state, unit, skill_id) + (int(unit.upgrades.get("freeze_ray_range", 0)) if skill_id == "freeze_ray" else 0)])
 	elif skill_id == "lightning":
 		parts.append("全场锁定 · 蓄力")
 	elif kind == "unit":
@@ -1037,7 +1047,7 @@ func _on_board_hovered(cell: Vector2i) -> void:
 			var candidate := state.unit_at(cell)
 			if candidate != null and _pair_has_uid(candidate.uid):
 				board.area_cells = [cell]
-				hint_label.text = "风力引擎：点击第一名相邻友军，再选择第二名。"
+				hint_label.text = "电力引擎：点击第一名相邻友军，再选择第二名。"
 			else:
 				hint_label.text = "请选择一名高亮的相邻友军。"
 			hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
@@ -1173,7 +1183,7 @@ func _show_terrain(cell: Vector2i) -> void:
 			"lost", "destroyed":
 				lines.append("本场奖励已失去。")
 	if state.food_cells.has(cell):
-		lines.append("食物：单位在此停留一整轮后收集 1 份，用于营地休息。")
+		lines.append("食物：本轮敌方行动结束时仍站在此处，即收集 1 份，用于营地休息。")
 	terrain_label.text = "\n".join(lines)
 	terrain_scroll.scroll_vertical = 0
 	call_deferred("_fit_terrain_panel")
@@ -1423,11 +1433,13 @@ func _on_skill_pressed(skill_id: String) -> void:
 		var cell: Vector2i = entry.get("cell", Vector2i(-1, -1))
 		if GridSpec.is_inside(cell):
 			board.attack_cells.append(cell)
-		if skill_id == "wind_gust" or skill_id == "tailwind" or skill_id == "earth_shake":
-			for affected in SkillResolver.front_area_cells(unit.cell, entry["dir"], 2 if skill_id == "wind_gust" else 3 + int(unit.upgrades.get("tailwind_reach", 0)) if skill_id == "tailwind" else 3):
+		if skill_id == "tailwind" or skill_id == "herbal_heal":
+			board.area_cells = SkillResolver.support_area(unit.cell, 2 + int(unit.upgrades.get("tailwind_reach", 0)) if skill_id == "tailwind" else 2, skill_id == "tailwind")
+		if skill_id == "earth_shake":
+			for affected in SkillResolver.front_area_cells(unit.cell, entry["dir"], 3):
 				if not board.area_cells.has(affected):
 					board.area_cells.append(affected)
-	hint_label.text = "风力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
+	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
 	if state.round >= Balance.MAX_ROUNDS and bool(SkillDB.get_def(skill_id).get("channel", false)):
 		hint_label.text += " 第 %d 回合开始吟唱将不会在本场结算。" % Balance.MAX_ROUNDS
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
