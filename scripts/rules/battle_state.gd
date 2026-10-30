@@ -634,6 +634,8 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var previous_hp := target.hp
 	target.hp -= amount
 	emit_feedback(target, "damage" if amount > 0 else "zero", "-%d" % amount if amount > 0 else "未受伤", amount)
+	if amount > 0 and source != null and bool(opts.get("skill_direct", false)) and not bool(opts.get("no_element", false)) and matchup_modifier != 0:
+		emit_feedback(target, "effective" if matchup_modifier > 0 else "resisted", "效果拔群（克制）" if matchup_modifier > 0 else "效果不佳（抵抗）", matchup_modifier)
 	if target.uid == boss_uid and target.side == "enemy" and amount > 0 and previous_hp * 2 > target.max_hp and target.hp > 0 and target.hp * 2 <= target.max_hp:
 		_trigger_inspiration()
 	var source_name := source.display_name if source != null else "环境"
@@ -988,6 +990,7 @@ func begin_channel(caster: CombatUnit, skill_id: String, cells: Array) -> bool:
 	caster.channel_lock_round = round + 1
 	caster.moved = true
 	caster.skill_used = true
+	emit_feedback(caster, "skill", "%s开始吟唱%s" % [caster.display_name, SkillDB.name_of(skill_id)])
 	emit_feedback(caster, "action", "开始吟唱")
 	log_event("%s 开始吟唱%s，落点已标记；下次本方阶段不能行动。" % [caster.display_name, SkillDB.name_of(skill_id)])
 	return true

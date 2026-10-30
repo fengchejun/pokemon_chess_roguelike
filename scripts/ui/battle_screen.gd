@@ -6,6 +6,7 @@ var deploy_uids: Array = []
 
 var board: BoardView = null
 var feedback_layer: Control = null
+var skill_banner: PanelContainer = null
 var selected_uid: int = 0
 var viewed_enemy_uid: int = 0
 var action_mode: String = "main" # main / move / skills；仅界面状态，不写入战斗快照。
@@ -63,7 +64,9 @@ func _ready() -> void:
 	feedback_layer.name = "BattleFeedback"
 	board.add_child(feedback_layer)
 	feedback_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	state.feedback.connect(feedback_layer.push)
+	skill_banner = preload("res://scripts/ui/skill_banner.gd").new()
+	add_child(skill_banner)
+	state.feedback.connect(_on_feedback)
 	state.enable_feedback()
 	state.enemy_defeated.connect(_on_enemy_defeated)
 	hint_label = UIKit.label("点击己方单位开始行动；右键/Esc 取消瞄准。", 13, UIKit.TEXT_DIM)
@@ -130,6 +133,13 @@ func _ready() -> void:
 	refresh_all()
 	resized.connect(_layout_overlays)
 	call_deferred("_layout_overlays")
+
+
+func _on_feedback(event: Dictionary) -> void:
+	if event["kind"] == "skill":
+		skill_banner.push(String(event["text"]))
+	else:
+		feedback_layer.push(event)
 
 
 func _on_enemy_defeated(entry: Dictionary) -> void:
@@ -810,7 +820,7 @@ func _action_detail(action: Dictionary) -> String:
 	for hit in meta.get("hits", []):
 		var text := "%s 受伤 %d" % [hit.get("name", "?"), int(hit.get("damage", 0))]
 		if int(hit.get("modifier", 0)) != 0:
-			text += "（%s）" % ("克制 +1" if int(hit["modifier"]) > 0 else "逆克制 -1")
+			text += "（%s）" % ("克制 ×1.25" if int(hit["modifier"]) > 0 else "抵抗 ×0.75")
 		if bool(hit.get("killed", false)):
 			text += "（致死）"
 		if hit.get("push") != null and bool(hit["push"].get("death", false)):
@@ -955,7 +965,7 @@ func _on_board_hovered(cell: Vector2i) -> void:
 				var relic_feedback: Array = []
 				for hit in preview.get("hits", []):
 					if int(hit.get("modifier", 0)) != 0:
-						matchup.append("%s %s" % [hit.get("name", "?"), "克制 +1" if int(hit["modifier"]) > 0 else "逆克制 -1"])
+						matchup.append("%s %s" % [hit.get("name", "?"), "克制 ×1.25" if int(hit["modifier"]) > 0 else "抵抗 ×0.75"])
 					if not (hit.get("statuses", []) as Array).is_empty():
 						relic_feedback.append("%s：%s" % [hit.get("name", "?"), "、".join(hit["statuses"])])
 					if int(hit.get("relic_healed", 0)) > 0:
@@ -1593,6 +1603,8 @@ func _report_end() -> void:
 	if not is_inside_tree() or is_queued_for_deletion():
 		return
 	var delay := minf(1.5, feedback_layer.remaining_time()) if feedback_layer != null else 0.0
+	if skill_banner != null:
+		delay = minf(1.5, maxf(delay, skill_banner.remaining_time()))
 	if delay > 0.0:
 		await get_tree().create_timer(delay).timeout
 	if state != null and state.ended and is_inside_tree():

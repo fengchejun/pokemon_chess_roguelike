@@ -297,6 +297,7 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 		if state.round >= Balance.MAX_ROUNDS:
 			summary["text"] += "本场将在结算前结束，此次吟唱不会生效。"
 		return summary
+	state.emit_feedback(caster, "skill", "%s使用了%s" % [caster.display_name, SkillDB.name_of(skill_id)])
 	state.log_event("%s 施放%s。" % [caster.display_name, SkillDB.name_of(skill_id)])
 	if String(def.get("kind", "")) == "unit" and String(target_entry.get("type", "")) == "nest":
 		_hit_nest(state, caster, target_entry["cell"], summary, int(def.get("damage", 0)))
@@ -387,6 +388,7 @@ static func _entry_valid(state: BattleState, caster: CombatUnit, skill_id: Strin
 
 
 static func resolve_channel(state: BattleState, caster: CombatUnit, skill_id: String, cells: Array) -> Dictionary:
+	state.emit_feedback(caster, "skill", "%s使用了%s" % [caster.display_name, SkillDB.name_of(skill_id)])
 	var summary := {"ok": true, "skill_id": skill_id, "caster_uid": caster.uid, "hits": [],
 		"area_cells": [], "ray_cells": [], "terrain_changes": [], "obstacles_damaged": [], "nest_damaged": null, "_nest_covered": state.nest_covered(), "_nest_hit": false, "text": ""}
 	if skill_id == "fire_burst":

@@ -1,0 +1,67 @@
+extends RefCounted
+
+func run(t: TestContext) -> void:
+	t.begin("施法横幅与属性效果提示")
+	var state := TestScenario.make_state(["fire_starter"], [["grass_wild1", Vector2i(4, 3)]])
+	state.enable_feedback()
+	var events: Array = []
+	state.feedback.connect(func(e): events.append(e))
+	var caster := state.unit_by_uid(1)
+	var target := state.unit_by_uid(100)
+	caster.cell = Vector2i(1, 3)
+	target.element = "grass"
+	target.hp = 999
+	var entry := {"type": "cell", "cell": target.cell}
+	state.preview_skill(caster, "fire_seed", entry)
+	t.eq(events.size(), 0, "技能预览不产生横幅或属性飘字")
+	var result := SkillResolver.apply(state, caster, "fire_seed", entry, false)
+	t.check(result["ok"], "施法成功")
+	var announcements := events.filter(func(e): return e["kind"] == "skill")
+	t.eq(announcements.size(), 1, "一次施法仅一个顶部提示")
+	t.eq(announcements[0]["text"], caster.display_name + "使用了" + SkillDB.name_of("fire_seed"), "文案包含施法者及技能名")
+	t.eq(events.filter(func(e): return e["kind"] == "effective").size(), 1, "克制目标产生一次效果拔群提示")
+	events.clear()
+	target.element = "water"
+	state.damage_unit(caster, target, 10, {"skill_direct": true, "element": "fire"})
+	t.eq(events.filter(func(e): return e["kind"] == "resisted").size(), 1, "被抵抗产生效果不佳提示")
+	t.eq(events.back()["cell"], target.cell, "属性提示位于受击者格")
+	events.clear()
+	target.element = "fire"
+	state.damage_unit(caster, target, 10, {"skill_direct": true, "element": "fire"})
+	t.eq(events.filter(func(e): return e["kind"] in ["effective", "resisted"]).size(), 0, "中性伤害没有属性提示")
+	events.clear()
+	target.element = "grass"
+	state.damage_unit(null, target, 10, {"element": "fire"})
+	t.eq(events.filter(func(e): return e["kind"] == "effective").size(), 0, "环境伤害不虚构属性倍率")
+	state.debug_skill_damage_bonus["player"] = -999
+	events.clear()
+	state.damage_unit(caster, target, 1, {"skill_direct": true, "element": "fire"})
+	t.eq(events.filter(func(e): return e["kind"] == "effective").size(), 0, "伤害为零不显示效果拔群")
+	state.debug_skill_damage_bonus["player"] = 0
+	events.clear()
+	SkillResolver.apply(state, caster, "fire_seed", {"type": "cell", "cell": Vector2i(7, 7)}, false)
+	t.eq(events.size(), 0, "无效施法不产生横幅")
+	events.clear()
+	state.begin_channel(caster, "fire_burst", [target.cell])
+	t.eq(events.filter(func(e): return e["kind"] == "skill")[0]["text"], caster.display_name + "开始吟唱" + SkillDB.name_of("fire_burst"), "宣告阶段显示开始吟唱")
+	events.clear()
+	SkillResolver.resolve_channel(state, caster, "fire_burst", [target.cell])
+	t.eq(events.filter(func(e): return e["kind"] == "skill").size(), 1, "蓄力结算显示一次使用技能")
+	var host := Control.new()
+	host.size = Vector2(1280, 720)
+	t.tree.root.add_child(host)
+	var banner = preload("res://scripts/ui/skill_banner.gd").new()
+	host.add_child(banner)
+	banner.set_process(false)
+	banner.push("小火龙使用了火种")
+	banner.push("杰尼龟使用了水炮")
+	t.eq(banner.caption.text, "小火龙使用了火种", "后续施法不会覆盖当前横幅")
+	t.eq(banner.pending.size(), 1, "后续施法排队")
+	t.approx(banner.position.x + banner.size.x / 2.0, host.size.x / 2.0, "横幅水平居中")
+	t.eq(banner.mouse_filter, Control.MOUSE_FILTER_IGNORE, "横幅不挡点击")
+	banner._process(1.2)
+	t.eq(banner.caption.text, "杰尼龟使用了水炮", "按施法顺序显示")
+	banner._process(1.2)
+	t.check(not banner.visible and banner.pending.is_empty(), "到期自动隐藏横幅")
+	host.queue_free()
+	t.finish()
