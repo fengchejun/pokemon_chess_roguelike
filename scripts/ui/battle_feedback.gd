@@ -3,7 +3,7 @@ extends Control
 var elapsed := 0.0
 var entries: Array = []
 var slots: Dictionary = {}
-const COLORS := {"damage": Color("ff6868"), "heal": Color("72ed9a"), "zero": Color("bbc4d0"), "status": Color("ffc45d"), "clear": Color("9fd9ed"), "buff": Color("89e6b0"), "death": Color("ff995e"), "action": Color("c8bcff")}
+const COLORS := {"experience": Color("80c9ff"), "essence": Color("ffdd75"), "damage": Color("ff6868"), "heal": Color("72ed9a"), "zero": Color("bbc4d0"), "status": Color("ffc45d"), "clear": Color("9fd9ed"), "buff": Color("89e6b0"), "death": Color("ff995e"), "action": Color("c8bcff")}
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE

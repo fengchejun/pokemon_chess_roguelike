@@ -29,7 +29,7 @@ func _run() -> void:
 	var fallen: CombatUnit = state.alive_units("enemy")[1]
 	fallen.cell = Vector2i(6, 5)
 	state.set_terrain(fallen.cell, TerrainDB.PIT)
-	state.kill_unit(fallen, "地面塌陷")
+	state.kill_unit(fallen, "地面塌陷", "player", ally.uid)
 	screen.board.set_from_state(state)
 	await create_timer(0.38).timeout
 	await RenderingServer.frame_post_draw

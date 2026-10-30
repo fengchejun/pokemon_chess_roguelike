@@ -65,6 +65,7 @@ func _ready() -> void:
 	feedback_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	state.feedback.connect(feedback_layer.push)
 	state.enable_feedback()
+	state.enemy_defeated.connect(_on_enemy_defeated)
 	hint_label = UIKit.label("点击己方单位开始行动；右键/Esc 取消瞄准。", 13, UIKit.TEXT_DIM)
 	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(hint_label)
@@ -129,6 +130,25 @@ func _ready() -> void:
 	refresh_all()
 	resized.connect(_layout_overlays)
 	call_deferred("_layout_overlays")
+
+
+func _on_enemy_defeated(entry: Dictionary) -> void:
+	if app == null or app.run == null:
+		return
+	var killer_side := String(entry.get("killer_side", ""))
+	if killer_side == "enemy" or (app.run.region_mode and killer_side != "player"):
+		return
+	var killer_uid := int(entry.get("killer_uid", -1))
+	var original_killer: bool = app.run.deployed_uids.has(killer_uid) and not app.run.record_by_uid(killer_uid).is_empty()
+	for uid in app.run.deployed_uids:
+		var unit := state.unit_by_uid(int(uid))
+		if unit == null or not unit.is_alive() or unit.is_trainer or app.run.record_by_uid(int(uid)).is_empty():
+			continue
+		var amount := Balance.EXP_PER_KILL
+		if not app.run.region_mode:
+			amount = (Balance.EXP_PER_KILL if int(uid) == killer_uid else 0) if original_killer else 1
+		if amount > 0:
+			state.emit_feedback(unit, "experience", "经验 +%d" % amount, amount)
 
 
 func _process(_delta: float) -> void:

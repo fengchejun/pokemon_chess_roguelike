@@ -2,6 +2,7 @@ class_name BattleState
 extends RefCounted
 
 signal feedback(event: Dictionary)
+signal enemy_defeated(entry: Dictionary)
 var feedback_enabled := false
 
 func enable_feedback() -> void:
@@ -70,12 +71,18 @@ var capture_aid: bool = false
 var burning_sources: Dictionary = {}
 
 
-func earn_essence(key: String, amount: int) -> void:
+func earn_essence(key: String, amount: int, at: Vector2i = Vector2i(-1, -1)) -> void:
 	if node_kind == "" or essence_claims.has(key):
 		return
 	essence_claims[key] = true
 	essence_earned += amount
 	log_event("原质 +%d。" % amount)
+	if amount > 0:
+		var cell := at
+		if not GridSpec.is_inside(cell):
+			var trainer := unit_by_uid(Balance.TRAINER_UID)
+			cell = trainer.cell if trainer != null else Vector2i.ZERO
+		_relay_feedback("essence", "原质 +%d" % amount, amount, cell, -1)
 var inspiration_triggered: bool = false
 var reward: Dictionary = {}
 var fruits: Array = []
@@ -518,7 +525,7 @@ func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "", killer
 	else:
 		var killer := unit_by_uid(killer_uid)
 		if killer_side == "player":
-			earn_essence("enemy:%d" % unit.uid, 10 if unit.is_boss else 3)
+			earn_essence("enemy:%d" % unit.uid, 10 if unit.is_boss else 3, unit.cell)
 		if killer != null and killer.summon_owner_uid >= 0:
 			killer_uid = killer.summon_owner_uid
 		enemy_kills.append({
@@ -529,6 +536,8 @@ func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "", killer
 			"cause": cause,
 		})
 		log_event("野生 %s 被击败（%s）。" % [unit.display_name, cause])
+		if feedback_enabled:
+			enemy_defeated.emit(enemy_kills.back().duplicate())
 
 
 func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
@@ -773,7 +782,7 @@ func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "") -> b
 		if natural_essence_cells.has(cell):
 			natural_essence_cells.erase(cell)
 			if source_side == "player":
-				earn_essence("terrain:%d:%d" % [cell.x, cell.y], 1)
+				earn_essence("terrain:%d:%d" % [cell.x, cell.y], 1, cell)
 		if node_kind != "" and terrain_at(cell) == TerrainDB.TREE and terrain_rng.randf() < 0.25 and not food_cells.has(cell):
 			food_cells.append(cell)
 		obstacle_durability.erase(cell)
@@ -802,7 +811,7 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 	target_nest["hp"] = maxi(0, int(target_nest["hp"]) - 1)
 	if int(target_nest["hp"]) <= 0:
 		if source_side == "player":
-			earn_essence("nest", 8)
+			earn_essence("nest", 8, target_nest["cell"])
 		target_nest["alive"] = false
 		target_nest["destroyed_by_player"] = source_side == "player"
 		set_terrain(target_nest["cell"], TerrainDB.PLAIN)
