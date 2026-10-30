@@ -31,8 +31,6 @@ var end_turn_button: Button = null
 var undo_button: Button = null
 var leave_node_button: Button = null
 var hint_label: Label = null
-var channel_warning_box: Control = null
-var channel_warning_list: VBoxContainer = null
 var log_label: RichTextLabel = null
 var menu_button: Button = null
 var action_panel: Control = null
@@ -141,9 +139,9 @@ func _ready() -> void:
 	terrain_panel.add_child(terrain_scroll)
 	terrain_panel.set_meta("corner", "bottom_right")
 	action_panel = _skill_box()
+	# 行动浮窗高于棋盘及侧栏；菜单等模态窗口仍在其上方。
+	action_panel.z_index = 10
 	add_child(action_panel)
-	channel_warning_box = _channel_warning_box()
-	add_child(channel_warning_box)
 	var log_scroll := UIKit.scroll()
 	log_label = RichTextLabel.new()
 	log_label.bbcode_enabled = false
@@ -188,7 +186,7 @@ func _render_playback(snapshot: BattleState) -> void:
 	_update_header()
 	_update_team_list()
 	_update_unit_card()
-	_update_channel_warnings()
+	_update_channel_markers()
 	_update_log()
 	_update_action_buttons()
 	action_panel.visible = false
@@ -301,16 +299,6 @@ func _action_row() -> Control:
 	return column
 
 
-func _channel_warning_box() -> Control:
-	var box := UIKit.panel(UIKit.PANEL)
-	var column := UIKit.vbox(3)
-	box.add_child(column)
-	column.add_child(UIKit.label("已宣告的敌方蓄力落点", 15, UIKit.ACCENT))
-	channel_warning_list = UIKit.vbox(2)
-	column.add_child(channel_warning_list)
-	return box
-
-
 func _layout_overlays() -> void:
 	if board == null or size.x <= 0 or size.y <= 0:
 		return
@@ -333,8 +321,6 @@ func _layout_overlays() -> void:
 	_layout_corner_cards()
 	hint_label.position = Vector2(board.position.x, size.y - 34)
 	hint_label.custom_minimum_size.x = board_size
-	channel_warning_box.position = Vector2(size.x - side_space + 10.0, relic_panel.position.y + relic_panel.size.y + 8.0)
-	channel_warning_box.custom_minimum_size.x = side_space - 24.0
 	_position_action_panel()
 
 
@@ -402,7 +388,7 @@ func refresh_all() -> void:
 	_update_unit_card()
 	_rebuild_skill_buttons()
 	_update_action_buttons()
-	_update_channel_warnings()
+	_update_channel_markers()
 	_update_log()
 	_update_selection_overlay()
 	_position_action_panel()
@@ -530,8 +516,6 @@ func _fit_relic_panel() -> void:
 		return
 	relic_scroll.custom_minimum_size.y = minf(170.0, maxf(34.0, relic_list.get_combined_minimum_size().y))
 	relic_panel.reset_size()
-	if channel_warning_box != null:
-		channel_warning_box.position.y = relic_panel.position.y + relic_panel.size.y + 8.0
 
 
 func _update_unit_card() -> void:
@@ -925,25 +909,16 @@ func _update_selection_overlay() -> void:
 			board.enemy_cells_view = cells
 
 
-func _update_channel_warnings() -> void:
+func _update_channel_markers() -> void:
 	var state := _display_state()
 	if GridSpec.is_inside(state.boss_portal_cell):
 		board.markers.append({"cell": state.boss_portal_cell, "kind": "facility", "text": "传送门", "color": Color("694ca2")})
-	if channel_warning_list == null:
-		return
-	UIKit.clear_children(channel_warning_list)
-	var any_enemy_cast := false
 	for cast in state.pending_casts:
 		if String(cast["side"]) != "enemy":
 			continue
-		any_enemy_cast = true
-		var caster := state.unit_by_uid(int(cast["uid"]))
-		var caster_name := caster.display_name if caster != null else "?"
-		channel_warning_list.add_child(UIKit.wrapped("%s · %s · %s" % [caster_name, SkillDB.name_of(String(cast["skill_id"])), str(cast["cells"])], 12, UIKit.BAD))
 		for cell in cast["cells"]:
 			if GridSpec.is_inside(cell):
 				board.markers.append({"cell": cell, "kind": "text", "text": "蓄", "color": UIKit.BAD, "size": 14})
-	channel_warning_box.visible = any_enemy_cast and not state.ended
 
 
 func _action_detail(action: Dictionary) -> String:
@@ -1297,6 +1272,7 @@ func _show_modal(title: String, body: String) -> void:
 	if modal_layer != null:
 		modal_layer.queue_free()
 	modal_layer = ColorRect.new()
+	modal_layer.z_index = 20
 	modal_layer.color = Color(0.02, 0.03, 0.06, 0.86)
 	modal_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	modal_layer.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -1723,7 +1699,7 @@ func _enemy_phase() -> void:
 	state.begin_enemy_phase()
 	await _wait_playback()
 	_update_header()
-	_update_channel_warnings()
+	_update_channel_markers()
 	_update_log()
 	while not state.enemy_phase_finished() and not state.ended:
 		state.step_enemy_phase()
@@ -1757,7 +1733,7 @@ func _refresh_after_action() -> void:
 	_update_unit_card()
 	_rebuild_skill_buttons()
 	_update_action_buttons()
-	_update_channel_warnings()
+	_update_channel_markers()
 	_update_log()
 	_update_selection_overlay()
 	_position_action_panel()

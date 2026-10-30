@@ -74,10 +74,12 @@ func run(t: TestContext) -> void:
 		t.finish()
 		return
 	var state: BattleState = battle_screen.state
-	t.check(not battle_screen.channel_warning_box.visible, "无敌方蓄力时不显示危险或目标预告面板")
+	t.check(battle_screen.action_panel.z_index > battle_screen.relic_panel.z_index, "行动窗口高于侧栏")
 	state.pending_casts.append({"uid": 100, "side": "enemy", "skill_id": "rock_slide", "cells": [Vector2i(2, 3)], "due_round": state.round + 1})
 	battle_screen.refresh_all()
-	t.check(battle_screen.channel_warning_box.visible, "已宣告敌方蓄力显示固定落点")
+	battle_screen._show_modal("战斗菜单", "层级验证")
+	t.check(battle_screen.modal_layer.z_index > battle_screen.action_panel.z_index, "菜单高于行动窗口")
+	battle_screen._close_modal()
 	var has_channel_marker := false
 	for marker in battle_screen.board.markers:
 		if String(marker.get("text", "")) == "蓄":
