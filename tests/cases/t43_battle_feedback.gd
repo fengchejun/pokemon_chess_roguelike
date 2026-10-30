@@ -1,0 +1,143 @@
+extends RefCounted
+
+func run(t: TestContext) -> void:
+	t.begin("即时反馈隔离与事件完整性")
+	var state := TestScenario.make_state(["fire_starter"], [["grass_wild1", Vector2i(4, 3)]])
+	var received: Array = []
+	state.feedback.connect(func(event: Dictionary): received.append(event))
+	state.enable_feedback()
+	state.enable_feedback()
+	var target := state.unit_by_uid(100)
+	var source := state.unit_by_uid(1)
+	var old_cell := target.cell
+	var result := state.damage_unit(source, target, 3, {"no_element": true})
+	t.eq(received.size(), 1, "重复启用不重复连接，直接伤害只提示一次")
+	t.eq(received[0]["value"], result["amount"], "伤害数字等于实际结算")
+	t.eq(received[0]["cell"], old_cell, "记录发生格")
+	received.clear()
+	state.apply_burn(target, source)
+	state.apply_burn(target, source)
+	t.eq(received.size(), 1, "刷新同一灼烧不重复提示")
+	t.eq(received[0]["text"], "灼烧", "显示异常中文名称")
+	target.burn_ticks -= 1
+	t.eq(received.size(), 1, "持续时间递减不飘字")
+	target.burn_ticks = 0
+	t.eq(received.back()["text"], "灼烧解除", "异常实际解除提示")
+	received.clear()
+	target.battle_buffs["status_immune"] = true
+	state.apply_burn(target, source)
+	t.eq(received.size(), 0, "免疫不产生虚假异常")
+	target.battle_buffs.clear()
+	state.feedback_heal(source, 0)
+	t.eq(received.size(), 0, "零治疗不飘字")
+	state.feedback_heal(source, 3)
+	t.eq(received.back()["text"], "+3", "治疗使用实际恢复量")
+	received.clear()
+	var signature = state._signature()
+	var clone := state.clone()
+	clone.enable_feedback()
+	clone.apply_burn(clone.unit_by_uid(100), clone.unit_by_uid(1))
+	t.eq(received.size(), 0, "副本不向实战界面发送事件")
+	t.eq(state._signature(), signature, "反馈不改变原战斗签名")
+	var snapshot := BattleSnapshot.save_state(state)
+	var loaded := BattleSnapshot.load_state(snapshot)
+	t.check(not loaded.feedback_enabled, "存档不持久化提示启用状态")
+	received.clear()
+	state.set_terrain(target.cell, TerrainDB.PIT)
+	state.kill_unit(target, "地面塌陷")
+	t.eq(received.filter(func(e): return e["kind"] == "death").size(), 1, "坠落只产生一个终结提示")
+	t.eq(received[0]["text"], "坠落", "塌陷提示坠落")
+	target.cell = Vector2i.ZERO
+	t.eq(received[0]["cell"], old_cell, "单位离场后仍保留发生格")
+	var layer = preload("res://scripts/ui/battle_feedback.gd").new()
+	t.tree.root.add_child(layer)
+	layer.size = Vector2(576, 576)
+	layer.set_process(false)
+	layer.push({"cell": Vector2i.ZERO, "kind": "damage", "text": "-12", "value": 12})
+	layer.push({"cell": Vector2i.ZERO, "kind": "status", "text": "灼烧", "value": 2})
+	layer.push({"cell": Vector2i(7, 7), "kind": "death", "text": "坠落", "value": 0})
+	t.approx(layer.entries[1]["start"], 0.15, "同格错峰")
+	t.approx(layer.entries[2]["start"], 0.0, "不同格同时显示")
+	layer._process(0.5)
+	for entry in layer.entries:
+		var label: Label = entry["label"]
+		t.check(label.visible and label.position.x >= 0 and label.position.y >= 0, "飘字可见并限制在棋盘内")
+	t.eq(layer.mouse_filter, Control.MOUSE_FILTER_IGNORE, "提示不阻挡鼠标")
+	layer._process(2.0)
+	t.eq(layer.entries.size(), 0, "动画到期清理")
+	layer.queue_free()
+	_more_events(t)
+	t.finish()
+
+func _more_events(t: TestContext) -> void:
+	var state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(4, 3)], ["water_wild1", Vector2i(7, 6)]])
+	var events: Array = []
+	state.feedback.connect(func(e): events.append(e))
+	state.enable_feedback()
+	var unit := state.unit_by_uid(1)
+	var enemy := state.unit_by_uid(100)
+	unit.cell = Vector2i(1, 3)
+	state.preview_skill(unit, "fire_seed", {"type": "cell", "cell": enemy.cell})
+	t.eq(events.size(), 0, "真实技能预览不泄露提示")
+	state.apply_root(unit)
+	state.start_round()
+	t.eq(events.filter(func(e): return e["text"] == "定身解除").size(), 0, "定身转为生效不误报解除")
+	unit.move_cancelled = false
+	t.eq(events.back()["text"], "定身解除", "实际定身结束才解除")
+	events.clear()
+	unit.burn_ticks = 2
+	events.clear()
+	unit.cell = Vector2i(1, 3)
+	state.set_terrain(Vector2i(2, 3), TerrainDB.WATER)
+	t.check(state.move_unit(unit, Vector2i(2, 3)), "移动入水用于撤回验证")
+	t.check(events.any(func(e): return e["text"] == "灼烧解除"), "入水立即解除灼烧")
+	events.clear()
+	t.check(state.undo_last_move(), "撤回成功")
+	t.eq(events.size(), 0, "撤回恢复灼烧不重播提示")
+	unit.burn_ticks = 0
+	events.clear()
+	state.begin_channel(unit, "fire_burst", [enemy.cell])
+	t.eq(events.back()["text"], "开始吟唱", "吟唱开始事件")
+	state.cancel_channel(unit, "测试中断")
+	t.eq(events.back()["text"], "吟唱中断", "吟唱中断事件")
+	state.round += 1
+	state.begin_channel(unit, "fire_burst", [enemy.cell])
+	state.round += 1
+	state._resolve_due_channels("player")
+	t.check(events.any(func(e): return e["text"] == "吟唱完成"), "吟唱完成事件")
+	events.clear()
+	enemy.battle_buffs["direct_guard"] = true
+	state.damage_unit(unit, enemy, 1, {})
+	t.eq(events.back()["text"], "未受伤", "减伤至零显示未受伤")
+	enemy.battle_buffs.clear()
+	events.clear()
+	enemy.hp = 1
+	state.damage_unit(null, enemy, 999, {"no_element": true})
+	t.eq(events[0]["text"], "-999", "保留过量伤害数字")
+	t.eq(events[1]["text"], "倒下", "普通死亡显示倒下")
+	for terrain_kind in [TerrainDB.PIT, TerrainDB.DEEP, TerrainDB.LAVA]:
+		var victim := CombatUnit.make("grass_starter", "enemy", 200 + terrain_kind)
+		victim.cell = Vector2i(4, 4)
+		state.units.append(victim)
+		state._watch_feedback(victim)
+		state.set_terrain(victim.cell, TerrainDB.PLAIN)
+		state.set_terrain(Vector2i(5, 4), terrain_kind)
+		events.clear()
+		PushResolver.push(state, victim, Vector2i.RIGHT, 1, 2, "击退")
+		var expected: String = {TerrainDB.PIT: "坠落", TerrainDB.DEEP: "溺水", TerrainDB.LAVA: "落入熔岩"}[terrain_kind]
+		t.eq(events.filter(func(e): return e["kind"] == "death").size(), 1, "击退致死只显示一次")
+		t.eq(events.back()["text"], expected, "致死地形提示类型正确")
+		t.eq(events.back()["cell"], Vector2i(5, 4), "击退提示在落点")
+	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
+	trainer.cell = Vector2i(3, 3)
+	var captive := state.unit_by_uid(101)
+	captive.cell = Vector2i(4, 3)
+	state.debug_capture_percent = 0
+	state.phase = "player"
+	events.clear()
+	state.capture_attempt(trainer, captive, 0.9)
+	t.eq(events.back()["text"], "捕获失败", "捕获失败提示")
+	trainer.capture_used = false
+	state.debug_capture_percent = 100
+	state.capture_attempt(trainer, captive, 0.0)
+	t.check(events.any(func(e): return e["text"] == "捕获成功"), "捕获成功提示")

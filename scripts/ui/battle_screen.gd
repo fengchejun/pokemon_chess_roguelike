@@ -5,6 +5,7 @@ var state: BattleState = null
 var deploy_uids: Array = []
 
 var board: BoardView = null
+var feedback_layer: Control = null
 var selected_uid: int = 0
 var viewed_enemy_uid: int = 0
 var action_mode: String = "main" # main / move / skills；仅界面状态，不写入战斗快照。
@@ -58,6 +59,12 @@ func _ready() -> void:
 	board.cell_right_clicked.connect(func(_cell: Vector2i) -> void: _cancel_action())
 	board.cell_hovered.connect(_on_board_hovered)
 	add_child(board)
+	feedback_layer = preload("res://scripts/ui/battle_feedback.gd").new()
+	feedback_layer.name = "BattleFeedback"
+	board.add_child(feedback_layer)
+	feedback_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	state.feedback.connect(feedback_layer.push)
+	state.enable_feedback()
 	hint_label = UIKit.label("点击己方单位开始行动；右键/Esc 取消瞄准。", 13, UIKit.TEXT_DIM)
 	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(hint_label)
@@ -1575,6 +1582,11 @@ func report_end_now() -> void:
 
 
 func _report_end() -> void:
+	if not is_inside_tree() or is_queued_for_deletion():
+		return
+	var delay := minf(1.5, feedback_layer.remaining_time()) if feedback_layer != null else 0.0
+	if delay > 0.0:
+		await get_tree().create_timer(delay).timeout
 	if state != null and state.ended and is_inside_tree():
 		app.finish_battle(state)
 

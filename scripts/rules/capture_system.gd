@@ -73,5 +73,6 @@ static func attempt(state, trainer: CombatUnit, target: CombatUnit, forced_roll:
 		state.log_event("训练家捕获成功：%s（成功率 %d%%）。" % [target.display_name, percent])
 		state.on_captured(target, species_id, keep_hp)
 		return {"ok": true, "success": true, "chance": chance, "roll": roll, "species_id": species_id, "hp": keep_hp}
+	state.emit_feedback(target, "action", "捕获失败")
 	state.log_event("训练家捕获失败：%s（成功率 %d%%）。" % [target.display_name, roundi(chance * 100)])
 	return {"ok": true, "success": false, "chance": chance, "roll": roll}

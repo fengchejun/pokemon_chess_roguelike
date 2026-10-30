@@ -24,7 +24,9 @@ static func use_item(run: RunState, state: BattleState, id: String, target_uid: 
 		var target := state.unit_by_uid(target_uid)
 		if not item_target_valid(state, target):
 			return {"ok": false, "reason": "请选择三格内视线可达、受伤且存活的己方单位。"}
-		target.hp = mini(target.max_hp, target.hp + 15)
+		var healed := mini(target.max_hp - target.hp, 15)
+		target.hp += healed
+		state.feedback_heal(target, healed)
 	else:
 		if state.capture_aid:
 			return {"ok": false, "reason": "捕获辅助已经生效。"}

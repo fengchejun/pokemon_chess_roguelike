@@ -46,7 +46,7 @@ static func _fields(object: Object) -> Dictionary:
 	for property in object.get_property_list():
 		if int(property["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE:
 			var key := String(property["name"])
-			if key in ["units", "spawn_rng", "capture_rng", "terrain_rng"]:
+			if key in ["units", "spawn_rng", "capture_rng", "terrain_rng", "feedback_enabled"]:
 				continue
 			result[key] = encode(object.get(key))
 	return result

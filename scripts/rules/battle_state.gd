@@ -1,6 +1,33 @@
 class_name BattleState
 extends RefCounted
 
+signal feedback(event: Dictionary)
+var feedback_enabled := false
+
+func enable_feedback() -> void:
+	feedback_enabled = true
+	for unit in units:
+		_watch_feedback(unit)
+
+func _watch_feedback(unit: CombatUnit) -> void:
+	var callback := _relay_feedback.bind(unit.uid)
+	if feedback_enabled and not unit.feedback_changed.is_connected(callback):
+		unit.feedback_changed.connect(callback)
+
+func _relay_feedback(kind: String, text: String, value: int, cell: Vector2i, uid: int) -> void:
+	if not feedback_enabled:
+		return
+	feedback.emit({"kind": kind, "uid": uid, "cell": cell, "text": text, "value": value})
+
+func emit_feedback(unit: CombatUnit, kind: String, text: String, value: int = 0) -> void:
+	if feedback_enabled and unit != null:
+		_relay_feedback(kind, text, value, unit.cell, unit.uid)
+
+func feedback_heal(unit: CombatUnit, amount: int) -> void:
+	if amount > 0:
+		emit_feedback(unit, "heal", "+%d" % amount, amount)
+
+
 ## 一场战斗的全部状态与规则入口。
 ## 回合结构：我方阶段（自由顺序）→ 敌方阶段（固定顺序执行预告的同一计划）→ 环境结算 → 下一回合。
 ## 第 MAX_ROUNDS 回合结算后仍存活的野生宝可梦逃离。
@@ -99,6 +126,7 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 		unit.cell = deploy_cells[slot]
 		unit.reg_index = units.size()
 		units.append(unit)
+		_watch_feedback(unit)
 		slot += 1
 	var enemy_index := 0
 	for pair in cfg.get("enemies", []):
@@ -110,6 +138,7 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 		enemy.cell = pair[1]
 		enemy.reg_index = units.size()
 		units.append(enemy)
+		_watch_feedback(enemy)
 		enemy_index += 1
 	spawn_rng.seed = hash("spawn:%d:%d" % [seed_value, battle_index_value])
 	capture_rng.seed = hash("capture:%d:%d" % [seed_value, battle_index_value])
@@ -302,6 +331,7 @@ func _finish_reward_guard() -> void:
 	if unit != null and unit.is_alive() and unit.side == "player" and unit.cell == reward["cell"]:
 		reward["state"] = "carried"
 		reward["owner_uid"] = unit.uid
+		emit_feedback(unit, "buff", "获得战场奖励")
 		log_event("%s 取得战场奖励；若存活到战斗结束，获得一次额外的战后三选一。" % unit.display_name)
 	else:
 		reward["state"] = "map"
@@ -427,6 +457,7 @@ func summon_tree(owner: CombatUnit, cell: Vector2i) -> CombatUnit:
 	if inspiration_triggered:
 		_grant_inspiration(summon)
 	units.append(summon)
+	_watch_feedback(summon)
 	apply_vine_on_landing(summon)
 	log_event("%s 召唤树人于 (%d,%d)，生命 %d；出生轮不能行动。" % [owner.display_name, cell.x, cell.y, summon.hp])
 	return summon
@@ -449,6 +480,15 @@ func log_event(text: String) -> void:
 
 
 func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "", killer_uid: int = -1) -> void:
+	var terrain_kind := terrain_at(unit.cell)
+	var text := "消散" if unit.summon_owner_uid >= 0 else "倒下"
+	if unit.hp > 0 and terrain_kind == TerrainDB.PIT:
+		text = "坠落"
+	elif unit.hp > 0 and terrain_kind == TerrainDB.DEEP and unit.element != "water" and not unit.has_buff("flight"):
+		text = "溺水"
+	elif unit.hp > 0 and terrain_kind == TerrainDB.LAVA and not unit.has_buff("flight"):
+		text = "落入熔岩"
+	emit_feedback(unit, "death", text)
 	cancel_channel(unit, "施法者倒下")
 	if int(reward.get("guard_uid", -1)) == unit.uid and String(reward.get("state", "")) == "guarding":
 		reward["state"] = "destroyed"
@@ -493,6 +533,7 @@ func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "", killer
 
 func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
 	cancel_channel(unit, "阵营改变")
+	emit_feedback(unit, "action", "捕获成功")
 	var field_join := bool(capture_options.get("capture_field_join", false))
 	var was_boss := unit.is_boss
 	captured.append({"species_id": species_id, "hp": keep_hp, "uid": unit.uid, "on_field": field_join, "was_boss": was_boss})
@@ -583,6 +624,7 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var cause: String = opts.get("cause", "伤害")
 	var previous_hp := target.hp
 	target.hp -= amount
+	emit_feedback(target, "damage" if amount > 0 else "zero", "-%d" % amount if amount > 0 else "未受伤", amount)
 	if target.uid == boss_uid and target.side == "enemy" and amount > 0 and previous_hp * 2 > target.max_hp and target.hp > 0 and target.hp * 2 <= target.max_hp:
 		_trigger_inspiration()
 	var source_name := source.display_name if source != null else "环境"
@@ -596,6 +638,7 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var relic_healed := 0
 	if target.is_trainer and target.hp <= 0:
 		target.hp = 0
+		emit_feedback(target, "death", "倒下")
 		log_event("训练家倒下！本局立即失败。")
 		end_battle("forced_retreat")
 		return {"amount": amount, "killed": true}
@@ -608,6 +651,7 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 			var healed := mini(source.max_hp - source.hp, 4 * RelicDB.rank(relic_stacks, "ember_recovery"))
 			if healed > 0:
 				source.hp += healed
+				feedback_heal(source, healed)
 				relic_healed = healed
 				log_event("余烬：%s 恢复 %d HP。" % [source.display_name, healed])
 		elif not killed:
@@ -851,6 +895,8 @@ func undo_last_move() -> bool:
 	var unit := unit_by_uid(int(entry["uid"]))
 	if unit == null:
 		return false
+	var feedback_was_enabled := feedback_enabled
+	feedback_enabled = false
 	unit.cell = entry["from"]
 	unit.burn_ticks = int(entry["burn_ticks"])
 	unit.burn_source_uid = int(entry["burn_source_uid"])
@@ -863,6 +909,7 @@ func undo_last_move() -> bool:
 		fruits.append(fruit_cell)
 		unit.hp = maxi(1, unit.hp - int(entry.get("fruit_gained", 0)))
 	unit.moved = bool(entry.get("moved_before", false))
+	feedback_enabled = feedback_was_enabled
 	log_event("%s 撤回到 (%d,%d)。" % [unit.display_name, unit.cell.x, unit.cell.y])
 	return true
 
@@ -937,6 +984,7 @@ func begin_channel(caster: CombatUnit, skill_id: String, cells: Array) -> bool:
 	caster.channel_lock_round = round + 1
 	caster.moved = true
 	caster.skill_used = true
+	emit_feedback(caster, "action", "开始吟唱")
 	log_event("%s 开始吟唱%s，落点已标记；下次本方阶段不能行动。" % [caster.display_name, SkillDB.name_of(skill_id)])
 	return true
 
@@ -945,6 +993,7 @@ func cancel_channel(unit: CombatUnit, reason: String) -> void:
 	for index in range(pending_casts.size() - 1, -1, -1):
 		if int(pending_casts[index]["uid"]) == unit.uid:
 			pending_casts.remove_at(index)
+			emit_feedback(unit, "action", "吟唱中断")
 			log_event("%s 的吟唱中断：%s；下次本方阶段仍无法行动。" % [unit.display_name, reason])
 
 
@@ -966,6 +1015,7 @@ func _resolve_due_channels(side: String) -> void:
 		if caster == null or not caster.is_alive() or caster.side != side:
 			continue
 		var result := SkillResolver.resolve_channel(self, caster, String(entry["skill_id"]), entry["cells"])
+		emit_feedback(caster, "action", "吟唱完成")
 		log_event("%s 吟唱完成：%s" % [caster.display_name, String(result.get("text", ""))])
 		check_battle_end()
 
@@ -1006,8 +1056,8 @@ func start_round() -> void:
 			unit.move_cancelled = false
 	for unit in units:
 		if unit.root_pending and unit.is_alive():
-			unit.root_pending = false
 			unit.move_cancelled = true
+			unit.root_pending = false
 			log_event("%s 受到定身影响，本回合无法移动。" % unit.display_name)
 	phase = PHASE_PLAYER
 	if RelicDB.rank(relic_stacks, "root_rest") > 0:
@@ -1016,6 +1066,7 @@ func start_round() -> void:
 				var restored := mini(unit.max_hp - unit.hp, 2 * RelicDB.rank(relic_stacks, "root_rest"))
 				if restored > 0:
 					unit.hp += restored
+					feedback_heal(unit, restored)
 					log_event("根息：%s 恢复 %d HP。" % [unit.display_name, restored])
 	if boss_portal_cell == Vector2i(-1, -1) and Balance.nest_warning_due(round):
 		log_event("巢穴预警：下回合将尝试产怪。")
@@ -1053,6 +1104,7 @@ func _try_spawn_wave() -> void:
 		enemy.fresh_spawn = true
 		enemy.reg_index = units.size()
 		units.append(enemy)
+		_watch_feedback(enemy)
 		nest["pending_waves"] = maxi(0, int(nest.get("pending_waves", 0)) - 1)
 		apply_vine_on_landing(enemy)
 		log_event("巢穴生成 1 只野生宝可梦（%s）；出生轮在出口待机，下一回合才能行动。" % enemy.display_name)
@@ -1188,6 +1240,7 @@ func settle_round() -> void:
 			var healed := mini(source.max_hp - source.hp, Balance.PARASITE_HEAL + parasite_bonus)
 			if healed > 0:
 				source.hp += healed
+				feedback_heal(source, healed)
 				log_event("%s 从寄生中恢复 %d HP。" % [source.display_name, healed])
 	_settle_burning_cells()
 	if ended:
@@ -1325,6 +1378,7 @@ func _pickups() -> void:
 			food_cells.erase(cell)
 			food_wait.erase(cell)
 			food_collected += 1
+			emit_feedback(picker, "buff", "食物 +1")
 			log_event("%s 收集了 1 份食物。" % picker.display_name)
 		elif picker != null:
 			food_wait[cell] = picker.uid
@@ -1394,6 +1448,7 @@ func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) 
 		enemy.cell = cell
 		enemy.reg_index = units.size()
 		units.append(enemy)
+		_watch_feedback(enemy)
 		added += 1
 	return added
 

@@ -840,6 +840,7 @@ static func _apply_drain(state: BattleState, caster: CombatUnit, entry: Dictiona
 	if healed > caster.hp:
 		summary["heal"] = {"uid": caster.uid, "amount": healed - caster.hp}
 		state.log_event("%s 回复 %d 生命。" % [caster.display_name, healed - caster.hp])
+		state.feedback_heal(caster, healed - caster.hp)
 		caster.hp = healed
 	summary["text"] = "吸取：对 %s 造成 %d 伤害，自身回复 %d" % [hit["name"], hit["damage"], int(summary["heal"]["amount"]) if summary["heal"] != null else 0]
 
@@ -1247,6 +1248,7 @@ static func _apply_heal(state: BattleState, caster: CombatUnit, entry: Dictionar
 		if absi(target.cell.x - center.x) <= 1 and absi(target.cell.y - center.y) <= 1 and target.hp < target.max_hp:
 			var healed := mini(amount, target.max_hp - target.hp)
 			target.hp += healed
+			state.feedback_heal(target, healed)
 			summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": -healed})
 	summary["text"] = "药草治疗恢复 %d 个友军。" % summary["hits"].size()
 

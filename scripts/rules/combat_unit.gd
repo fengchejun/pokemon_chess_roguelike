@@ -1,6 +1,8 @@
 class_name CombatUnit
 extends RefCounted
 
+signal feedback_changed(kind: String, text: String, value: int, at: Vector2i)
+
 var uid: int = 0
 var species_id: String = ""
 var display_name: String = ""
@@ -17,7 +19,14 @@ var reg_index: int = 0
 var enemy_level: int = 1
 var combat_level: int = 1
 var is_boss: bool = false
-var inspired: bool = false
+var inspired: bool = false:
+	set(value):
+		var was_active := inspired
+		var active := value
+		var announce := active != was_active
+		inspired = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "首领鼓舞" + ("解除" if not active else ""), int(value), cell)
 
 # 每回合行动资源
 var moved: bool = false
@@ -25,29 +34,125 @@ var skill_used: bool = false
 var capture_used: bool = false
 
 # 状态
-var root_pending: bool = false      # 定身：下一次移动机会将被取消
-var move_cancelled: bool = false    # 本回合移动被取消（定身生效中）
-var slow_ticks: int = 0             # 减速：> 0 时移动上限 −1
-var burn_ticks: int = 0             # 灼烧：回合结束 1 伤害
+var root_pending: bool = false:
+	set(value):
+		var was_active := root_pending or move_cancelled
+		var active := value or move_cancelled
+		var announce := active != was_active
+		root_pending = value
+		if announce:
+			feedback_changed.emit("status" if active else "clear", "定身" + ("解除" if not active else ""), int(value), cell)
+var move_cancelled: bool = false:
+	set(value):
+		var was_active := move_cancelled or root_pending
+		move_cancelled = value
+		if was_active and not move_cancelled and not root_pending:
+			feedback_changed.emit("clear", "定身解除", 0, cell)
+var slow_ticks: int = 0:
+	set(value):
+		var was_active := slow_ticks > 0
+		var active := value > 0
+		var announce := active != was_active
+		slow_ticks = value
+		if announce:
+			feedback_changed.emit("status" if active else "clear", "浸湿" + ("解除" if not active else ""), int(value), cell)
+var burn_ticks: int = 0:
+	set(value):
+		var was_active := burn_ticks > 0
+		var active := value > 0
+		var announce := active != was_active
+		burn_ticks = value
+		if announce:
+			feedback_changed.emit("status" if active else "clear", "灼烧" + ("解除" if not active else ""), int(value), cell)
 var burn_source_uid: int = -1
 var burn_source_side: String = ""
-var shock_ticks: int = 0
-var paralyzed_ticks: int = 0
-var frozen: bool = false
-var vine_ticks: int = 0
+var shock_ticks: int = 0:
+	set(value):
+		var was_active := shock_ticks > 0
+		var active := value > 0
+		var announce := active != was_active
+		shock_ticks = value
+		if announce:
+			feedback_changed.emit("status" if active else "clear", "感电" + ("解除" if not active else ""), int(value), cell)
+var paralyzed_ticks: int = 0:
+	set(value):
+		var was_active := paralyzed_ticks > 0
+		var active := value > 0
+		var announce := active != was_active
+		paralyzed_ticks = value
+		if announce:
+			feedback_changed.emit("status" if active else "clear", "麻痹" + ("解除" if not active else ""), int(value), cell)
+var frozen: bool = false:
+	set(value):
+		var was_active := frozen
+		var active := value
+		var announce := active != was_active
+		frozen = value
+		if announce:
+			feedback_changed.emit("status" if active else "clear", "冰冻" + ("解除" if not active else ""), int(value), cell)
+var vine_ticks: int = 0:
+	set(value):
+		var was_active := vine_ticks > 0
+		var active := value > 0
+		var announce := active != was_active
+		vine_ticks = value
+		if announce:
+			feedback_changed.emit("status" if active else "clear", "藤蔓束缚" + ("解除" if not active else ""), int(value), cell)
 var vine_sources: Dictionary = {} # 束缚来源格 -> 剩余行动阶段；地块消失时按来源清除。
-var haste_ticks: int = 0
-var extra_casts: int = 0
+var haste_ticks: int = 0:
+	set(value):
+		var was_active := haste_ticks > 0
+		var active := value > 0
+		var announce := active != was_active
+		haste_ticks = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "加速" + ("解除" if not active else ""), int(value), cell)
+var extra_casts: int = 0:
+	set(value):
+		var was_active := extra_casts > 0
+		var active := value > 0
+		var announce := active != was_active or (value > extra_casts and value > 0)
+		extra_casts = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "额外施法" + ("解除" if not active else ""), int(value), cell)
 var battle_skill_uses: Dictionary = {}
 var channel_lock_round: int = 0
 var battle_buffs: Dictionary = {}
 var upgrades: Dictionary = {} # 仅此怪物本局取得的强化；敌人默认为空。
 var last_move_direction: Vector2i = Vector2i.ZERO
-var parasite_source_uid: int = -1
+var parasite_source_uid: int = -1:
+	set(value):
+		var was_active := parasite_source_uid >= 0
+		var active := value >= 0
+		var announce := active != was_active
+		parasite_source_uid = value
+		if announce:
+			feedback_changed.emit("status" if active else "clear", "寄生" + ("解除" if not active else ""), int(value), cell)
 var parasite_source_side: String = ""
-var ice_glide_until_round: int = 0
-var surf_until_round: int = 0
-var fire_amp_stacks: int = 0
+var ice_glide_until_round: int = 0:
+	set(value):
+		var was_active := ice_glide_until_round > 0
+		var active := value > 0
+		var announce := active != was_active
+		ice_glide_until_round = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "溜冰" + ("解除" if not active else ""), int(value), cell)
+var surf_until_round: int = 0:
+	set(value):
+		var was_active := surf_until_round > 0
+		var active := value > 0
+		var announce := active != was_active
+		surf_until_round = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "冲浪" + ("解除" if not active else ""), int(value), cell)
+var fire_amp_stacks: int = 0:
+	set(value):
+		var was_active := fire_amp_stacks > 0
+		var active := value > 0
+		var announce := active != was_active or (value > fire_amp_stacks and value > 0)
+		fire_amp_stacks = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "火焰增幅" + ("解除" if not active else ""), int(value), cell)
 
 # 其他
 var fresh_spawn: bool = false       # 本回合新生成：在出口待机，不能移动或施法
