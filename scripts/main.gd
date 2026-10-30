@@ -333,6 +333,8 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 		cfg = run.place_region_enemies(cfg, final_map)
 	var player_units := run.build_deploy_units(deploy_uids)
 	var state := BattleState.new()
+	if run.region_mode:
+		state.node_kind = run.get_region().node_mode(run.get_region().active_node)
 	var card_effects := run.effects()
 	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, card_effects, {}, cfg.get("reinforce", []), run.options, run.relic_stacks)
 	if run.region_mode:
@@ -345,21 +347,21 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 				cancel_region_entry()
 				return
 		state.node_kind = region.node_mode(node_id)
+		state.exploration_started = false
 		state.reinforcement_pool = (cfg.get("reinforce", []) as Array).duplicate()
 		if bool(region.nodes[node_id].get("pending_garrison", false)):
 			state.nest["alive"] = true
 			state.nest["hp"] = Balance.NEST_DURABILITY
 			state.nest["pending_waves"] = 0
 			state.nest["scheduled_waves"] = []
-			state.add_garrison(3, cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
+			state.add_garrison(maxi(0, 3 - state.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
 			region.nodes[node_id]["pending_garrison"] = false
 		if bool(region.nodes[node_id].get("pending_replenish", false)):
 			state.add_garrison(maxi(0, 4 - state.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
 			region.nodes[node_id]["pending_replenish"] = false
 		if node_id == "boss" and region.support_triggered:
 			state.add_garrison(maxi(0, 5 - state.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
-		if node_id == "boss":
-			state.set_enemy_level_bonus(region.boss_level_bonus)
+		state.set_enemy_level_bonus(run.invasion_level_bonus)
 		state.boss_power_percent = 0
 		if (region.nodes[node_id]["snapshot"] as Dictionary).is_empty():
 			for cell in GridSpec.all_cells():
@@ -395,6 +397,7 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 			run.region_data = current.to_dict()
 	run.battle_snapshot = BattleSnapshot.save_state(state)
 	run.pending_region_entry_backup.clear()
+	run.pending_invasion_bonus = 0
 	## 消耗品已经在预览页使用时扣除；开战不再二次扣卡。
 	run.selected_reward_item = ""
 	run.mark_deployed(deploy_uids)

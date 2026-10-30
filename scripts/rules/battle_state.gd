@@ -46,6 +46,8 @@ var round: int = 0
 var phase: String = PHASE_PLAYER
 var ended: bool = false
 var end_reason: String = ""
+var exploration_started: bool = false
+var enemy_level_bonus: int = 0
 var node_kind: String = "" # 空值沿用旧逐场流程；battle / boss / event 使用区域规则。
 var food_cells: Array = []
 var food_wait: Dictionary = {}
@@ -120,6 +122,7 @@ var _forecast_signature: String = ""
 func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_value: int, player_units: Array, effects_value: Dictionary, upgrades_value: Dictionary, pool_value: Array, capture_options_value: Dictionary = {}, relic_stacks_value: Dictionary = {}) -> void:
 	run_seed = seed_value
 	battle_index = battle_index_value
+	enemy_level_bonus = maxi(0, int(cfg.get("enemy_level_bonus", 0)))
 	skill_use_counts = {"player": {}, "enemy": {}}
 	effects = effects_value.duplicate()
 	relic_stacks = relic_stacks_value.duplicate()
@@ -147,6 +150,7 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 		enemy.cell = pair[1]
 		enemy.reg_index = units.size()
 		units.append(enemy)
+		set_enemy_level_bonus(enemy_level_bonus)
 		_watch_feedback(enemy)
 		enemy_index += 1
 	spawn_rng.seed = hash("spawn:%d:%d" % [seed_value, battle_index_value])
@@ -394,7 +398,7 @@ func move_cost_for(unit: CombatUnit, cell: Vector2i) -> int:
 
 func move_budget_for(unit: CombatUnit) -> int:
 	## 移动预算的统一入口（寻路与界面共用；未来的机动类效果在此接线）。
-	return unit.effective_move()
+	return GridSpec.W * GridSpec.H * 3 if is_free_exploration() and unit.side == "player" else unit.effective_move()
 
 
 func terrain_travel_mode(unit: CombatUnit) -> int:
@@ -409,6 +413,8 @@ func terrain_travel_mode(unit: CombatUnit) -> int:
 
 
 func can_move_unit_now(unit: CombatUnit) -> bool:
+	if is_free_exploration():
+		return unit != null and unit.is_alive() and unit.side == "player"
 	return unit != null and unit.channel_lock_round != round and unit.can_move_now(terrain_travel_mode(unit) >= 0)
 
 
@@ -924,6 +930,13 @@ func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 		"fruit_cell": pickup.get("cell", Vector2i(-1, -1)),
 		"fruit_gained": int(pickup.get("gained", 0)),
 	})
+	if is_free_exploration():
+		reset_exploration_actions()
+		_pickups()
+		_begin_reward_guard()
+		_refresh_reward_guard()
+		_finish_reward_guard()
+		commit_actions()
 	log_event("%s 移动到 (%d,%d)。" % [unit.display_name, dest.x, dest.y])
 	return true
 
@@ -966,7 +979,7 @@ func can_undo() -> bool:
 # ---------------------------------------------------------------- 技能与捕获
 
 func skill_targets(unit: CombatUnit, skill_id: String) -> Array:
-	if unit == null or unit.channel_lock_round == round or not unit.skills.has(skill_id) or steam_cells.has(unit.cell):
+	if unit == null or unit.channel_lock_round == round or not unit.skills.has(skill_id) or (steam_cells.has(unit.cell) and not is_free_exploration()):
 		return []
 	var entries := SkillResolver.targets(self, unit, skill_id)
 	return entries
@@ -985,7 +998,7 @@ func preview_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary)
 func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) -> Dictionary:
 	if unit == null or ended or unit.channel_lock_round == round or not unit.can_act_skill() or not unit.skills.has(skill_id):
 		return {"ok": false}
-	if steam_cells.has(unit.cell):
+	if steam_cells.has(unit.cell) and not is_free_exploration():
 		return {"ok": false}
 	if not unit.can_use_in_battle(skill_id):
 		return {"ok": false}
@@ -999,6 +1012,9 @@ func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) ->
 			unit.skill_used = true
 		commit_actions()
 		check_battle_end()
+		if is_free_exploration():
+			reset_exploration_actions()
+			_pickups()
 	return result
 
 
@@ -1050,7 +1066,7 @@ func _resolve_due_channels(side: String) -> void:
 		return int(left.reg_index if left != null else 9999) < int(right.reg_index if right != null else 9999)
 	)
 	for entry in due:
-		if ended:
+		if ended or is_free_exploration():
 			break
 		pending_casts.erase(entry)
 		var caster := unit_by_uid(int(entry["uid"]))
@@ -1084,6 +1100,9 @@ func start_round() -> void:
 
 
 func _start_round_rules() -> void:
+	if is_free_exploration():
+		reset_exploration_actions()
+		return
 	round += 1
 	for unit in units:
 		if not unit.is_alive():
@@ -1153,6 +1172,7 @@ func _try_spawn_wave() -> void:
 		enemy.fresh_spawn = true
 		enemy.reg_index = units.size()
 		units.append(enemy)
+		set_enemy_level_bonus(enemy_level_bonus)
 		_watch_feedback(enemy)
 		nest["pending_waves"] = maxi(0, int(nest.get("pending_waves", 0)) - 1)
 		apply_vine_on_landing(enemy)
@@ -1176,7 +1196,7 @@ func begin_enemy_phase() -> Array:
 
 
 func _begin_enemy_phase_rules() -> Array:
-	if ended or phase != PHASE_PLAYER:
+	if ended or is_free_exploration() or phase != PHASE_PLAYER:
 		return []
 	commit_actions()
 	_begin_reward_guard()
@@ -1185,7 +1205,7 @@ func _begin_enemy_phase_rules() -> Array:
 	phase = PHASE_ENEMY
 	_resolve_due_channels("enemy")
 	_refresh_reward_guard()
-	if ended:
+	if ended or is_free_exploration():
 		_pending_actions = []
 		_pending_index = 0
 		return []
@@ -1196,7 +1216,7 @@ func _begin_enemy_phase_rules() -> Array:
 
 
 func enemy_phase_finished() -> bool:
-	return ended or _pending_index >= _pending_actions.size()
+	return ended or is_free_exploration() or _pending_index >= _pending_actions.size()
 
 
 func step_enemy_phase() -> Dictionary:
@@ -1263,6 +1283,9 @@ func _end_enemy_phase_rules() -> void:
 
 
 func _finish_round() -> void:
+	if is_free_exploration():
+		reset_exploration_actions()
+		return
 	phase = PHASE_SETTLE
 	settle_round()
 	for unit in units:
@@ -1283,6 +1306,9 @@ func settle_round() -> void:
 
 
 func _settle_round_rules() -> void:
+	if is_free_exploration():
+		_pickups()
+		return
 	var ice_sources: Array = []
 	for cell in GridSpec.all_cells():
 		if terrain_at(cell) == TerrainDB.ICE:
@@ -1351,6 +1377,8 @@ func _settle_round_rules() -> void:
 	_pickups()
 	# 6. 胜负与时限
 	if check_battle_end():
+		return
+	if is_free_exploration():
 		return
 	if boss_portal_cell == Vector2i(-1, -1) and round >= Balance.MAX_ROUNDS and (alive_enemy_count() > 0 or node_kind in ["battle", "event"]):
 		end_battle("boss_timeout" if boss_uid >= 0 else "escape")
@@ -1486,6 +1514,13 @@ func _player_unit_at(cell: Vector2i) -> CombatUnit:
 
 
 func check_battle_end() -> bool:
+	if not ended and is_free_exploration():
+		if not exploration_started:
+			exploration_started = true
+			reset_exploration_actions()
+			_pickups()
+			log_event("进入自由探索：回合停止计数，可无限移动与施法；恢复技能禁用。")
+		return false
 	if ended:
 		return true
 	if boss_uid >= 0:
@@ -1538,10 +1573,12 @@ func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) 
 		units.append(enemy)
 		_watch_feedback(enemy)
 		added += 1
+	set_enemy_level_bonus(enemy_level_bonus)
 	return added
 
 
 func set_enemy_level_bonus(bonus: int) -> void:
+	enemy_level_bonus = maxi(0, bonus)
 	for unit in units:
 		if unit.side != "enemy" or not unit.is_alive():
 			continue
@@ -1600,6 +1637,7 @@ func forecast() -> Array:
 
 func _signature() -> String:
 	var parts: PackedStringArray = ["%d|%s|%s|%s" % [round, phase, ended, end_reason]]
+	parts.append("mode:%s|level:%d" % [node_kind, enemy_level_bonus])
 	var terrain_text := ""
 	for value in terrain:
 		terrain_text += str(int(value))
@@ -1692,6 +1730,8 @@ func clone() -> BattleState:
 	copy.reinforcement_pool = reinforcement_pool.duplicate()
 	copy.undo_stack = undo_stack.duplicate(true)
 	copy.pending_casts = pending_casts.duplicate(true)
+	copy.exploration_started = exploration_started
+	copy.enemy_level_bonus = enemy_level_bonus
 	copy.channel_claims = channel_claims.duplicate(true)
 	copy.skill_use_counts = skill_use_counts.duplicate(true)
 	for unit in units:
@@ -1705,3 +1745,31 @@ func clone() -> BattleState:
 	copy._pending_actions = _pending_actions.duplicate(true)
 	copy._pending_index = _pending_index
 	return copy
+
+
+func is_free_exploration() -> bool:
+	return node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not bool(nest.get("alive", false))) or (node_kind == "boss" and GridSpec.is_inside(boss_portal_cell))
+
+
+func recovery_skill_blocked(skill_id: String) -> bool:
+	return is_free_exploration() and skill_id in ["herbal_heal", "drain", "leech_seed"]
+
+
+func reset_exploration_actions() -> void:
+	round = maxi(1, round)
+	phase = PHASE_PLAYER
+	pending_casts.clear()
+	channel_claims.clear()
+	for unit in alive_units("player"):
+		unit.moved = false
+		unit.skill_used = false
+		unit.capture_used = false
+		unit.channel_lock_round = -1
+		unit.fresh_spawn = false
+		unit.frozen = false
+		unit.paralyzed_ticks = 0
+		unit.move_cancelled = false
+		unit.root_pending = false
+		unit.vine_ticks = 0
+		unit.vine_sources.clear()
+		unit.battle_skill_uses.clear()

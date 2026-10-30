@@ -103,6 +103,8 @@ var environment_deck: Array = [] # 旧存档字段；读取时按已确认规则
 var environment_reward_pending: bool = false # 旧结算字段。
 var reward_inventory: Array = []
 var relic_stacks: Dictionary = {}
+var invasion_level_bonus: int = 0
+var pending_invasion_bonus: int = 0
 var claimed_supply_battles: Array = []
 var recovered_supply_battles: Array = []
 var selected_reward_item: String = ""
@@ -264,15 +266,18 @@ func enter_region_node(id: String) -> bool:
 	var region = get_region()
 	var previous := region_data.duplicate(true)
 	var previous_index := battle_index
+	var pressure_before: int = region.boss_level_bonus
 	if not region.record_entry(id):
 		return false
-	if id != "camp":
+	invasion_level_bonus += region.boss_level_bonus - pressure_before
+	if region.node_mode(id) != "camp":
+		pending_invasion_bonus = region.boss_level_bonus - pressure_before
 		pending_region_entry_backup = previous
 		pending_region_battle_index = previous_index
 	region_data = region.to_dict()
-	var kind := String(region.nodes[id]["type"])
+	var kind := region.node_mode(id)
 	if kind == "battle" or kind == "boss":
-		var slot := 5 if kind == "boss" else int(id.trim_prefix("battle_")) - 1
+		var slot := 5 if kind == "boss" else maxi(0, int(id.trim_prefix("battle_")) - 1)
 		battle_index = region.floor_index * 6 + slot
 	return true
 
@@ -280,6 +285,8 @@ func enter_region_node(id: String) -> bool:
 func cancel_region_entry() -> void:
 	if pending_region_entry_backup.is_empty() or not battle_snapshot.is_empty():
 		return
+	invasion_level_bonus -= pending_invasion_bonus
+	pending_invasion_bonus = 0
 	if preview_used_reward_item != "" and RewardDB.is_consumable(preview_used_reward_item):
 		reward_inventory.append(preview_used_reward_item)
 	preview_used_reward_item = ""
@@ -373,7 +380,7 @@ func battle_config() -> Dictionary:
 				var pool: Array = cfg.get("reinforce", [])
 				chosen.append([pool[chosen.size() % pool.size()] if not pool.is_empty() else source[0][0], Vector2i(-1, -1)])
 			cfg["enemies"] = chosen
-			cfg["enemy_level_bonus"] = region.boss_level_bonus if region.active_node == "boss" else 0
+			cfg["enemy_level_bonus"] = invasion_level_bonus
 	return cfg
 
 
@@ -989,6 +996,8 @@ func to_dict() -> Dictionary:
 		"environment_reward_pending": environment_reward_pending,
 		"reward_inventory": reward_inventory.duplicate(),
 		"relic_stacks": relic_stacks.duplicate(),
+		"invasion_level_bonus": invasion_level_bonus,
+		"pending_invasion_bonus": pending_invasion_bonus,
 		"claimed_supply_battles": claimed_supply_battles.duplicate(),
 		"recovered_supply_battles": recovered_supply_battles.duplicate(),
 		"selected_reward_item": selected_reward_item,
@@ -1010,6 +1019,8 @@ func to_dict() -> Dictionary:
 
 static func from_dict(data: Dictionary) -> RunState:
 	var run := RunState.new()
+	run.invasion_level_bonus = int(data.get("invasion_level_bonus", 0))
+	run.pending_invasion_bonus = int(data.get("pending_invasion_bonus", 0))
 	run.essence = maxi(0, int(data.get("essence", 0)))
 	run.trainer_items = (data.get("trainer_items", {}) as Dictionary).duplicate()
 	run.sold_monster_uids = (data.get("sold_monster_uids", []) as Array).map(func(uid): return int(uid))

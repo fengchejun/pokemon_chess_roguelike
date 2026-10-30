@@ -14,7 +14,7 @@ func run(t: TestContext) -> void:
 	var destination: Vector2i = options.keys()[0]
 	t.check(state.move_unit(picker, destination), "自由收集可以移动")
 	t.check(not state.food_wait.has(origin), "离开食物格打断停留计时")
-	t.check(state.undo_last_move(), "自由收集可以撤回移动")
+	t.check(not state.undo_last_move(), "自由收集即时拾取后提交移动")
 	t.check(not state.food_wait.has(origin), "收集区不留下多余的停留计时")
 	state._pickups()
 	t.eq(state.food_collected, 1, "恢复的计时仅领取一次食物")

@@ -13,7 +13,8 @@ var active_node: String = ""
 var nodes: Dictionary = {}
 var visit_pending: bool = false
 var support_triggered: bool = false
-var boss_level_bonus: int = 0
+var boss_level_bonus: int = 0 # 本层累计压力等级，结算差额写入整局
+var camp_invaded: bool = false
 var notifications: Array = []
 var at_camp_scene: bool = false
 
@@ -61,9 +62,11 @@ func node_mode(id: String) -> String:
 
 func display_name(id: String) -> String:
 	if id == "camp":
-		return "营地"
+		return "营地（敌军占领）" if node_mode(id) == "battle" else "营地"
 	if id == "boss":
 		return "首领区"
+	if id.begins_with("event_") and node_mode(id) == "battle":
+		return "探索区 %s（敌军占领）" % id.get_slice("_", 1)
 	return "%s %s" % ["战斗区" if id.begins_with("battle_") else "探索区", id.get_slice("_", 1)]
 
 
@@ -77,12 +80,9 @@ func record_entry(id: String) -> bool:
 	if nodes[id]["type"] != "boss":
 		visits += 1
 	nodes[id]["visits"] = int(nodes[id]["visits"]) + 1
-	for neighbor in nodes[id].get("links", []):
-		if not bool(nodes[neighbor].get("unlocked", false)):
-			notifications.append("已解锁：%s" % display_name(String(neighbor)))
-		nodes[neighbor]["unlocked"] = true
 	active_node = id
-	at_camp_scene = id == "camp"
+	_apply_pressure()
+	at_camp_scene = node_mode(id) == "camp"
 	visit_pending = true
 	return true
 
@@ -93,46 +93,62 @@ func complete_visit() -> Array:
 	visit_pending = false
 	if active_node == "camp":
 		at_camp_scene = false
-	if active_node != "boss" and visits >= 8 and not support_triggered:
-		support_triggered = true
-		for id in nodes:
-			var node: Dictionary = nodes[id]
-			if node["type"] != "battle" and node_mode(String(id)) != "battle":
-				continue
-			node["mode"] = "event"
-			node["withdrawn"] = true
-			node["pending_garrison"] = false
-			node["pending_replenish"] = false
-			var saved := load_battle(String(id))
-			if saved != null:
-				saved.units = saved.units.filter(func(unit: CombatUnit) -> bool: return unit.side != "enemy")
-				saved.nest["alive"] = false
-				saved.nest["pending_waves"] = 0
-				node["snapshot"] = Snapshot.save_state(saved)
-		notifications.append("敌军支援首领：普通战斗区永久撤空，首领驻军增至 5 名。")
-	if support_triggered:
-		var new_bonus := maxi(0, (visits - 8) / 3)
-		if new_bonus > boss_level_bonus:
-			boss_level_bonus = new_bonus
-			notifications.append("首领区全体敌人等级 +%d。" % boss_level_bonus)
 	var result := notifications.duplicate()
 	notifications.clear()
 	return result
 
 
+func unlock_neighbors(id: String) -> void:
+	for neighbor in nodes[id].get("links", []):
+		if not bool(nodes[neighbor].get("unlocked", false)):
+			notifications.append("已解锁：%s" % display_name(String(neighbor)))
+		nodes[neighbor]["unlocked"] = true
+
+
+func _occupy(id: String) -> void:
+	var node: Dictionary = nodes[id]
+	node["mode"] = "battle"
+	node["cleared"] = false
+	node["withdrawn"] = false
+	node["pending_garrison"] = true
+	node["pending_replenish"] = false
+
+
+func _apply_pressure() -> void:
+	if active_node == "boss":
+		return
+	if visits >= 8 and not support_triggered:
+		support_triggered = true
+		for id in nodes:
+			if id not in ["boss", "camp"]:
+				_occupy(id)
+		notifications.append("敌军全面占领：除营地、首领外全部节点转为战斗区，首领驻军 +2。")
+	if support_triggered and visits >= 11:
+		if not camp_invaded:
+			camp_invaded = true
+			_occupy("camp")
+			notifications.append("营地被入侵，转为普通战斗区。")
+		var new_bonus := (visits - 8) / 3
+		if new_bonus > boss_level_bonus:
+			boss_level_bonus = new_bonus
+			notifications.append("全体敌人等级再次 +1，跨层保留。")
+
+
 func next_pressure_text() -> String:
 	if not support_triggered:
-		return "第 8 次返回后敌军支援首领（还差 %d 次）" % maxi(0, 8 - visits)
-	return "第 %d 次返回后首领区全体等级 +1（还差 %d 次）" % [11 + boss_level_bonus * 3, maxi(0, 11 + boss_level_bonus * 3 - visits)]
+		return "再移动 %d 次全面占领（首领 +2 名）" % maxi(0, 8 - visits)
+	return "再移动 %d 次全体敌人等级 +1%s" % [maxi(0, 11 + boss_level_bonus * 3 - visits), "，并入侵营地" if not camp_invaded else "（跨层保留）"]
 
 
 func store_battle(id: String, battle: BattleState) -> bool:
 	if not nodes.has(id) or battle == null:
 		return false
 	var node: Dictionary = nodes[id]
-	if not ["battle", "boss", "event"].has(String(node["type"])):
+	if not ["battle", "boss", "event"].has(node_mode(id)):
 		return false
 	node["snapshot"] = Snapshot.save_state(battle)
+	if battle.ended and battle.end_reason in ["victory", "explored"]:
+		unlock_neighbors(id)
 	if node["type"] == "boss":
 		var boss := battle.unit_by_uid(battle.boss_uid)
 		node["cleared"] = boss != null and (not boss.is_alive() or boss.side == "player")
@@ -210,7 +226,7 @@ func resume_node(id: String, players: Array) -> BattleState:
 
 
 func to_dict() -> Dictionary:
-	return {"floor": floor_index, "theme": theme, "visits": visits, "active_node": active_node, "nodes": nodes.duplicate(true), "visit_pending": visit_pending, "support_triggered": support_triggered, "boss_level_bonus": boss_level_bonus, "notifications": notifications.duplicate(), "at_camp_scene": at_camp_scene}
+	return {"floor": floor_index, "theme": theme, "visits": visits, "active_node": active_node, "nodes": nodes.duplicate(true), "visit_pending": visit_pending, "support_triggered": support_triggered, "boss_level_bonus": boss_level_bonus, "camp_invaded": camp_invaded, "notifications": notifications.duplicate(), "at_camp_scene": at_camp_scene}
 
 
 static func from_dict(data: Dictionary) -> RegionState:
@@ -223,6 +239,7 @@ static func from_dict(data: Dictionary) -> RegionState:
 	region.visit_pending = bool(data.get("visit_pending", false))
 	region.support_triggered = bool(data.get("support_triggered", false))
 	region.boss_level_bonus = int(data.get("boss_level_bonus", 0))
+	region.camp_invaded = bool(data.get("camp_invaded", false))
 	region.notifications = (data.get("notifications", []) as Array).duplicate()
 	region.at_camp_scene = bool(data.get("at_camp_scene", false))
 	for id in region.nodes:

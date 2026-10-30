@@ -494,11 +494,13 @@ func _update_header() -> void:
 	status_label.visible = false
 	objective_label.text = "战斗目标\n敌人 %d · 击败 %d · 捕获 %d\n%s" % [state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text.strip_edges()]
 	if state.node_kind == "event":
-		objective_label.text = "收集区 · 剩余 %d 回合\n本次收集食物 %d\n可随时返回区域" % [maxi(0, Balance.MAX_ROUNDS - state.round + 1), state.food_collected]
+		objective_label.text = "收集区\n本次收集食物 %d\n可随时返回区域" % state.food_collected
 	if GridSpec.is_inside(state.boss_portal_cell):
 		objective_label.text = "首领已击败 · 敌军撤离\n训练师相邻后，点击传送门或行动按钮前往下一层。"
-	elif state.node_kind != "" and state.round >= 6:
+	elif not state.is_free_exploration() and state.node_kind != "" and state.round >= 6:
 		objective_label.text += "\n%s" % ("本回合结束将强制撤离。" if state.round >= 8 else "即将到达第 8 回合强制撤离期限。")
+	if state.is_free_exploration():
+		objective_label.text += "\n自由探索 · 无限行动 · 禁止恢复"
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
 
 
@@ -564,7 +566,7 @@ func _update_unit_card() -> void:
 					upgrades_list.append(String(info["name"]))
 		if not upgrades_list.is_empty():
 			lines.append("敌方技能强化：%s" % "、".join(upgrades_list))
-	lines.append("生命 %d/%d　移动 %d（基础 %d）" % [unit.hp, unit.max_hp, state.move_budget_for(unit), unit.move_points])
+	lines.append("生命 %d/%d　移动 %s（基础 %d）" % [unit.hp, unit.max_hp, "无限" if state.is_free_exploration() else str(state.move_budget_for(unit)), unit.move_points])
 	if Elements.MATCHUPS_ENABLED:
 		lines.append(Elements.counter_hint(unit.element))
 	var statuses: Array = []
@@ -679,7 +681,7 @@ func _rebuild_skill_buttons() -> void:
 			var id := String(item_id)
 			var button := UIKit.small_button("%s ×%d" % [Merchant.ITEMS[id][0], int(app.run.trainer_items.get(id, 0))])
 			button.tooltip_text = Merchant.ITEMS[id][2]
-			button.disabled = int(app.run.trainer_items.get(id, 0)) <= 0 or unit.capture_used or not unit.can_act_skill() or (id == "capture_aid" and state.capture_aid)
+			button.disabled = (id == "potion" and state.is_free_exploration()) or int(app.run.trainer_items.get(id, 0)) <= 0 or unit.capture_used or not unit.can_act_skill() or (id == "capture_aid" and state.capture_aid)
 			if id == "potion" and state.alive_units("player").filter(func(target): return Merchant.item_target_valid(state, target)).is_empty():
 				button.disabled = true
 				button.tooltip_text += "\n当前没有可治疗目标。"
@@ -716,7 +718,7 @@ func _rebuild_skill_buttons() -> void:
 			var button := UIKit.small_button(button_text)
 			button.name = "SkillButton_%s" % id
 			button.tooltip_text = String(def.get("desc", ""))
-			if state.round >= Balance.MAX_ROUNDS and bool(def.get("channel", false)):
+			if not state.is_free_exploration() and state.round >= Balance.MAX_ROUNDS and bool(def.get("channel", false)):
 				button.tooltip_text += "\n第 %d 回合开始吟唱无法在本场结算。" % Balance.MAX_ROUNDS
 			var entries := state.skill_targets(unit, id)
 			if phase_reason != "":
@@ -830,9 +832,11 @@ func _skill_phase_block_reason(unit: CombatUnit, skill_id: String = "") -> Strin
 		return "冰冻"
 	if unit.paralyzed_ticks > 0:
 		return "麻痹"
+	if state.recovery_skill_blocked(skill_id):
+		return "自由探索期间禁止恢复技能"
 	if unit.channel_lock_round == state.round:
 		return "吟唱代价"
-	if state.steam_cells.has(unit.cell):
+	if state.steam_cells.has(unit.cell) and not state.is_free_exploration():
 		return "雾中禁用"
 	if unit.skill_used and unit.extra_casts <= 0:
 		return "本回合已施法"
@@ -901,7 +905,7 @@ func _update_action_buttons() -> void:
 	if leave_node_button != null:
 		leave_node_button.disabled = busy or _playback_active() or state.ended or not state.can_leave_node()
 	if end_turn_button != null:
-		end_turn_button.disabled = busy or state.ended or state.phase != BattleState.PHASE_PLAYER
+		end_turn_button.disabled = busy or state.ended or state.is_free_exploration() or state.phase != BattleState.PHASE_PLAYER
 	if undo_button != null:
 		undo_button.disabled = busy or not state.can_undo()
 
@@ -1490,7 +1494,7 @@ func _on_skill_pressed(skill_id: String) -> void:
 				if not board.area_cells.has(affected):
 					board.area_cells.append(affected)
 	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
-	if state.round >= Balance.MAX_ROUNDS and bool(SkillDB.get_def(skill_id).get("channel", false)):
+	if not state.is_free_exploration() and state.round >= Balance.MAX_ROUNDS and bool(SkillDB.get_def(skill_id).get("channel", false)):
 		hint_label.text += " 第 %d 回合开始吟唱将不会在本场结算。" % Balance.MAX_ROUNDS
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_rebuild_skill_buttons()
@@ -1705,7 +1709,7 @@ func do_undo() -> bool:
 
 
 func do_end_turn() -> void:
-	if busy or _playback_active() or state.ended or state.phase != BattleState.PHASE_PLAYER:
+	if busy or _playback_active() or state.ended or state.is_free_exploration() or state.phase != BattleState.PHASE_PLAYER:
 		return
 	action_mode = "main"
 	_clear_aim()

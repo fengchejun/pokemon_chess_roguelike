@@ -21,10 +21,19 @@ func _start(app, id: String):
 
 
 func _timeout(app, battle: BattleState) -> void:
+	var was_free := battle.is_free_exploration()
 	battle.round = 8
-	battle.end_enemy_phase()
+	if was_free:
+		battle.end_battle("explored")
+	else:
+		battle.end_enemy_phase()
 	app.finish_battle(battle)
 	app.continue_after_settlement()
+	if was_free:
+		var region = app.run.get_region()
+		region.visits = 8
+		region._apply_pressure()
+		app.run.region_data = region.to_dict()
 
 
 func run(t: TestContext) -> void:
@@ -54,7 +63,7 @@ func run(t: TestContext) -> void:
 	var terrain_before := gathering.terrain.duplicate()
 	gathering.food_cells.append(Vector2i(4, 3))
 	_timeout(collect_app, gathering)
-	t.eq(collect_app.run.get_region().node_mode("event_1"), "battle", "原生收集区超时改战斗")
+	t.eq(collect_app.run.get_region().node_mode("event_1"), "battle", "原生收集区全面占领后改战斗")
 	var reoccupied: BattleState = _start(collect_app, "event_1")
 	t.eq(reoccupied.alive_enemy_count(), 3, "新驻军恰为三名")
 	t.check(reoccupied.nest["alive"], "新巢穴启用")
@@ -78,7 +87,7 @@ func run(t: TestContext) -> void:
 	var old_terrain := cleared_visit.terrain.duplicate()
 	cleared_visit.food_cells.append(Vector2i(4, 3))
 	_timeout(clear_app, cleared_visit)
-	t.eq(clear_app.run.get_region().node_mode("battle_1"), "battle", "已清场收集区超时重新被占据")
+	t.eq(clear_app.run.get_region().node_mode("battle_1"), "battle", "已清场收集区全面占领后重新被占据")
 	var new_garrison: BattleState = _start(clear_app, "battle_1")
 	t.eq(new_garrison.alive_enemy_count(), 3, "已清场区域生成三名新驻军")
 	t.check(new_garrison.nest["alive"], "先前摧毁的巢穴被新驻军重建")
@@ -138,6 +147,7 @@ func run(t: TestContext) -> void:
 		region.record_entry("camp")
 		region.complete_visit()
 	support_app.run.region_data = region.to_dict()
+	support_app.run.invasion_level_bonus = region.boss_level_bonus
 	var reinforced: BattleState = _start(support_app, "boss")
 	t.eq(reinforced.alive_enemy_count(), 5, "支援后首领区共五名含首领")
 	t.eq(reinforced.unit_by_uid(reinforced.boss_uid).enemy_level, 1 + 1 + 2, "首领按第 14 次移动获得两级加成")

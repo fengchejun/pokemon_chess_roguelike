@@ -59,7 +59,10 @@ func run(t: TestContext) -> void:
 	target.cell = trainer.cell + Vector2i.RIGHT
 	state.set_terrain(target.cell, TerrainDB.PLAIN)
 	target.hp = 1
-	t.check(Merchant.use_item(app.run, state, "potion", target.uid)["ok"], "训练师使用治疗药")
+	t.check(not Merchant.use_item(app.run, state, "potion", target.uid)["ok"], "自由探索禁止治疗药")
+	state.node_kind = "battle"
+	state.nest["alive"] = true
+	t.check(Merchant.use_item(app.run, state, "potion", target.uid)["ok"], "正式战斗训练师使用治疗药")
 	t.eq(target.hp, 16, "治疗15HP")
 	t.check(trainer.skill_used and trainer.capture_used and not state.can_undo(), "道具消耗行动并提交移动")
 	trainer.skill_used = false
@@ -87,6 +90,7 @@ func run(t: TestContext) -> void:
 	var balance: int = app.run.essence
 	app.run.sync_from_battle(state)
 	t.eq(app.run.essence, balance, "同步不重复入账")
+	state.node_kind = "event"
 	var saved := BattleSnapshot.save_state(state)
 	var restored := BattleSnapshot.load_state(JSON.parse_string(JSON.stringify(saved)))
 	t.eq(restored.merchant["stock"], state.merchant["stock"], "快照库存不刷新")

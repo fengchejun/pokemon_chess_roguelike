@@ -7,6 +7,8 @@ extends RefCounted
 
 static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> Array:
 	var def := SkillDB.get_def(skill_id)
+	if state.recovery_skill_blocked(skill_id):
+		return []
 	var entries: Array = []
 	if def.is_empty() or unit == null or not unit.is_alive() or unit.channel_lock_round == state.round:
 		return entries
@@ -14,7 +16,7 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 		return entries
 	if skill_id == "tree_man" and state.active_summon(unit.uid) != null:
 		return entries
-	if state.steam_cells.has(unit.cell):
+	if state.steam_cells.has(unit.cell) and not state.is_free_exploration():
 		return entries
 	if not unit.can_use_in_battle(skill_id):
 		return entries
@@ -228,7 +230,7 @@ static func _teleport_path_clear(state: BattleState, from: Vector2i, to: Vector2
 
 static func apply(state: BattleState, caster: CombatUnit, skill_id: String, target_entry: Dictionary, preview: bool) -> Dictionary:
 	if state.feedback_enabled:
-		state.presentation_started.emit({"kind": "skill", "uid": caster.uid if caster != null else -1, "skill": skill_id, "release": false, "target": target_entry.duplicate(true)})
+		state.presentation_started.emit({"kind": "skill", "uid": caster.uid if caster != null else -1, "skill": skill_id, "release": state.is_free_exploration() and bool(SkillDB.get_def(skill_id).get("channel", false)), "target": target_entry.duplicate(true)})
 	var result := _apply_rules(state, caster, skill_id, target_entry, preview)
 	if state.feedback_enabled:
 		state.presentation_finished.emit(result)
@@ -241,7 +243,7 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		return {"ok": false}
 	if bool(def.get("channel", false)) and not state.can_begin_channel(caster):
 		return {"ok": false}
-	if state.steam_cells.has(caster.cell):
+	if state.steam_cells.has(caster.cell) and not state.is_free_exploration():
 		return {"ok": false}
 	if target_entry.is_empty():
 		return {"ok": false}
@@ -280,6 +282,10 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 			cells = tsunami_cells(caster.cell, target_entry["dir"])
 		elif skill_id == "earth_shake":
 			cells = front_area_cells(caster.cell, target_entry["dir"], 3)
+		if state.is_free_exploration():
+			var instant := _resolve_channel_rules(state, caster, skill_id, cells)
+			state.reset_exploration_actions()
+			return instant
 		if not state.begin_channel(caster, skill_id, cells):
 			return {"ok": false}
 		for cell in cells:

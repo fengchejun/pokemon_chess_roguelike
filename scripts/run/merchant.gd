@@ -6,6 +6,8 @@ const ITEMS := {"potion": ["治疗药", 5, "恢复三格内一个存活己方单
 
 static func item_target_valid(state: BattleState, target: CombatUnit) -> bool:
 	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
+	if state.is_free_exploration():
+		return false
 	if target == null or not target.is_alive() or target.side != "player" or target.hp >= target.max_hp or GridSpec.manhattan(trainer.cell, target.cell) > 3:
 		return false
 	var delta := target.cell - trainer.cell
