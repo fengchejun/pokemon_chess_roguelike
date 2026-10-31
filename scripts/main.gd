@@ -343,7 +343,7 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 		var region = run.get_region()
 		var node_id: String = region.active_node
 		if not (region.nodes[node_id]["snapshot"] as Dictionary).is_empty():
-			state = region.resume_node(node_id, run.build_deploy_units(deploy_uids))
+			state = region.resume_node(node_id, run.build_deploy_units(deploy_uids), cfg)
 			if state == null:
 				cancel_region_entry()
 				return
@@ -351,23 +351,13 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 		state.exploration_started = false
 		state.reinforcement_pool = (cfg.get("reinforce", []) as Array).duplicate()
 		if bool(region.nodes[node_id].get("pending_garrison", false)):
-			state.nest["alive"] = true
-			state.nest["hp"] = Balance.NEST_DURABILITY
-			state.nest["pending_waves"] = 0
-			state.nest["scheduled_waves"] = []
-			state.add_garrison(maxi(0, 3 - state.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
 			region.nodes[node_id]["pending_garrison"] = false
 		if bool(region.nodes[node_id].get("pending_replenish", false)):
-			state.add_garrison(maxi(0, 4 - state.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
 			region.nodes[node_id]["pending_replenish"] = false
-		if node_id == "boss" and region.support_triggered:
-			state.add_garrison(maxi(0, 5 - state.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
 		state.set_enemy_level_bonus(run.invasion_level_bonus)
 		state.boss_power_percent = 0
 		if (region.nodes[node_id]["snapshot"] as Dictionary).is_empty():
-			for cell in GridSpec.all_cells():
-				if state.food_cell_valid(cell) and state.terrain_at(cell) == TerrainDB.PLAIN and state.unit_at(cell) == null and state.terrain_rng.randf() < 0.05 and state.food_cells.size() < 2:
-					state.food_cells.append(cell)
+			state.seed_initial_food()
 		if state.node_kind == "event":
 			state.stop_nests()
 			state.reward["state"] = "destroyed"
@@ -381,17 +371,7 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 				var coordinates: Array = state.merchant["cell"]
 				state.merchant["cell"] = Vector2i(int(coordinates[0]), int(coordinates[1]))
 			if not GridSpec.is_inside(state.merchant["cell"]):
-				var trainer := state.unit_by_uid(Balance.TRAINER_UID)
-				var options := state.move_options(trainer)
-				for cell in options:
-					if GridSpec.manhattan(trainer.cell, cell) >= 2 and not state.deploy_area.has(cell) and not (final_map.get("deploy_positions", {}) as Dictionary).values().has(cell) and not state.food_cells.has(cell) and not state.is_nest_cell(cell):
-						state.merchant["cell"] = cell
-						break
-				if not GridSpec.is_inside(state.merchant["cell"]):
-					for cell in GridSpec.neighbors4(trainer.cell):
-						if state.unit_at(cell) == null and not state.deploy_area.has(cell) and not state.is_nest_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), ""):
-							state.merchant["cell"] = cell
-							break
+				state.merchant["cell"] = Merchant.choose_battle_cell(state, final_map.get("deploy_positions", {}))
 			node["merchant"] = state.merchant.duplicate(true)
 			node["merchant"]["cell"] = [state.merchant["cell"].x, state.merchant["cell"].y]
 			run.region_data = current.to_dict()

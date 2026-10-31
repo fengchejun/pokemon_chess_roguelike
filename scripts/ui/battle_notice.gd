@@ -1,7 +1,9 @@
 extends Control
-## A presentation-only, wall-clock queue. Battle rules never wait on this node.
+## Presentation queue; battle speed changes the visible duration.
 signal finished
-const DURATION := 1.5
+signal started
+const DURATION := 1.0
+var playback_speed := 1.0
 var pending: Array = []
 var remaining := 0.0
 var caption: Label
@@ -71,9 +73,10 @@ func _next() -> void:
 	remaining = DURATION
 	visible = true
 	_layout()
+	started.emit()
 
 func _process(delta: float) -> void:
-	advance(delta)
+	advance(delta * playback_speed)
 
 func advance(delta: float) -> void:
 	while remaining > 0 and delta >= remaining:

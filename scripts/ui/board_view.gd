@@ -103,9 +103,10 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 				extra_nests.append(other)
 	pending_casts = []
 	battle_round = 0
-	reward = {"state": "map", "cell": map.get("reward_cell", Vector2i(-1, -1)), "owner_uid": -1}
+	reward = map.get("reward", {"state": "map", "cell": map.get("reward_cell", Vector2i(-1, -1)), "owner_uid": -1}).duplicate(true)
 	fruits = []
-	food_cells = []
+	food_cells = map.get("food_cells", []).duplicate()
+	merchant_cell = map.get("merchant_cell", Vector2i(-1, -1))
 	units = preview_units
 	deploy_cells = map.get("deploy_area", Balance.DEPLOY_AREA).duplicate()
 	ice_slides = []

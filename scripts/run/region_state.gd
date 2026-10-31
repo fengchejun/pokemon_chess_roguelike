@@ -159,7 +159,7 @@ func store_battle(id: String, battle: BattleState) -> bool:
 			node["pending_replenish"] = false
 		elif battle.end_reason == "escape":
 			node["pending_replenish"] = true
-			notifications.append("%s 撤退；下次进入敌军补足 4 名，已击败者不会复活。" % display_name(id))
+			notifications.append("%s 撤退；下次进入存活敌军回到出生格并回满生命，空缺补足 4 名。" % display_name(id))
 	elif battle.end_reason == "escape" and not support_triggered and not bool(node.get("withdrawn", false)):
 		node["mode"] = "battle"
 		node["pending_garrison"] = true
@@ -173,11 +173,12 @@ func load_battle(id: String) -> BattleState:
 	return Snapshot.load_state(nodes[id]["snapshot"])
 
 
-func resume_node(id: String, players: Array) -> BattleState:
+func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleState:
 	var battle := load_battle(id)
 	if battle == null:
 		return null
 	var survivors: Array = []
+	var occupied := {}
 	for unit in battle.units:
 		if unit.side != "enemy":
 			continue
@@ -185,11 +186,37 @@ func resume_node(id: String, players: Array) -> BattleState:
 			var fresh := CombatUnit.make(unit.species_id, "enemy", unit.uid)
 			for field in ["cell", "max_hp", "move_points", "skills", "enemy_level", "combat_level", "is_boss", "upgrades", "reg_index"]:
 				fresh.set(field, unit.get(field))
+			var original: Vector2i = battle.enemy_origins.get(unit.uid, Vector2i(-1, -1))
+			if not GridSpec.is_inside(original) and unit.uid >= 100 and unit.uid - 100 < (cfg.get("enemies", []) as Array).size():
+				original = cfg["enemies"][unit.uid - 100][1]
+			if not GridSpec.is_inside(original):
+				original = unit.cell
+			var cells := GridSpec.all_cells()
+			cells.sort_custom(func(a, b):
+				var da := GridSpec.manhattan(a, original)
+				var db := GridSpec.manhattan(b, original)
+				return da < db if da != db else a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
+			for cell in cells:
+				if not occupied.has(cell) and not battle.is_interaction_cell(cell) and TerrainDB.can_stand(battle.terrain_at(cell), fresh.element):
+					fresh.cell = cell
+					occupied[cell] = true
+					break
+			battle.enemy_origins[unit.uid] = original
 			fresh.hp = fresh.max_hp
 			survivors.append(fresh)
 		else:
 			survivors.append(unit)
 	battle.units = survivors
+	if bool(nodes[id].get("pending_garrison", false)):
+		battle.nest["alive"] = true
+		battle.nest["hp"] = Balance.NEST_DURABILITY
+		battle.nest["pending_waves"] = 0
+		battle.nest["scheduled_waves"] = []
+		battle.add_garrison(maxi(0, 3 - battle.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
+	elif node_mode(id) == "battle":
+		battle.add_garrison(maxi(0, 4 - battle.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
+	elif id == "boss" and support_triggered:
+		battle.add_garrison(maxi(0, 5 - battle.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
 	for player in players:
 		var placed := false
 		var candidates: Array = battle.deploy_cells.duplicate()

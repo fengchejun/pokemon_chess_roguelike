@@ -67,7 +67,14 @@ func _ready() -> void:
 			map["nest_alive"] = bool(saved.nest.get("alive", false))
 			map["nest_hp"] = int(saved.nest.get("hp", 0))
 			map["reward_cell"] = saved.reward.get("cell", Vector2i(-1, -1))
+			map["reward"] = saved.reward.duplicate(true)
+			map["food_cells"] = saved.food_cells.duplicate()
 			map["obstacle_cells"] = saved.obstacle_durability.keys()
+		elif region.node_mode(region.active_node) == "event":
+			map["nests"] = []
+		if region.nodes[region.active_node].has("merchant") and saved == null:
+			var position_data: Array = region.nodes[region.active_node]["merchant"].get("cell", [-1, -1])
+			map["merchant_cell"] = Vector2i(int(position_data[0]), int(position_data[1]))
 	if run.preview_used_reward_item.begins_with("map:"):
 		card_result = MapGenerator.generate_card_preview(run.seed, run.battle_index, run.preview_used_reward_item.trim_prefix("map:"), map)
 		map = (card_result["map"] as Dictionary).duplicate(true)
@@ -348,6 +355,8 @@ func _mod_hover_text(cell: Vector2i) -> String:
 	var rule: Dictionary = MOD_RULES.get(mod_kind, {})
 	var tool_name := String(rule.get("name", mod_kind))
 	if (map.get("nest_cells", [map.get("nest_cell", Vector2i(-1, -1))]) as Array).has(cell):
+		if run.region_mode and run.get_region().node_mode(run.get_region().active_node) == "event":
+			return "该格为后续占领事件保留，暂不能改造。"
 		return "巢穴：第 2、4、6 回合直接在本格尝试产怪；出生轮待机。可站上阻挡生成，积压保留；任何单位覆盖时保护巢穴，空置时任意有效伤害每次扣 1 耐久。"
 	if MapGenerator.mod_protected(map, cell):
 		return "【%s】该格受保护（部署区 / 巢穴 / 奖励 / 果实），不能改造。" % tool_name
@@ -388,6 +397,28 @@ func _refresh() -> void:
 	run.preview_deploy_positions = deploy_positions.duplicate()
 	for unit in deploy_players:
 		unit.cell = deploy_positions.get(unit.uid, Vector2i(-1, -1))
+	if run.region_mode:
+		var region = run.get_region()
+		var id: String = region.active_node
+		var mode: String = region.node_mode(id)
+		if not persistent_node:
+			var sample := BattleState.new()
+			var cfg := run.battle_config().duplicate(true)
+			if mode == "event":
+				cfg["enemies"] = []
+				cfg["reinforce"] = []
+				cfg["boss_index"] = -1
+			cfg = run.place_region_enemies(cfg, map)
+			sample.node_kind = mode
+			sample.setup(map, cfg, run.seed, run.battle_index, run.build_deploy_units(deploy_uids), run.effects(), {}, cfg.get("reinforce", []))
+			sample.seed_initial_food()
+			map["food_cells"] = sample.food_cells.duplicate()
+			if mode == "event":
+				map["reward"] = {"state": "destroyed", "cell": map.get("reward_cell", Vector2i(-1, -1))}
+				if region.nodes[id].has("merchant") and not GridSpec.is_inside(map.get("merchant_cell", Vector2i(-1, -1))):
+					map["merchant_cell"] = Merchant.choose_battle_cell(sample, deploy_positions)
+		if mode == "event":
+			map["nests"] = []
 	board.set_map_preview(map, deploy_enemies + deploy_players)
 	board.selected_uid = deploy_selected_uid
 	if start_button != null:
@@ -408,7 +439,11 @@ func _preview_units(run: RunState) -> Array:
 		var region = run.get_region()
 		var saved: BattleState = region.load_battle(region.active_node)
 		if saved != null:
-			return saved.alive_units("enemy")
+			var cfg := run.place_region_enemies(run.battle_config(), map)
+			var restored: BattleState = region.resume_node(region.active_node, [], cfg)
+			return restored.alive_units("enemy") if restored != null else []
+		if region.node_mode(region.active_node) == "event":
+			return []
 	var cfg := run.place_region_enemies(run.battle_config(), map)
 	var index := 0
 	for pair in cfg.get("enemies", []):

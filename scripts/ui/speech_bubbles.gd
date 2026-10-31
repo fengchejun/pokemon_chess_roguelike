@@ -1,6 +1,7 @@
 extends Control
 var screen: Control
 var entries: Array = []
+var suppressed := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -17,13 +18,14 @@ func push(event: Dictionary) -> void:
 	for entry in entries:
 		if entry["uid"] == uid:
 			delay = maxf(delay, float(entry["remaining"]))
-	var panel := PanelContainer.new()
+	var panel := preload("res://scripts/ui/speech_bubble_shape.gd").new()
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.jagged = String(event["text"]).contains("！") or String(event["text"]).contains("!")
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color("f1e9d5")
-	style.border_color = Color("78664c")
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(10)
+	style.bg_color = Color.TRANSPARENT if panel.jagged else Color("f1e9d5")
+	style.border_color = Color.TRANSPARENT if panel.jagged else Color("78664c")
+	style.set_border_width_all(0 if panel.jagged else 2)
+	style.set_corner_radius_all(0 if panel.jagged else 10)
 	style.content_margin_left = 12
 	style.content_margin_right = 12
 	style.content_margin_top = 7
@@ -41,7 +43,23 @@ func push(event: Dictionary) -> void:
 	add_child(panel)
 	entries.append({"uid": uid, "cell": event["cell"], "remaining": delay + 3.0, "delay": delay, "panel": panel})
 
+func dismiss_on_unit_click() -> void:
+	for entry in entries.duplicate():
+		if entry["delay"] <= 0:
+			entry["panel"].queue_free()
+			entries.erase(entry)
+
+func active() -> bool:
+	return not entries.is_empty()
+
+func set_suppressed(value: bool) -> void:
+	suppressed = value
+	for entry in entries:
+		entry["panel"].visible = not value and entry["delay"] <= 0
+
 func _process(delta: float) -> void:
+	if suppressed:
+		return
 	for entry in entries.duplicate():
 		entry["remaining"] -= delta
 		entry["delay"] -= delta

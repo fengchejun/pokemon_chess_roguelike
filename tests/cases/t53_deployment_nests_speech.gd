@@ -154,5 +154,6 @@ func _speech(t: TestContext) -> void:
 	var boss := state.unit_by_uid(100)
 	state.damage_unit(state.unit_by_uid(1), boss, ceili(boss.hp / 2.0), {"no_element": true})
 	t.check(state.speech_seen.has("boss_roar"), "Boss 半血怒吼")
+	state.round = Balance.MAX_ROUNDS
 	state.end_battle("escape")
 	t.check(state.speech_seen.has("trainer_escape"), "实际强撤发表逃跑宣言")

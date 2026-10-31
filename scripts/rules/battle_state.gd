@@ -67,6 +67,7 @@ var nest: Dictionary = {} # Primary nest retained for old snapshots and callers.
 var extra_nests: Array = []
 var deploy_area: Array = []
 var speech_seen: Dictionary = {}
+var enemy_origins: Dictionary = {} # uid -> original node entry cell; persisted for revisits.
 var boss_uid: int = -1
 var boss_portal_cell: Vector2i = Vector2i(-1, -1)
 var merchant: Dictionary = {}
@@ -152,6 +153,7 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 		if enemy.is_boss:
 			boss_uid = enemy.uid
 		enemy.cell = pair[1]
+		enemy_origins[enemy.uid] = enemy.cell
 		enemy.reg_index = units.size()
 		units.append(enemy)
 		set_enemy_level_bonus(enemy_level_bonus)
@@ -184,7 +186,7 @@ func _trigger_inspiration() -> void:
 	inspiration_triggered = true
 	var boss := unit_by_uid(boss_uid)
 	if boss != null:
-		say_once("boss_roar", boss.uid, boss.cell, "吼——你们惹怒我了！")
+		say_once("boss_roar", boss.uid, boss.cell, "吼！！！！！")
 	for ally in units:
 		_grant_inspiration(ally)
 	log_event("首领鼓舞：其他敌方单位移动力 +1，生命上限与当前生命各 +%d，持续本场。" % Balance.INSPIRATION_HP_BONUS)
@@ -1194,6 +1196,7 @@ func _try_spawn_wave(target: Dictionary = {}) -> void:
 		enemy.fresh_spawn = true
 		enemy.reg_index = units.size()
 		units.append(enemy)
+		enemy_origins[enemy.uid] = cell
 		set_enemy_level_bonus(enemy_level_bonus)
 		_watch_feedback(enemy)
 		current["pending_waves"] = maxi(0, int(current.get("pending_waves", 0)) - 1)
@@ -1596,6 +1599,7 @@ func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) 
 		enemy.cell = cell
 		enemy.reg_index = units.size()
 		units.append(enemy)
+		enemy_origins[enemy.uid] = cell
 		_watch_feedback(enemy)
 		added += 1
 	set_enemy_level_bonus(enemy_level_bonus)
@@ -1628,8 +1632,8 @@ func set_enemy_level_bonus(bonus: int) -> void:
 func end_battle(reason: String) -> void:
 	if ended:
 		return
-	if reason == "escape" and node_kind != "" and trainer() != null:
-		say_once("trainer_escape", Balance.TRAINER_UID, trainer().cell, "先撤！大家跟紧我！")
+	if reason == "escape" and node_kind != "" and trainer() != null and round >= Balance.MAX_ROUNDS:
+		say_once("trainer_escape", Balance.TRAINER_UID, trainer().cell, "敌人的增援要来了！快撤！")
 	ended = true
 	pending_casts.clear()
 	end_reason = reason
@@ -1741,6 +1745,7 @@ func clone() -> BattleState:
 	copy.extra_nests = extra_nests.duplicate(true)
 	copy.deploy_area = deploy_area.duplicate()
 	copy.speech_seen = speech_seen.duplicate(true)
+	copy.enemy_origins = enemy_origins.duplicate(true)
 	copy.boss_uid = boss_uid
 	copy.boss_portal_cell = boss_portal_cell
 	copy.inspiration_triggered = inspiration_triggered
@@ -1820,6 +1825,11 @@ func stop_nests() -> void:
 func food_cell_valid(cell: Vector2i) -> bool:
 	return GridSpec.is_inside(cell) and not all_nests().any(func(current): return current["cell"] == cell) and not deploy_area.has(cell) and not is_interaction_cell(cell) and (cell != reward.get("cell") or reward.get("state") == "destroyed") and terrain_at(cell) in [TerrainDB.PLAIN, TerrainDB.GRASS, TerrainDB.WATER, TerrainDB.ICE]
 
+func seed_initial_food() -> void:
+	for cell in GridSpec.all_cells():
+		if food_cell_valid(cell) and terrain_at(cell) == TerrainDB.PLAIN and unit_at(cell) == null and terrain_rng.randf() < 0.05 and food_cells.size() < 2:
+			food_cells.append(cell)
+
 func repair_food() -> void:
 	for cell in food_cells.duplicate():
 		if food_cell_valid(cell):
@@ -1851,7 +1861,7 @@ func check_speech_events() -> void:
 	var actor := trainer()
 	if actor != null and actor.is_alive():
 		if round == 1:
-			say_once("trainer_start", actor.uid, actor.cell, "大家加油，稳住阵型！")
+			say_once("trainer_start", actor.uid, actor.cell, "好好大干一场吧！")
 		if round == 7 and not is_free_exploration():
 			say_once("trainer_warning", actor.uid, actor.cell, "准备撤退，别恋战！")
 	if node_kind == "event" and not merchant.is_empty():

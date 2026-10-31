@@ -63,6 +63,18 @@ static func ensure_region(region: RegionState, seed_value: int) -> void:
 		stock["relic:" + relic] = 1
 	region.nodes[id]["merchant"] = {"stock": stock, "cell": [-1, -1]}
 
+static func choose_battle_cell(state: BattleState, positions: Dictionary = {}) -> Vector2i:
+	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
+	if trainer == null:
+		return Vector2i(-1, -1)
+	for cell in state.move_options(trainer):
+		if GridSpec.manhattan(trainer.cell, cell) >= 2 and not state.deploy_area.has(cell) and not positions.values().has(cell) and not state.food_cells.has(cell) and not state.is_nest_cell(cell):
+			return cell
+	for cell in GridSpec.neighbors4(trainer.cell):
+		if state.unit_at(cell) == null and not state.deploy_area.has(cell) and not state.is_nest_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), ""):
+			return cell
+	return Vector2i(-1, -1)
+
 static func trade(run: RunState, state: BattleState, operation: String, id: String, quantity: int = 1) -> Dictionary:
 	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
 	if state.ended or state.phase != BattleState.PHASE_PLAYER or state.node_kind != "event" or state.merchant.is_empty() or trainer == null or not trainer.is_alive() or not state.can_interact_at(state.merchant["cell"]):

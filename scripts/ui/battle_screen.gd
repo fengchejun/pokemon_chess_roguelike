@@ -79,6 +79,8 @@ func _ready() -> void:
 	speech_layer.screen = self
 	add_child(speech_layer)
 	speech_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	battle_notice.started.connect(func() -> void: speech_layer.set_suppressed(true))
+	battle_notice.finished.connect(func() -> void: speech_layer.set_suppressed(false))
 	skill_banner = preload("res://scripts/ui/skill_banner.gd").new()
 	add_child(skill_banner)
 	playback = preload("res://scripts/ui/battle_playback.gd").new()
@@ -242,6 +244,10 @@ func _on_enemy_defeated(entry: Dictionary) -> void:
 
 
 func _process(_delta: float) -> void:
+	if battle_notice != null:
+		battle_notice.playback_speed = app.battle_playback_speed
+	if speech_layer != null:
+		speech_layer.set_suppressed(battle_notice != null and battle_notice.active())
 	if feedback_layer != null:
 		feedback_layer.playback_speed = app.battle_playback_speed
 		feedback_layer.paused = modal_layer != null
@@ -1049,6 +1055,7 @@ func _on_board_clicked(cell: Vector2i) -> void:
 		_try_cast_at(cell)
 		return
 	if occupant != null:
+		speech_layer.dismiss_on_unit_click()
 		select_unit(occupant.uid)
 		return
 	if action_panel.visible:
@@ -1281,6 +1288,7 @@ func _on_board_double_clicked(cell: Vector2i) -> void:
 		return
 	var unit := _display_state().unit_at(cell)
 	if unit != null:
+		speech_layer.dismiss_on_unit_click()
 		_show_unit_detail(unit)
 
 
@@ -1813,6 +1821,9 @@ func _report_end() -> void:
 		await get_tree().create_timer(tail / app.battle_playback_speed).timeout
 	await _wait_playback()
 	if state != null and state.ended and is_inside_tree():
+		if state.end_reason == "escape":
+			while speech_layer.active() and is_inside_tree():
+				await get_tree().process_frame
 		var kind := result_notice_kind(state.end_reason)
 		if kind != "" and not (kind == "victory" and victory_announced):
 			battle_notice.push({"victory": "胜利", "defeat": "失败", "escape": "撤退"}[kind], kind)
@@ -1878,5 +1889,7 @@ func _announce_victory() -> void:
 	if not is_inside_tree() or is_queued_for_deletion():
 		return
 	await _wait_playback()
+	while speech_layer.active() and is_inside_tree():
+		await get_tree().process_frame
 	if is_inside_tree() and not state.ended:
 		battle_notice.push("胜利", "victory")
