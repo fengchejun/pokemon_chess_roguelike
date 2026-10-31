@@ -34,6 +34,7 @@ var hint_label: Label = null
 var log_label: RichTextLabel = null
 var menu_button: Button = null
 var action_panel: Control = null
+var merchant_actions_open := false
 var unit_panel: Control = null
 var terrain_panel: Control = null
 var terrain_label: Label = null
@@ -347,28 +348,20 @@ func _fit_terrain_panel() -> void:
 func _position_action_panel() -> void:
 	if action_panel == null or board == null:
 		return
-	action_panel.visible = selected_uid > 0 and action_mode != "move" and item_aim == "" and aim_skill == "" and not capture_mode and not busy and not _playback_active() and not state.ended and state.phase == BattleState.PHASE_PLAYER
+	action_panel.visible = (selected_uid > 0 or merchant_actions_open) and action_mode != "move" and item_aim == "" and aim_skill == "" and not capture_mode and not busy and not _playback_active() and not state.ended and state.phase == BattleState.PHASE_PLAYER
 	if not action_panel.visible:
 		return
 	var unit := state.unit_by_uid(selected_uid)
-	if unit == null or unit.side != "player":
+	if unit == null and not merchant_actions_open:
 		action_panel.visible = false
 		return
 	var panel_width := 220.0
 	action_panel.custom_minimum_size.x = panel_width
-	var cell_screen := board.position + (Vector2(unit.cell) + Vector2.ONE) * BoardView.TILE * board.scale.x
+	var anchor_cell: Vector2i = state.merchant["cell"] if merchant_actions_open else unit.cell
+	var cell_screen := board.position + (Vector2(anchor_cell) + Vector2.ONE) * BoardView.TILE * board.scale.x
 	var x := cell_screen.x + 8.0
 	if x + panel_width > size.x - 12.0:
-		x = board.position.x + unit.cell.x * BoardView.TILE * board.scale.x - panel_width - 8.0
-	var hover := board.hover_cell
-	if GridSpec.is_inside(hover):
-		var hover_origin := board.position + Vector2(hover) * BoardView.TILE * board.scale.x
-		var hover_rect := Rect2(hover_origin, Vector2.ONE * BoardView.TILE * board.scale.x)
-		var candidate := Rect2(Vector2(x, clampf(cell_screen.y - 70.0, 8.0, size.y - 260.0)), Vector2(panel_width, 240))
-		if candidate.intersects(hover_rect):
-			var left_x := board.position.x + unit.cell.x * BoardView.TILE * board.scale.x - panel_width - 8.0
-			if left_x >= board.position.x - 8.0:
-				x = left_x
+		x = board.position.x + anchor_cell.x * BoardView.TILE * board.scale.x - panel_width - 8.0
 	action_panel.position = Vector2(clampf(x, 8.0, size.x - panel_width - 8.0), clampf(cell_screen.y - 70.0, 8.0, size.y - 260.0))
 
 
@@ -657,6 +650,24 @@ func _move_status(unit: CombatUnit) -> String:
 func _rebuild_skill_buttons() -> void:
 	UIKit.clear_children(skill_box)
 	var unit := state.unit_by_uid(selected_uid)
+	if merchant_actions_open:
+		var talk := UIKit.small_button("对话")
+		talk.name = "MerchantTalkButton"
+		talk.disabled = state.merchant.is_empty() or not state.can_interact_at(state.merchant["cell"])
+		talk.tooltip_text = "训练师需走到商人相邻格才能对话。" if talk.disabled else "与商人交易"
+		hint_label.text = talk.tooltip_text
+		talk.pressed.connect(_interact_with_merchant)
+		skill_box.add_child(talk)
+		if talk.disabled:
+			skill_box.add_child(UIKit.label("训练师需与商人相邻", 13, UIKit.TEXT_DIM))
+		call_deferred("_fit_action_panel")
+		return
+	if unit != null and unit.side == "enemy":
+		var detail := UIKit.small_button("查看详情")
+		detail.pressed.connect(func() -> void: _show_unit_detail(unit))
+		skill_box.add_child(detail)
+		call_deferred("_fit_action_panel")
+		return
 	if unit == null or not unit.is_alive():
 		skill_box.add_child(UIKit.label("选择己方单位后显示行动。", 13, UIKit.TEXT_DIM))
 		return
@@ -724,10 +735,16 @@ func _rebuild_skill_buttons() -> void:
 		skill_box.add_child(back_button)
 		call_deferred("_fit_action_panel")
 		return
-	var move_button := UIKit.small_button("移动")
+	var undo_move := state.can_undo() and int(state.undo_stack.back().get("uid", 0)) == unit.uid
+	var move_button := UIKit.small_button("撤销移动" if undo_move else "移动")
 	move_button.name = "MoveActionButton"
-	move_button.disabled = not state.can_move_unit_now(unit) or state.move_options(unit).is_empty()
-	move_button.pressed.connect(_on_move_pressed)
+	move_button.disabled = not undo_move and (not state.can_move_unit_now(unit) or state.move_options(unit).is_empty())
+	move_button.pressed.connect(func() -> void:
+		if undo_move:
+			do_undo()
+		else:
+			_on_move_pressed()
+	)
 	skill_box.add_child(move_button)
 	if not unit.is_trainer:
 		var skills_button := UIKit.small_button("技能")
@@ -991,7 +1008,14 @@ func _on_board_clicked(cell: Vector2i) -> void:
 		if cell == state.boss_portal_cell:
 			_request_portal()
 		else:
-			_interact_with_merchant()
+			selected_uid = 0
+			viewed_enemy_uid = 0
+			merchant_actions_open = true
+			action_mode = "main"
+			board.clear_overlays()
+			_rebuild_skill_buttons()
+			_position_action_panel()
+			board.queue_redraw()
 		return
 	var occupant := state.unit_at(cell)
 	if capture_mode:
@@ -1003,16 +1027,11 @@ func _on_board_clicked(cell: Vector2i) -> void:
 	if aim_skill != "":
 		_try_cast_at(cell)
 		return
-	if occupant != null and occupant.side == "player":
+	if occupant != null:
 		select_unit(occupant.uid)
 		return
-	if occupant != null:
-		viewed_enemy_uid = occupant.uid
-		selected_uid = 0
-		board.clear_overlays()
-		_update_unit_card()
-		_update_selection_overlay()
-		board.queue_redraw()
+	if action_panel.visible:
+		_dismiss_action_panel()
 		return
 	# 空地形：移动或查看
 	var unit := state.unit_by_uid(selected_uid)
@@ -1069,6 +1088,8 @@ func _on_board_hovered(cell: Vector2i) -> void:
 	board.area_cells = []
 	board.ray_cells = []
 	board.arrows = []
+	board.markers = []
+	_update_channel_markers()
 	if aim_skill != "":
 		var unit := state.unit_by_uid(selected_uid)
 		var entry := _find_entry(cell)
@@ -1219,6 +1240,7 @@ func _show_terrain(cell: Vector2i) -> void:
 
 
 func select_unit(uid: int) -> void:
+	merchant_actions_open = false
 	action_mode = "main"
 	selected_uid = uid
 	viewed_enemy_uid = 0
@@ -1517,6 +1539,9 @@ func _clear_aim() -> void:
 
 
 func _cancel_action() -> void:
+	if action_panel.visible:
+		_dismiss_action_panel()
+		return
 	if aim_skill != "" or capture_mode or item_aim != "":
 		_clear_aim()
 		return
@@ -1760,6 +1785,31 @@ func _report_end() -> void:
 	await _wait_playback()
 	if state != null and state.ended and is_inside_tree():
 		app.finish_battle(state)
+
+
+func _dismiss_action_panel() -> void:
+	merchant_actions_open = false
+	action_mode = "main"
+	selected_uid = 0
+	viewed_enemy_uid = 0
+	board.selected_uid = 0
+	board.clear_overlays()
+	_update_channel_markers()
+	_update_unit_card()
+	_position_action_panel()
+	board.queue_redraw()
+
+
+func _input(event: InputEvent) -> void:
+	if modal_layer != null or action_panel == null or not action_panel.visible:
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
+		if action_panel.get_global_rect().has_point(event.position):
+			return
+		if event.button_index == MOUSE_BUTTON_LEFT and board.get_global_rect().has_point(event.position):
+			return
+		_dismiss_action_panel()
+		get_viewport().set_input_as_handled()
 
 
 func _unhandled_input(event: InputEvent) -> void:

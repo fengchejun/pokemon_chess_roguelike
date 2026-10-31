@@ -139,6 +139,8 @@ func run(t: TestContext) -> void:
 		t.check(dest != Vector2i(-1, -1), "存在可移动格")
 		battle_screen._on_board_clicked(dest)
 		t.eq(unit.cell, from_cell, "未选择移动指令时点击空格不会行走")
+		t.check(not battle_screen.action_panel.visible, "点击空地关闭行动窗")
+		battle_screen.select_unit(unit.uid)
 		battle_screen._on_move_pressed()
 		t.check(not battle_screen.action_panel.visible and not battle_screen.board.movement_cells.is_empty(), "移动指令收起浮窗并显示可移动格")
 		battle_screen._cancel_action()
@@ -148,8 +150,58 @@ func run(t: TestContext) -> void:
 		t.eq(unit.cell, dest, "移动位置正确")
 		battle_screen.playback.finish_all()
 		t.check(battle_screen.action_panel.visible and battle_screen.action_mode == "main", "移动完成后重新显示主行动窗")
+		var move_action: Button = battle_screen.skill_box.find_child("MoveActionButton", true, false)
+		t.eq(move_action.text, "撤销移动", "移动后按钮变为撤销移动")
+		t.check(not move_action.disabled, "撤销移动可用")
 		t.eq(battle_screen.do_undo(), true, "撤回移动成功")
 		t.eq(unit.cell, from_cell, "撤回后回位")
+		battle_screen.select_unit(unit.uid)
+		var stable_position: Vector2 = battle_screen.action_panel.position
+		for cell in [Vector2i(0, 0), Vector2i(7, 7), Vector2i(3, 3)]:
+			battle_screen.board.hover_cell = cell
+			battle_screen._position_action_panel()
+			t.eq(battle_screen.action_panel.position, stable_position, "悬停不改变行动窗位置")
+		for mouse_button in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
+			battle_screen.select_unit(unit.uid)
+			var click := InputEventMouseButton.new()
+			click.pressed = true
+			click.button_index = mouse_button
+			click.position = Vector2(-10, -10)
+			battle_screen._input(click)
+			t.check(not battle_screen.action_panel.visible, "左右键点击窗口外关闭")
+		battle_screen.select_unit(unit.uid)
+		var old_skills := unit.skills.duplicate()
+		unit.skills = ["rain_call"]
+		battle_screen._on_skill_pressed("rain_call")
+		var entries: Array = battle_screen.aim_entries
+		if entries.size() > 1:
+			battle_screen._on_board_hovered(entries[0]["cell"])
+			battle_screen._on_board_hovered(entries[1]["cell"])
+			var latest_markers: Array = battle_screen.board.markers.duplicate(true)
+			battle_screen._on_board_hovered(entries[1]["cell"])
+			t.eq(battle_screen.board.markers, latest_markers, "连续预览不会累积文字标记")
+		battle_screen._clear_aim()
+		unit.skills = old_skills
+		var enemy: CombatUnit = state.alive_units("enemy")[0]
+		battle_screen._on_board_clicked(enemy.cell)
+		t.check(battle_screen.action_panel.visible, "单击敌方显示行动窗口")
+		t.eq(battle_screen.skill_box.get_child(0).text, "查看详情", "敌方窗口提供详情入口")
+		battle_screen._on_board_double_clicked(enemy.cell)
+		t.check(battle_screen.modal_layer != null, "敌方双击可以查看详情")
+		battle_screen._close_modal()
+		var old_merchant: Dictionary = state.merchant.duplicate(true)
+		var old_kind: String = state.node_kind
+		state.node_kind = "event"
+		state.merchant = {"cell": Vector2i(7, 0)}
+		battle_screen._on_board_clicked(Vector2i(7, 0))
+		var talk: Button = battle_screen.skill_box.find_child("MerchantTalkButton", true, false)
+		t.check(talk != null and battle_screen.action_panel.visible, "远距离点击商人显示对话窗口")
+		if talk != null:
+			t.eq(talk.disabled, not state.can_interact_at(Vector2i(7, 0)), "商人对话依训练师距离启用")
+			t.check(not talk.tooltip_text.is_empty(), "商人对话提供距离提示")
+		battle_screen._dismiss_action_panel()
+		state.merchant = old_merchant
+		state.node_kind = old_kind
 	# 清场 → 结算
 	for enemy in state.alive_units("enemy"):
 		state.kill_unit(enemy, "测试清场", "player")
