@@ -10,7 +10,7 @@ extends RefCounted
 ##  direction 造岩：选择方向
 
 const DEFS := {
-	"fire_burst": {"name": "火球术", "element": "fire", "kind": "ray", "min_range": 2, "max_range": 4, "damage": 18, "ranged": true, "channel": true, "desc": "锁定射程 2–4 的格子，下次本方阶段开始落下；九宫格内各受 18 点基础伤害。吟唱后下一阶段不能行动，可被死亡、冻结或麻痹打断。"},
+	"fire_burst": {"name": "火球术", "element": "fire", "kind": "ray", "min_range": 2, "max_range": 4, "damage": 18, "ranged": true, "channel": true, "desc": "锁定射程 2–4 的格子，下次本方阶段开始落下；九宫格中心受18点、外围受9点基础伤害。吟唱后下一阶段不能行动，可被死亡、冻结或麻痹打断。"},
 	"fire_amplify": {"name": "火焰增幅", "element": "fire", "kind": "self", "damage": 0, "ranged": false, "desc": "熄灭自身曼哈顿 2 格内所有燃烧格，每格积累 5 点增幅；下一次实际造成技能直伤时，每个受击单位额外承受全部增幅。"},
 	"flame_jet": {"name": "喷射火焰", "element": "fire", "kind": "direction", "damage": 10, "adjacent_bonus": 3, "ranged": true, "desc": "沿选定方向喷射 3 格；障碍截断；命中单位受到 10 点基础伤害并灼烧，紧邻自身的单位额外受到 3 点伤害。"},
 	"rain_call": {"name": "造雨术", "element": "water", "kind": "cell", "range": 4, "damage": 0, "ranged": false, "desc": "指定曼哈顿距离 4 格内中心，周围 3×3 格化为浅水；障碍与深坑不变。"},
@@ -21,7 +21,7 @@ const DEFS := {
 	"rock_slide": {"name": "岩崩", "element": "rock", "kind": "cell", "range": 3, "damage": 30, "ranged": true, "channel": true, "desc": "锁定曼哈顿 3 格内一格；下次本方阶段开始，对该格当时的单位造成 30 点基础伤害，可误伤友军。"},
 	"earth_shake": {"name": "撼地", "element": "rock", "kind": "direction", "damage": 18, "ranged": true, "channel": true, "desc": "蓄力锁定前方 3×3 格；下一本方阶段开始，对范围内敌人造成 18 点基础伤害，摧毁岩障和树木；平地变易碎地块、易碎地块变深坑。破障格本次不再改变地形，站在塌陷格上的地面单位立即坠落。"},
 	"lightning": {"name": "打雷", "element": "electric", "kind": "self", "damage": 18, "ranged": true, "channel": true, "desc": "锁定全场所有敌方单位当前格子；下次本方阶段开始，对固定落点上的单位造成 18 点基础伤害并感电，可误伤友军。"},
-	"electric_arc": {"name": "放电", "element": "electric", "kind": "cell", "range": 2, "damage": 10, "ranged": true, "desc": "可指定曼哈顿距离两格内的单位造成 10 点基础伤害，也可选择水域沿连通水域传导；附近存在水域不限制旱地目标。"},
+	"electric_arc": {"name": "放电", "element": "electric", "kind": "cell", "range": 2, "damage": 10, "ranged": true, "desc": "可指定两格内的单位造成10点基础伤害，也可沿连通水域传导；从选定水格起每传播两格减2点基础伤害，最低4点。"},
 	"volt_replace": {"name": "伏特替换", "element": "electric", "kind": "unit", "range": 3, "damage": 0, "ranged": false, "desc": "与曼哈顿 1～3 格内的单位交换位置，或移动到范围内可站立空格；无视途中障碍。"},
 	"wild_vines": {"name": "疯狂藤蔓", "element": "grass", "kind": "direction", "damage": 0, "ranged": false, "desc": "在前方两格生成藤蔓；障碍阻挡生成。生成时或后来停在藤蔓上的地面单位，下一次移动机会受阻。"},
 	"herbal_heal": {"name": "药草治疗", "element": "grass", "kind": "self", "damage": 0, "ranged": false, "channel": true, "desc": "锁定宣告时自身所在格；下次本方阶段开始，为该格曼哈顿 2 格内友军回复 8 HP；可被打断，结算阶段不能行动。"},
@@ -60,9 +60,9 @@ const DEFS := {
 		"kind": "ray",
 		"min_range": 1,
 		"max_range": 3,
-		"damage": 11,
+		"damage": 8,
 		"ranged": true,
-		"desc": "沿行列射程 3，树木与岩障截断；命中单位造成 11 点基础伤害、击退 1 格并减速；命中障碍时在其前一格生成水面。",
+		"desc": "沿行列射程 3，树木与岩障截断；命中单位造成8点基础伤害并击退1格；命中障碍时在其前一格生成水面。",
 	},
 	"rain_dance": {
 		"name": "造雨术",

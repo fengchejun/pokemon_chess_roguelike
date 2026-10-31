@@ -31,7 +31,7 @@ func _prep_actions(t: TestContext) -> void:
 	t.check(not bool(DebugActions.add_skill(run, uid, "ice_shard").get("ok", false)), "重复学习被拒绝")
 	var growth := DebugActions.add_xp(run, uid, 10)
 	t.check(bool(growth.get("ok", false)), "可增加本局经验")
-	t.eq(int(run.record_by_uid(uid)["level"]), 3, "经验使用真实升级阈值")
+	t.eq(int(run.record_by_uid(uid)["level"]), 2, "经验使用真实升级阈值")
 	t.eq(int(run.record_by_uid(uid)["xp"]), 10, "经验准确记入目标怪物")
 	t.check(not run.pending_monster_levels().is_empty(), "偶数级强化仍可在正常结算流程领取")
 

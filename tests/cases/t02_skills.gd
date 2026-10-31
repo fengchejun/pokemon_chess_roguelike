@@ -127,7 +127,7 @@ func _t_water_flow(t: TestContext) -> void:
 	var wild := state.unit_by_uid(100)
 	t.eq(wild.hp, SpeciesDB.hp_of("rock_wild1") - SkillDB.damage_of("water_flow"), "水炮不受克制影响")
 	t.eq(wild.cell, Vector2i(3, 3), "命中后击退 1 格")
-	t.eq(wild.slow_ticks, 2, "命中后减速")
+	t.eq(wild.slow_ticks, 0, "水炮命中不自动浸湿")
 	# 命中障碍在前方造水
 	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[Vector2i(2, 3), TerrainDB.OBSTACLE],

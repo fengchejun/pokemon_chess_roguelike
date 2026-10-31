@@ -56,6 +56,12 @@ static func skill_damage_for_side(base: int, side: String) -> int:
 const EXP_PER_KILL := 2
 const EXP_PER_CAPTURE := 2
 
+static func xp_for_enemy_level(level: int) -> int:
+	return maxi(1, level) + 1
+
+static func xp_for_event(entry: Dictionary) -> int:
+	return maxi(0, int(entry.get("xp_reward", EXP_PER_KILL)))
+
 const CARRIED_LIMIT := 6
 const DEPLOY_LIMIT := 3
 const SKILL_SLOTS := 3

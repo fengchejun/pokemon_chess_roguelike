@@ -53,7 +53,7 @@ func _test_all_species_choice_depth(t: TestContext) -> void:
 		index += 1
 		var run_state := RunState.new_run(2200 + index, [{"id": index, "species_id": species_id, "affinity": 0}])
 		var record := run_state.record_by_uid(1)
-		MonsterProgression.award_xp(record, 108)
+		MonsterProgression.award_xp(record, MonsterProgression.threshold_for_level(10))
 		for level in [2, 4, 6, 8, 10]:
 			var enhancements := run_state.available_monster_upgrades(1)
 			var learnable := run_state.available_new_skills(1)
@@ -123,7 +123,7 @@ func _test_old_run_migration(t: TestContext) -> void:
 
 func _test_choice_save_roundtrip(t: TestContext) -> void:
 	var run_state := RunState.new_run(2287)
-	MonsterProgression.award_xp(run_state.record_by_uid(1), 4)
+	MonsterProgression.award_xp(run_state.record_by_uid(1), MonsterProgression.threshold_for_level(2))
 	var before := run_state.monster_level_choices(1, 2)
 	var path := "res://.test_growth_v2_save.json"
 	t.check(SaveSystem.save_run(run_state, path), "本局待选强化可以写入存档")

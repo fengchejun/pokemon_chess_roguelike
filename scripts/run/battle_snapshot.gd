@@ -56,7 +56,7 @@ static func save_state(state: BattleState) -> Dictionary:
 	var members: Array = []
 	for unit in state.units:
 		members.append(_fields(unit))
-	return {"version": 2, "fields": _fields(state), "units": members, "rng": {
+	return {"version": 3, "fields": _fields(state), "units": members, "rng": {
 		"spawn_seed": str(state.spawn_rng.seed), "spawn_state": str(state.spawn_rng.state),
 		"capture_seed": str(state.capture_rng.seed), "capture_state": str(state.capture_rng.state),
 		"terrain_seed": str(state.terrain_rng.seed), "terrain_state": str(state.terrain_rng.state),
@@ -79,7 +79,15 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 			unit.skills = SpeciesDB.skills_of(unit.species_id).slice(0, 1)
 		unit.upgrades.erase("wind_gust_distance")
 		unit.upgrades.erase("volt_replace_flex")
+		if int(snapshot.get("version", 1)) < 3:
+			RunState.rebase_upgrade_values(unit.upgrades)
 		state.units.append(unit)
+	for entry in state.enemy_kills:
+		if entry.has("uid"):
+			state.enemy_outcomes[int(entry["uid"])] = "defeated"
+	for entry in state.captured:
+		if entry.has("uid"):
+			state.enemy_outcomes[int(entry["uid"])] = "captured"
 	state.nest["exits"] = [] # Old exits no longer affect movement, targeting or spawning.
 	var rng: Dictionary = snapshot["rng"]
 	state.spawn_rng.seed = int(rng["spawn_seed"])

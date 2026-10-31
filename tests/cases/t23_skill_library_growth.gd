@@ -39,10 +39,10 @@ func _test_placeholder_effect(t: TestContext) -> void:
 	ranged_caster.upgrades["trial_fire_1_range"] = 1
 	t.check(not ranged.skill_targets(ranged_caster, "trial_fire_1").is_empty(), "强化后试招射程增加至三格")
 	var upgraded_preview := ranged.preview_skill(ranged_caster, "trial_fire_1", {"type": "unit", "unit": 100, "cell": Vector2i(4, 3)})
-	t.eq(int(upgraded_preview["hits"][0]["damage"]), 20, "强化后试招预览直伤为 20")
+	t.eq(int(upgraded_preview["hits"][0]["damage"]), 13, "强化后试招预览直伤为13")
 	var upgraded_hp := ranged.unit_by_uid(100).hp
 	t.check(bool(ranged.cast_skill(ranged_caster, "trial_fire_1", {"type": "unit", "unit": 100, "cell": Vector2i(4, 3)}).get("ok", false)), "强化试招实战可施放")
-	t.eq(upgraded_hp - ranged.unit_by_uid(100).hp, 20, "强化后试招实战直伤与预览一致")
+	t.eq(upgraded_hp - ranged.unit_by_uid(100).hp, 13, "强化后试招实战直伤与预览一致")
 
 
 func _test_missing_skill_upgrades(t: TestContext) -> void:
@@ -53,7 +53,7 @@ func _test_missing_skill_upgrades(t: TestContext) -> void:
 	var crossed := charge.unit_by_uid(100)
 	var charge_hp := crossed.hp
 	SkillResolver.apply(charge, fire, "flame_charge", {"type": "cell", "cell": Vector2i(3, 3)}, false)
-	t.eq(crossed.hp, charge_hp - SkillDB.damage_of("flame_charge") - 10, "冲锋强化累计增加十点直伤")
+	t.eq(crossed.hp, charge_hp - SkillDB.damage_of("flame_charge") - 3, "冲锋强化仅增加三点直伤")
 	var vines := TestScenario.make_state(["grass_starter"], [["rock_wild1", Vector2i(7, 7)]])
 	var grass := vines.unit_by_uid(1)
 	grass.cell = Vector2i(1, 3)
@@ -101,7 +101,7 @@ func _test_missing_skill_upgrades(t: TestContext) -> void:
 func _test_save_and_equipment(t: TestContext) -> void:
 	var run_state := RunState.new_run(2301)
 	var fire := run_state.record_by_uid(1)
-	MonsterProgression.award_xp(fire, 18)
+	MonsterProgression.award_xp(fire, MonsterProgression.threshold_for_level(4))
 	t.check(run_state.learn_monster_skill(1, 2, "trial_fire_1"), "先学招领取 Lv2")
 	t.check(run_state.enhance_monster_skill(1, 4, "trial_fire_1"), "再强化领取 Lv4")
 	t.eq((fire.get("claimed_even_levels", []) as Array), [2, 4], "学习与强化都记录各自的等级")
@@ -131,7 +131,8 @@ func _test_save_and_equipment(t: TestContext) -> void:
 func _test_v2_migration(t: TestContext) -> void:
 	var old := RunState.new_run(2302)
 	var fire := old.record_by_uid(1)
-	MonsterProgression.award_xp(fire, 40)
+	fire["level"] = 6
+	fire["xp"] = 40
 	fire["upgrades_taken"] = ["fireball_damage", "direct_guard", "max_hp_plus"]
 	fire["claimed_even_levels"] = [2, 4, 6]
 	fire["upgrades"] = {"fireball_damage": 1, "direct_guard": 1, "max_hp_plus": 2}
@@ -142,7 +143,7 @@ func _test_v2_migration(t: TestContext) -> void:
 	var migrated := RunState.from_dict(data)
 	var record := migrated.record_by_uid(1)
 	t.eq(int(record["level"]), 6, "v2 迁移保留局内等级")
-	t.eq(int(record["xp"]), 40, "v2 迁移保留经验")
+	t.eq(int(record["xp"]), 110, "v2 迁移换算到新曲线同等级")
 	t.eq(record["upgrades_taken"], ["fireball_damage"], "v2 仅保留技能专属强化")
 	t.eq(record["claimed_even_levels"], [2], "v2 通用强化占用的 Lv4 与 Lv6 已退还")
 	t.eq(migrated.pending_monster_levels().size(), 2, "v2 退还等级成为两次待选")
@@ -158,7 +159,7 @@ func _test_growth_and_prep_ui(t: TestContext) -> void:
 	t.tree.root.add_child(app)
 	app.run = RunState.new_run(2303)
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
-	MonsterProgression.award_xp(app.run.record_by_uid(1), 40)
+	MonsterProgression.award_xp(app.run.record_by_uid(1), MonsterProgression.threshold_for_level(6))
 	app.run.settlement_pending = true
 	app.pending_settlement = {"battle": null, "outcome": {"reason": "victory", "exp": 0, "monster_exp": []}}
 	app._switch(load("res://scripts/ui/settlement_screen.gd").new())

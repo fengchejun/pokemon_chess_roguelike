@@ -92,6 +92,7 @@ func _ready() -> void:
 	state.feedback.connect(_on_feedback)
 	state.enable_feedback()
 	state.enemy_defeated.connect(_on_enemy_defeated)
+	state.enemy_captured.connect(_on_enemy_captured)
 	hint_label = UIKit.label("点击己方单位开始行动；右键/Esc 取消瞄准。", 13, UIKit.TEXT_DIM)
 	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(hint_label)
@@ -236,12 +237,21 @@ func _on_enemy_defeated(entry: Dictionary) -> void:
 		var unit := state.unit_by_uid(int(uid))
 		if unit == null or not unit.is_alive() or unit.is_trainer or app.run.record_by_uid(int(uid)).is_empty():
 			continue
-		var amount := Balance.EXP_PER_KILL
+		var amount := Balance.xp_for_event(entry)
 		if not app.run.region_mode:
-			amount = (Balance.EXP_PER_KILL if int(uid) == killer_uid else 0) if original_killer else 1
+			amount = (Balance.xp_for_event(entry) if int(uid) == killer_uid else 0) if original_killer else 1
 		if amount > 0:
 			state.emit_feedback(unit, "experience", "经验 +%d" % amount, amount)
 
+
+func _on_enemy_captured(entry: Dictionary) -> void:
+	if app == null or app.run == null:
+		return
+	for uid in app.run.deployed_uids:
+		var unit := state.unit_by_uid(int(uid))
+		if unit != null and unit.is_alive() and not unit.is_trainer and not app.run.record_by_uid(int(uid)).is_empty():
+			var amount := Balance.xp_for_event(entry)
+			state.emit_feedback(unit, "experience", "经验 +%d" % amount, amount)
 
 func _process(_delta: float) -> void:
 	if battle_notice != null:
@@ -449,7 +459,7 @@ func _add_battle_xp_bar(unit: CombatUnit) -> void:
 	if record.is_empty() or not app.run.deployed_uids.has(unit.uid):
 		return
 	var level := int(record.get("level", 1))
-	var gained: int = app.run.battle_kill_xp_for(state, unit.uid)
+	var gained: int = app.run.battle_kill_xp_for(state, unit.uid) + app.run.battle_capture_xp_for(state, unit.uid)
 	var total := mini(MonsterProgression.threshold_for_level(MonsterProgression.MAX_LEVEL), int(record.get("xp", 0)) + gained)
 	var target_level := MonsterProgression.level_for_xp(total)
 	var floor_xp := MonsterProgression.threshold_for_level(level)
@@ -470,7 +480,7 @@ func _add_battle_xp_bar(unit: CombatUnit) -> void:
 	bar.show_percentage = false
 	bar.max_value = maxi(1, next_xp - floor_xp)
 	bar.value = bar.max_value if level >= MonsterProgression.MAX_LEVEL else maxi(0, total - floor_xp)
-	bar.tooltip_text = "击杀经验立即记录；等级、属性和升级选择在战后生效。仅存活出战成员结算。"
+	bar.tooltip_text = "击败与捕获经验立即记录；等级、属性和升级选择在战后生效。仅存活出战成员结算，巢穴与奖励点经验另在战后追加。"
 	var fill := StyleBoxFlat.new()
 	fill.bg_color = Color("59b8e8")
 	bar.add_theme_stylebox_override("fill", fill)
@@ -877,14 +887,12 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	var def := SkillDB.get_def(skill_id)
 	var parts: Array = []
 	var base_damage := int(def.get("damage", 0))
-	if skill_id == "ice_shard" or skill_id == "electric_arc":
-		base_damage += int(unit.upgrades.get(skill_id + "_damage", 0))
 	base_damage = SkillResolver.upgraded_base_damage(unit, skill_id, base_damage)
 	var damage := Balance.skill_damage_for_side(base_damage, unit.side)
 	if skill_id == "flame_jet":
 		parts.append("伤害 %d · 邻格 %d" % [damage, Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, int(def.get("damage", 0)) + int(def.get("adjacent_bonus", 0))), unit.side)])
 	elif skill_id == "flame_charge":
-		parts.append("撞击 %d" % Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, int(def.get("damage", 0)) + (Balance.SKILL_DAMAGE_UPGRADE if unit.has_buff("flame_charge") or int(unit.upgrades.get("flame_charge_damage", 0)) > 0 else 0)), unit.side))
+		parts.append("撞击 %d" % Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, int(def.get("damage", 0)) + (Balance.SKILL_DAMAGE_UPGRADE if unit.has_buff("flame_charge") else 0)), unit.side))
 	elif skill_id == "leech_seed":
 		parts.append("寄生 %d/轮" % (Balance.PARASITE_DAMAGE + int(unit.upgrades.get("leech_seed_tick_bonus", 0))))
 	elif skill_id == "fire_amplify":
@@ -898,8 +906,12 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	elif skill_id == "tailwind":
 		var width := 5 + 2 * int(unit.upgrades.get("tailwind_reach", 0))
 		parts.append("自身周围 %d×%d · 移动力 +2" % [width, width])
-	elif skill_id == "fire_burst" and int(unit.upgrades.get("fireball_damage", 0)) > 0:
-		parts.append("伤害 %d · 中心 %d" % [damage, Balance.skill_damage_for_side(base_damage + int(unit.upgrades["fireball_damage"]), unit.side)])
+	elif skill_id == "fire_burst":
+		parts.append("中心 %d · 外围 %d" % [Balance.skill_damage_for_side(SkillResolver.fireball_base_damage(unit, true), unit.side), Balance.skill_damage_for_side(SkillResolver.fireball_base_damage(unit, false), unit.side)])
+	elif skill_id == "electric_arc":
+		parts.append("伤害 %d · 传导每两格−2，最低4" % damage)
+	elif skill_id in ["rain_call", "rain_dance"]:
+		parts.append("13格菱形" if int(unit.upgrades.get("rain_radius_bonus", 0)) > 0 else "3×3九格")
 	elif skill_id == "double_cast" and int(unit.upgrades.get("double_cast_range", 0)) > 0:
 		parts.append("相邻双目标")
 	elif damage > 0:

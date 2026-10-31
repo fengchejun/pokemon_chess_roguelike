@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 11
+const SAVE_VERSION := 12
 var essence: int = 0
 var trainer_items: Dictionary = {}
 var sold_monster_uids: Array = []
@@ -13,46 +13,46 @@ const RETIRED_GENERIC_UPGRADES := ["move_plus", "max_hp_plus", "direct_guard", "
 const MONSTER_UPGRADES := {
 	"push_distance": {
 		"name": "推击距离 +1",
-		"desc": "推击基础直伤 +7，并额外推开 1 格；中途碰撞照常结算。",
+		"desc": "推击基础直伤 +3，并额外推开 1 格；中途碰撞照常结算。",
 		"key": "push_distance",
 		"value": 2,
-		"damage_bonus": 7,
+		"damage_bonus": 3,
 		"requires_skill": "rock_push",
 	},
 	"rock_create_width": {
 		"name": "造岩扩建",
-		"desc": "造岩横排由 3 格扩为 4 格；命中单位时基础直伤 +5。",
+		"desc": "造岩横排由 3 格扩为 4 格；命中单位时基础直伤 +3。",
 		"key": "rock_create_width",
 		"value": 4,
-		"damage_bonus": 5,
+		"damage_bonus": 3,
 		"requires_skill": "rock_create",
 	},
 	"rain_radius": {
 		"name": "造雨扩张",
-		"desc": "造雨术范围由 3×3 扩为 5×5。",
+		"desc": "造雨术保留原九格，四个方向各扩一格，形成13格菱形。",
 		"key": "rain_radius_bonus",
 		"value": 1,
 		"requires_skill": "rain_call",
 	},
-	"fireball_damage": {"name": "炽烈火球", "desc": "火球术九宫格基础直伤 +5，中心再 +5。", "key": "fireball_damage", "value": 5, "damage_bonus": 5, "requires_skill": "fire_burst"},
-	"flame_jet_length": {"name": "长焰", "desc": "喷射火焰基础直伤 +8，直线长度由 3 格增至 4 格。", "key": "flame_jet_length", "value": 1, "damage_bonus": 8, "requires_skill": "flame_jet"},
-	"water_flow_push": {"name": "急流", "desc": "水炮基础直伤 +9，击退距离由 1 格增至 2 格。", "key": "water_flow_push", "value": 1, "damage_bonus": 9, "requires_skill": "water_flow"},
-	"drain_range": {"name": "蔓延吸取", "desc": "吸取基础直伤 +10，射程由 2 格增至 3 格。", "key": "drain_range", "value": 1, "damage_bonus": 10, "requires_skill": "drain"},
+	"fireball_damage": {"name": "炽烈火球", "desc": "火球术中心基础直伤 +5，外围伤害不变。", "key": "fireball_damage", "value": 5, "damage_bonus": 0, "requires_skill": "fire_burst"},
+	"flame_jet_length": {"name": "长焰", "desc": "喷射火焰基础直伤 +3，直线长度由 3 格增至 4 格。", "key": "flame_jet_length", "value": 1, "damage_bonus": 3, "requires_skill": "flame_jet"},
+	"water_flow_push": {"name": "急流", "desc": "水炮基础直伤 +4，击退距离仍为 1 格。", "key": "water_flow_push", "value": 0, "damage_bonus": 4, "requires_skill": "water_flow"},
+	"drain_range": {"name": "蔓延吸取", "desc": "吸取基础直伤 +3，射程由 2 格增至 3 格。", "key": "drain_range", "value": 1, "damage_bonus": 3, "requires_skill": "drain"},
 	"herbal_heal_amount": {"name": "丰茂药草", "desc": "我方药草治疗每个目标回复 13 点生命。", "key": "herbal_heal_amount", "value": 5, "requires_skill": "herbal_heal"},
-	"ice_shard_damage": {"name": "尖锐冰锥", "desc": "冰锥基础直伤共 +10。", "key": "ice_shard_damage", "value": 5, "damage_bonus": 5, "requires_skill": "ice_shard"},
+	"ice_shard_damage": {"name": "尖锐冰锥", "desc": "冰锥基础直伤 +5。", "key": "ice_shard_damage", "value": 5, "damage_bonus": 5, "requires_skill": "ice_shard"},
 	"ice_ground_reach": {"name": "冰面延展", "desc": "我方冰封大地向前延展至第 4 排。", "key": "ice_ground_reach", "value": 1, "requires_skill": "frozen_ground"},
-	"electric_arc_damage": {"name": "高压传导", "desc": "放电传导基础直伤共 +10。", "key": "electric_arc_damage", "value": 5, "damage_bonus": 5, "requires_skill": "electric_arc"},
+	"electric_arc_damage": {"name": "高压传导", "desc": "放电基础直伤 +3；水域传导每两格减2，最低4。", "key": "electric_arc_damage", "value": 3, "damage_bonus": 3, "requires_skill": "electric_arc"},
 	"tailwind_reach": {"name": "扩域磁场", "desc": "磁场加速半径从 2 格扩大至 3 格，覆盖自身周围 7×7 区域。", "key": "tailwind_reach", "value": 1, "requires_skill": "tailwind"},
-	"flame_charge_damage": {"name": "冲锋余焰", "desc": "闪焰冲锋撞击基础直伤共 +10，破障能力 +1。", "key": "flame_charge_damage", "value": 1, "damage_bonus": 5, "requires_skill": "flame_charge"},
+	"flame_charge_damage": {"name": "冲锋余焰", "desc": "闪焰冲锋撞击基础直伤 +3，破障能力 +1。", "key": "flame_charge_damage", "value": 1, "damage_bonus": 3, "requires_skill": "flame_charge"},
 	"wild_vines_reach": {"name": "藤蔓延展", "desc": "疯狂藤蔓向前延长至第 3 格。", "key": "wild_vines_reach", "value": 1, "requires_skill": "wild_vines"},
 	"lightning_first_shock": {"name": "首击蓄电", "desc": "打雷基础直伤 +5，第一个落点额外施加一层感电。", "key": "lightning_first_shock", "value": 1, "damage_bonus": 5, "requires_skill": "lightning"},
-	"rock_break_range": {"name": "长距碎岩", "desc": "碎岩基础直伤 +10，射程由 2 格增至 3 格。", "key": "rock_break_range", "value": 1, "damage_bonus": 10, "requires_skill": "rock_break"},
+	"rock_break_range": {"name": "长距碎岩", "desc": "碎岩基础直伤 +3，射程由 2 格增至 3 格。", "key": "rock_break_range", "value": 1, "damage_bonus": 3, "requires_skill": "rock_break"},
 	"freeze_ray_range": {"name": "远距急冻", "desc": "急冻光线射程由 6 格增至 7 格。", "key": "freeze_ray_range", "value": 1, "requires_skill": "freeze_ray"},
 	"double_cast_range": {"name": "双重电力引擎", "desc": "电力引擎可同时选择两名相邻友军，各获得一次额外施法机会；施法距离仍为 1 格。", "key": "double_cast_range", "value": 1, "requires_skill": "double_cast"},
 	"fire_amplify_power": {"name": "炽焰积蓄", "desc": "火焰增幅每熄灭一格火焰改为积累 8 点直伤。", "key": "fire_amplify_power", "value": 8, "requires_skill": "fire_amplify"},
 	"surf_duration": {"name": "长浪", "desc": "冲浪的地形移动效果延长 1 回合。", "key": "surf_duration", "value": 1, "requires_skill": "surf"},
-	"tsunami_damage": {"name": "巨浪", "desc": "海啸基础直伤 +8。", "key": "tsunami_damage", "value": 1, "damage_bonus": 8, "requires_skill": "tsunami"},
-	"rock_slide_damage": {"name": "重岩", "desc": "岩崩基础直伤 +10。", "key": "rock_slide_damage", "value": 1, "damage_bonus": 10, "requires_skill": "rock_slide"},
+	"tsunami_damage": {"name": "巨浪", "desc": "海啸基础直伤 +5。", "key": "tsunami_damage", "value": 1, "damage_bonus": 5, "requires_skill": "tsunami"},
+	"rock_slide_damage": {"name": "重岩", "desc": "岩崩基础直伤 +5。", "key": "rock_slide_damage", "value": 1, "damage_bonus": 5, "requires_skill": "rock_slide"},
 	"earth_shake_damage": {"name": "震源", "desc": "撼地基础直伤 +5，地形塌陷规则不变。", "key": "earth_shake_damage", "value": 1, "damage_bonus": 5, "requires_skill": "earth_shake"},
 	"leech_seed_tick_bonus": {"name": "深根", "desc": "寄生每轮伤害与施法者回复上限各 +2。", "key": "leech_seed_tick_bonus", "value": 2, "requires_skill": "leech_seed"},
 	"tree_man_hp_bonus": {"name": "坚根守卫", "desc": "大树守卫召唤树人最大生命 +10。", "key": "tree_man_hp_bonus", "value": 10, "requires_skill": "tree_man"},
@@ -64,7 +64,7 @@ static func upgrade_info(upgrade_id: String) -> Dictionary:
 	if upgrade_id.ends_with("_range"):
 		var skill_id := upgrade_id.trim_suffix("_range")
 		if SkillDB.is_placeholder(skill_id):
-			return {"name": "%s强化" % SkillDB.name_of(skill_id), "desc": "此试招基础直伤 +10，射程由 2 格增至 3 格。", "key": upgrade_id, "value": 1, "damage_bonus": 10, "requires_skill": skill_id}
+			return {"name": "%s强化" % SkillDB.name_of(skill_id), "desc": "此试招基础直伤 +3，射程由 2 格增至 3 格。", "key": upgrade_id, "value": 1, "damage_bonus": 3, "requires_skill": skill_id}
 	return MONSTER_UPGRADES.get(upgrade_id, {})
 
 
@@ -75,6 +75,27 @@ static func upgrade_id_for_skill(skill_id: String) -> String:
 		if String(MONSTER_UPGRADES[upgrade_id].get("requires_skill", "")) == skill_id:
 			return String(upgrade_id)
 	return ""
+
+static func rebase_upgrade_values(values: Dictionary) -> void:
+	for info in MONSTER_UPGRADES.values():
+		var key := String(info["key"])
+		if values.has(key):
+			values[key] = int(info["value"])
+	for key in values.keys():
+		var info := upgrade_info(String(key))
+		if not info.is_empty() and SkillDB.is_placeholder(String(info.get("requires_skill", ""))):
+			values[key] = int(info["value"])
+
+static func migrate_snapshot(snapshot: Dictionary) -> Dictionary:
+	if snapshot.is_empty():
+		return {}
+	var state := BattleSnapshot.load_state(snapshot)
+	return BattleSnapshot.save_state(state) if state != null else snapshot.duplicate(true)
+
+static func migrate_region_snapshots(region: Dictionary) -> void:
+	for node in (region.get("nodes", {}) as Dictionary).values():
+		if not (node.get("snapshot", {}) as Dictionary).is_empty():
+			node["snapshot"] = migrate_snapshot(node["snapshot"])
 
 var seed: int = 0
 const Region = preload("res://scripts/run/region_state.gd")
@@ -654,7 +675,16 @@ func battle_kill_xp_for(battle: BattleState, uid: int) -> int:
 	var gained := 0
 	for entry in battle.enemy_kills:
 		if String(entry.get("killer_side", "player" if bool(entry.get("by_player", false)) else "")) == "player":
-			gained += Balance.EXP_PER_KILL
+			gained += Balance.xp_for_event(entry)
+	return gained
+
+func battle_capture_xp_for(battle: BattleState, uid: int) -> int:
+	var unit := battle.unit_by_uid(uid)
+	if not deployed_uids.has(uid) or unit == null or not unit.is_alive() or record_by_uid(uid).is_empty():
+		return 0
+	var gained := 0
+	for entry in battle.captured:
+		gained += Balance.xp_for_event(entry)
 	return gained
 
 
@@ -713,14 +743,16 @@ func settle_battle(battle: BattleState) -> Dictionary:
 				continue
 			var killer_uid := int(entry.get("killer_uid", -1))
 			if original.has(killer_uid):
-				gains[killer_uid] = int(gains[killer_uid]) + Balance.EXP_PER_KILL
+				gains[killer_uid] = int(gains[killer_uid]) + Balance.xp_for_event(entry)
 			else:
 				for id in original:
 					gains[id] = int(gains[id]) + 1
 		if region_mode:
 			for id in original:
 				gains[id] = battle_kill_xp_for(battle, int(id))
-		var shared_bonus := battle.captured.size() * Balance.EXP_PER_CAPTURE
+		var shared_bonus := 0
+		for capture in battle.captured:
+			shared_bonus += Balance.xp_for_event(capture)
 		if bonus_earned:
 			shared_bonus += 1
 		for current in battle.all_nests():
@@ -1117,6 +1149,8 @@ static func from_dict(data: Dictionary) -> RunState:
 				record["level"] = 1
 				record["xp"] = 0
 				record["affinity"] = 0
+			if version < 12 and not legacy_growth:
+				MonsterProgression.migrate_legacy_xp(record)
 			MonsterProgression.normalize_record(record)
 			run._normalize_record_growth(record, legacy_upgrade_style)
 			var new_max_hp := run.monster_max_hp(record)
@@ -1128,6 +1162,10 @@ static func from_dict(data: Dictionary) -> RunState:
 		run.last_settlement["growth_migrated"] = true
 	elif legacy_upgrade_style and run.settlement_pending:
 		run.last_settlement["upgrade_migrated"] = true
+	if version < 12:
+		run.battle_snapshot = migrate_snapshot(run.battle_snapshot)
+		migrate_region_snapshots(run.region_data)
+		migrate_region_snapshots(run.pending_region_entry_backup)
 	return run
 
 

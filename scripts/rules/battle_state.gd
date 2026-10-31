@@ -5,6 +5,7 @@ signal presentation_started(info: Dictionary)
 signal presentation_finished(meta: Dictionary)
 signal feedback(event: Dictionary)
 signal enemy_defeated(entry: Dictionary)
+signal enemy_captured(entry: Dictionary)
 var feedback_enabled := false
 
 func enable_feedback() -> void:
@@ -68,6 +69,7 @@ var extra_nests: Array = []
 var deploy_area: Array = []
 var speech_seen: Dictionary = {}
 var enemy_origins: Dictionary = {} # uid -> original node entry cell; persisted for revisits.
+var enemy_outcomes: Dictionary = {} # Defeat/capture is recorded once per enemy identity.
 var boss_uid: int = -1
 var boss_portal_cell: Vector2i = Vector2i(-1, -1)
 var merchant: Dictionary = {}
@@ -535,6 +537,8 @@ func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "", killer
 
 
 func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "", killer_uid: int = -1) -> void:
+	if unit.side == "enemy" and enemy_outcomes.has(unit.uid):
+		return
 	var terrain_kind := terrain_at(unit.cell)
 	var text := "消散" if unit.summon_owner_uid >= 0 else "倒下"
 	if unit.hp > 0 and terrain_kind == TerrainDB.PIT:
@@ -571,12 +575,16 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 		})
 		log_event("%s 倒下（濒死）（%s），可在基地休养恢复。" % [unit.display_name, cause])
 	else:
+		enemy_outcomes[unit.uid] = "defeated"
 		var killer := unit_by_uid(killer_uid)
 		if killer_side == "player":
 			earn_essence("enemy:%d" % unit.uid, 10 if unit.is_boss else 3, unit.cell)
 		if killer != null and killer.summon_owner_uid >= 0:
 			killer_uid = killer.summon_owner_uid
 		enemy_kills.append({
+			"uid": unit.uid,
+			"enemy_level": unit.enemy_level,
+			"xp_reward": Balance.xp_for_enemy_level(unit.enemy_level),
 			"species_id": unit.species_id,
 			"by_player": killer_side == "player",
 			"killer_side": killer_side,
@@ -589,11 +597,16 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 
 
 func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
+	if unit.side != "enemy" or not unit.is_alive() or enemy_outcomes.has(unit.uid):
+		return
+	enemy_outcomes[unit.uid] = "captured"
 	cancel_channel(unit, "阵营改变")
 	emit_feedback(unit, "action", "捕获成功")
 	var field_join := bool(capture_options.get("capture_field_join", false))
 	var was_boss := unit.is_boss
-	captured.append({"species_id": species_id, "hp": keep_hp, "uid": unit.uid, "on_field": field_join, "was_boss": was_boss})
+	captured.append({"species_id": species_id, "hp": keep_hp, "uid": unit.uid, "on_field": field_join, "was_boss": was_boss, "enemy_level": unit.enemy_level, "xp_reward": Balance.xp_for_enemy_level(unit.enemy_level)})
+	if feedback_enabled:
+		enemy_captured.emit(captured.back().duplicate())
 	if unit.inspired:
 		unit.inspired = false
 		unit.max_hp = maxi(1, unit.max_hp - Balance.INSPIRATION_HP_BONUS)
@@ -1650,11 +1663,13 @@ func end_battle(reason: String) -> void:
 func battle_exp() -> int:
 	if end_reason in ["forced_retreat", "boss_timeout"]:
 		return 0
-	var kills := 0
+	var xp := 0
 	for entry in enemy_kills:
 		if bool(entry.get("by_player", false)):
-			kills += 1
-	return (kills + captured.size()) * Balance.EXP_PER_KILL
+			xp += Balance.xp_for_event(entry)
+	for entry in captured:
+		xp += Balance.xp_for_event(entry)
+	return xp
 
 
 func forecast() -> Array:
@@ -1746,6 +1761,7 @@ func clone() -> BattleState:
 	copy.deploy_area = deploy_area.duplicate()
 	copy.speech_seen = speech_seen.duplicate(true)
 	copy.enemy_origins = enemy_origins.duplicate(true)
+	copy.enemy_outcomes = enemy_outcomes.duplicate()
 	copy.boss_uid = boss_uid
 	copy.boss_portal_cell = boss_portal_cell
 	copy.inspiration_triggered = inspiration_triggered

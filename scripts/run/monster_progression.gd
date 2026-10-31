@@ -1,10 +1,9 @@
 class_name MonsterProgression
 extends RefCounted
 
-## 怪物局内等级与跨局亲密度。经验阈值依次为 4、10、18……。
+## 怪物局内等级与跨局亲密度。
 ## 我方实例按本局等级成长；敌方配置也使用同一生命曲线。
-const FIRST_LEVEL_XP := 4
-const XP_STEP_GROWTH := 2
+const XP_THRESHOLDS := [0, 6, 18, 38, 68, 110, 166, 238, 328, 400]
 const MAX_LEVEL := 10
 const HP_PER_ODD_LEVEL := 10
 
@@ -12,8 +11,25 @@ const HP_PER_ODD_LEVEL := 10
 static func threshold_for_level(level: int) -> int:
 	if level <= 1:
 		return 0
-	var steps := mini(level, MAX_LEVEL) - 1
-	return steps * FIRST_LEVEL_XP + (steps * (steps - 1) / 2) * XP_STEP_GROWTH
+	return XP_THRESHOLDS[mini(level, MAX_LEVEL) - 1]
+
+static func migrate_legacy_xp(record: Dictionary) -> void:
+	var level := clampi(int(record.get("level", 1)), 1, MAX_LEVEL)
+	var xp := clampi(int(record.get("xp", 0)), 0, 108)
+	while level < MAX_LEVEL and xp >= legacy_threshold(level + 1):
+		level += 1
+	if level == MAX_LEVEL:
+		record["xp"] = threshold_for_level(MAX_LEVEL)
+	else:
+		var old_start := legacy_threshold(level)
+		var fraction := clampf(float(xp - old_start) / float(legacy_threshold(level + 1) - old_start), 0.0, 1.0)
+		var start := threshold_for_level(level)
+		record["xp"] = start + floori(fraction * (threshold_for_level(level + 1) - start))
+	record["level"] = level
+
+static func legacy_threshold(level: int) -> int:
+	var steps := clampi(level, 1, MAX_LEVEL) - 1
+	return steps * 4 + steps * (steps - 1)
 
 
 static func level_for_xp(xp: int) -> int:

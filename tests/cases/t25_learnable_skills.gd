@@ -33,7 +33,7 @@ func _learning(t: TestContext) -> void:
 	t.check(not starter.unit_by_uid(3).skills.has("leech_seed"), "新技能不会默认加入草系初始技能栏")
 	var run_state := RunState.new_run(2501, [{"id": 1, "species_id": "grass_starter", "affinity": 0}])
 	var record := run_state.record_by_uid(1)
-	MonsterProgression.award_xp(record, 4)
+	MonsterProgression.award_xp(record, MonsterProgression.threshold_for_level(2))
 	t.check(run_state.available_new_skills(1).has("leech_seed"), "Lv2 成长列表含寄生种子")
 	t.check(run_state.learn_monster_skill(1, 2, "leech_seed"), "Lv2 可真正学习寄生种子")
 	t.check((run_state.record_by_uid(1).get("known_skills", []) as Array).has("leech_seed"), "已学技能写入本局怪物记录")

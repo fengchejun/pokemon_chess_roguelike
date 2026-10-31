@@ -33,19 +33,19 @@ func _test_collection_prep_and_run_end(t: TestContext) -> void:
 	if starting_skill != null:
 		t.eq(fire.get("equipped_skills", []), [SpeciesDB.skills_of("fire_starter")[1]], "开局只装备所选的一招")
 	t.eq(int(fire.get("affinity", 0)), 7, "开局继承永久亲密度")
-	MonsterProgression.award_xp(fire, 10)
+	MonsterProgression.award_xp(fire, MonsterProgression.threshold_for_level(3))
 	fire["upgrades_taken"] = ["fireball_damage"]
 	fire["upgrades"] = {"fireball_damage": 1}
 	app.show_prep()
 	var prep_text := _all_label_text(app.current_screen)
-	t.check(prep_text.contains("本局 Lv.3") and prep_text.contains("经验 10/18"), "整备页显示怪物本局等级与经验")
+	t.check(prep_text.contains("本局 Lv.3") and prep_text.contains("经验 18/38"), "整备页显示怪物本局等级与经验")
 	t.check(prep_text.contains("亲密度 7（永久"), "整备页区分永久亲密度")
 	t.check(prep_text.contains("本局强化：炽烈火球"), "整备页显示该怪物的已选本局升级")
 	app.show_run_end()
 	var summary: Label = app.current_screen.find_child("RunEndSummary", true, false)
 	t.check(summary != null, "结局页存在成长摘要")
 	if summary != null:
-		t.check(summary.text.contains("小火龙：本局 Lv.3 · 经验 10/18"), "结局页显示怪物本局等级经验")
+		t.check(summary.text.contains("小火龙：本局 Lv.3 · 经验 18/38"), "结局页显示怪物本局等级经验")
 		t.check(summary.text.contains("亲密度 7"), "结局页显示永久亲密度")
 		t.check(summary.text.contains("本局强化：炽烈火球"), "结局页列出怪物已选升级")
 	app.queue_free()
@@ -53,8 +53,8 @@ func _test_collection_prep_and_run_end(t: TestContext) -> void:
 
 func _test_ordered_settlement_choices(t: TestContext) -> void:
 	var run_state := RunState.new_run(20261019)
-	MonsterProgression.award_xp(run_state.record_by_uid(1), 18)
-	MonsterProgression.award_xp(run_state.record_by_uid(2), 4)
+	MonsterProgression.award_xp(run_state.record_by_uid(1), MonsterProgression.threshold_for_level(4))
+	MonsterProgression.award_xp(run_state.record_by_uid(2), MonsterProgression.threshold_for_level(2))
 	run_state.pending_reward_choices = 1
 	run_state.settlement_pending = true
 	var pending: Array = run_state.pending_monster_levels()
@@ -107,7 +107,7 @@ func _test_ordered_settlement_choices(t: TestContext) -> void:
 func _test_stored_monster_upgrade_after_replacement(t: TestContext) -> void:
 	var run_state := RunState.new_run(20261020)
 	var fire := run_state.record_by_uid(1)
-	MonsterProgression.award_xp(fire, 4)
+	MonsterProgression.award_xp(fire, MonsterProgression.threshold_for_level(2))
 	var removed: Dictionary = run_state.carried.pop_front()
 	run_state.storage.append(removed)
 	t.check(run_state.record_by_uid(1).is_empty(), "捕获替换后，原出战怪不再被视为携带成员")

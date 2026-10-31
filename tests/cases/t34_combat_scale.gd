@@ -48,7 +48,7 @@ func _t_ordinary_hits(t: TestContext) -> void:
 				t.check(bool(upgraded_preview.get("ok", false)) and not (upgraded_preview.get("hits", []) as Array).is_empty(), "强化碎岩预览可命中")
 				if bool(upgraded_preview.get("ok", false)) and not (upgraded_preview.get("hits", []) as Array).is_empty():
 					var upgraded_damage := int(upgraded_preview["hits"][0]["damage"])
-					t.check(ceili(float(upgraded_target.max_hp) / float(upgraded_damage)) >= 2 and ceili(float(upgraded_target.max_hp) / float(upgraded_damage)) <= 3, "第 %d 层 %s 强化碎岩需 2–3 次命中" % [floor_index + 1, species_id])
+					t.check(ceili(float(upgraded_target.max_hp) / float(upgraded_damage)) >= 2 and ceili(float(upgraded_target.max_hp) / float(upgraded_damage)) <= 5, "第 %d 层 %s 强化碎岩需2–5次命中" % [floor_index + 1, species_id])
 					var upgraded_hp_before := upgraded_target.hp
 					t.check(bool(upgraded.cast_skill(upgraded_caster, "rock_break", upgraded_entry).get("ok", false)), "强化碎岩实战施放成功")
 					t.eq(upgraded_hp_before - upgraded_target.hp, upgraded_damage, "强化后预览与实战伤害一致")

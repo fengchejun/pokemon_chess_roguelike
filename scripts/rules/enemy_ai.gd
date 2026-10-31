@@ -145,6 +145,10 @@ static func _dedupe_entries(state: BattleState, unit: CombatUnit, skill_id: Stri
 
 
 static func _channel_score(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary) -> int:
+	if skill_id == "fire_burst":
+		var sim := state.clone()
+		SkillResolver.resolve_channel(sim, sim.unit_by_uid(caster.uid), skill_id, [entry["cell"]])
+		return int(_score(state, sim, caster.uid)["total"])
 	if skill_id == "herbal_heal":
 		var healing := 0
 		for ally in state.alive_units(caster.side):
