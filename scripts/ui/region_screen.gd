@@ -3,6 +3,7 @@ extends Control
 var app = null
 var graph: Control
 var region
+var team_overlay: Control = null
 
 
 func _ready() -> void:
@@ -18,9 +19,20 @@ func _ready() -> void:
 	add_child(outer)
 	var column := UIKit.vbox(7)
 	outer.add_child(column)
-	column.add_child(UIKit.title("第 %d 层 · %s · 区域路线" % [region.floor_index + 1, BattleDB.THEMES.get(region.theme, {}).get("name", region.theme)], 25))
+	var header := UIKit.hbox(14)
+	column.add_child(header)
+	var title := UIKit.title("第 %d 层 · %s · 区域路线" % [region.floor_index + 1, BattleDB.THEMES.get(region.theme, {}).get("name", region.theme)], 25)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var resources := UIKit.label("原质 %d  ·  食物 %d" % [app.run.essence, app.run.total_food()], 18, UIKit.ACCENT)
+	resources.name = "RegionResources"
+	header.add_child(resources)
+	var team_button := UIKit.small_button("查看队伍")
+	team_button.name = "ViewTeamButton"
+	team_button.pressed.connect(_show_team)
+	header.add_child(team_button)
 	column.add_child(UIKit.label("移动 %d 次｜%s｜首领驻军 %d 名 · 全体敌人等级 +%d" % [region.visits, region.next_pressure_text(), 5 if region.support_triggered else 3, app.run.invasion_level_bonus], 16, UIKit.ACCENT))
-	column.add_child(UIKit.wrapped("初始已进入营地并解锁邻区。可进入任意已解锁区域；确认进入才计移动，首领除外。正式战斗最多 8 回合；胜利后自由探索。超时撤退不解锁邻区。", 14))
+	column.add_child(UIKit.wrapped("初始营地邻区已解锁。可进入任意已解锁区域；确认进入才计移动，首领除外。正式战斗最多 8 回合；胜利后自由探索。超时撤退不解锁邻区。", 14))
 	graph = Control.new()
 	graph.name = "AreaGraph"
 	graph.custom_minimum_size.y = 350
@@ -110,3 +122,60 @@ func _confirm_entry(id: String) -> void:
 	dialog.confirmed.connect(func() -> void: app.enter_region_node(id))
 	add_child(dialog)
 	dialog.popup_centered()
+
+
+func _show_team() -> void:
+	if team_overlay != null:
+		return
+	team_overlay = ColorRect.new()
+	team_overlay.name = "RegionTeamOverlay"
+	team_overlay.color = Color(0.02, 0.03, 0.06, 0.88)
+	team_overlay.z_index = 40
+	team_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(team_overlay)
+	var panel := UIKit.panel(UIKit.PANEL)
+	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	panel.set_anchor(SIDE_LEFT, 0.08)
+	panel.set_anchor(SIDE_TOP, 0.08)
+	panel.set_anchor(SIDE_RIGHT, 0.92)
+	panel.set_anchor(SIDE_BOTTOM, 0.92)
+	team_overlay.add_child(panel)
+	var column := UIKit.vbox(10)
+	panel.add_child(column)
+	var header := UIKit.hbox(12)
+	column.add_child(header)
+	var title := UIKit.label("队伍信息 · 原质 %d · 食物 %d" % [app.run.essence, app.run.total_food()], 22, UIKit.ACCENT)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close := UIKit.small_button("关闭")
+	close.name = "CloseTeamButton"
+	close.pressed.connect(_close_team)
+	header.add_child(close)
+	var scroll := UIKit.scroll()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(scroll)
+	var content := UIKit.vbox(10)
+	content.name = "RegionTeamContent"
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(content)
+	content.add_child(UIKit.label("训练师 · 生命 %d/%d" % [app.run.trainer_hp, SpeciesDB.hp_of("trainer")], 18))
+	for group in [{"title": "随行队伍", "records": app.run.carried}, {"title": "营地留守", "records": app.run.storage}]:
+		content.add_child(UIKit.label("%s（%d）" % [group["title"], group["records"].size()], 18, UIKit.ACCENT))
+		if group["records"].is_empty():
+			content.add_child(UIKit.label("暂无成员", 14, UIKit.TEXT_DIM))
+		for record in group["records"]:
+			var names: Array = []
+			for skill in record.get("equipped_skills", []):
+				names.append(SkillDB.name_of(String(skill)))
+			var info := "%s · Lv.%d · 生命 %d/%d%s\n装备招式：%s" % [SpeciesDB.name_of(String(record["species_id"])), int(record.get("level", 1)), int(record["hp"]), app.run.monster_max_hp(record), " · 濒死" if int(record["hp"]) <= 0 else "", "、".join(names) if not names.is_empty() else "无"]
+			content.add_child(UIKit.wrapped(info, 16))
+
+func _close_team() -> void:
+	if team_overlay != null:
+		team_overlay.queue_free()
+		team_overlay = null
+
+func _unhandled_input(event: InputEvent) -> void:
+	if team_overlay != null and event.is_action_pressed("ui_cancel"):
+		_close_team()
+		get_viewport().set_input_as_handled()

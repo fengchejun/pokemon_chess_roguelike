@@ -7,6 +7,8 @@ var deploy_uids: Array = []
 var board: BoardView = null
 var feedback_layer: Control = null
 var speech_layer: Control = null
+var battle_notice: Control = null
+var victory_announced := false
 var skill_banner: PanelContainer = null
 var playback: Control = null
 var speed_button: Button = null
@@ -57,6 +59,10 @@ var corner_cards_swapped := false
 
 func _ready() -> void:
 	name = "BattleScreen"
+	victory_announced = state.exploration_started or GridSpec.is_inside(state.boss_portal_cell)
+	battle_notice = preload("res://scripts/ui/battle_notice.gd").new()
+	add_child(battle_notice)
+	battle_notice.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	UIKit.fill_background(self)
 	board = BoardView.new()
 	board.name = "BoardView"
@@ -165,6 +171,7 @@ func _ready() -> void:
 	call_deferred("_layout_overlays")
 	state.check_speech_events()
 	app.sync_and_save(state)
+	call_deferred("_announce_initial_phase")
 
 
 func _on_feedback(event: Dictionary) -> void:
@@ -184,10 +191,10 @@ func _show_feedback(event: Dictionary) -> void:
 
 
 func _playback_active() -> bool:
-	return playback != null and playback.active()
+	return (playback != null and playback.active()) or (battle_notice != null and battle_notice.active())
 
 func _display_state() -> BattleState:
-	return playback.visual if _playback_active() else state
+	return playback.visual if playback != null and playback.active() else state
 
 func _toggle_speed() -> void:
 	app.battle_playback_speed = 2.0 if app.battle_playback_speed == 1.0 else 1.0
@@ -205,6 +212,7 @@ func _render_playback(snapshot: BattleState) -> void:
 	action_panel.visible = false
 
 func _playback_finished() -> void:
+	_check_victory_notice()
 	_update_action_buttons()
 	_rebuild_skill_buttons()
 	_position_action_panel()
@@ -382,6 +390,7 @@ func _position_action_panel() -> void:
 
 func refresh_all() -> void:
 	state.check_battle_end()
+	_check_victory_notice()
 	if playback != null and not playback.active():
 		playback.visual = state.clone()
 	board.set_from_state(_display_state())
@@ -1733,6 +1742,10 @@ func do_end_turn() -> void:
 func _enemy_phase() -> void:
 	busy = true
 	_update_action_buttons()
+	battle_notice.push("敌方回合", "enemy")
+	await _wait_playback()
+	if not is_inside_tree():
+		return
 	state.begin_enemy_phase()
 	await _wait_playback()
 	_update_header()
@@ -1752,6 +1765,9 @@ func _enemy_phase() -> void:
 		state.end_enemy_phase()
 		await _wait_playback()
 		app.sync_and_save(state)
+		if not state.ended and not state.is_free_exploration():
+			battle_notice.push("我方回合", "player")
+			await _wait_playback()
 	busy = false
 	if selected_uid != 0:
 		var unit := state.unit_by_uid(selected_uid)
@@ -1764,6 +1780,7 @@ func _enemy_phase() -> void:
 
 
 func _refresh_after_action() -> void:
+	_check_victory_notice()
 	board.set_from_state(_display_state())
 	_update_header()
 	_update_team_list()
@@ -1796,7 +1813,12 @@ func _report_end() -> void:
 		await get_tree().create_timer(tail / app.battle_playback_speed).timeout
 	await _wait_playback()
 	if state != null and state.ended and is_inside_tree():
-		app.finish_battle(state)
+		var kind := result_notice_kind(state.end_reason)
+		if kind != "" and not (kind == "victory" and victory_announced):
+			battle_notice.push({"victory": "胜利", "defeat": "失败", "escape": "撤退"}[kind], kind)
+			await _wait_playback()
+		if is_inside_tree():
+			app.finish_battle(state)
 
 
 func _dismiss_action_panel() -> void:
@@ -1832,3 +1854,29 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cancel_action()
 		else:
 			_open_menu()
+
+
+static func result_notice_kind(reason: String) -> String:
+	if reason == "victory":
+		return "victory"
+	if reason in ["forced_retreat", "boss_timeout"]:
+		return "defeat"
+	return "escape" if reason == "escape" else ""
+
+func _announce_initial_phase() -> void:
+	if not is_inside_tree() or is_queued_for_deletion() or state.ended or state.is_free_exploration() or state.round != 1 or state.phase != BattleState.PHASE_PLAYER:
+		return
+	battle_notice.push("我方回合", "player")
+
+func _check_victory_notice() -> void:
+	if victory_announced or state.ended or not (state.is_free_exploration() and state.node_kind == "battle" or GridSpec.is_inside(state.boss_portal_cell)):
+		return
+	victory_announced = true
+	call_deferred("_announce_victory")
+
+func _announce_victory() -> void:
+	if not is_inside_tree() or is_queued_for_deletion():
+		return
+	await _wait_playback()
+	if is_inside_tree() and not state.ended:
+		battle_notice.push("胜利", "victory")
