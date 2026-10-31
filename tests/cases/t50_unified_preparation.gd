@@ -38,6 +38,7 @@ func run(t: TestContext) -> void:
 		if not MapGenerator.mod_protected(screen.map, candidate) and screen.map["terrain"][GridSpec.index(candidate)] == TerrainDB.PLAIN:
 			cell = candidate
 			break
+	screen._set_mod_kind("water")
 	screen._on_cell_clicked(cell)
 	t.eq(screen.mod_used, 1, "同页地图改造可用")
 	var terrain: Array = screen.map["terrain"].duplicate()

@@ -63,7 +63,10 @@ var burning_cells: Dictionary = {}
 var steam_cells: Dictionary = {}
 var vine_origin: Dictionary = {}
 var vine_expire_round: Dictionary = {}
-var nest: Dictionary = {}
+var nest: Dictionary = {} # Primary nest retained for old snapshots and callers.
+var extra_nests: Array = []
+var deploy_area: Array = []
+var speech_seen: Dictionary = {}
 var boss_uid: int = -1
 var boss_portal_cell: Vector2i = Vector2i(-1, -1)
 var merchant: Dictionary = {}
@@ -131,11 +134,12 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	reinforcement_pool = pool_value.duplicate()
 	load_map(map_data)
 	deploy_cells = map_data.get("deploy_cells", Balance.DEPLOY_CELLS.duplicate())
+	deploy_area = map_data.get("deploy_area", Balance.DEPLOY_AREA).duplicate()
 	var slot := 0
 	for unit in player_units:
 		if slot >= deploy_cells.size():
 			break
-		unit.cell = deploy_cells[slot]
+		unit.cell = map_data.get("deploy_positions", {}).get(unit.uid, deploy_cells[slot])
 		unit.reg_index = units.size()
 		units.append(unit)
 		_watch_feedback(unit)
@@ -178,6 +182,9 @@ func _trigger_inspiration() -> void:
 	if inspiration_triggered:
 		return
 	inspiration_triggered = true
+	var boss := unit_by_uid(boss_uid)
+	if boss != null:
+		say_once("boss_roar", boss.uid, boss.cell, "吼——你们惹怒我了！")
 	for ally in units:
 		_grant_inspiration(ally)
 	log_event("首领鼓舞：其他敌方单位移动力 +1，生命上限与当前生命各 +%d，持续本场。" % Balance.INSPIRATION_HP_BONUS)
@@ -206,6 +213,12 @@ func load_map(map_data: Dictionary) -> void:
 		"alive": true,
 		"pending_waves": 0,
 	}
+	extra_nests = []
+	for cell in map_data.get("nest_cells", [map_data["nest_cell"]]):
+		if cell != nest["cell"]:
+			var other := nest.duplicate(true)
+			other["cell"] = cell
+			extra_nests.append(other)
 	reward = {
 		"state": "map",  # map / guarding / carried / lost / destroyed
 		"cell": map_data["reward_cell"],
@@ -274,8 +287,9 @@ func add_steam(cell: Vector2i) -> void:
 
 
 func nest_at_cell(cell: Vector2i) -> Dictionary:
-	if bool(nest.get("alive", false)) and nest["cell"] == cell:
-		return nest
+	for current in all_nests():
+		if bool(current.get("alive", false)) and current["cell"] == cell:
+			return current
 	return {}
 
 
@@ -514,6 +528,7 @@ func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "", killer
 		presentation_started.emit({"kind": "result", "uid": unit.uid})
 	_kill_unit_rules(unit, cause, killer_side, killer_uid)
 	if feedback_enabled:
+		check_speech_events()
 		presentation_finished.emit({})
 
 
@@ -816,14 +831,15 @@ func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "") -> b
 			natural_essence_cells.erase(cell)
 			if source_side == "player":
 				earn_essence("terrain:%d:%d" % [cell.x, cell.y], 1, cell)
-		if node_kind != "" and terrain_at(cell) == TerrainDB.TREE and terrain_rng.randf() < 0.25 and not food_cells.has(cell):
-			food_cells.append(cell)
+		var drop_food := node_kind != "" and terrain_at(cell) == TerrainDB.TREE and terrain_rng.randf() < 0.25 and not food_cells.has(cell)
 		obstacle_durability.erase(cell)
 		burning_cells.erase(cell)
 		var origin := int(obstacle_origin.get(cell, TerrainDB.PLAIN))
 		obstacle_origin.erase(cell)
 		obstacle_expire_round.erase(cell)
 		set_terrain(cell, origin)
+		if drop_food and food_cell_valid(cell):
+			food_cells.append(cell)
 		log_event("障碍被破坏，恢复为%s。" % TerrainDB.name_of(origin))
 		return true
 	obstacle_durability[cell] = left
@@ -845,12 +861,12 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 	_relay_feedback("damage", "耐久 -1", 1, target_nest["cell"], -1)
 	if int(target_nest["hp"]) <= 0:
 		if source_side == "player":
-			earn_essence("nest", 8, target_nest["cell"])
+			earn_essence("nest" if target_nest == nest else "nest:%d:%d" % [target_nest["cell"].x, target_nest["cell"].y], 8, target_nest["cell"])
 		target_nest["alive"] = false
 		target_nest["destroyed_by_player"] = source_side == "player"
 		set_terrain(target_nest["cell"], TerrainDB.PLAIN)
 		log_event("巢穴被摧毁，永久停止生成。")
-		if node_kind == "":
+		if node_kind == "" and not has_live_nests():
 			end_battle("victory")
 		return true
 	log_event("巢穴耐久 -1（剩 %d）。" % target_nest["hp"])
@@ -884,6 +900,7 @@ func move_unit(unit: CombatUnit, dest: Vector2i) -> bool:
 		presentation_started.emit({"kind": "move", "uid": unit.uid if unit != null else -1, "path": options.get(dest, {}).get("path", [dest])})
 	var result := _move_unit_rules(unit, dest)
 	if feedback_enabled:
+		check_speech_events()
 		presentation_finished.emit({"ok": result})
 	return result
 
@@ -1096,6 +1113,7 @@ func start_round() -> void:
 		presentation_started.emit(info)
 	_start_round_rules()
 	if feedback_enabled:
+		check_speech_events()
 		presentation_finished.emit({})
 
 
@@ -1140,22 +1158,26 @@ func _start_round_rules() -> void:
 					log_event("根息：%s 恢复 %d HP。" % [unit.display_name, restored])
 	if boss_portal_cell == Vector2i(-1, -1) and Balance.nest_warning_due(round):
 		log_event("巢穴预警：下回合将尝试产怪。")
-	var scheduled: Array = nest.get("scheduled_waves", [])
-	if boss_portal_cell == Vector2i(-1, -1) and Balance.nest_wave_due(round) and (node_kind == "" or not scheduled.has(round)):
-		nest["pending_waves"] = int(nest.get("pending_waves", 0)) + 1
-		if node_kind != "":
-			scheduled.append(round)
-			nest["scheduled_waves"] = scheduled
-	if int(nest.get("pending_waves", 0)) > 0:
-		_try_spawn_wave()
+	for current in all_nests():
+		if not bool(current.get("alive", false)):
+			continue
+		var scheduled: Array = current.get("scheduled_waves", [])
+		if boss_portal_cell == Vector2i(-1, -1) and Balance.nest_wave_due(round) and (node_kind == "" or not scheduled.has(round)):
+			current["pending_waves"] = int(current.get("pending_waves", 0)) + 1
+			if node_kind != "":
+				scheduled.append(round)
+				current["scheduled_waves"] = scheduled
+		if int(current.get("pending_waves", 0)) > 0:
+			_try_spawn_wave(current)
 	_resolve_due_channels("player")
 
 
-func _try_spawn_wave() -> void:
-	if not bool(nest.get("alive", false)) or reinforcement_pool.is_empty():
+func _try_spawn_wave(target: Dictionary = {}) -> void:
+	var current: Dictionary = nest if target.is_empty() else target
+	if not bool(current.get("alive", false)) or reinforcement_pool.is_empty():
 		return
 	var species_id: String = reinforcement_pool[spawn_rng.randi_range(0, reinforcement_pool.size() - 1)]
-	var candidates: Array = [nest["cell"]]
+	var candidates: Array = [current["cell"]]
 	for cell in candidates:
 		if not GridSpec.is_inside(cell):
 			continue
@@ -1174,7 +1196,7 @@ func _try_spawn_wave() -> void:
 		units.append(enemy)
 		set_enemy_level_bonus(enemy_level_bonus)
 		_watch_feedback(enemy)
-		nest["pending_waves"] = maxi(0, int(nest.get("pending_waves", 0)) - 1)
+		current["pending_waves"] = maxi(0, int(current.get("pending_waves", 0)) - 1)
 		apply_vine_on_landing(enemy)
 		log_event("巢穴生成 1 只野生宝可梦（%s）；出生轮在巢穴格待机，下一回合才能行动。" % enemy.display_name)
 		return
@@ -1191,6 +1213,7 @@ func begin_enemy_phase() -> Array:
 		presentation_started.emit(info)
 	var result := _begin_enemy_phase_rules()
 	if feedback_enabled:
+		check_speech_events()
 		presentation_finished.emit({})
 	return result
 
@@ -1226,6 +1249,7 @@ func step_enemy_phase() -> Dictionary:
 		presentation_started.emit(info)
 	var result := _step_enemy_phase_rules()
 	if feedback_enabled:
+		check_speech_events()
 		presentation_finished.emit(result if result is Dictionary else {})
 	return result
 
@@ -1270,6 +1294,7 @@ func end_enemy_phase() -> void:
 		presentation_started.emit(info)
 	_end_enemy_phase_rules()
 	if feedback_enabled:
+		check_speech_events()
 		presentation_finished.emit({})
 
 
@@ -1302,6 +1327,7 @@ func settle_round() -> void:
 		presentation_started.emit(info)
 	_settle_round_rules()
 	if feedback_enabled:
+		check_speech_events()
 		presentation_finished.emit({})
 
 
@@ -1532,8 +1558,7 @@ func check_battle_end() -> bool:
 			if boss_portal_cell == Vector2i(-1, -1):
 				boss_portal_cell = boss.cell
 				units = units.filter(func(unit: CombatUnit) -> bool: return unit.side != "enemy" or not unit.is_alive())
-				nest["alive"] = false
-				nest["pending_waves"] = 0
+				stop_nests()
 				pending_casts = pending_casts.filter(func(cast: Dictionary) -> bool: return String(cast.get("side", "")) != "enemy")
 				log_event("首领已被击败，剩余敌人撤离。训练师相邻后可点击传送门或使用互动行为前往下一层。")
 			return false
@@ -1548,7 +1573,7 @@ func check_battle_end() -> bool:
 
 
 func can_leave_node() -> bool:
-	return node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not bool(nest.get("alive", false)))
+	return node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not has_live_nests())
 
 
 func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) -> int:
@@ -1603,6 +1628,8 @@ func set_enemy_level_bonus(bonus: int) -> void:
 func end_battle(reason: String) -> void:
 	if ended:
 		return
+	if reason == "escape" and node_kind != "" and trainer() != null:
+		say_once("trainer_escape", Balance.TRAINER_UID, trainer().cell, "先撤！大家跟紧我！")
 	ended = true
 	pending_casts.clear()
 	end_reason = reason
@@ -1654,6 +1681,7 @@ func _signature() -> String:
 	fire_keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
 	for cell in fire_keys:
 		parts.append("burning:%d,%d:%d" % [cell.x, cell.y, int(burning_cells[cell])])
+	parts.append("nests:%s" % str(all_nests()))
 	parts.append("terrain_rng:%d" % terrain_rng.state)
 	for unit in units:
 		parts.append("%d:%d,%d:%d:%s:%s:%s:%d:%d:%s" % [
@@ -1710,6 +1738,9 @@ func clone() -> BattleState:
 	copy.vine_origin = vine_origin.duplicate()
 	copy.vine_expire_round = vine_expire_round.duplicate()
 	copy.nest = nest.duplicate(true)
+	copy.extra_nests = extra_nests.duplicate(true)
+	copy.deploy_area = deploy_area.duplicate()
+	copy.speech_seen = speech_seen.duplicate(true)
 	copy.boss_uid = boss_uid
 	copy.boss_portal_cell = boss_portal_cell
 	copy.inspiration_triggered = inspiration_triggered
@@ -1748,7 +1779,7 @@ func clone() -> BattleState:
 
 
 func is_free_exploration() -> bool:
-	return node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not bool(nest.get("alive", false))) or (node_kind == "boss" and GridSpec.is_inside(boss_portal_cell))
+	return node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not has_live_nests()) or (node_kind == "boss" and GridSpec.is_inside(boss_portal_cell))
 
 
 func recovery_skill_blocked(skill_id: String) -> bool:
@@ -1773,3 +1804,60 @@ func reset_exploration_actions() -> void:
 		unit.vine_ticks = 0
 		unit.vine_sources.clear()
 		unit.battle_skill_uses.clear()
+
+
+func all_nests() -> Array:
+	return ([nest] if not nest.is_empty() else []) + extra_nests
+
+func has_live_nests() -> bool:
+	return all_nests().any(func(current): return bool(current.get("alive", false)))
+
+func stop_nests() -> void:
+	for current in all_nests():
+		current["alive"] = false
+		current["pending_waves"] = 0
+
+func food_cell_valid(cell: Vector2i) -> bool:
+	return GridSpec.is_inside(cell) and not all_nests().any(func(current): return current["cell"] == cell) and not deploy_area.has(cell) and not is_interaction_cell(cell) and (cell != reward.get("cell") or reward.get("state") == "destroyed") and terrain_at(cell) in [TerrainDB.PLAIN, TerrainDB.GRASS, TerrainDB.WATER, TerrainDB.ICE]
+
+func repair_food() -> void:
+	for cell in food_cells.duplicate():
+		if food_cell_valid(cell):
+			continue
+		food_cells.erase(cell)
+		food_wait.erase(cell)
+		var candidates := GridSpec.all_cells()
+		candidates.sort_custom(func(a, b):
+			var da := GridSpec.manhattan(a, cell)
+			var db := GridSpec.manhattan(b, cell)
+			return da < db if da != db else _cell_order(a) < _cell_order(b))
+		for target in candidates:
+			if food_cell_valid(target) and unit_at(target) == null and not food_cells.has(target) and target != reward.get("cell"):
+				food_cells.append(target)
+				break
+		log_event("已修复与巢穴、设施或部署区重叠的粮食。")
+
+
+func say_once(key: String, uid: int, cell: Vector2i, text: String) -> void:
+	if not feedback_enabled or speech_seen.has(key):
+		return
+	speech_seen[key] = true
+	log_event(text)
+	feedback.emit({"kind": "speech", "uid": uid, "cell": cell, "text": text, "value": 0, "speech_key": key})
+
+func check_speech_events() -> void:
+	if not feedback_enabled or ended:
+		return
+	var actor := trainer()
+	if actor != null and actor.is_alive():
+		if round == 1:
+			say_once("trainer_start", actor.uid, actor.cell, "大家加油，稳住阵型！")
+		if round == 7 and not is_free_exploration():
+			say_once("trainer_warning", actor.uid, actor.cell, "准备撤退，别恋战！")
+	if node_kind == "event" and not merchant.is_empty():
+		var cell: Vector2i = merchant["cell"]
+		var threatened := alive_units("enemy").any(func(unit): return GridSpec.manhattan(unit.cell, cell) <= 3)
+		if threatened:
+			say_once("merchant_help", -2, cell, "救命！快帮我赶走它们！")
+		else:
+			say_once("merchant_sell", -2, cell, "好货便宜卖，过来看看！")

@@ -6,6 +6,7 @@ var deploy_uids: Array = []
 
 var board: BoardView = null
 var feedback_layer: Control = null
+var speech_layer: Control = null
 var skill_banner: PanelContainer = null
 var playback: Control = null
 var speed_button: Button = null
@@ -68,6 +69,10 @@ func _ready() -> void:
 	feedback_layer.name = "BattleFeedback"
 	board.add_child(feedback_layer)
 	feedback_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	speech_layer = preload("res://scripts/ui/speech_bubbles.gd").new()
+	speech_layer.screen = self
+	add_child(speech_layer)
+	speech_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	skill_banner = preload("res://scripts/ui/skill_banner.gd").new()
 	add_child(skill_banner)
 	playback = preload("res://scripts/ui/battle_playback.gd").new()
@@ -158,14 +163,21 @@ func _ready() -> void:
 	refresh_all()
 	resized.connect(_layout_overlays)
 	call_deferred("_layout_overlays")
+	state.check_speech_events()
+	app.sync_and_save(state)
 
 
 func _on_feedback(event: Dictionary) -> void:
-	playback.capture(event)
+	if event["kind"] == "speech" and playback.frames.is_empty():
+		_show_feedback(event)
+	else:
+		playback.capture(event)
 
 
 func _show_feedback(event: Dictionary) -> void:
-	if event["kind"] == "skill":
+	if event["kind"] == "speech":
+		speech_layer.push(event)
+	elif event["kind"] == "skill":
 		skill_banner.present(String(event["text"]))
 	else:
 		feedback_layer.push(event)
@@ -1140,7 +1152,7 @@ func _on_board_hovered(cell: Vector2i) -> void:
 		board.queue_redraw()
 		return
 	if state.is_nest_cell(cell):
-		var detail := "单位覆盖巢穴：暂时不能伤害巢穴，生成排队" if state.nest_covered() else "空置：任意伤害命中扣 1 耐久，可站上阻挡生成"
+		var detail := "单位覆盖巢穴：暂时不能伤害巢穴，生成排队" if state.nest_covered(cell) else "空置：任意伤害命中扣 1 耐久，可站上阻挡生成"
 		hint_label.text = "巢穴：%s。" % detail
 		hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	var unit := state.unit_by_uid(selected_uid)
@@ -1181,8 +1193,8 @@ func _preview_overlays(preview: Dictionary) -> void:
 		for obstacle in preview.get("obstacles_damaged", []):
 			board.markers.append({"cell": obstacle["cell"], "kind": "damage", "text": str(int(obstacle["damage"]))})
 	var nest_hit = preview.get("nest_damaged")
-	if nest_hit != null and not state.nest.is_empty():
-		board.markers.append({"cell": state.nest["cell"], "kind": "damage", "text": str(int(nest_hit.get("damage", 0)))})
+	for hit in preview.get("nests_damaged", [nest_hit] if nest_hit != null else []):
+		board.markers.append({"cell": hit["cell"], "kind": "damage", "text": str(int(hit.get("damage", 0)))})
 	if preview.get("self_move") != null:
 		var unit := state.unit_by_uid(selected_uid)
 		if unit != null:
@@ -1221,9 +1233,9 @@ func _show_terrain(cell: Vector2i) -> void:
 	if state.steam_cells.has(cell):
 		lines.append("蒸汽：剩余 %d 次整轮结算；站在其中不能施放技能。" % int(state.steam_cells[cell]))
 	if state.is_nest_cell(cell):
-		lines.append("巢穴耐久：%d/%d；第 2、4、6 回合尝试直接在巢穴格生成。" % [int(state.nest.get("hp", 0)), Balance.NEST_DURABILITY])
+		lines.append("巢穴耐久：%d/%d；第 2、4、6 回合尝试直接在巢穴格生成。" % [int(state.nest_at_cell(cell).get("hp", 0)), Balance.NEST_DURABILITY])
 		lines.append("可移动、停留在巢穴格。任何单位覆盖时均阻挡生成与巢穴受伤；击杀或移开覆盖者的那次攻击不会穿透巢穴。空置时任意有效伤害每次扣 1 耐久。")
-		lines.append("当前：%s；积压 %d 只。" % ["被单位覆盖" if state.nest_covered() else "空置", int(state.nest.get("pending_waves", 0))])
+		lines.append("当前：%s；积压 %d 只。" % ["被单位覆盖" if state.nest_covered(cell) else "空置", int(state.nest_at_cell(cell).get("pending_waves", 0))])
 	if cell == state.reward.get("cell", Vector2i(-1, -1)):
 		match String(state.reward.get("state", "")):
 			"map", "guarding":

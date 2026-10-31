@@ -133,6 +133,7 @@ func _test_modification_ui(t: TestContext) -> void:
 			break
 	t.check(valid_cell != Vector2i(-1, -1), "预览地图有可用于测试的普通地面")
 	if valid_cell != Vector2i(-1, -1):
+		preview._set_mod_kind("water")
 		preview._on_cell_clicked(valid_cell)
 		t.eq(int(preview.map["terrain"][GridSpec.index(valid_cell)]), TerrainDB.WATER, "改造工具在预览页真正改变所选地形")
 		t.eq(preview.mod_used, 1, "改造成功消耗一次工具使用额度")

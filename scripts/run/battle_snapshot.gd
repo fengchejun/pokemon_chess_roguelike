@@ -56,7 +56,7 @@ static func save_state(state: BattleState) -> Dictionary:
 	var members: Array = []
 	for unit in state.units:
 		members.append(_fields(unit))
-	return {"fields": _fields(state), "units": members, "rng": {
+	return {"version": 2, "fields": _fields(state), "units": members, "rng": {
 		"spawn_seed": str(state.spawn_rng.seed), "spawn_state": str(state.spawn_rng.state),
 		"capture_seed": str(state.capture_rng.seed), "capture_state": str(state.capture_rng.state),
 		"terrain_seed": str(state.terrain_rng.seed), "terrain_state": str(state.terrain_rng.state),
@@ -90,4 +90,7 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 	state.terrain_rng.state = int(rng["terrain_state"])
 	if not snapshot["fields"].has("natural_essence_cells"):
 		state.natural_essence_cells = state.obstacle_durability.keys().filter(func(cell): return not state.obstacle_expire_round.has(cell))
+	if state.deploy_area.is_empty():
+		state.deploy_area = state.deploy_cells.duplicate()
+	state.repair_food()
 	return state

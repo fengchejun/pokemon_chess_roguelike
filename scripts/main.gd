@@ -1,4 +1,5 @@
 extends Control
+const Deployment = preload("res://scripts/rules/deployment.gd")
 const BattleSnapshot = preload("res://scripts/run/battle_snapshot.gd")
 
 ## 应用路由：主菜单 → 编队 → 地图预览与改造 → 战斗 → 战后结算 → 下一场 / 本局结束。
@@ -365,11 +366,10 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 		state.boss_power_percent = 0
 		if (region.nodes[node_id]["snapshot"] as Dictionary).is_empty():
 			for cell in GridSpec.all_cells():
-				if state.terrain_at(cell) == TerrainDB.PLAIN and state.unit_at(cell) == null and state.terrain_rng.randf() < 0.05 and state.food_cells.size() < 2:
+				if state.food_cell_valid(cell) and state.terrain_at(cell) == TerrainDB.PLAIN and state.unit_at(cell) == null and state.terrain_rng.randf() < 0.05 and state.food_cells.size() < 2:
 					state.food_cells.append(cell)
 		if state.node_kind == "event":
-			state.set_terrain(state.nest["cell"], TerrainDB.PLAIN)
-			state.nest["alive"] = false
+			state.stop_nests()
 			state.reward["state"] = "destroyed"
 		run.region_data = region.to_dict()
 	if run.region_mode:
@@ -384,17 +384,28 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 				var trainer := state.unit_by_uid(Balance.TRAINER_UID)
 				var options := state.move_options(trainer)
 				for cell in options:
-					if GridSpec.manhattan(trainer.cell, cell) >= 2 and not state.deploy_cells.has(cell) and not state.food_cells.has(cell) and cell != state.nest["cell"]:
+					if GridSpec.manhattan(trainer.cell, cell) >= 2 and not state.deploy_area.has(cell) and not (final_map.get("deploy_positions", {}) as Dictionary).values().has(cell) and not state.food_cells.has(cell) and not state.is_nest_cell(cell):
 						state.merchant["cell"] = cell
 						break
 				if not GridSpec.is_inside(state.merchant["cell"]):
 					for cell in GridSpec.neighbors4(trainer.cell):
-						if state.unit_at(cell) == null and TerrainDB.can_stand(state.terrain_at(cell), ""):
+						if state.unit_at(cell) == null and not state.deploy_area.has(cell) and not state.is_nest_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), ""):
 							state.merchant["cell"] = cell
 							break
 			node["merchant"] = state.merchant.duplicate(true)
 			node["merchant"]["cell"] = [state.merchant["cell"].x, state.merchant["cell"].y]
 			run.region_data = current.to_dict()
+	if final_map.has("deploy_positions"):
+		var enemies := state.alive_units("enemy")
+		var players := state.alive_units("player")
+		var positions: Dictionary = final_map["deploy_positions"]
+		if not Deployment.valid(final_map, enemies, players, positions):
+			push_error("部署位置无效，已停止开战。")
+			return
+		state.deploy_area = final_map["deploy_area"].duplicate()
+		for player in players:
+			player.cell = positions[player.uid]
+	state.repair_food()
 	run.battle_snapshot = BattleSnapshot.save_state(state)
 	run.pending_region_entry_backup.clear()
 	run.pending_invasion_bonus = 0

@@ -110,6 +110,7 @@ var recovered_supply_battles: Array = []
 var selected_reward_item: String = ""
 var preview_used_reward_item: String = ""
 var preview_modifications: Array = []
+var preview_deploy_positions: Dictionary = {}
 var pending_reward_choices: int = 0
 var reward_choice_index: int = 0
 var settlement_pending: bool = false
@@ -292,6 +293,7 @@ func cancel_region_entry() -> void:
 	preview_used_reward_item = ""
 	selected_reward_item = ""
 	preview_modifications.clear()
+	preview_deploy_positions.clear()
 	region_data = pending_region_entry_backup.duplicate(true)
 	battle_index = pending_region_battle_index
 	pending_region_entry_backup.clear()
@@ -391,7 +393,7 @@ func place_region_enemies(cfg: Dictionary, map_data: Dictionary) -> Dictionary:
 	var pairs: Array = result.get("enemies", [])
 	var used: Array = []
 	for pair in pairs:
-		if GridSpec.is_inside(pair[1]) and TerrainDB.can_stand(int(map_data["terrain"][GridSpec.index(pair[1])]), SpeciesDB.element_of(String(pair[0]))) and not used.has(pair[1]):
+		if GridSpec.is_inside(pair[1]) and TerrainDB.can_stand(int(map_data["terrain"][GridSpec.index(pair[1])]), SpeciesDB.element_of(String(pair[0]))) and not used.has(pair[1]) and not (map_data.get("nest_cells", [map_data["nest_cell"]]) as Array).has(pair[1]):
 			used.append(pair[1])
 		else:
 			pair[1] = Vector2i(-1, -1)
@@ -399,7 +401,7 @@ func place_region_enemies(cfg: Dictionary, map_data: Dictionary) -> Dictionary:
 		if GridSpec.is_inside(pair[1]):
 			continue
 		for cell in GridSpec.all_cells():
-			if cell.x < 4 or used.has(cell) or cell == map_data["nest_cell"] or (map_data.get("deploy_cells", []) as Array).has(cell):
+			if cell.x < 4 or used.has(cell) or (map_data.get("nest_cells", [map_data["nest_cell"]]) as Array).has(cell) or (map_data.get("deploy_cells", []) as Array).has(cell):
 				continue
 			if TerrainDB.can_stand(int(map_data["terrain"][GridSpec.index(cell)]), SpeciesDB.element_of(String(pair[0]))):
 				pair[1] = cell
@@ -435,6 +437,7 @@ func use_reward_item_in_preview(reward_id: String) -> bool:
 	preview_used_reward_item = reward_id
 	selected_reward_item = ""
 	preview_modifications.clear()
+	preview_deploy_positions.clear()
 	return true
 
 
@@ -678,7 +681,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		(outcome["captured_names"] as Array).append(SpeciesDB.name_of(String(entry.get("species_id", ""))))
 	var failure := battle.end_reason in ["forced_retreat", "boss_timeout"]
 	# 首领之血只属于捕获首领并清场获胜的路线；毁巢速通和逃离均不发放。
-	if battle.end_reason == "victory" and bool(battle.nest.get("alive", false)):
+	if battle.end_reason == "victory" and battle.has_live_nests():
 		for entry in battle.captured:
 			if not bool(entry.get("was_boss", false)):
 				continue
@@ -720,8 +723,9 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		var shared_bonus := battle.captured.size() * Balance.EXP_PER_CAPTURE
 		if bonus_earned:
 			shared_bonus += 1
-		if bool(battle.nest.get("destroyed_by_player", false)):
-			shared_bonus += 3
+		for current in battle.all_nests():
+			if bool(current.get("destroyed_by_player", false)):
+				shared_bonus += 3
 		for id in original:
 			var unit := battle.unit_by_uid(int(id))
 			if unit != null and unit.is_alive():
@@ -815,6 +819,7 @@ func advance_battle() -> void:
 	last_settlement = {}
 	preview_used_reward_item = ""
 	preview_modifications.clear()
+	preview_deploy_positions.clear()
 	battle_index += 1
 	refresh_theme_offers()
 
@@ -1003,6 +1008,7 @@ func to_dict() -> Dictionary:
 		"selected_reward_item": selected_reward_item,
 		"preview_used_reward_item": preview_used_reward_item,
 		"preview_modifications": preview_modifications.duplicate(true),
+		"preview_deploy_positions": BattleSnapshot.encode(preview_deploy_positions),
 		"pending_reward_choices": pending_reward_choices,
 		"reward_choice_index": reward_choice_index,
 		"settlement_pending": settlement_pending,
@@ -1089,6 +1095,7 @@ static func from_dict(data: Dictionary) -> RunState:
 	if not RewardDB.is_consumable(run.preview_used_reward_item):
 		run.preview_used_reward_item = ""
 	run.preview_modifications = (data.get("preview_modifications", []) as Array).duplicate(true)
+	run.preview_deploy_positions = BattleSnapshot.decode(data.get("preview_deploy_positions", {}))
 	run.pending_reward_choices = maxi(0, int(data.get("pending_reward_choices", 0)))
 	run.reward_choice_index = maxi(0, int(data.get("reward_choice_index", 0)))
 	run.settlement_pending = bool(data.get("settlement_pending", false))

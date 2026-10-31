@@ -18,20 +18,22 @@ const REGION_WEIGHTS := {
 const WEIGHT_ORDER := ["ground", "water", "fragile", "rock", "plant", "grass"]
 
 
-static func generate(run_seed: int, battle_index: int, salt: int = 0, environment_deck: Array = [], theme_id: String = "") -> Dictionary:
+static func generate(run_seed: int, battle_index: int, salt: int = 0, environment_deck: Array = [], theme_id: String = "", nest_count: int = -1) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("map:%d:%d:%d" % [run_seed, battle_index, salt])
 	var cfg := BattleDB.config_for(battle_index, run_seed, theme_id)
+	cfg["nest_count"] = nest_count if nest_count >= 0 else (2 if int(cfg.get("boss_index", -1)) >= 0 else 1)
 	var lethal_budget := maxi(0, int(cfg.get("lethal_budget", 2)))
 	for attempt in 64:
 		var result := _attempt(rng, cfg, lethal_budget, environment_deck)
-		if not result.is_empty():
+		if not result.is_empty() and _has_landscape_pair(result["terrain"]) and randomize_nests(result, cfg, rng):
 			result["region"] = String(cfg.get("region", "?"))
 			result["battle_index"] = battle_index
 			result["theme_id"] = theme_id
 			result["attempt"] = attempt
 			return result
 	var fallback := _fallback(cfg)
+	randomize_nests(fallback, cfg, rng)
 	fallback["battle_index"] = battle_index
 	fallback["theme_id"] = theme_id
 	return fallback
@@ -64,7 +66,7 @@ static func generate_card_preview(run_seed: int, battle_index: int, card_id: Str
 	var best: Dictionary = {}
 	var best_gap := 999
 	for salt in range(1, 49):
-		var candidate := generate(run_seed, battle_index, salt, [card_id], String(previous.get("theme_id", "")))
+		var candidate := generate(run_seed, battle_index, salt, [card_id], String(previous.get("theme_id", "")), (previous.get("nest_cells", [previous["nest_cell"]]) as Array).size())
 		var after := terrain_counts(candidate)
 		var gap := 0
 		for key in targets:
@@ -124,7 +126,7 @@ static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget:
 	for pair in cfg.get("enemies", []):
 		enemy_cells.append(pair[1])
 	var nest_cell: Vector2i = cfg["nest_cell"]
-	for cell in Balance.DEPLOY_CELLS:
+	for cell in Balance.DEPLOY_AREA:
 		protected[cell] = true
 	for cell in enemy_cells:
 		protected[cell] = true
@@ -172,6 +174,7 @@ static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget:
 		"reward_cell": reward,
 		"fruit_cells": fruits,
 		"deploy_cells": Balance.DEPLOY_CELLS.duplicate(),
+		"deploy_area": Balance.DEPLOY_AREA.duplicate(),
 		"lethal_count": lethal,
 	}
 
@@ -283,7 +286,7 @@ static func _pick_cell(rng: RandomNumberGenerator, terrain: Array, protected: Di
 static func _validate(terrain: Array, required_cells: Array) -> bool:
 	var reached := {}
 	var frontier: Array = []
-	for cell in Balance.DEPLOY_CELLS:
+	for cell in Balance.DEPLOY_AREA:
 		if TerrainDB.blocks_move(int(terrain[GridSpec.index(cell)])):
 			return false
 		reached[cell] = true
@@ -306,7 +309,7 @@ static func _validate(terrain: Array, required_cells: Array) -> bool:
 
 
 static func _near_deploy(cell: Vector2i, distance: int) -> bool:
-	for deploy in Balance.DEPLOY_CELLS:
+	for deploy in Balance.DEPLOY_AREA:
 		if GridSpec.manhattan(cell, deploy) < distance:
 			return true
 	return false
@@ -333,6 +336,7 @@ static func _fallback(cfg: Dictionary) -> Dictionary:
 		"reward_cell": reward,
 		"fruit_cells": [],
 		"deploy_cells": Balance.DEPLOY_CELLS.duplicate(),
+		"deploy_area": Balance.DEPLOY_AREA.duplicate(),
 		"lethal_count": 0,
 		"region": String(cfg.get("region", "?")),
 		"battle_index": 0,
@@ -342,8 +346,8 @@ static func _fallback(cfg: Dictionary) -> Dictionary:
 
 static func mod_protected(map: Dictionary, cell: Vector2i) -> bool:
 	var protected_cells: Array = []
-	protected_cells.append_array(map.get("deploy_cells", Balance.DEPLOY_CELLS))
-	protected_cells.append(map["nest_cell"])
+	protected_cells.append_array(map.get("deploy_area", Balance.DEPLOY_AREA))
+	protected_cells.append_array(map.get("nest_cells", [map["nest_cell"]]))
 	protected_cells.append(map["reward_cell"])
 	protected_cells.append_array(map.get("fruit_cells", []))
 	return protected_cells.has(cell)
@@ -385,3 +389,37 @@ static func apply_modification(map: Dictionary, cell: Vector2i, kind: String) ->
 		_:
 			return false
 	return true
+
+
+static func randomize_nests(map: Dictionary, cfg: Dictionary, rng: RandomNumberGenerator) -> bool:
+	var blocked: Array = [map["reward_cell"]]
+	for pair in cfg.get("enemies", []):
+		blocked.append(pair[1])
+	var candidates: Array = []
+	for cell in GridSpec.all_cells():
+		if cell.x < GridSpec.W / 2 or blocked.has(cell) or _near_deploy(cell, 2) or int(map["terrain"][GridSpec.index(cell)]) != TerrainDB.PLAIN:
+			continue
+		if _validate(map["terrain"], [cell]):
+			candidates.append(cell)
+	var selected: Array = []
+	while not candidates.is_empty() and selected.size() < int(cfg.get("nest_count", 1)):
+		var index := rng.randi_range(0, candidates.size() - 1)
+		var cell: Vector2i = candidates.pop_at(index)
+		if selected.any(func(other): return GridSpec.manhattan(cell, other) < 3):
+			continue
+		selected.append(cell)
+	if selected.size() != int(cfg.get("nest_count", 1)):
+		return false
+	map["nest_cells"] = selected
+	if not selected.is_empty():
+		map["nest_cell"] = selected[0]
+	return true
+
+
+static func _has_landscape_pair(terrain: Array) -> bool:
+	for cell in GridSpec.all_cells():
+		for direction in [Vector2i.RIGHT, Vector2i.DOWN]:
+			var other: Vector2i = cell + direction
+			if GridSpec.is_inside(other) and int(terrain[GridSpec.index(cell)]) != TerrainDB.PLAIN and terrain[GridSpec.index(cell)] == terrain[GridSpec.index(other)]:
+				return true
+	return false

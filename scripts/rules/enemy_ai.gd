@@ -378,7 +378,8 @@ static func _route_opening_score(before: BattleState, after: BattleState, actor_
 
 
 static func _nest_clearance_score(state: BattleState, unit: CombatUnit, position: Vector2i) -> int:
-	if int(state.nest.get("hp", 0)) <= 0 or int(state.nest.get("pending_waves", 0)) <= 0:
+	var current := state.nest_at_cell(unit.cell)
+	if int(current.get("hp", 0)) <= 0 or int(current.get("pending_waves", 0)) <= 0:
 		return 0
 	return 24 if state.is_nest_cell(unit.cell) and position != unit.cell else 0
 
@@ -436,7 +437,7 @@ static func _approach_action(work: BattleState, unit: CombatUnit, positions: Arr
 	var targets := work.alive_units("player")
 	if targets.is_empty():
 		return {"uid": unit.uid, "move_path": [], "skill": {}}
-	if int(work.nest.get("pending_waves", 0)) > 0 and work.is_nest_cell(unit.cell):
+	if int(work.nest_at_cell(unit.cell).get("pending_waves", 0)) > 0 and work.is_nest_cell(unit.cell):
 		for position in positions:
 			if position != unit.cell and _pending_hazard(work, position, "player") == 0:
 				return {"uid": unit.uid, "move_path": paths[position], "free_terrain_move": bool(free_paths.get(position, false)), "skill": {}}

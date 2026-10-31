@@ -15,6 +15,7 @@ var steam_cells: Dictionary = {}
 var vine_origin: Dictionary = {}
 var vine_expire_round: Dictionary = {}
 var nest: Dictionary = {}
+var extra_nests: Array = []
 var pending_casts: Array = []
 var battle_round: int = 0
 var reward: Dictionary = {}
@@ -54,6 +55,7 @@ func set_from_state(state: BattleState) -> void:
 	vine_origin = state.vine_origin.duplicate()
 	vine_expire_round = state.vine_expire_round.duplicate()
 	nest = state.nest.duplicate(true)
+	extra_nests = state.extra_nests.duplicate(true)
 	pending_casts = state.pending_casts.duplicate(true)
 	battle_round = state.round
 	reward = state.reward.duplicate(true)
@@ -88,13 +90,24 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 		"hp": int(map.get("nest_hp", Balance.NEST_DURABILITY)),
 		"alive": bool(map.get("nest_alive", true)),
 	}
+	extra_nests = []
+	if map.has("nests"):
+		var stored: Array = map["nests"]
+		nest = stored[0].duplicate(true) if not stored.is_empty() else {}
+		extra_nests = stored.slice(1).duplicate(true)
+	else:
+		for cell in map.get("nest_cells", [nest["cell"]]):
+			if cell != nest["cell"]:
+				var other := nest.duplicate(true)
+				other["cell"] = cell
+				extra_nests.append(other)
 	pending_casts = []
 	battle_round = 0
 	reward = {"state": "map", "cell": map.get("reward_cell", Vector2i(-1, -1)), "owner_uid": -1}
 	fruits = []
 	food_cells = []
 	units = preview_units
-	deploy_cells = map.get("deploy_cells", Balance.DEPLOY_CELLS.duplicate())
+	deploy_cells = map.get("deploy_area", Balance.DEPLOY_AREA).duplicate()
 	ice_slides = []
 	queue_redraw()
 
@@ -275,17 +288,8 @@ func _draw_terrain(rect: Rect2, value: int) -> void:
 
 
 func _draw_objects(font: Font) -> void:
-	if not nest.is_empty() and bool(nest.get("alive", false)):
-		var cell: Vector2i = nest["cell"]
-		var center := cell_center(cell)
-		var points := PackedVector2Array([
-			center + Vector2(0, -22), center + Vector2(20, 0),
-			center + Vector2(0, 22), center + Vector2(-20, 0),
-		])
-		draw_colored_polygon(points, Color(0.55, 0.3, 0.7, 0.95))
-		draw_polyline(points + PackedVector2Array([points[0]]), Color(0.9, 0.8, 1.0), 2.0)
-		draw_string(font, center + Vector2(-10, 8), "巢", HORIZONTAL_ALIGNMENT_CENTER, 20, 18, Color.WHITE)
-		draw_string(font, center + Vector2(-20, -26), "耐久 %d/3" % int(nest.get("hp", 3)), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.9, 0.8, 1.0))
+	for current in [nest] + extra_nests:
+		_draw_nest_object(font, current)
 	if not reward.is_empty():
 		var state_name := String(reward.get("state", ""))
 		if state_name == "map" or state_name == "guarding":
@@ -297,6 +301,10 @@ func _draw_objects(font: Font) -> void:
 
 
 func _draw_nest_status(font: Font) -> void:
+	for current in [nest] + extra_nests:
+		_draw_one_nest_status(font, current)
+
+func _draw_one_nest_status(font: Font, nest: Dictionary) -> void:
 	if not bool(nest.get("alive", false)):
 		return
 	var cell: Vector2i = nest["cell"]
@@ -486,3 +494,17 @@ func _skull(center: Vector2) -> void:
 	draw_circle(center + Vector2(-4.5, -1), 2.8, Color(0.1, 0.1, 0.12))
 	draw_circle(center + Vector2(4.5, -1), 2.8, Color(0.1, 0.1, 0.12))
 	draw_line(center + Vector2(0, 3), center + Vector2(0, 7), Color(0.1, 0.1, 0.12), 1.5)
+
+
+func _draw_nest_object(font: Font, nest: Dictionary) -> void:
+	if not nest.is_empty() and bool(nest.get("alive", false)):
+		var cell: Vector2i = nest["cell"]
+		var center := cell_center(cell)
+		var points := PackedVector2Array([
+			center + Vector2(0, -22), center + Vector2(20, 0),
+			center + Vector2(0, 22), center + Vector2(-20, 0),
+		])
+		draw_colored_polygon(points, Color(0.55, 0.3, 0.7, 0.95))
+		draw_polyline(points + PackedVector2Array([points[0]]), Color(0.9, 0.8, 1.0), 2.0)
+		draw_string(font, center + Vector2(-10, 8), "巢", HORIZONTAL_ALIGNMENT_CENTER, 20, 18, Color.WHITE)
+		draw_string(font, center + Vector2(-20, -26), "耐久 %d/3" % int(nest.get("hp", 3)), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.9, 0.8, 1.0))

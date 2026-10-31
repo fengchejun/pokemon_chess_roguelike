@@ -36,7 +36,7 @@ static func create_floor(floor_value: int, theme_value: String) -> RegionState:
 	for neighbor in region.nodes["camp"]["links"]:
 		region.nodes[neighbor]["unlocked"] = true
 	region.active_node = "camp"
-	region.at_camp_scene = true
+	region.at_camp_scene = false
 	return region
 
 
@@ -153,7 +153,7 @@ func store_battle(id: String, battle: BattleState) -> bool:
 		var boss := battle.unit_by_uid(battle.boss_uid)
 		node["cleared"] = boss != null and (not boss.is_alive() or boss.side == "player")
 	elif node_mode(id) == "battle":
-		node["cleared"] = battle.alive_enemy_count() == 0 and not bool(battle.nest.get("alive", false))
+		node["cleared"] = battle.alive_enemy_count() == 0 and not battle.has_live_nests()
 		if bool(node["cleared"]):
 			node["mode"] = "event"
 			node["pending_replenish"] = false
@@ -215,12 +215,14 @@ func resume_node(id: String, players: Array) -> BattleState:
 	battle.channel_claims.clear()
 	battle.skill_use_counts = {"player": {}, "enemy": {}}
 	battle.events.clear()
+	battle.speech_seen.clear()
 	battle.food_collected = 0
 	battle.food_applied = 0
 	battle.food_wait.clear()
 	battle.capture_aid = false
 	battle.reward.erase("run_settled_outcome")
-	battle.nest["destroyed_by_player"] = false
+	for current in battle.all_nests():
+		current["destroyed_by_player"] = false
 	battle.start_round()
 	return battle
 

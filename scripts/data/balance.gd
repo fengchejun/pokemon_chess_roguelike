@@ -83,6 +83,7 @@ const SUPPLY_TRAINER_RECOVERY_RATIO := 0.5
 const TRAINER_UID := 900000
 
 # 部署格：第 0 格为训练家，其余为宝可梦。
+const DEPLOY_AREA := [Vector2i(0, 2), Vector2i(1, 2), Vector2i(0, 3), Vector2i(1, 3), Vector2i(0, 4), Vector2i(1, 4), Vector2i(0, 5), Vector2i(1, 5)]
 const DEPLOY_CELLS := [Vector2i(0, 3), Vector2i(0, 2), Vector2i(0, 4), Vector2i(1, 3)]
 
 # 局内强化（只卖新解法）

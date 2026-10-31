@@ -1,4 +1,5 @@
 extends Control
+const Deployment = preload("res://scripts/rules/deployment.gd")
 
 ## 地形改造工具表：允许的来源地形与目标地形（悬停时会在提示栏显示结算内容）。
 const MOD_RULES := {
@@ -26,6 +27,12 @@ var card_status_label: Label = null
 var card_header_label: Label = null
 var card_result: Dictionary = {}
 var persistent_node := false
+var deployment_mode := true
+var deploy_selected_uid := 0
+var deploy_players: Array = []
+var deploy_enemies: Array = []
+var deploy_positions: Dictionary = {}
+var deployment_toggle: Button
 var start_button: Button
 var board_host: Control
 var tools_scroll: ScrollContainer
@@ -40,7 +47,11 @@ func _ready() -> void:
 		var active_id: String = run.get_region().active_node
 		if active_id.begins_with("event_"):
 			map_salt = 100 + int(active_id.trim_prefix("event_"))
-	map = MapGenerator.generate(run.seed, run.battle_index, map_salt, [], run.current_theme())
+	var nest_count := -1
+	if run.region_mode:
+		var mode: String = run.get_region().node_mode(run.get_region().active_node)
+		nest_count = 2 if mode == "boss" else 1
+	map = MapGenerator.generate(run.seed, run.battle_index, map_salt, [], run.current_theme(), nest_count)
 	if run.region_mode:
 		var region = run.get_region()
 		var saved: BattleState = region.load_battle(region.active_node)
@@ -48,6 +59,10 @@ func _ready() -> void:
 			persistent_node = true
 			map["terrain"] = saved.terrain.duplicate()
 			map["nest_cell"] = saved.nest["cell"]
+			map["nest_cells"] = saved.all_nests().map(func(current): return current["cell"])
+			map["nests"] = saved.all_nests().duplicate(true)
+			map["merchant_cell"] = saved.merchant.get("cell", Vector2i(-1, -1))
+			map["portal_cell"] = saved.boss_portal_cell
 			map["nest_exits"] = []
 			map["nest_alive"] = bool(saved.nest.get("alive", false))
 			map["nest_hp"] = int(saved.nest.get("hp", 0))
@@ -99,6 +114,14 @@ func _ready() -> void:
 	board_host.add_child(board)
 	board_host.resized.connect(_layout_preview_board)
 	preview.add_child(UIKit.wrapped("蓝框：部署区 · 紫色：巢穴 · ★：奖励 · 粮：食物；悬停单位查看招式。", 12))
+	deployment_toggle = UIKit.small_button("部署选位 · 点击单位，再点击蓝框格")
+	deployment_toggle.name = "DeploymentModeButton"
+	deployment_toggle.pressed.connect(func() -> void:
+		deployment_mode = true
+		deployment_toggle.text = "部署选位 · 点击单位，再点击蓝框格"
+		hint_label.text = "可交换我方单位；部署不消耗移动或改造次数。"
+	)
+	preview.add_child(deployment_toggle)
 	var tools_toggle := UIKit.small_button("消耗品与地图改造 ▸")
 	tools_toggle.name = "PreviewToolsToggle"
 	preview.add_child(tools_toggle)
@@ -266,6 +289,8 @@ func _refresh_card_status() -> void:
 
 
 func _set_mod_kind(kind: String) -> void:
+	deployment_mode = false
+	deployment_toggle.text = "返回部署选位"
 	mod_kind = kind
 	for key in mod_buttons:
 		var button: Button = mod_buttons[key]
@@ -274,6 +299,9 @@ func _set_mod_kind(kind: String) -> void:
 
 
 func _on_cell_clicked(cell: Vector2i) -> void:
+	if deployment_mode:
+		_deploy_click(cell)
+		return
 	if persistent_node:
 		hint_label.text = "重访节点保留已有地形，不能重新进行战前改造。"
 		return
@@ -290,6 +318,8 @@ func _on_cell_clicked(cell: Vector2i) -> void:
 		app.autosave()
 		hint_label.text = ""
 		_refresh()
+	elif deployment_mode:
+		hint_label.text = "部署格：先点击我方单位，再点击此格放置。" if (map.get("deploy_area", []) as Array).has(cell) else "此格不在部署区域。"
 	else:
 		hint_label.text = _mod_hover_text(cell)
 
@@ -317,7 +347,7 @@ func _mod_hover_text(cell: Vector2i) -> String:
 	var run: RunState = app.run
 	var rule: Dictionary = MOD_RULES.get(mod_kind, {})
 	var tool_name := String(rule.get("name", mod_kind))
-	if cell == map.get("nest_cell", Vector2i(-1, -1)):
+	if (map.get("nest_cells", [map.get("nest_cell", Vector2i(-1, -1))]) as Array).has(cell):
 		return "巢穴：第 2、4、6 回合直接在本格尝试产怪；出生轮待机。可站上阻挡生成，积压保留；任何单位覆盖时保护巢穴，空置时任意有效伤害每次扣 1 耐久。"
 	if MapGenerator.mod_protected(map, cell):
 		return "【%s】该格受保护（部署区 / 巢穴 / 奖励 / 果实），不能改造。" % tool_name
@@ -349,7 +379,19 @@ func _on_reset() -> void:
 
 func _refresh() -> void:
 	var run: RunState = app.run
-	board.set_map_preview(map, _preview_units(run))
+	deploy_enemies = _preview_units(run)
+	deploy_players = run.build_deploy_units(deploy_uids)
+	var placement := Deployment.prepare(map, deploy_enemies, deploy_players, run.preview_deploy_positions)
+	deploy_positions = placement["positions"]
+	map["deploy_area"] = placement["area"]
+	map["deploy_positions"] = deploy_positions.duplicate()
+	run.preview_deploy_positions = deploy_positions.duplicate()
+	for unit in deploy_players:
+		unit.cell = deploy_positions.get(unit.uid, Vector2i(-1, -1))
+	board.set_map_preview(map, deploy_enemies + deploy_players)
+	board.selected_uid = deploy_selected_uid
+	if start_button != null:
+		start_button.disabled = not Deployment.valid(map, deploy_enemies, deploy_players, deploy_positions)
 	if start_button != null:
 		start_button.text = "开始战斗（已选 %d/%d）" % [deploy_uids.size(), Balance.DEPLOY_LIMIT]
 	mod_count_label.text = "剩余改造次数：%d / %d" % [maxi(0, run.mod_points() - mod_used), run.mod_points()]
@@ -386,4 +428,36 @@ func _preview_units(run: RunState) -> Array:
 
 
 func _on_start() -> void:
+	if not Deployment.valid(map, deploy_enemies, deploy_players, deploy_positions):
+		hint_label.text = "无法开战：请为全员选择互不重叠的合法部署格。"
+		return
 	app.begin_battle(deploy_uids, map)
+
+
+func _deploy_click(cell: Vector2i) -> void:
+	var occupant: CombatUnit = null
+	var selected: CombatUnit = null
+	for unit in deploy_players:
+		if unit.cell == cell:
+			occupant = unit
+		if unit.uid == deploy_selected_uid:
+			selected = unit
+	if selected == null or (occupant != null and occupant.uid == selected.uid):
+		if occupant != null:
+			deploy_selected_uid = occupant.uid
+			board.selected_uid = occupant.uid
+			board.queue_redraw()
+			hint_label.text = "已选%s：点击蓝框格放置，点击我方单位交换。" % occupant.display_name
+		return
+	if not (map["deploy_area"] as Array).has(cell) or not Deployment.legal(map, deploy_enemies, selected, cell):
+		hint_label.text = "该格不在部署区或此单位无法站立。"
+		return
+	if occupant != null:
+		if not Deployment.legal(map, deploy_enemies, occupant, selected.cell):
+			hint_label.text = "交换后有单位无法站立，不能交换。"
+			return
+		app.run.preview_deploy_positions[occupant.uid] = selected.cell
+	app.run.preview_deploy_positions[selected.uid] = cell
+	deploy_selected_uid = 0
+	_refresh()
+	app.autosave()

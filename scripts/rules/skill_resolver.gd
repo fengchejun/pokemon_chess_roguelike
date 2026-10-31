@@ -45,7 +45,7 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 					continue
 				entries.append({"type": "dir", "dir": dir, "cell": unit.cell + dir})
 		"self":
-			if skill_id != "lightning" or not state.alive_units("enemy" if unit.side == "player" else "player").is_empty() or (unit.side == "player" and bool(state.nest.get("alive", false))):
+			if skill_id != "lightning" or not state.alive_units("enemy" if unit.side == "player" else "player").is_empty() or (unit.side == "player" and state.has_live_nests()):
 				entries.append({"type": "cell", "cell": unit.cell})
 	return entries
 
@@ -265,7 +265,7 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		"nest_damaged": null,
 		"ray_cells": [],
 		"area_cells": [],
-		"_nest_covered": state.nest_covered(), "_nest_hit": false,
+		"_nest_covered_cells": state.all_nests().filter(func(n): return state.nest_covered(n["cell"])).map(func(n): return n["cell"]), "_nest_covered": state.nest_covered(), "_nest_hit": false,
 		"text": "",
 	}
 	if bool(def.get("channel", false)):
@@ -276,8 +276,9 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 			for enemy in state.alive_units("enemy" if caster.side == "player" else "player"):
 				if not cells.has(enemy.cell):
 					cells.append(enemy.cell)
-			if caster.side == "player" and bool(state.nest.get("alive", false)) and not state.nest_covered() and not cells.has(state.nest["cell"]):
-				cells.append(state.nest["cell"])
+			for current in state.all_nests():
+				if caster.side == "player" and bool(current.get("alive", false)) and not state.nest_covered(current["cell"]) and not cells.has(current["cell"]):
+					cells.append(current["cell"])
 		elif skill_id == "tsunami":
 			cells = tsunami_cells(caster.cell, target_entry["dir"])
 		elif skill_id == "earth_shake":
@@ -410,7 +411,7 @@ static func resolve_channel(state: BattleState, caster: CombatUnit, skill_id: St
 static func _resolve_channel_rules(state: BattleState, caster: CombatUnit, skill_id: String, cells: Array) -> Dictionary:
 	state.emit_feedback(caster, "skill", "%s使用了%s" % [caster.display_name, SkillDB.name_of(skill_id)])
 	var summary := {"ok": true, "skill_id": skill_id, "caster_uid": caster.uid, "hits": [],
-		"area_cells": [], "ray_cells": [], "terrain_changes": [], "obstacles_damaged": [], "nest_damaged": null, "_nest_covered": state.nest_covered(), "_nest_hit": false, "text": ""}
+		"area_cells": [], "ray_cells": [], "terrain_changes": [], "obstacles_damaged": [], "nest_damaged": null, "_nest_covered_cells": state.all_nests().filter(func(n): return state.nest_covered(n["cell"])).map(func(n): return n["cell"]), "_nest_covered": state.nest_covered(), "_nest_hit": false, "text": ""}
 	if skill_id == "fire_burst":
 		_apply_fire_burst(state, caster, {"cell": cells[0]}, summary)
 	elif skill_id == "lightning":
@@ -562,14 +563,21 @@ static func _hit_obstacle(state: BattleState, cell: Vector2i, summary: Dictionar
 
 
 static func _hit_nest(state: BattleState, caster: CombatUnit, cell: Vector2i, summary: Dictionary, amount: int = 1) -> bool:
-	if amount <= 0 or not state.is_nest_cell(cell) or bool(summary.get("_nest_covered", false)) or bool(summary.get("_nest_hit", false)):
+	if amount <= 0 or not state.is_nest_cell(cell) or (summary.get("_nest_covered_cells", []) as Array).has(cell) or state.nest_covered(cell) or (summary.get("_nest_hit_cells", []) as Array).has(cell):
 		return false
-	var old_hp := int(state.nest["hp"])
+	var current := state.nest_at_cell(cell)
+	var old_hp := int(current["hp"])
 	var destroyed := state.damage_nest(amount, caster.side, cell)
-	var actual := old_hp - int(state.nest["hp"])
+	var actual := old_hp - int(current["hp"])
 	if actual > 0:
 		summary["_nest_hit"] = true
+		if not summary.has("_nest_hit_cells"):
+			summary["_nest_hit_cells"] = []
+		summary["_nest_hit_cells"].append(cell)
 		summary["nest_damaged"] = {"cell": cell, "damage": actual, "destroyed": destroyed}
+		if not summary.has("nests_damaged"):
+			summary["nests_damaged"] = []
+		summary["nests_damaged"].append(summary["nest_damaged"])
 	return destroyed
 
 
@@ -1098,7 +1106,7 @@ static func _apply_fire_burst(state: BattleState, caster: CombatUnit, entry: Dic
 	summary["text"] = "火球术命中九宫格：%d 个单位受伤。" % summary["hits"].size()
 	if nest_damage > 0:
 		summary["text"] += "巢穴耐久 −%d。" % nest_damage
-	elif bool(summary.get("_nest_covered", false)) and cells.has(state.nest["cell"]):
+	elif (summary.get("_nest_covered_cells", []) as Array).any(func(cell): return cells.has(cell)):
 		summary["text"] += "单位覆盖巢穴，本次不伤及巢穴。"
 
 
