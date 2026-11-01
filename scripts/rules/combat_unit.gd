@@ -145,6 +145,14 @@ var surf_until_round: int = 0:
 		surf_until_round = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "冲浪" + ("解除" if not active else ""), int(value), cell)
+var mirror_until_round: int = 0:
+	set(value):
+		var was_active := mirror_until_round > 0
+		var active := value > 0
+		var announce := active != was_active
+		mirror_until_round = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "镜花水月" + ("解除" if not active else ""), int(value), cell)
 var fire_amp_stacks: int = 0:
 	set(value):
 		var was_active := fire_amp_stacks > 0
@@ -242,6 +250,7 @@ func dup() -> CombatUnit:
 	copy.parasite_source_side = parasite_source_side
 	copy.ice_glide_until_round = ice_glide_until_round
 	copy.surf_until_round = surf_until_round
+	copy.mirror_until_round = mirror_until_round
 	copy.fire_amp_stacks = fire_amp_stacks
 	copy.fresh_spawn = fresh_spawn
 	copy.summon_owner_uid = summon_owner_uid

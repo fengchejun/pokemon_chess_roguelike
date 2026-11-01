@@ -383,11 +383,12 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 				"tailwind": _apply_magnetic(state, caster, summary)
 				"fire_amplify": _apply_fire_amplify(state, caster, summary)
 				"ice_glide", "surf": _apply_terrain_travel(state, caster, skill_id, summary)
+				"mirror_water_moon": _apply_mirror_water_moon(state, caster, summary)
 				_: _apply_heal(state, caster, target_entry, summary)
 	_consume_fire_amp_if_used(state, caster, summary)
 	if SkillDB.battle_limit_of(skill_id) > 0:
 		caster.battle_skill_uses[skill_id] = int(caster.battle_skill_uses.get(skill_id, 0)) + 1
-	caster.moved = movement_used_before if skill_id == "surf" or skill_id == "ice_glide" else true
+	caster.moved = movement_used_before if skill_id in ["surf", "ice_glide", "mirror_water_moon"] else true
 	return summary
 
 
@@ -586,6 +587,8 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 	if base > 0:
 		base = upgraded_base_damage(caster, skill_id, base)
 		base += caster.fire_amp_stacks
+		if String(def.get("element", "")) == "water" and state.mirror_water_travel_active(caster):
+			base += Balance.MIRROR_WATER_DAMAGE_BONUS
 	var modifier := Elements.modifier(String(def.get("element", "")), target.element) if base > 0 else 0
 	var had_burn := target.burn_ticks > 0
 	var had_wet := target.slow_ticks > 0
@@ -613,6 +616,7 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 		"killed": bool(result.get("killed", false)),
 		"statuses": relic_statuses,
 		"relic_healed": int(result.get("relic_healed", 0)),
+		"mirror_immune": bool(result.get("mirror_immune", false)),
 		"push": null,
 	}
 
@@ -782,6 +786,18 @@ static func _apply_terrain_travel(state: BattleState, caster: CombatUnit, skill_
 	else:
 		caster.surf_until_round = state.round + 2 + int(caster.upgrades.get("surf_duration", 0))
 	summary["text"] = "%s 获得%s：本回合及后两回合沿连通%s移动不消耗普通移动机会，可重复移动并越过敌方单位。" % [caster.display_name, SkillDB.name_of(skill_id), "冰面" if skill_id == "ice_glide" else "水域"]
+	state.log_event(summary["text"])
+
+
+static func _apply_mirror_water_moon(state: BattleState, caster: CombatUnit, summary: Dictionary) -> void:
+	var duration := Balance.MIRROR_WATER_MOON_ROUNDS + int(caster.upgrades.get("mirror_water_moon_duration", 0))
+	caster.mirror_until_round = state.round + duration - 1
+	var applied := 0
+	for target in state.alive_units("enemy" if caster.side == "player" else "player"):
+		summary["area_cells"].append(target.cell)
+		if state.apply_wet(target, 1):
+			applied += 1
+	summary["text"] = "镜花水月：持续 %d 回合，水伤 +%d，可跃迁至任意水格；%d 名敌人浸湿一回合。" % [duration, Balance.MIRROR_WATER_DAMAGE_BONUS, applied]
 	state.log_event(summary["text"])
 
 

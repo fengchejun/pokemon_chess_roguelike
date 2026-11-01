@@ -428,10 +428,14 @@ func terrain_travel_mode(unit: CombatUnit) -> int:
 	return -1
 
 
+func mirror_water_travel_active(unit: CombatUnit) -> bool:
+	return unit != null and unit.mirror_until_round > 0 and unit.mirror_until_round >= round
+
+
 func can_move_unit_now(unit: CombatUnit) -> bool:
 	if is_free_exploration():
 		return unit != null and unit.is_alive() and unit.side == "player"
-	return unit != null and unit.channel_lock_round != round and unit.can_move_now(terrain_travel_mode(unit) >= 0)
+	return unit != null and unit.channel_lock_round != round and unit.can_move_now(terrain_travel_mode(unit) >= 0 or mirror_water_travel_active(unit))
 
 
 func adjacent_to_terrain(unit: CombatUnit, terrain_value: int) -> bool:
@@ -670,8 +674,13 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	if amount > 0:
 		if source != null and not bool(opts.get("no_element", false)) and target.has_buff("direct_guard") and not bool(opts.get("conductive", false)):
 			amount = maxi(0, amount - Balance.DIRECT_GUARD_REDUCTION)
-		if amount > 0:
-			damage_reward_at(target.cell)
+	if amount > 0 and target.mirror_until_round > 0 and target.mirror_until_round >= round:
+		target.mirror_until_round = 0
+		emit_feedback(target, "shield", "镜花水月·免疫", 0)
+		log_event("镜花水月的镜影替 %s 承受了 %d 点伤害。" % [target.display_name, amount])
+		return {"amount": 0, "killed": false, "previous_hp": target.hp, "hp": target.hp, "mirror_immune": true}
+	if amount > 0:
+		damage_reward_at(target.cell)
 	if break_frozen:
 		amount *= int(opts.get("frozen_multiplier", 1))
 	if amount > 0 and not bool(opts.get("parasite_tick", false)) and target.parasite_source_uid >= 0:
@@ -743,13 +752,18 @@ func apply_root(target: CombatUnit) -> void:
 	log_event("%s 被定身：下一次移动机会将被取消。" % target.display_name)
 
 
-func apply_slow(target: CombatUnit) -> void:
-	if target.element == "water" or target.has_buff("status_immune"):
-		return
+func apply_wet(target: CombatUnit, ticks: int = 2) -> bool:
+	if target == null or not target.is_alive() or target.element == "water" or target.has_buff("status_immune"):
+		return false
 	var was_wet := target.slow_ticks > 0
-	target.slow_ticks = 2
+	target.slow_ticks = maxi(target.slow_ticks, maxi(1, ticks))
 	if not was_wet:
 		log_event("%s 获得浸湿：下一次移动力 -1。" % target.display_name)
+	return true
+
+
+func apply_slow(target: CombatUnit) -> void:
+	apply_wet(target, 2)
 
 
 func _apply_shallow_wet(side: String, ticks: int) -> void:
@@ -1131,6 +1145,8 @@ func _start_round_rules() -> void:
 			unit.ice_glide_until_round = 0
 		if unit.surf_until_round < round:
 			unit.surf_until_round = 0
+		if unit.mirror_until_round < round:
+			unit.mirror_until_round = 0
 		unit.moved = false
 		unit.skill_used = false
 		unit.capture_used = false
@@ -1700,6 +1716,7 @@ func _signature() -> String:
 		parts.append("buff:%d:%s" % [unit.uid, str(unit.battle_buffs)])
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
+		parts.append("mirror:%d:%d" % [unit.uid, unit.mirror_until_round])
 		parts.append("summon_power:%d:%d" % [unit.uid, unit.summon_power_bonus])
 		parts.append("vine_source:%d:%s:%d" % [unit.uid, str(unit.vine_sources), unit.vine_ticks])
 	parts.append("pending:%s" % str(pending_casts))

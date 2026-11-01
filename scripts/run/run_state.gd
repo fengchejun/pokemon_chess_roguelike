@@ -57,6 +57,7 @@ const MONSTER_UPGRADES := {
 	"leech_seed_tick_bonus": {"name": "深根", "desc": "寄生每轮伤害与施法者回复上限各 +2。", "key": "leech_seed_tick_bonus", "value": 2, "requires_skill": "leech_seed"},
 	"tree_man_hp_bonus": {"name": "坚根守卫", "desc": "大树守卫召唤树人最大生命 +10。", "key": "tree_man_hp_bonus", "value": 10, "requires_skill": "tree_man"},
 	"ice_glide_duration": {"name": "长滑", "desc": "溜冰的地形移动效果延长 1 回合。", "key": "ice_glide_duration", "value": 1, "requires_skill": "ice_glide"},
+	"mirror_water_moon_duration": {"name": "镜水长明", "desc": "镜花水月的持续效果延长 1 回合。", "key": "mirror_water_moon_duration", "value": 1, "requires_skill": "mirror_water_moon"},
 }
 
 

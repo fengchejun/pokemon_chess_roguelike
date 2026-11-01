@@ -51,6 +51,13 @@ static func reachable(state, unit: CombatUnit) -> Dictionary:
 		for cell in terrain_paths:
 			var route: Array = terrain_paths[cell]
 			out[cell] = {"cost": 0, "path": route, "terrain_travel": true}
+	if state.mirror_water_travel_active(unit):
+		for cell in GridSpec.all_cells():
+			if cell == start or not TerrainDB.is_water_body(state.terrain_at(cell)):
+				continue
+			if state.unit_at(cell) != null or state.is_interaction_cell(cell) or TerrainDB.blocks_move(state.terrain_at(cell)):
+				continue
+			out[cell] = {"cost": 0, "path": [cell], "terrain_travel": true, "mirror_travel": true}
 	return out
 
 

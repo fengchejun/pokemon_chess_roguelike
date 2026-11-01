@@ -586,6 +586,8 @@ func _update_unit_card() -> void:
 		statuses.append("溜冰：至第 %d 回合，沿连通冰面移动不消耗普通移动机会" % unit.ice_glide_until_round)
 	if unit.surf_until_round > 0 and unit.surf_until_round >= state.round:
 		statuses.append("冲浪：至第 %d 回合，沿连通水域移动不消耗普通移动机会" % unit.surf_until_round)
+	if unit.mirror_until_round > 0 and unit.mirror_until_round >= state.round:
+		statuses.append("镜花水月：至第 %d 回合，可免费跃迁至任意水格，水系技能直伤 +%d，可免疫一次伤害" % [unit.mirror_until_round, Balance.MIRROR_WATER_DAMAGE_BONUS])
 	if unit.root_pending:
 		statuses.append("定身待生效")
 	if unit.move_cancelled:
@@ -667,6 +669,8 @@ func _move_status(unit: CombatUnit) -> String:
 		return "无法移动（本回合被定身或施法锁定）"
 	if state.terrain_travel_mode(unit) >= 0:
 		return "可用（地形移动免费）"
+	if state.mirror_water_travel_active(unit):
+		return "可用（镜花水月水格移动免费）"
 	if unit.moved:
 		return "已用"
 	if unit.effective_move() <= 0:
@@ -880,6 +884,8 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	if skill_id == "ice_shard" or skill_id == "electric_arc":
 		base_damage += int(unit.upgrades.get(skill_id + "_damage", 0))
 	base_damage = SkillResolver.upgraded_base_damage(unit, skill_id, base_damage)
+	if String(def.get("element", "")) == "water" and state.mirror_water_travel_active(unit):
+		base_damage += Balance.MIRROR_WATER_DAMAGE_BONUS
 	var damage := Balance.skill_damage_for_side(base_damage, unit.side)
 	if skill_id == "flame_jet":
 		parts.append("伤害 %d · 邻格 %d" % [damage, Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, int(def.get("damage", 0)) + int(def.get("adjacent_bonus", 0))), unit.side)])
@@ -891,6 +897,8 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("吸火 ≤2 格 · 每格 +%d" % int(unit.upgrades.get("fire_amplify_power", Balance.SKILL_DAMAGE_UPGRADE)))
 	elif skill_id == "ice_glide" or skill_id == "surf":
 		parts.append("地形免费移动 %d 回合" % (3 + int(unit.upgrades.get("ice_glide_duration", 0)) if skill_id == "ice_glide" else 3 + int(unit.upgrades.get("surf_duration", 0))))
+	elif skill_id == "mirror_water_moon":
+		parts.append("%d 回合 · 水伤 +%d · 受击免疫" % [Balance.MIRROR_WATER_MOON_ROUNDS + int(unit.upgrades.get("mirror_water_moon_duration", 0)), Balance.MIRROR_WATER_DAMAGE_BONUS])
 	elif skill_id == "tree_man":
 		parts.append("即时召唤 · 上限 1")
 	elif skill_id == "herbal_heal":
@@ -976,6 +984,8 @@ func _action_detail(action: Dictionary) -> String:
 			text += "（%s）" % ("克制 ×1.25" if int(hit["modifier"]) > 0 else "抵抗 ×0.75")
 		if bool(hit.get("killed", false)):
 			text += "（致死）"
+		if bool(hit.get("mirror_immune", false)):
+			text += "（镜花水月免疫）"
 		if hit.get("push") != null and bool(hit["push"].get("death", false)):
 			text += "（推入致死地形）"
 		parts.append(text)

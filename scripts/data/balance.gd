@@ -29,6 +29,8 @@ const NEST_DURABILITY := 3
 
 const BURN_DAMAGE := 4
 const BURN_TICKS := 2
+const MIRROR_WATER_MOON_ROUNDS := 3
+const MIRROR_WATER_DAMAGE_BONUS := 5
 
 # 战斗数值刻度：Lv1 普通敌人 20–30 HP，常规技能约 10–13 直伤。
 # 敌人通常成群行动，单次技能伤害按此比例结算，避免放大数字后集火过猛。

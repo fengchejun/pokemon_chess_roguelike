@@ -410,6 +410,8 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		badges_text += "寄"
 	if unit.fire_amp_stacks > 0:
 		badges_text += "增"
+	if unit.mirror_until_round > 0 and unit.mirror_until_round >= battle_round:
+		badges_text += "镜"
 	if unit.root_pending or unit.move_cancelled:
 		badges_text += "定"
 	if unit.slow_ticks > 0:
