@@ -16,7 +16,16 @@ func _definition(t: TestContext) -> void:
 	t.eq(String(def.get("name", "")), "镜花水月", "技能名称")
 	t.eq(int(def.get("battle_limit", 0)), 1, "镜花水月每场限用一次")
 	t.check(SkillDB.learnable_ids_for("water").has("mirror_water_moon"), "镜花水月进入水系学习池")
-	t.check(not SpeciesDB.skills_of("water_starter").has("mirror_water_moon"), "镜花水月不占用水系初始技能栏")
+	t.check(SpeciesDB.skills_of("water_starter").has("mirror_water_moon"), "镜花水月进入杰尼龟基础技能池")
+	var opening_run := RunState.new_run(5601, [{
+		"id": 1,
+		"species_id": "water_starter",
+		"affinity": 0,
+		"starting_skill_id": "mirror_water_moon",
+	}])
+	var opening_record := opening_run.record_by_uid(1)
+	t.eq(opening_record.get("known_skills", []), ["mirror_water_moon"], "开局可选择镜花水月作为起始技能")
+	t.eq(opening_record.get("equipped_skills", []), ["mirror_water_moon"], "开局选择后立即装备镜花水月")
 	t.eq(RunState.upgrade_id_for_skill("mirror_water_moon"), "mirror_water_moon_duration", "镜花水月拥有专属强化")
 
 

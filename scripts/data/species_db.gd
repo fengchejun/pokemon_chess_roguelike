@@ -14,7 +14,7 @@ const SPECIES := {
 	},
 	"water_starter": {
 		"name": "杰尼龟", "glyph": "泡", "element": "water", "hp": 30, "move": 3,
-		"skills": ["water_flow", "rain_call"],
+		"skills": ["water_flow", "rain_call", "mirror_water_moon"],
 	},
 	"grass_starter": {
 		"name": "妙蛙种子", "glyph": "芽", "element": "grass", "hp": 30, "move": 3,
