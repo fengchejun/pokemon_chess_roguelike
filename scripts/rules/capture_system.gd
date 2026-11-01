@@ -1,7 +1,7 @@
 class_name CaptureSystem
 extends RefCounted
 
-## 八邻格为统一距离；低血量保证与战中转阵营由本局设置控制。
+## 两格方形邻域为统一距离；低血量保证与战中转阵营由本局设置控制。
 
 
 static func capture_chance(target: CombatUnit, low_hp_rules: bool = false, debug_percent: int = -1) -> float:
@@ -12,9 +12,9 @@ static func capture_chance(target: CombatUnit, low_hp_rules: bool = false, debug
 	if low_hp_rules:
 		if target.hp <= Balance.CAPTURE_GUARANTEE_HP or (target.hp <= Balance.CAPTURE_DEBUFF_GUARANTEE_HP and has_debuff(target)):
 			return 1.0
-		return clampf(0.65 + (1.0 - target.hp_ratio()) * 0.15, 0.0, 1.0)
-	## 基础 30%，目标每损失 1% 生命增加 0.55%；夹在 5% 至 95% 之间。
-	var chance := Balance.CAPTURE_CHANCE_BASE + (1.0 - target.hp_ratio()) * Balance.CAPTURE_CHANCE_SLOPE
+	## 满血 1%，随目标损失生命线性提升，常规上限 60%。
+	var missing_ratio := clampf(1.0 - target.hp_ratio(), 0.0, 1.0)
+	var chance := lerpf(Balance.CAPTURE_CHANCE_MIN, Balance.CAPTURE_CHANCE_MAX, missing_ratio)
 	return clampf(chance, Balance.CAPTURE_CHANCE_MIN, Balance.CAPTURE_CHANCE_MAX)
 
 
@@ -30,7 +30,7 @@ static func in_range(trainer: CombatUnit, target: CombatUnit) -> bool:
 	if trainer == null or target == null:
 		return false
 	var delta := target.cell - trainer.cell
-	return maxi(absi(delta.x), absi(delta.y)) == 1
+	return maxi(absi(delta.x), absi(delta.y)) <= Balance.CAPTURE_RANGE
 
 
 static func can_attempt(state, trainer: CombatUnit, target: CombatUnit) -> bool:

@@ -64,11 +64,10 @@ const SKILL_SLOTS := 3
 const STORAGE_LIMIT := 30
 const MOD_POINTS := 2
 
-# 捕获范围统一使用训练家周围八格，由 CaptureSystem.in_range 判定。
-const CAPTURE_CHANCE_BASE := 0.30
-const CAPTURE_CHANCE_SLOPE := 0.55
-const CAPTURE_CHANCE_MIN := 0.05
-const CAPTURE_CHANCE_MAX := 0.95
+# 捕获范围使用训练家周围宽度为 2 格的方形邻域，由 CaptureSystem.in_range 判定。
+const CAPTURE_RANGE := 2
+const CAPTURE_CHANCE_MIN := 0.01
+const CAPTURE_CHANCE_MAX := 0.60
 
 const FLOORS_PER_RUN := 3
 const BATTLES_PER_FLOOR := 6

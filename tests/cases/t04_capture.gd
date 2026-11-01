@@ -1,6 +1,6 @@
 extends RefCounted
 
-## 八邻格捕获；低血量保证与原地转阵营分别由设置控制。
+## 两格方形邻域捕获；低血量保证与原地转阵营分别由设置控制。
 
 
 func run(t: TestContext) -> void:
@@ -16,15 +16,15 @@ func run(t: TestContext) -> void:
 func _t_chance_curve(t: TestContext) -> void:
 	var wild := CombatUnit.make("rock_wild1", "enemy", 100)
 	wild.hp = wild.max_hp
-	t.eq(CaptureSystem.chance_percent(wild), 30, "满血：基础 30%")
+	t.eq(CaptureSystem.chance_percent(wild), 1, "满血：基础 1%")
 	var full_chance := CaptureSystem.capture_chance(wild)
 	wild.hp = 3
 	var half_chance := CaptureSystem.capture_chance(wild)
 	wild.hp = 1
 	var low_chance := CaptureSystem.capture_chance(wild)
-	t.check(half_chance > full_chance, "半血成功率高于满血")
-	t.check(low_chance > half_chance, "残血成功率高于半血")
-	t.check(CaptureSystem.chance_percent(wild) >= 70, "残血成功率明显更高（%d%%）" % CaptureSystem.chance_percent(wild))
+	t.check(half_chance > full_chance, "失血后成功率高于满血")
+	t.check(low_chance > half_chance, "残血成功率高于低血量")
+	t.check(CaptureSystem.chance_percent(wild) > 50, "残血成功率明显更高（%d%%）" % CaptureSystem.chance_percent(wild))
 	t.check(full_chance >= Balance.CAPTURE_CHANCE_MIN and low_chance <= Balance.CAPTURE_CHANCE_MAX, "概率夹在上下限内")
 
 
@@ -38,7 +38,11 @@ func _t_range(t: TestContext) -> void:
 	wild.cell = Vector2i(2, 4)
 	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "斜角相邻可尝试")
 	wild.cell = Vector2i(3, 3)
-	t.eq(CaptureSystem.can_attempt(state, trainer, wild), false, "直线两格不可尝试")
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "直线两格可尝试")
+	wild.cell = Vector2i(3, 5)
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "斜角两格可尝试")
+	wild.cell = Vector2i(4, 3)
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), false, "直线三格不可尝试")
 
 
 func _t_flow(t: TestContext) -> void:
