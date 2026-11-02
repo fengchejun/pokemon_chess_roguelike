@@ -482,8 +482,6 @@ static func _execute_on(work: BattleState, action: Dictionary) -> void:
 	for cell in action.get("move_path", []):
 		unit.last_move_direction = cell - unit.cell
 		unit.cell = cell
-		if not unit.has_buff("flight") and (work.terrain_at(cell) == TerrainDB.WATER or work.terrain_at(cell) == TerrainDB.DEEP):
-			unit.burn_ticks = 0
 	if not action.get("move_path", []).is_empty():
 		unit.moved = unit.moved if bool(action.get("free_terrain_move", false)) else true
 		work.apply_vine_on_landing(unit)

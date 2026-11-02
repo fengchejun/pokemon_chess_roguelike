@@ -585,11 +585,12 @@ func _update_unit_card() -> void:
 		lines.append(Elements.counter_hint(unit.element))
 	var statuses: Array = []
 	if unit.burn_ticks > 0:
-		statuses.append("灼烧 %d 回合" % unit.burn_ticks)
+		statuses.append("灼烧 %d 层（本方回合末伤害，减 1 层）" % unit.burn_ticks)
 	if unit.parasite_source_uid >= 0:
 		var parasite_source := state.unit_by_uid(unit.parasite_source_uid)
 		var parasite_bonus := int(parasite_source.upgrades.get("leech_seed_tick_bonus", 0)) if parasite_source != null and parasite_source.side == unit.parasite_source_side else 0
-		statuses.append("寄生：整轮末失去 %d HP；其他伤害会解除" % (Balance.PARASITE_DAMAGE + parasite_bonus))
+		statuses.append("寄生 %d 层" % unit.parasite_ticks)
+		statuses.append("寄生：本方回合末失去 %d HP；其他伤害或层数耗尽解除" % (Balance.PARASITE_DAMAGE + parasite_bonus))
 	if unit.fire_amp_stacks > 0:
 		statuses.append("火焰增幅 +%d：下一次造成技能直伤时消耗" % unit.fire_amp_stacks)
 	if unit.ice_glide_until_round > 0 and unit.ice_glide_until_round >= state.round:
@@ -601,19 +602,19 @@ func _update_unit_card() -> void:
 	if unit.move_cancelled:
 		statuses.append("本回合被定身")
 	if unit.slow_ticks > 0:
-		statuses.append("浸湿（移动 -1）")
+		statuses.append("浸湿 %d 层（移动 -1）" % unit.slow_ticks)
 	if unit.shock_ticks > 0:
-		statuses.append("感电")
+		statuses.append("感电 %d 层" % unit.shock_ticks)
 	if unit.paralyzed_ticks > 0:
-		statuses.append("麻痹")
+		statuses.append("麻痹 1 层（本方回合末解除）")
 	if unit.frozen:
-		statuses.append("冰冻")
+		statuses.append("冰冻 1 层（本方回合末解除）")
 	if unit.channel_lock_round > state.round:
 		statuses.append("吟唱中：第 %d 回合本方阶段结算，届时不能行动" % unit.channel_lock_round)
 	elif unit.channel_lock_round == state.round:
 		statuses.append("吟唱代价：本阶段不能行动")
 	if unit.vine_ticks > 0:
-		statuses.append("藤蔓束缚（仅限制移动）")
+		statuses.append("藤蔓束缚（仅限制移动）%d 层" % unit.vine_ticks)
 	if unit.inspired:
 		statuses.append("首领鼓舞：移动 +1，当前生命与生命上限各 +5（本场）")
 	if unit.is_boss:

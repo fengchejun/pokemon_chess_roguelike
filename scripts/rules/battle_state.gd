@@ -690,6 +690,7 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	if amount > 0 and not bool(opts.get("parasite_tick", false)) and target.parasite_source_uid >= 0:
 		target.parasite_source_uid = -1
 		target.parasite_source_side = ""
+		target.parasite_ticks = 0
 		log_event("%s 受到其他伤害，寄生解除。" % target.display_name)
 	var cause: String = opts.get("cause", "伤害")
 	var previous_hp := target.hp
@@ -728,9 +729,9 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 				log_event("余烬：%s 恢复 %d HP。" % [source.display_name, healed])
 		elif not killed:
 			var skill_element := String(opts.get("element", ""))
-			if skill_element == "fire" and RelicDB.rank(relic_stacks, "fire_mark") > 0 and target.burn_ticks <= 0:
+			if skill_element == "fire" and RelicDB.rank(relic_stacks, "fire_mark") > 0:
 				apply_burn(target, source)
-			if skill_element == "water" and RelicDB.rank(relic_stacks, "water_mark") > 0 and target.slow_ticks <= 0:
+			if skill_element == "water" and RelicDB.rank(relic_stacks, "water_mark") > 0:
 				apply_slow(target)
 	return {"amount": amount, "killed": killed, "previous_hp": previous_hp, "hp": target.hp, "relic_healed": relic_healed}
 
@@ -744,11 +745,11 @@ func apply_burn(target: CombatUnit, source: CombatUnit) -> void:
 		return
 	var was_burning := target.burn_ticks > 0
 	var burn_ticks := Balance.BURN_TICKS
-	target.burn_ticks = burn_ticks
+	target.burn_ticks = mini(Balance.STATUS_MAX_STACKS, target.burn_ticks + burn_ticks)
 	target.burn_source_uid = source.uid if source != null else -1
 	target.burn_source_side = source.side if source != null else ""
 	if not was_burning:
-		log_event("%s 被点燃（灼烧 %d 回合）。" % [target.display_name, burn_ticks])
+		log_event("%s 被点燃（灼烧 %d 层）。" % [target.display_name, burn_ticks])
 
 
 func apply_root(target: CombatUnit) -> void:
@@ -760,15 +761,14 @@ func apply_slow(target: CombatUnit) -> void:
 	if target.element == "water" or target.has_buff("status_immune"):
 		return
 	var was_wet := target.slow_ticks > 0
-	target.slow_ticks = 2
+	target.slow_ticks = mini(Balance.STATUS_MAX_STACKS, target.slow_ticks + 2)
 	if not was_wet:
 		log_event("%s 获得浸湿：下一次移动力 -1。" % target.display_name)
 
 
 func _apply_shallow_wet(side: String, ticks: int) -> void:
 	# 阶段交接时只检查即将行动的一方；我方在敌方阶段结束后检查。
-	# 整轮结算仍会衰减一次，因此敌方使用 1、我方使用 2，
-	# 使离水后的减速恰好覆盖各自下一次移动机会。
+	# 地形只补足一层；离水后完成所属方行动即解除。
 	for unit in alive_units(side):
 		_apply_shallow_wet_to_unit(unit, ticks)
 
@@ -941,10 +941,6 @@ func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 	for step in path:
 		unit.last_move_direction = step - unit.cell
 		unit.cell = step
-		if not unit.has_buff("flight") and (terrain_at(step) == TerrainDB.WATER or terrain_at(step) == TerrainDB.DEEP):
-			if unit.burn_ticks > 0:
-				log_event("%s 进入水域，灼烧解除。" % unit.display_name)
-			unit.burn_ticks = 0
 	unit.moved = movement_used_before if free_terrain_move else true
 	apply_vine_on_landing(unit)
 	var pickup := try_pickup_fruit(unit)
@@ -1152,8 +1148,6 @@ func _start_round_rules() -> void:
 			unit.moved = true
 			unit.skill_used = true
 			unit.capture_used = true
-		if unit.paralyzed_ticks > 0:
-			unit.paralyzed_ticks -= 1
 	for unit in units:
 		if unit.move_cancelled:
 			unit.move_cancelled = false
@@ -1239,6 +1233,9 @@ func _begin_enemy_phase_rules() -> Array:
 		return []
 	commit_actions()
 	_begin_reward_guard()
+	_finish_status_effects("player")
+	if ended:
+		return []
 	_finish_movement_effects("player")
 	_apply_shallow_wet("enemy", 1)
 	phase = PHASE_ENEMY
@@ -1282,8 +1279,6 @@ func _step_enemy_phase_rules() -> Dictionary:
 	for cell in path:
 		unit.last_move_direction = cell - unit.cell
 		unit.cell = cell
-		if not unit.has_buff("flight") and (terrain_at(cell) == TerrainDB.WATER or terrain_at(cell) == TerrainDB.DEEP):
-			unit.burn_ticks = 0
 	if not path.is_empty():
 		unit.moved = unit.moved if bool(action.get("free_terrain_move", false)) else true
 		apply_vine_on_landing(unit)
@@ -1317,8 +1312,11 @@ func end_enemy_phase() -> void:
 func _end_enemy_phase_rules() -> void:
 	if ended:
 		return
+	_finish_status_effects("enemy")
+	if ended:
+		return
 	_finish_movement_effects("enemy")
-	_apply_shallow_wet("player", 2)
+	_apply_shallow_wet("player", 1)
 	_finish_reward_guard()
 	_finish_round()
 
@@ -1347,6 +1345,52 @@ func settle_round() -> void:
 		presentation_finished.emit({})
 
 
+func _finish_status_effects(side: String) -> void:
+	if is_free_exploration() or ended:
+		return
+	# 先按结算时站位净化，再对所属方结算固定伤害。
+	for unit in alive_units(side):
+		if unit.burn_ticks > 0:
+			var cell_terrain := terrain_at(unit.cell)
+			if not unit.has_buff("flight") and (cell_terrain == TerrainDB.WATER or cell_terrain == TerrainDB.DEEP):
+				log_event("%s 处于水域，灼烧解除。" % unit.display_name)
+				unit.burn_ticks = 0
+			continue
+	for unit in alive_units(side):
+		if ended:
+			return
+		if unit.burn_ticks > 0:
+			unit.burn_ticks -= 1
+			damage_unit(null, unit, Balance.BURN_DAMAGE, {"no_element": true, "cause": "灼烧", "killer_side": unit.burn_source_side})
+	if ended:
+		return
+	for unit in alive_units(side):
+		if ended:
+			return
+		if unit.parasite_source_uid < 0 or unit.parasite_ticks <= 0:
+			continue
+		var source := unit_by_uid(unit.parasite_source_uid)
+		var source_uid: int = unit.parasite_source_uid
+		var source_side: String = unit.parasite_source_side
+		var parasite_bonus := int(source.upgrades.get("leech_seed_tick_bonus", 0)) if source != null and source.side == source_side else 0
+		var result := damage_unit(null, unit, Balance.PARASITE_DAMAGE + parasite_bonus, {"no_element": true, "parasite_tick": true, "cause": "寄生", "killer_side": source_side, "killer_uid": source_uid})
+		if int(result.get("amount", 0)) > 0 and source != null and source.is_alive() and source.side == source_side:
+			var healed := mini(source.max_hp - source.hp, Balance.PARASITE_HEAL + parasite_bonus)
+			if healed > 0:
+				source.hp += healed
+				feedback_heal(source, healed)
+				log_event("%s 从寄生中恢复 %d HP。" % [source.display_name, healed])
+		unit.parasite_ticks = maxi(0, unit.parasite_ticks - 1)
+		if unit.parasite_ticks == 0:
+			unit.parasite_source_uid = -1
+			unit.parasite_source_side = ""
+	for unit in alive_units(side):
+		unit.slow_ticks = maxi(0, unit.slow_ticks - 1)
+		unit.shock_ticks = maxi(0, unit.shock_ticks - 1)
+		unit.paralyzed_ticks = 0
+		unit.frozen = false
+
+
 func _settle_round_rules() -> void:
 	if is_free_exploration():
 		_pickups()
@@ -1367,37 +1411,6 @@ func _settle_round_rules() -> void:
 			obstacle_durability.erase(cell)
 			set_terrain(cell, origin)
 			log_event("临时障碍消失（%d,%d）。" % [cell.x, cell.y])
-	# 2. 灼烧伤害
-	for unit in alive_units():
-		if unit.burn_ticks > 0:
-			var cell_terrain := terrain_at(unit.cell)
-			if not unit.has_buff("flight") and (cell_terrain == TerrainDB.WATER or cell_terrain == TerrainDB.DEEP):
-				log_event("%s 处于水域，灼烧解除。" % unit.display_name)
-				unit.burn_ticks = 0
-			continue
-	# 3. 灼烧与状态计数
-	for unit in alive_units():
-		if unit.burn_ticks > 0:
-			unit.burn_ticks -= 1
-			damage_unit(null, unit, Balance.BURN_DAMAGE, {"no_element": true, "cause": "灼烧", "killer_side": unit.burn_source_side})
-	if ended:
-		return
-	for unit in alive_units():
-		if ended:
-			return
-		if unit.parasite_source_uid < 0:
-			continue
-		var source := unit_by_uid(unit.parasite_source_uid)
-		var source_uid: int = unit.parasite_source_uid
-		var source_side: String = unit.parasite_source_side
-		var parasite_bonus := int(source.upgrades.get("leech_seed_tick_bonus", 0)) if source != null and source.side == source_side else 0
-		var result := damage_unit(null, unit, Balance.PARASITE_DAMAGE + parasite_bonus, {"no_element": true, "parasite_tick": true, "cause": "寄生", "killer_side": source_side, "killer_uid": source_uid})
-		if int(result.get("amount", 0)) > 0 and source != null and source.is_alive() and source.side == source_side:
-			var healed := mini(source.max_hp - source.hp, Balance.PARASITE_HEAL + parasite_bonus)
-			if healed > 0:
-				source.hp += healed
-				feedback_heal(source, healed)
-				log_event("%s 从寄生中恢复 %d HP。" % [source.display_name, healed])
 	_settle_burning_cells()
 	if ended:
 		return
@@ -1409,12 +1422,6 @@ func _settle_round_rules() -> void:
 		steam_cells[cell] = int(steam_cells[cell]) - 1
 		if int(steam_cells[cell]) <= 0:
 			steam_cells.erase(cell)
-	# 4. 减速衰减
-	for unit in units:
-		if unit.slow_ticks > 0:
-			unit.slow_ticks = maxi(0, unit.slow_ticks - 1)
-		if unit.shock_ticks > 0:
-			unit.shock_ticks -= 1
 	# 5. 停留拾取食物
 	_pickups()
 	# 6. 胜负与时限
@@ -1455,9 +1462,8 @@ func _settle_ice_slides() -> void:
 		if bool(slide["lethal"]):
 			kill_unit(unit, "冰面滑入致死地形")
 		elif terrain_at(next) == TerrainDB.WATER and not unit.has_buff("flight"):
-			unit.burn_ticks = 0
-			# 浅水阶段检查已发生；滑行入水仍须影响下一次移动。
-			_apply_shallow_wet_to_unit(unit, 2)
+			# 滑行不灭火，须在所属方回合末仍在水中。
+			_apply_shallow_wet_to_unit(unit, 1)
 		elif terrain_at(next) == TerrainDB.VINES:
 			apply_vine_on_landing(unit)
 
@@ -1714,6 +1720,8 @@ func _signature() -> String:
 	for unit in units:
 		parts.append("buff:%d:%s" % [unit.uid, str(unit.battle_buffs)])
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
+		parts.append("control:%d:%d:%d:%s" % [unit.uid, unit.shock_ticks, unit.paralyzed_ticks, str(unit.frozen)])
+		parts.append("parasite_layers:%d:%d" % [unit.uid, unit.parasite_ticks])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
 		parts.append("summon_power:%d:%d" % [unit.uid, unit.summon_power_bonus])
 		parts.append("vine_source:%d:%s:%d" % [unit.uid, str(unit.vine_sources), unit.vine_ticks])

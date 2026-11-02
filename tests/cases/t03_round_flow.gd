@@ -30,10 +30,10 @@ func _t_burn(t: TestContext) -> void:
 	var wild := state.unit_by_uid(100)
 	state.apply_burn(wild, fire)
 	t.eq(wild.burn_ticks, 2, "灼烧初始 2 回合")
-	state.settle_round()
+	state._finish_status_effects("enemy")
 	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - Balance.BURN_DAMAGE, "第一次结算灼烧伤害")
 	t.eq(wild.burn_ticks, 1, "灼烧剩余 1 回合")
-	state.settle_round()
+	state._finish_status_effects("enemy")
 	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - Balance.BURN_DAMAGE * 2, "第二次结算灼烧伤害")
 	t.eq(wild.burn_ticks, 0, "灼烧结束")
 	# 火系免疫
@@ -56,7 +56,7 @@ func _t_burn_cleared_by_water(t: TestContext) -> void:
 	var wild := state.unit_by_uid(100)
 	state.apply_burn(wild, fire)
 	wild.cell = Vector2i(2, 3)
-	state.settle_round()
+	state._finish_status_effects("enemy")
 	t.eq(wild.burn_ticks, 0, "进入水面解除灼烧")
 	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1"), "解除后不再受到灼烧伤害")
 
@@ -75,9 +75,9 @@ func _t_root_and_slow(t: TestContext) -> void:
 	state.apply_slow(wild)
 	t.eq(wild.slow_ticks, 2, "减速已挂载")
 	t.eq(wild.effective_move(), wild.move_points - 1, "减速使移动上限 −1")
-	state.settle_round()
+	state._finish_status_effects("enemy")
 	t.eq(wild.slow_ticks, 1, "缓慢衰减")
-	state.settle_round()
+	state._finish_status_effects("enemy")
 	t.eq(wild.slow_ticks, 0, "1 回合后解除")
 
 
@@ -104,6 +104,8 @@ func _t_wet_phase_boundaries(t: TestContext) -> void:
 	t.eq(player.slow_ticks, 1, "敌方阶段结束后，浅水中的我方获得下次行动的浸湿")
 	t.eq(player.effective_move(), player.move_points - 1, "我方下一次移动减少一格")
 	player.cell = Vector2i(2, 3)
+	state.phase = BattleState.PHASE_PLAYER
+	state.begin_enemy_phase()
 	state.phase = BattleState.PHASE_ENEMY
 	state.end_enemy_phase()
 	t.eq(player.slow_ticks, 0, "我方离水并完成下一次行动后解除浸湿")

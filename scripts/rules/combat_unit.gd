@@ -120,6 +120,7 @@ var channel_lock_round: int = 0
 var battle_buffs: Dictionary = {}
 var upgrades: Dictionary = {} # 仅此怪物本局取得的强化；敌人默认为空。
 var last_move_direction: Vector2i = Vector2i.ZERO
+var parasite_ticks: int = 0
 var parasite_source_uid: int = -1:
 	set(value):
 		var was_active := parasite_source_uid >= 0
@@ -238,6 +239,7 @@ func dup() -> CombatUnit:
 	copy.battle_buffs = battle_buffs.duplicate()
 	copy.upgrades = upgrades.duplicate()
 	copy.last_move_direction = last_move_direction
+	copy.parasite_ticks = parasite_ticks
 	copy.parasite_source_uid = parasite_source_uid
 	copy.parasite_source_side = parasite_source_side
 	copy.ice_glide_until_round = ice_glide_until_round

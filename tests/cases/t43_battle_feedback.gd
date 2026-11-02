@@ -90,7 +90,7 @@ func _more_events(t: TestContext) -> void:
 	unit.cell = Vector2i(1, 3)
 	state.set_terrain(Vector2i(2, 3), TerrainDB.WATER)
 	t.check(state.move_unit(unit, Vector2i(2, 3)), "移动入水用于撤回验证")
-	t.check(events.any(func(e): return e["text"] == "灼烧解除"), "入水立即解除灼烧")
+	t.check(not events.any(func(e): return e["text"] == "灼烧解除"), "入水移动不提前解除灼烧")
 	events.clear()
 	t.check(state.undo_last_move(), "撤回成功")
 	t.eq(events.size(), 0, "撤回恢复灼烧不重播提示")

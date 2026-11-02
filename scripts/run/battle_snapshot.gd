@@ -56,7 +56,7 @@ static func save_state(state: BattleState) -> Dictionary:
 	var members: Array = []
 	for unit in state.units:
 		members.append(_fields(unit))
-	return {"version": 3, "fields": _fields(state), "units": members, "rng": {
+	return {"version": 4, "fields": _fields(state), "units": members, "rng": {
 		"spawn_seed": str(state.spawn_rng.seed), "spawn_state": str(state.spawn_rng.state),
 		"capture_seed": str(state.capture_rng.seed), "capture_state": str(state.capture_rng.state),
 		"terrain_seed": str(state.terrain_rng.seed), "terrain_state": str(state.terrain_rng.state),
@@ -73,6 +73,9 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		var unit := CombatUnit.new()
 		for key in member:
 			unit.set(key, decode(member[key]))
+		if not member.has("parasite_ticks") and unit.parasite_source_uid >= 0:
+			unit.parasite_ticks = Balance.PARASITE_TICKS
+		unit.paralyzed_ticks = mini(1, unit.paralyzed_ticks)
 		var had_retired_skill := unit.skills.has("wind_gust")
 		unit.skills = unit.skills.filter(func(id): return not SkillDB.get_def(String(id)).is_empty())
 		if had_retired_skill and unit.skills.is_empty():

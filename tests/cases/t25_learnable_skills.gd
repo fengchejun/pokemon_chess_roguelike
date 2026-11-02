@@ -50,13 +50,13 @@ func _parasite(t: TestContext) -> void:
 	t.check(bool(result.get("ok", false)), "相邻敌人可寄生")
 	t.eq(target.parasite_source_uid, caster.uid, "寄生记录来源")
 	var old_hp := target.hp
-	state.settle_round()
+	state._finish_status_effects("enemy")
 	t.eq(target.hp, old_hp - Balance.PARASITE_DAMAGE, "整轮结算寄生扣除配置的生命")
 	t.eq(caster.hp, caster.max_hp - 20 + Balance.PARASITE_HEAL, "仍存活的施法者回复生命")
 	state.damage_unit(caster, target, 1, {"element": "grass", "cause": "其他技能"})
 	t.eq(target.parasite_source_uid, -1, "受到其他实际伤害后寄生解除")
 	old_hp = target.hp
-	state.settle_round()
+	state._finish_status_effects("enemy")
 	t.eq(target.hp, old_hp, "解除后不再寄生扣血")
 	var guarded := TestScenario.make_state(["grass_starter"], [["rock_wild1", Vector2i(3, 2)]])
 	guarded.unit_by_uid(1).cell = Vector2i(2, 2)
@@ -75,7 +75,7 @@ func _parasite(t: TestContext) -> void:
 	deeper.cast_skill(deep_caster, "leech_seed", {"type": "unit", "unit": deep_target.uid, "cell": deep_target.cell})
 	var deep_hp := deep_target.hp
 	var caster_hp := deep_caster.hp
-	deeper.settle_round()
+	deeper._finish_status_effects("enemy")
 	t.eq(deep_hp - deep_target.hp, 6, "强化寄生每轮伤害为六点")
 	t.eq(deep_caster.hp - caster_hp, 6, "强化寄生同时提高回复上限")
 

@@ -437,11 +437,11 @@ static func _resolve_channel_rules(state: BattleState, caster: CombatUnit, skill
 			summary["hits"].append(hit)
 			if target.is_alive():
 				if target.shock_ticks > 0:
-					target.paralyzed_ticks = 2
+					target.paralyzed_ticks = 1
 					state.cancel_channel(target, "麻痹")
-				target.shock_ticks = 2
+				target.shock_ticks = mini(Balance.STATUS_MAX_STACKS, target.shock_ticks + 2)
 				if index == 0 and int(caster.upgrades.get("lightning_first_shock", 0)) > 0:
-					target.paralyzed_ticks = 2
+					target.paralyzed_ticks = 1
 					state.cancel_channel(target, "双重感电")
 		summary["text"] = "打雷落下：%d 个单位受击。" % summary["hits"].size()
 	elif skill_id == "rock_slide":
@@ -751,10 +751,6 @@ static func _convert_to_water(state: BattleState, cell: Vector2i, summary: Dicti
 	state.set_terrain(cell, TerrainDB.WATER)
 	summary["terrain_changes"].append({"cell": cell, "from": terrain, "to": TerrainDB.WATER})
 	state.log_event("(%d,%d) 变为水面。" % [cell.x, cell.y])
-	var occupant := state.unit_at(cell)
-	if occupant != null and not occupant.has_buff("flight") and occupant.burn_ticks > 0:
-		occupant.burn_ticks = 0
-		state.log_event("%s 的灼烧被水熄灭。" % occupant.display_name)
 	return true
 
 
@@ -762,10 +758,11 @@ static func _apply_leech_seed(state: BattleState, caster: CombatUnit, entry: Dic
 	var target := state.unit_by_uid(int(entry["unit"]))
 	if target == null:
 		return
+	target.parasite_ticks = mini(Balance.STATUS_MAX_STACKS, target.parasite_ticks + Balance.PARASITE_TICKS)
 	target.parasite_source_uid = caster.uid
 	target.parasite_source_side = caster.side
 	summary["area_cells"].append(target.cell)
-	summary["text"] = "%s 被寄生；每次整轮结算失去 %d HP，受到其他伤害时解除。" % [target.display_name, Balance.PARASITE_DAMAGE + int(caster.upgrades.get("leech_seed_tick_bonus", 0))]
+	summary["text"] = "%s 被寄生；每次所属方回合结束失去 %d HP，受到其他伤害时解除。" % [target.display_name, Balance.PARASITE_DAMAGE + int(caster.upgrades.get("leech_seed_tick_bonus", 0))]
 	state.log_event(summary["text"])
 
 
@@ -839,8 +836,6 @@ static func _apply_flame_charge(state: BattleState, caster: CombatUnit, entry: D
 		caster.last_move_direction = dir
 		summary["self_move"] = next
 		var terrain := state.terrain_at(next)
-		if not caster.has_buff("flight") and (terrain == TerrainDB.WATER or terrain == TerrainDB.DEEP):
-			caster.burn_ticks = 0
 		if TerrainDB.is_lethal(terrain) and not caster.has_buff("flight"):
 			summary["self_death"] = true
 			state.kill_unit(caster, "闪焰冲锋落入" + TerrainDB.name_of(terrain), caster.side, caster.uid)
@@ -870,9 +865,6 @@ static func _apply_volt_step(state: BattleState, caster: CombatUnit, entry: Dict
 	caster.cell = dest
 	state.apply_vine_on_landing(caster)
 	summary["self_move"] = dest
-	var terrain := state.terrain_at(dest)
-	if terrain == TerrainDB.WATER or terrain == TerrainDB.DEEP:
-		caster.burn_ticks = 0
 	state.try_pickup_fruit(caster)
 	summary["text"] = "电光步瞬移到 (%d,%d)" % [dest.x, dest.y]
 
@@ -994,10 +986,6 @@ static func _apply_rain_dance(state: BattleState, caster: CombatUnit, entry: Dic
 		if terrain == TerrainDB.PLAIN or terrain == TerrainDB.GRASS or terrain == TerrainDB.VINES or terrain == TerrainDB.FRAGILE:
 			state.set_terrain(cell, TerrainDB.WATER)
 			summary["terrain_changes"].append({"cell": cell, "from": terrain, "to": TerrainDB.WATER})
-			var occupant := state.unit_at(cell)
-			if occupant != null and not occupant.has_buff("flight") and occupant.burn_ticks > 0:
-				occupant.burn_ticks = 0
-				state.log_event("%s 的灼烧被雨水熄灭。" % occupant.display_name)
 		if caster.has_buff("rain_call"):
 			var wet_target := state.unit_at(cell)
 			if wet_target != null:
@@ -1258,8 +1246,6 @@ static func _apply_volt_replace_empty(state: BattleState, caster: CombatUnit, en
 	caster.cell = dest
 	caster.last_move_direction = _axis_dir(origin, dest) if origin.x == dest.x or origin.y == dest.y else Vector2i.ZERO
 	state.apply_vine_on_landing(caster)
-	if state.terrain_at(dest) == TerrainDB.WATER:
-		caster.burn_ticks = 0
 	state.try_pickup_fruit(caster)
 	summary["self_move"] = dest
 	summary["text"] = "伏特替换：移动到 (%d,%d)。" % [dest.x, dest.y]
