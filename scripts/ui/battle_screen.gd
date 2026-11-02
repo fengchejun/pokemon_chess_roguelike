@@ -607,7 +607,7 @@ func _update_unit_card() -> void:
 	elif unit.channel_lock_round == state.round:
 		statuses.append("吟唱代价：本阶段不能行动")
 	if unit.vine_ticks > 0:
-		statuses.append("藤蔓束缚（仅限制移动）")
+		statuses.append("藤蔓束缚（旧存档兼容：仅限制移动）")
 	if unit.inspired:
 		statuses.append("首领鼓舞：移动 +1，当前生命与生命上限各 +5（本场）")
 	if unit.is_boss:

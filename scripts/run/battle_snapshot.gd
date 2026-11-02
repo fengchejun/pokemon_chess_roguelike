@@ -79,6 +79,10 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 			unit.skills = SpeciesDB.skills_of(unit.species_id).slice(0, 1)
 		unit.upgrades.erase("wind_gust_distance")
 		unit.upgrades.erase("volt_replace_flex")
+		if unit.imprison_ticks <= 0 and unit.vine_ticks > 0:
+			unit.imprison_ticks = unit.vine_ticks
+		unit.vine_ticks = 0
+		unit.vine_sources.clear()
 		state.units.append(unit)
 	state.nest["exits"] = [] # Old exits no longer affect movement, targeting or spawning.
 	var rng: Dictionary = snapshot["rng"]

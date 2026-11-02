@@ -266,7 +266,7 @@ func set_terrain(cell: Vector2i, value: int) -> void:
 	if value == TerrainDB.OBSTACLE or value == TerrainDB.TREE:
 		steam_cells.erase(cell)
 	if value == TerrainDB.VINES:
-		apply_vine_on_landing(unit_at(cell))
+		apply_vine_bind(unit_at(cell))
 
 
 func place_temp_vines(cell: Vector2i) -> void:
@@ -789,10 +789,15 @@ func apply_root(target: CombatUnit) -> void:
 	log_event("%s 被定身：下一次移动机会将被取消。" % target.display_name)
 
 
-func apply_imprison(target: CombatUnit) -> bool:
+func apply_imprison(target: CombatUnit, after_movement: bool = false) -> bool:
 	if target == null or not target.is_alive():
 		return false
-	target.imprison_ticks = maxi(target.imprison_ticks, _movement_effect_ticks(target))
+	var ticks := _movement_effect_ticks(target)
+	if after_movement and phase == target.side:
+		ticks = maxi(ticks, 2)
+	if ticks <= target.imprison_ticks:
+		return false
+	target.imprison_ticks = ticks
 	log_event("%s 被禁锢：失去下一次普通移动机会，但仍可进行其他行动。" % target.display_name)
 	return true
 
@@ -841,7 +846,7 @@ func _movement_effect_ticks(unit: CombatUnit) -> int:
 	# 在对方阶段或整轮结算获得效果时，下一次己方阶段就是目标机会。
 	if phase != unit.side:
 		return 1
-	if unit.moved or unit.frozen or unit.paralyzed_ticks > 0 or unit.move_cancelled or unit.vine_ticks > 0:
+	if unit.moved or unit.fresh_spawn or unit.frozen or unit.paralyzed_ticks > 0 or unit.move_cancelled or unit.vine_ticks > 0:
 		return 2
 	return 1
 
@@ -849,15 +854,13 @@ func _movement_effect_ticks(unit: CombatUnit) -> int:
 func apply_vine_bind(unit: CombatUnit) -> void:
 	if unit == null or not unit.is_alive() or unit.has_buff("flight"):
 		return
-	unit.vine_sources[unit.cell] = maxi(int(unit.vine_sources.get(unit.cell, 0)), _movement_effect_ticks(unit))
-	_refresh_vine_ticks(unit)
-	log_event("%s 被藤蔓束缚，下一次移动机会受阻。" % unit.display_name)
+	apply_imprison(unit)
 
 
-func apply_vine_on_landing(unit: CombatUnit) -> void:
+func apply_vine_on_landing(unit: CombatUnit, after_movement: bool = true) -> void:
 	apply_burning_ground(unit)
-	if unit != null and GridSpec.is_inside(unit.cell) and terrain_at(unit.cell) == TerrainDB.VINES:
-		apply_vine_bind(unit)
+	if unit != null and not unit.has_buff("flight") and GridSpec.is_inside(unit.cell) and terrain_at(unit.cell) == TerrainDB.VINES:
+		apply_imprison(unit, after_movement)
 
 
 func _refresh_vine_ticks(unit: CombatUnit) -> void:
@@ -991,6 +994,7 @@ func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 	var burn_source_uid_before := unit.burn_source_uid
 	var burn_source_side_before := unit.burn_source_side
 	var direction_before := unit.last_move_direction
+	var imprison_ticks_before := unit.imprison_ticks
 	var vine_ticks_before := unit.vine_ticks
 	var vine_sources_before := unit.vine_sources.duplicate()
 	for step in path:
@@ -1012,6 +1016,7 @@ func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 		"burn_source_side": burn_source_side_before,
 		"direction": direction_before,
 		"moved_before": movement_used_before,
+		"imprison_ticks": imprison_ticks_before,
 		"vine_ticks": vine_ticks_before,
 		"vine_sources": vine_sources_before,
 		"fruit_cell": pickup.get("cell", Vector2i(-1, -1)),
@@ -1043,6 +1048,7 @@ func undo_last_move() -> bool:
 	unit.burn_source_uid = int(entry["burn_source_uid"])
 	unit.burn_source_side = String(entry["burn_source_side"])
 	unit.last_move_direction = entry.get("direction", Vector2i.ZERO)
+	unit.imprison_ticks = int(entry.get("imprison_ticks", unit.imprison_ticks))
 	unit.vine_ticks = int(entry.get("vine_ticks", 0))
 	unit.vine_sources = (entry.get("vine_sources", {}) as Dictionary).duplicate()
 	var fruit_cell: Vector2i = entry.get("fruit_cell", Vector2i(-1, -1))

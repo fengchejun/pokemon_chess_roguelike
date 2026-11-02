@@ -5,7 +5,7 @@ func run(t: TestContext) -> void:
 	t.begin("临时藤蔓、冰面扩张与雾气")
 	_vines_and_expiry(t)
 	_vines_burning_and_replacement(t)
-	_vine_source_release(t)
+	_vine_imprison_reentry(t)
 	_ice_growth(t)
 	_steam_overlay(t)
 	t.finish()
@@ -82,31 +82,44 @@ func _vines_burning_and_replacement(t: TestContext) -> void:
 	t.check(not state.vine_origin.has(pit), "改写后底层记录清除")
 
 
-func _vine_source_release(t: TestContext) -> void:
+func _vine_imprison_reentry(t: TestContext) -> void:
 	var first := Vector2i(2, 3)
 	var second := Vector2i(3, 3)
 	var state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
 	var fire := state.unit_by_uid(1)
 	fire.cell = first
 	state.place_temp_vines(first)
-	t.check(fire.vine_ticks > 0 and fire.vine_sources.has(first), "藤蔓束缚记录来源格")
+	t.eq(fire.imprison_ticks, 1, "踩入藤蔓获得禁锢")
 	t.check(fire.can_act_skill() and not state.skill_targets(fire, "flame_jet").is_empty(), "站在藤蔓上仍可施法")
 	state.place_temp_vines(second)
 	PushResolver.push(state, fire, Vector2i.RIGHT, 1, 0, "测试强制位移", "enemy")
 	t.eq(fire.cell, second, "被推到另一块藤蔓上")
-	t.check(fire.vine_sources.has(first) and fire.vine_sources.has(second), "两块藤蔓分别记录束缚来源")
+	t.eq(fire.imprison_ticks, 1, "位移不会清除或刷新禁锢")
 	state.set_terrain(first, TerrainDB.PLAIN)
-	t.check(fire.vine_ticks > 0 and not fire.vine_sources.has(first), "原藤蔓消失时，保留另一来源的束缚")
+	t.eq(fire.imprison_ticks, 1, "原藤蔓消失不会提前解除禁锢")
 	state.set_terrain(second, TerrainDB.PLAIN)
-	t.eq(fire.vine_ticks, 0, "脚下藤蔓消失后解除全部束缚")
-	t.check(fire.can_move_now() and fire.can_act_skill(), "藤蔓消失后移动和技能均可使用")
-	var moved_away := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
-	var displaced := moved_away.unit_by_uid(1)
-	displaced.cell = first
-	moved_away.place_temp_vines(first)
-	displaced.cell = Vector2i(4, 3)
-	moved_away.set_terrain(first, TerrainDB.PLAIN)
-	t.eq(displaced.vine_ticks, 0, "单位已离开原格时，藤蔓消失仍清除来源束缚")
+	t.eq(fire.imprison_ticks, 1, "脚下藤蔓消失仍不解除已施加的禁锢")
+	state._finish_movement_effects("player")
+	t.eq(fire.imprison_ticks, 0, "移动阶段结束后禁锢解除")
+	t.check(fire.can_move_now(), "禁锢结束后停留原地不会自动再次触发")
+	var reentry := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	var reentering := reentry.unit_by_uid(1)
+	reentering.cell = first
+	reentry.place_temp_vines(first)
+	t.eq(reentering.imprison_ticks, 1, "藤蔓上的单位初始获得禁锢")
+	reentry._finish_movement_effects("player")
+	t.eq(reentering.imprison_ticks, 0, "停留在原藤蔓格时效果结束后不会自行刷新")
+	reentering.cell = Vector2i(4, 3)
+	reentering.cell = first
+	reentry.apply_vine_on_landing(reentering)
+	t.eq(reentering.imprison_ticks, 2, "离开后再次触碰原藤蔓格会重新获得禁锢并覆盖下一次移动")
+	var legacy := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	var legacy_unit := legacy.unit_by_uid(1)
+	legacy_unit.vine_ticks = 1
+	legacy_unit.vine_sources[first] = 1
+	var restored := BattleSnapshot.load_state(BattleSnapshot.save_state(legacy))
+	t.eq(restored.unit_by_uid(1).imprison_ticks, 1, "旧藤蔓束缚迁移为禁锢")
+	t.eq(restored.unit_by_uid(1).vine_ticks, 0, "旧藤蔓束缚字段读取后清空")
 
 
 func _ice_growth(t: TestContext) -> void:

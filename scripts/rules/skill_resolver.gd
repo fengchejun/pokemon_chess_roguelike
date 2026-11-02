@@ -1507,8 +1507,8 @@ static func _apply_swap(state: BattleState, caster: CombatUnit, entry: Dictionar
 	var direction := _axis_dir(caster.cell, target.cell) if (caster.cell.x == target.cell.x or caster.cell.y == target.cell.y) else Vector2i.ZERO
 	caster.cell = target.cell
 	target.cell = origin
-	state.apply_vine_on_landing(caster)
-	state.apply_vine_on_landing(target)
+	state.apply_vine_on_landing(caster, true)
+	state.apply_vine_on_landing(target, false)
 	caster.last_move_direction = direction
 	target.last_move_direction = -direction
 	for unit in [caster, target]:

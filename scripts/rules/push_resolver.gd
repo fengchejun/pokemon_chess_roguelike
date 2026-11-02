@@ -62,7 +62,7 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 		if not target.has_buff("flight") and (terrain == TerrainDB.WATER or terrain == TerrainDB.DEEP):
 			target.burn_ticks = 0
 	if summary["moved"] and target.is_alive():
-		state.apply_vine_on_landing(target)
+		state.apply_vine_on_landing(target, false)
 	return summary
 
 
