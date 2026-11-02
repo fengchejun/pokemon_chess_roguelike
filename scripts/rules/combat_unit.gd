@@ -98,8 +98,13 @@ var frozen: bool = false:
 		var active := value
 		var announce := active != was_active
 		frozen = value
+		if active and frozen_ticks <= 0:
+			frozen_ticks = Balance.FREEZE_TICKS
+		elif not active:
+			frozen_ticks = 0
 		if announce:
 			feedback_changed.emit("status" if active else "clear", "冰冻" + ("解除" if not active else ""), int(value), cell)
+var frozen_ticks: int = 0
 var vine_ticks: int = 0:
 	set(value):
 		var was_active := vine_ticks > 0
@@ -187,7 +192,7 @@ func hp_ratio() -> float:
 
 
 func effective_move() -> int:
-	if imprison_ticks > 0:
+	if frozen or imprison_ticks > 0:
 		return 0
 	var value := move_points
 	if inspired:
@@ -252,6 +257,7 @@ func dup() -> CombatUnit:
 	copy.shock_ticks = shock_ticks
 	copy.paralyzed_ticks = paralyzed_ticks
 	copy.frozen = frozen
+	copy.frozen_ticks = frozen_ticks
 	copy.vine_ticks = vine_ticks
 	copy.vine_sources = vine_sources.duplicate()
 	copy.haste_ticks = haste_ticks

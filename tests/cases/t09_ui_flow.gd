@@ -109,7 +109,7 @@ func run(t: TestContext) -> void:
 		state.set_terrain(unit.cell, TerrainDB.VINES)
 		battle_screen.playback.finish_all()
 		battle_screen.refresh_all()
-		t.check(battle_screen.unit_body.text.contains("禁锢：失去下一次普通移动"), "藤蔓施加禁锢且详情说明不禁止施法")
+		t.check(battle_screen.unit_body.text.contains("禁锢 2 回合：不能普通移动"), "藤蔓施加禁锢且详情说明不禁止施法")
 		t.eq(battle_screen._skill_phase_block_reason(unit), "", "藤蔓本身不禁用技能")
 		state.add_steam(unit.cell)
 		battle_screen.refresh_all()

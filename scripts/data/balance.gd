@@ -29,6 +29,7 @@ const NEST_DURABILITY := 3
 
 const BURN_TICKS := 2
 const BURN_MAX_HP_RATIO := 0.10
+const FREEZE_TICKS := 2
 
 static func burn_damage_for(max_hp: int) -> int:
 	return maxi(1, ceili(float(maxi(1, max_hp)) * BURN_MAX_HP_RATIO))

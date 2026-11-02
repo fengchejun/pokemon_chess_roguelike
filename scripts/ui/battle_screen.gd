@@ -593,7 +593,7 @@ func _update_unit_card() -> void:
 	if unit.move_cancelled:
 		statuses.append("本回合被定身")
 	if unit.imprison_ticks > 0:
-		statuses.append("禁锢：失去下一次普通移动，但仍可施法或进行其他行动")
+		statuses.append("禁锢 %d 回合：不能普通移动，但仍可施法或进行其他行动" % unit.imprison_ticks)
 	if unit.vine_reapply_round > 0:
 		statuses.append("藤蔓禁锢将在第 %d 回合再次触发" % unit.vine_reapply_round)
 	if unit.slow_ticks > 0:
@@ -603,7 +603,7 @@ func _update_unit_card() -> void:
 	if unit.paralyzed_ticks > 0:
 		statuses.append("麻痹")
 	if unit.frozen:
-		statuses.append("冰冻")
+		statuses.append("冰冻 %d 回合（无法行动；受到伤害时解除）" % unit.frozen_ticks)
 	if unit.channel_lock_round > state.round:
 		statuses.append("吟唱中：第 %d 回合本方阶段结算，届时不能行动" % unit.channel_lock_round)
 	elif unit.channel_lock_round == state.round:

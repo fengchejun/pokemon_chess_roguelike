@@ -647,15 +647,6 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	if target == null or not target.is_alive() or base <= 0:
 		return {"amount": 0, "killed": false}
 	var break_frozen := target.frozen and bool(opts.get("break_frozen", false))
-	if target.frozen:
-		cancel_channel(target, "无法行动")
-		if source != null and not break_frozen:
-			damage_reward_at(target.cell)
-		target.frozen = false
-		target.paralyzed_ticks = maxi(target.paralyzed_ticks, 1)
-		log_event("%s 的冰冻被攻击解除，本轮仍无法行动。" % target.display_name)
-		if not break_frozen:
-			return {"amount": 0, "killed": false}
 	var amount := base
 	if source != null and bool(opts.get("skill_direct", false)):
 		amount = Balance.skill_damage_for_side(amount, source.side)
@@ -703,6 +694,10 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		damage_reward_at(target.cell)
 	if break_frozen:
 		amount *= int(opts.get("frozen_multiplier", 1))
+	if amount > 0 and target.frozen:
+		target.frozen = false
+		cancel_channel(target, "受到伤害解除冰冻")
+		log_event("%s 受到 %d 点伤害，冰冻解除。" % [target.display_name, amount])
 	if amount > 0 and not bool(opts.get("parasite_tick", false)) and target.parasite_source_uid >= 0:
 		target.parasite_source_uid = -1
 		target.parasite_source_side = ""
@@ -795,13 +790,26 @@ func apply_root(target: CombatUnit) -> void:
 func apply_imprison(target: CombatUnit, after_movement: bool = false) -> bool:
 	if target == null or not target.is_alive():
 		return false
-	var ticks := _movement_effect_ticks(target)
-	if after_movement and phase == target.side:
-		ticks = maxi(ticks, 2)
+	var ticks := 2
+	if phase == target.side and (after_movement or target.moved):
+		ticks = 3
 	if ticks <= target.imprison_ticks:
 		return false
 	target.imprison_ticks = ticks
-	log_event("%s 被禁锢：失去下一次普通移动机会，但仍可进行其他行动。" % target.display_name)
+	log_event("%s 被禁锢 %d 回合：不能普通移动，但仍可进行其他行动。" % [target.display_name, ticks])
+	return true
+
+
+func apply_freeze(target: CombatUnit) -> bool:
+	if target == null or not target.is_alive():
+		return false
+	var was_frozen := target.frozen
+	target.frozen_ticks = Balance.FREEZE_TICKS
+	target.frozen = true
+	target.paralyzed_ticks = 0
+	cancel_channel(target, "冰冻")
+	if not was_frozen:
+		log_event("%s 被冰冻 %d 回合，无法行动。" % [target.display_name, Balance.FREEZE_TICKS])
 	return true
 
 
@@ -1508,6 +1516,10 @@ func _settle_round_rules() -> void:
 			unit.slow_ticks = maxi(0, unit.slow_ticks - 1)
 		if unit.shock_ticks > 0:
 			unit.shock_ticks -= 1
+		if unit.frozen and unit.frozen_ticks > 0:
+			unit.frozen_ticks -= 1
+			if unit.frozen_ticks <= 0:
+				unit.frozen = false
 	# 5. 停留拾取食物
 	_pickups()
 	# 6. 胜负与时限
@@ -1812,6 +1824,7 @@ func _signature() -> String:
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
 		parts.append("imprison:%d:%d" % [unit.uid, unit.imprison_ticks])
 		parts.append("vine_reapply:%d:%d:%d,%d" % [unit.uid, unit.vine_reapply_round, unit.vine_reapply_cell.x, unit.vine_reapply_cell.y])
+		parts.append("frozen:%d:%d:%d" % [unit.uid, int(unit.frozen), unit.frozen_ticks])
 		parts.append("mirror:%d:%d" % [unit.uid, unit.mirror_until_round])
 		parts.append("summon_power:%d:%d" % [unit.uid, unit.summon_power_bonus])
 		parts.append("vine_source:%d:%s:%d" % [unit.uid, str(unit.vine_sources), unit.vine_ticks])
@@ -1918,6 +1931,7 @@ func reset_exploration_actions() -> void:
 		unit.channel_lock_round = -1
 		unit.fresh_spawn = false
 		unit.frozen = false
+		unit.frozen_ticks = 0
 		unit.paralyzed_ticks = 0
 		unit.move_cancelled = false
 		unit.root_pending = false

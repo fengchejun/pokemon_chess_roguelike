@@ -83,6 +83,10 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 			unit.imprison_ticks = unit.vine_ticks
 		unit.vine_ticks = 0
 		unit.vine_sources.clear()
+		if unit.frozen and unit.frozen_ticks <= 0:
+			unit.frozen_ticks = Balance.FREEZE_TICKS
+		elif unit.frozen_ticks > 0:
+			unit.frozen = true
 		state.units.append(unit)
 	state.nest["exits"] = [] # Old exits no longer affect movement, targeting or spawning.
 	var rng: Dictionary = snapshot["rng"]

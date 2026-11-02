@@ -61,6 +61,7 @@ func _ice_breath(t: TestContext) -> void:
 	t.eq(target.hp, hp_before - 8, "冰之息造成八点基础直伤")
 	t.eq(target.slow_ticks, 0, "冰之息清除目标浸湿")
 	t.check(target.frozen, "冰之息对浸湿目标施加冰冻")
+	t.eq(target.frozen_ticks, Balance.FREEZE_TICKS, "冰之息冰冻持续两回合")
 	var dry := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(4, 3)]])
 	var dry_caster := dry.unit_by_uid(1)
 	var dry_target := dry.unit_by_uid(100)
