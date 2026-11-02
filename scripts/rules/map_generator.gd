@@ -22,7 +22,7 @@ static func generate(run_seed: int, battle_index: int, salt: int = 0, environmen
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("map:%d:%d:%d" % [run_seed, battle_index, salt])
 	var cfg := BattleDB.config_for(battle_index, run_seed, theme_id)
-	cfg["nest_count"] = nest_count if nest_count >= 0 else (2 if int(cfg.get("boss_index", -1)) >= 0 else 1)
+	cfg["nest_count"] = nest_count if nest_count >= 0 else 1
 	var lethal_budget := maxi(0, int(cfg.get("lethal_budget", 2)))
 	for attempt in 64:
 		var result := _attempt(rng, cfg, lethal_budget, environment_deck)

@@ -85,6 +85,9 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		if int(snapshot.get("version", 1)) < 3:
 			RunState.rebase_upgrade_values(unit.upgrades)
 		state.units.append(unit)
+	# 首领节点只保留主巢穴；旧档沿用主巢穴耐久与摧毁状态。
+	if state.node_kind == "boss" or state.boss_uid >= 0:
+		state.extra_nests.clear()
 	for entry in state.enemy_kills:
 		if entry.has("uid"):
 			state.enemy_outcomes[int(entry["uid"])] = "defeated"

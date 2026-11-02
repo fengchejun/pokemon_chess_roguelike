@@ -136,6 +136,8 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	capture_options = capture_options_value.duplicate()
 	reinforcement_pool = pool_value.duplicate()
 	load_map(map_data)
+	if node_kind == "boss" or int(cfg.get("boss_index", -1)) >= 0:
+		extra_nests.clear()
 	deploy_cells = map_data.get("deploy_cells", Balance.DEPLOY_CELLS.duplicate())
 	deploy_area = map_data.get("deploy_area", Balance.DEPLOY_AREA).duplicate()
 	var slot := 0

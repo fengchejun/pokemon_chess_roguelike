@@ -47,10 +47,7 @@ func _ready() -> void:
 		var active_id: String = run.get_region().active_node
 		if active_id.begins_with("event_"):
 			map_salt = 100 + int(active_id.trim_prefix("event_"))
-	var nest_count := -1
-	if run.region_mode:
-		var mode: String = run.get_region().node_mode(run.get_region().active_node)
-		nest_count = 2 if mode == "boss" else 1
+	var nest_count := 1
 	map = MapGenerator.generate(run.seed, run.battle_index, map_salt, [], run.current_theme(), nest_count)
 	if run.region_mode:
 		var region = run.get_region()

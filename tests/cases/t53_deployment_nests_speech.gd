@@ -14,7 +14,7 @@ func _maps(t: TestContext) -> void:
 	for seed_value in range(30):
 		var map := MapGenerator.generate(seed_value, 5, 0, [], "", 2)
 		var cells: Array = map["nest_cells"]
-		t.eq(cells.size(), 2, "Boss 地图有两个巢穴")
+		t.eq(cells.size(), 2, "显式双巢穴地图保留两个巢穴")
 		t.check(GridSpec.manhattan(cells[0], cells[1]) >= 3, "双巢穴保持三格间距")
 		t.check(MapGenerator._validate(map["terrain"], cells), "两个巢穴均可达")
 		for cell in cells:
@@ -34,7 +34,7 @@ func _maps(t: TestContext) -> void:
 
 func _nests(t: TestContext) -> void:
 	var state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]], [], {}, {}, ["rock_wild1"])
-	state.node_kind = "boss"
+	state.node_kind = "battle"
 	state.nest["cell"] = Vector2i(4, 2)
 	var second := state.nest.duplicate(true)
 	second["cell"] = Vector2i(7, 4)
@@ -73,7 +73,7 @@ func _nests(t: TestContext) -> void:
 	var legacy := snapshot.duplicate(true)
 	legacy.erase("version")
 	legacy["fields"].erase("extra_nests")
-	t.eq(BattleSnapshot.load_state(legacy).all_nests().size(), 1, "旧 Boss 快照只恢复原有单巢穴")
+	t.eq(BattleSnapshot.load_state(legacy).all_nests().size(), 1, "旧单巢穴快照只恢复原有巢穴")
 	for i in range(2):
 		state.damage_nest(1, "player", state.nest["cell"])
 	t.eq(state.essence_earned, earned + 8, "两个巢穴分别结算摧毁奖励")
