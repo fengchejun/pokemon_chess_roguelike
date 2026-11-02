@@ -259,8 +259,8 @@ func _t_rock_smash(t: TestContext) -> void:
 	rock.cell = Vector2i(0, 3)
 	var result := SkillResolver.apply(state, rock, "rock_smash", {"type": "cell", "cell": Vector2i(2, 3)}, false)
 	t.check(bool(result["ok"]), "碎岩施放成功")
-	t.eq(state.obstacle_durability.get(Vector2i(2, 3), 0), 1, "碎岩单次最多扣一耐久")
-	t.eq(state.terrain_at(Vector2i(2, 3)), TerrainDB.OBSTACLE, "岩障剩余耐久时仍阻挡")
+	t.eq(state.obstacle_durability.get(Vector2i(2, 3), 0), 0, "旧碎岩兼容入口也直接破障")
+	t.eq(state.terrain_at(Vector2i(2, 3)), TerrainDB.PLAIN, "破障后通路立即恢复")
 
 
 func _t_rock_create(t: TestContext) -> void:

@@ -28,7 +28,7 @@ func _rock(t: TestContext) -> void:
 	obstacle.unit_by_uid(1).cell = Vector2i(1, 2)
 	obstacle.obstacle_durability[Vector2i(3, 2)] = 5
 	t.check(bool(obstacle.cast_skill(obstacle.unit_by_uid(1), "rock_break", {"type": "cell", "cell": Vector2i(3, 2)}).get("ok", false)), "碎岩可选障碍")
-	t.eq(int(obstacle.obstacle_durability.get(Vector2i(3, 2), 0)), 4, "碎岩命中高耐久障碍也只扣一点")
+	t.eq(int(obstacle.obstacle_durability.get(Vector2i(3, 2), 0)), 0, "碎岩直接摧毁高耐久障碍")
 	var slide := TestScenario.make_state(["rock_starter", "water_starter"], [["fire_wild1", Vector2i(4, 2)]])
 	var rock := slide.unit_by_uid(1)
 	rock.cell = Vector2i(1, 2)

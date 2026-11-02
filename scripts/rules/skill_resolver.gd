@@ -328,7 +328,7 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		caster.moved = true
 		return summary
 	if String(def.get("kind", "")) == "unit" and String(target_entry.get("type", "")) == "cell" and state.obstacle_durability.has(target_entry["cell"]):
-		_hit_obstacle(state, target_entry["cell"], summary, caster.side)
+		_hit_obstacle(state, target_entry["cell"], summary, caster.side, skill_id == "rock_break" or skill_id == "rock_smash")
 		if SkillDB.battle_limit_of(skill_id) > 0:
 			caster.battle_skill_uses[skill_id] = int(caster.battle_skill_uses.get(skill_id, 0)) + 1
 		caster.moved = true
@@ -564,11 +564,11 @@ static func _entry_key(entry: Dictionary) -> String:
 			return "cell:%d,%d" % [cell.x, cell.y]
 
 
-static func _hit_obstacle(state: BattleState, cell: Vector2i, summary: Dictionary, source_side: String = "") -> void:
+static func _hit_obstacle(state: BattleState, cell: Vector2i, summary: Dictionary, source_side: String = "", destroy_fully: bool = false) -> void:
 	var before := int(state.obstacle_durability.get(cell, 0))
 	if before <= 0:
 		return
-	var destroyed := state.damage_obstacle(cell, 1, source_side)
+	var destroyed := state.damage_obstacle(cell, before if destroy_fully else 1, source_side)
 	var actual := before - int(state.obstacle_durability.get(cell, 0))
 	summary["obstacles_damaged"].append({"cell": cell, "damage": actual, "destroyed": destroyed})
 	summary["text"] = "障碍耐久 −%d%s" % [actual, "，障碍被破坏" if destroyed else ""]
@@ -973,7 +973,7 @@ static func _apply_rock_smash(state: BattleState, caster: CombatUnit, skill_id: 
 		summary["text"] = "碎岩击中巢穴：耐久 −%d%s" % [actual, "，巢穴被摧毁" if destroyed else ""]
 		return
 	if state.obstacle_durability.has(cell):
-		_hit_obstacle(state, cell, summary, caster.side)
+		_hit_obstacle(state, cell, summary, caster.side, true)
 		return
 	if state.terrain_at(cell) == TerrainDB.FRAGILE:
 		state.damage_reward_at(cell)

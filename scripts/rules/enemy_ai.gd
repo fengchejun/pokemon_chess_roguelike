@@ -99,15 +99,20 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 					var result := SkillResolver.apply(sim, sim_unit, skill_id, entry, false)
 					if not bool(result.get("ok", false)):
 						continue
+					if _harms_own_nest(base, sim):
+						continue
 					var score := _score(base, sim, unit.uid)
 					var channel_score := _channel_score(base, base_unit, skill_id, entry)
 					var route_score := _route_opening_score(base, sim, unit.uid)
+					var skill_score := int(score["total"]) + channel_score + route_score + (30 if skill_id == "tree_man" else 0)
+					if skill_score <= 0:
+						continue
 					var candidate := {
 						"uid": unit.uid,
 						"move_path": path,
 						"free_terrain_move": bool(free_paths.get(position, false)),
 						"skill": {"id": skill_id, "target": entry},
-						"score": score["total"] + channel_score + route_score + _nest_clearance_score(work, unit, position) + (30 if skill_id == "tree_man" else 0) - _pending_hazard(base, position, "player"),
+						"score": skill_score + _nest_clearance_score(work, unit, position) - _pending_hazard(base, position, "player"),
 						"meta": result,
 						"lethal": score["kills"],
 					}
@@ -148,7 +153,9 @@ static func _channel_score(state: BattleState, caster: CombatUnit, skill_id: Str
 	if skill_id == "fire_burst":
 		var sim := state.clone()
 		SkillResolver.resolve_channel(sim, sim.unit_by_uid(caster.uid), skill_id, [entry["cell"]])
-		return int(_score(state, sim, caster.uid)["total"])
+		if _harms_own_nest(state, sim):
+			return -1000000
+		return int(_score(state, sim, caster.uid)["total"]) + _route_opening_score(state, sim, caster.uid)
 	if skill_id == "herbal_heal":
 		var healing := 0
 		for ally in state.alive_units(caster.side):
@@ -174,6 +181,10 @@ static func _channel_score(state: BattleState, caster: CombatUnit, skill_id: Str
 				var cell := center + Vector2i(dx, dy)
 				if GridSpec.is_inside(cell):
 					areas.append(cell)
+	var projected := state.clone()
+	SkillResolver.resolve_channel(projected, projected.unit_by_uid(caster.uid), skill_id, areas)
+	if _harms_own_nest(state, projected):
+		return -1000000
 	var score := 0
 	for target in state.alive_units():
 		if not areas.has(target.cell):
@@ -352,33 +363,52 @@ static func _route_opening_score(before: BattleState, after: BattleState, actor_
 		if not passability_changed:
 			return 0
 	var score := 0
+	var damaged_cells: Array = []
+	for cell in before.obstacle_durability:
+		if int(after.obstacle_durability.get(cell, 0)) < int(before.obstacle_durability[cell]):
+			damaged_cells.append(cell)
+	var opened: BattleState = null
 	for ally in before.alive_units("enemy"):
 		var later := after.unit_by_uid(ally.uid)
-		if later == null or not later.is_alive():
+		if later == null or not later.is_on_board():
 			continue
-		var old_distance := 1 << 30
-		var new_distance := 1 << 30
-		for target in before.alive_units("player"):
-			old_distance = mini(old_distance, PathFinder.path_distance(before, ally.cell, target.cell, ally.element, ally.has_buff("flight")))
-			new_distance = mini(new_distance, PathFinder.path_distance(after, later.cell, target.cell, later.element, later.has_buff("flight")))
-		if old_distance >= (1 << 30) and new_distance < (1 << 30):
+		var old_distance := _nearest_player_distance(before, ally)
+		# 有正常接敌通路时，单纯缩短路线或打掉附近障碍不构成施法理由。
+		if old_distance < (1 << 30):
+			continue
+		var new_distance := _nearest_player_distance(after, later)
+		if new_distance < (1 << 30):
 			score += 36 if ally.uid == actor_uid else 48
-		elif new_distance < old_distance:
-			score += mini(old_distance - new_distance, 4) * 4
-	for cell in before.obstacle_durability:
-		var old_hp := int(before.obstacle_durability[cell])
-		var new_hp := int(after.obstacle_durability.get(cell, 0))
-		if new_hp >= old_hp:
 			continue
-		# 尚未完全打穿的岩障也有价值，避免 AI 对 2 耐久障碍永不出手。
-		var near_ally := false
-		for ally in before.alive_units("enemy"):
-			if GridSpec.manhattan(ally.cell, cell) <= 2:
-				near_ally = true
-				break
-		if near_ally:
+		if damaged_cells.is_empty():
+			continue
+		# 只奖励打通后确实接通玩家的障碍，保留分两次拆岩障的能力。
+		if opened == null:
+			opened = after.clone()
+			for cell in damaged_cells:
+				if opened.obstacle_durability.has(cell):
+					opened.damage_obstacle(cell, int(opened.obstacle_durability[cell]))
+		var opened_ally := opened.unit_by_uid(ally.uid)
+		if _nearest_player_distance(opened, opened_ally) < (1 << 30):
 			score += 12
 	return mini(score, 72)
+
+
+static func _nearest_player_distance(state: BattleState, unit: CombatUnit) -> int:
+	var distance := 1 << 30
+	for target in state.alive_units("player"):
+		distance = mini(distance, PathFinder.path_distance(state, unit.cell, target.cell, unit.element, unit.has_buff("flight")))
+	return distance
+
+
+static func _harms_own_nest(before: BattleState, after: BattleState) -> bool:
+	for current in before.all_nests():
+		if not bool(current.get("alive", false)):
+			continue
+		var later := after.nest_at_cell(current["cell"])
+		if later.is_empty() or not bool(later.get("alive", false)) or int(later.get("hp", 0)) < int(current.get("hp", 0)):
+			return true
+	return false
 
 
 static func _nest_clearance_score(state: BattleState, unit: CombatUnit, position: Vector2i) -> int:

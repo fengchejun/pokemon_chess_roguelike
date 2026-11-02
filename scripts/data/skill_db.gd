@@ -17,7 +17,7 @@ const DEFS := {
 	"surf": {"name": "冲浪", "element": "water", "kind": "self", "damage": 0, "ranged": false, "desc": "施放当回合及后两回合，沿相连浅水或深水移动不消耗普通移动机会，可重复移动并越过敌方单位；不能停在单位或障碍格。"},
 	"tsunami": {"name": "海啸", "element": "water", "kind": "direction", "damage": 18, "ranged": true, "channel": true, "desc": "选择方向警示前方宽 5、长 5 的固定区域；下次本方阶段开始，对区域内当时站在水格上的敌方单位造成 18 点基础直伤；施法者该阶段不能行动。"},
 	"rock_push": {"name": "推击", "element": "rock", "kind": "unit", "range": 1, "damage": 13, "ranged": false, "desc": "对相邻单位造成 13 点基础伤害并推开一格。"},
-	"rock_break": {"name": "碎岩", "element": "rock", "kind": "unit", "range": 2, "damage": 10, "ranged": true, "desc": "曼哈顿 2 格内攻击单位造成 10 点基础伤害，命中障碍扣 1 点耐久；解除冰冻时无视冰冻免伤并造成三倍伤害。"},
+	"rock_break": {"name": "碎岩", "element": "rock", "kind": "unit", "range": 2, "damage": 10, "ranged": true, "desc": "曼哈顿 2 格内攻击单位造成 10 点基础伤害，命中障碍直接摧毁；解除冰冻时无视冰冻免伤并造成三倍伤害。"},
 	"rock_slide": {"name": "岩崩", "element": "rock", "kind": "cell", "range": 3, "damage": 30, "ranged": true, "channel": true, "desc": "锁定曼哈顿 3 格内一格；下次本方阶段开始，对该格当时的单位造成 30 点基础伤害，可误伤友军。"},
 	"earth_shake": {"name": "撼地", "element": "rock", "kind": "direction", "damage": 18, "ranged": true, "channel": true, "desc": "蓄力锁定前方 3×3 格；下一本方阶段开始，对范围内敌人造成 18 点基础伤害，摧毁岩障和树木；平地变易碎地块、易碎地块变深坑。破障格本次不再改变地形，站在塌陷格上的地面单位立即坠落。"},
 	"lightning": {"name": "打雷", "element": "electric", "kind": "self", "damage": 18, "ranged": true, "channel": true, "desc": "锁定全场所有敌方单位当前格子；下次本方阶段开始，对固定落点上的单位造成 18 点基础伤害并感电，可误伤友军。"},
