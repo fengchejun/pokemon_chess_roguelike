@@ -24,7 +24,7 @@ const DEFS := {
 	"lightning": {"name": "打雷", "element": "electric", "kind": "self", "damage": 18, "ranged": true, "channel": true, "desc": "锁定全场所有敌方单位当前格子；下次本方阶段开始，对固定落点上的单位造成 18 点基础伤害并感电，可误伤友军。"},
 	"electric_arc": {"name": "放电", "element": "electric", "kind": "cell", "range": 2, "damage": 10, "ranged": true, "desc": "可指定曼哈顿距离两格内的单位造成 10 点基础伤害，也可选择水域沿连通水域传导；附近存在水域不限制旱地目标。"},
 	"volt_replace": {"name": "伏特替换", "element": "electric", "kind": "unit", "range": 3, "damage": 0, "ranged": false, "desc": "与曼哈顿 1～3 格内的单位交换位置，或移动到范围内可站立空格；无视途中障碍。"},
-	"wild_vines": {"name": "疯狂藤蔓", "element": "grass", "kind": "direction", "damage": 0, "ranged": false, "desc": "在前方两格生成藤蔓；障碍阻挡生成。生成时或后来停在藤蔓上的地面单位，下一次移动机会受阻。"},
+	"wild_vines": {"name": "疯狂藤蔓", "element": "grass", "kind": "direction", "range": 2, "damage": 0, "ranged": false, "desc": "在正前方两格生成藤蔓，强化后延长至三格；障碍格与巢穴格跳过。地面单位进入藤蔓格获得禁锢，停留不会刷新，离开后重入或隔一回合仍停留会再次触发。"},
 	"herbal_heal": {"name": "药草治疗", "element": "grass", "kind": "self", "damage": 0, "ranged": false, "channel": true, "desc": "锁定宣告时自身所在格；下次本方阶段开始，为该格曼哈顿 2 格内友军回复 8 HP；可被打断，结算阶段不能行动。"},
 	"leech_seed": {"name": "寄生种子", "element": "grass", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "使相邻敌人寄生；每次整轮结算目标失去 4 HP、存活的施法者恢复至多 4 HP。目标受到其他实际伤害时先清除寄生。"},
 	"tree_man": {"name": "大树守卫", "element": "grass", "kind": "cell", "range": 3, "damage": 0, "ranged": false, "desc": "立即在曼哈顿 3 格内空格召唤树人，基础 10 HP；落点周围八格每处水域 +3 HP、草丛/藤蔓 +5 HP、树木 +5 HP 和 5 技能威力。每名单位最多拥有一个存活召唤物，出生轮不能行动。"},

@@ -918,6 +918,8 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		var sacrifice_damage := ceili(float(unit.max_hp) * 0.5)
 		sacrifice_damage = SkillResolver.upgraded_base_damage(unit, skill_id, sacrifice_damage)
 		parts.append("全场伤害 %d · 自损 %d" % [Balance.skill_damage_for_side(sacrifice_damage, unit.side), ceili(float(unit.max_hp) * 0.5)])
+	elif skill_id == "wild_vines":
+		parts.append("前方 %d 格 · 生成藤蔓 · 进入禁锢" % SkillResolver.wild_vines_reach(unit))
 	elif skill_id == "water_magic_burst":
 		var center_damage := Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, 11), unit.side)
 		parts.append("十字 5 格 · 伤害 %d · 中心 %d · 击退" % [damage, center_damage])
@@ -1562,6 +1564,10 @@ func _on_skill_pressed(skill_id: String) -> void:
 					board.area_cells.append(affected)
 		if skill_id == "windfire_breath":
 			for affected in SkillResolver.half_circle_cells(unit.cell, entry["dir"]):
+				if not board.area_cells.has(affected):
+					board.area_cells.append(affected)
+		if skill_id == "wild_vines":
+			for affected in SkillResolver.wild_vines_cells(state, unit, entry["dir"]):
 				if not board.area_cells.has(affected):
 					board.area_cells.append(affected)
 	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
