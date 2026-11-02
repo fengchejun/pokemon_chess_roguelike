@@ -248,6 +248,9 @@ func set_terrain(cell: Vector2i, value: int) -> void:
 		vine_origin.erase(cell)
 		vine_expire_round.erase(cell)
 		for unit in units:
+			if unit.vine_reapply_cell == cell:
+				unit.vine_reapply_round = 0
+				unit.vine_reapply_cell = Vector2i(-1, -1)
 			if unit.vine_sources.has(cell):
 				unit.vine_sources.erase(cell)
 				_refresh_vine_ticks(unit)
@@ -854,13 +857,22 @@ func _movement_effect_ticks(unit: CombatUnit) -> int:
 func apply_vine_bind(unit: CombatUnit) -> void:
 	if unit == null or not unit.is_alive() or unit.has_buff("flight"):
 		return
+	unit.vine_reapply_round = 0
+	unit.vine_reapply_cell = Vector2i(-1, -1)
 	apply_imprison(unit)
 
 
 func apply_vine_on_landing(unit: CombatUnit, after_movement: bool = true) -> void:
 	apply_burning_ground(unit)
-	if unit != null and not unit.has_buff("flight") and GridSpec.is_inside(unit.cell) and terrain_at(unit.cell) == TerrainDB.VINES:
-		apply_imprison(unit, after_movement)
+	if unit == null:
+		return
+	if unit.vine_reapply_round > 0 and unit.cell != unit.vine_reapply_cell:
+		unit.vine_reapply_round = 0
+		unit.vine_reapply_cell = Vector2i(-1, -1)
+	if not unit.has_buff("flight") and GridSpec.is_inside(unit.cell) and terrain_at(unit.cell) == TerrainDB.VINES:
+		if apply_imprison(unit, after_movement):
+			unit.vine_reapply_round = 0
+			unit.vine_reapply_cell = Vector2i(-1, -1)
 
 
 func _refresh_vine_ticks(unit: CombatUnit) -> void:
@@ -890,7 +902,11 @@ func _finish_movement_effects(side: String) -> void:
 					unit.vine_sources[cell] = ticks
 			_refresh_vine_ticks(unit)
 		unit.haste_ticks = maxi(0, unit.haste_ticks - 1)
+		var had_imprison: bool = unit.imprison_ticks > 0
 		unit.imprison_ticks = maxi(0, unit.imprison_ticks - 1)
+		if had_imprison and unit.imprison_ticks <= 0 and not unit.has_buff("flight") and GridSpec.is_inside(unit.cell) and terrain_at(unit.cell) == TerrainDB.VINES:
+			unit.vine_reapply_round = round + 2
+			unit.vine_reapply_cell = unit.cell
 
 
 func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "") -> bool:
@@ -995,6 +1011,8 @@ func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 	var burn_source_side_before := unit.burn_source_side
 	var direction_before := unit.last_move_direction
 	var imprison_ticks_before := unit.imprison_ticks
+	var vine_reapply_round_before := unit.vine_reapply_round
+	var vine_reapply_cell_before := unit.vine_reapply_cell
 	var vine_ticks_before := unit.vine_ticks
 	var vine_sources_before := unit.vine_sources.duplicate()
 	for step in path:
@@ -1017,6 +1035,8 @@ func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 		"direction": direction_before,
 		"moved_before": movement_used_before,
 		"imprison_ticks": imprison_ticks_before,
+		"vine_reapply_round": vine_reapply_round_before,
+		"vine_reapply_cell": vine_reapply_cell_before,
 		"vine_ticks": vine_ticks_before,
 		"vine_sources": vine_sources_before,
 		"fruit_cell": pickup.get("cell", Vector2i(-1, -1)),
@@ -1049,6 +1069,8 @@ func undo_last_move() -> bool:
 	unit.burn_source_side = String(entry["burn_source_side"])
 	unit.last_move_direction = entry.get("direction", Vector2i.ZERO)
 	unit.imprison_ticks = int(entry.get("imprison_ticks", unit.imprison_ticks))
+	unit.vine_reapply_round = int(entry.get("vine_reapply_round", unit.vine_reapply_round))
+	unit.vine_reapply_cell = entry.get("vine_reapply_cell", unit.vine_reapply_cell)
 	unit.vine_ticks = int(entry.get("vine_ticks", 0))
 	unit.vine_sources = (entry.get("vine_sources", {}) as Dictionary).duplicate()
 	var fruit_cell: Vector2i = entry.get("fruit_cell", Vector2i(-1, -1))
@@ -1226,6 +1248,14 @@ func _start_round_rules() -> void:
 			unit.root_pending = false
 			log_event("%s 受到定身影响，本回合无法移动。" % unit.display_name)
 	phase = PHASE_PLAYER
+	for unit in units:
+		if unit.vine_reapply_round <= 0 or unit.vine_reapply_round > round:
+			continue
+		var same_vine: bool = unit.is_alive() and not unit.has_buff("flight") and unit.cell == unit.vine_reapply_cell and terrain_at(unit.cell) == TerrainDB.VINES
+		unit.vine_reapply_round = 0
+		unit.vine_reapply_cell = Vector2i(-1, -1)
+		if same_vine and unit.imprison_ticks <= 0:
+			apply_imprison(unit)
 	if RelicDB.rank(relic_stacks, "root_rest") > 0:
 		for unit in units:
 			if unit.side == "player" and unit.is_alive() and RelicDB.on_grass_or_vines(self, unit):
@@ -1781,6 +1811,7 @@ func _signature() -> String:
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
 		parts.append("imprison:%d:%d" % [unit.uid, unit.imprison_ticks])
+		parts.append("vine_reapply:%d:%d:%d,%d" % [unit.uid, unit.vine_reapply_round, unit.vine_reapply_cell.x, unit.vine_reapply_cell.y])
 		parts.append("mirror:%d:%d" % [unit.uid, unit.mirror_until_round])
 		parts.append("summon_power:%d:%d" % [unit.uid, unit.summon_power_bonus])
 		parts.append("vine_source:%d:%s:%d" % [unit.uid, str(unit.vine_sources), unit.vine_ticks])

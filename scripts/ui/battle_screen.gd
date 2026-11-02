@@ -594,6 +594,8 @@ func _update_unit_card() -> void:
 		statuses.append("本回合被定身")
 	if unit.imprison_ticks > 0:
 		statuses.append("禁锢：失去下一次普通移动，但仍可施法或进行其他行动")
+	if unit.vine_reapply_round > 0:
+		statuses.append("藤蔓禁锢将在第 %d 回合再次触发" % unit.vine_reapply_round)
 	if unit.slow_ticks > 0:
 		statuses.append("浸湿（移动 -1）")
 	if unit.shock_ticks > 0:

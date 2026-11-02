@@ -56,6 +56,8 @@ var imprison_ticks: int = 0:
 		imprison_ticks = value
 		if announce:
 			feedback_changed.emit("status" if active else "clear", "禁锢" + ("解除" if not active else ""), int(value), cell)
+var vine_reapply_round: int = 0
+var vine_reapply_cell: Vector2i = Vector2i(-1, -1)
 var slow_ticks: int = 0:
 	set(value):
 		var was_active := slow_ticks > 0
@@ -241,6 +243,8 @@ func dup() -> CombatUnit:
 	copy.root_pending = root_pending
 	copy.move_cancelled = move_cancelled
 	copy.imprison_ticks = imprison_ticks
+	copy.vine_reapply_round = vine_reapply_round
+	copy.vine_reapply_cell = vine_reapply_cell
 	copy.slow_ticks = slow_ticks
 	copy.burn_ticks = burn_ticks
 	copy.burn_source_uid = burn_source_uid
