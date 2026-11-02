@@ -34,7 +34,7 @@ const DEFS := {
 	"freeze_ray": {"name": "急冻光线", "element": "water", "kind": "ray", "min_range": 1, "max_range": 6, "damage": 0, "ranged": true, "desc": "射程 6；树木与岩障截断射线。冻结命中的第一个敌人；受攻击解除。"},
 	"ice_shard": {"name": "冰锥", "element": "water", "kind": "unit", "range": 3, "damage": 11, "ranged": true, "desc": "对 3 格内一个敌人造成 11 点基础直伤。"},
 	"water_magic_burst": {"name": "水魔爆", "element": "water", "kind": "cell", "range": 4, "damage": 8, "ranged": true, "desc": "选择曼哈顿 4 格内的落点，可越过障碍；五格十字内敌人各受 8 点基础直伤，中心敌人额外受 3 点，外侧四格敌人沿远离中心方向被推 1 格。"},
-	"ice_breath": {"name": "冰之息", "element": "water", "kind": "ray", "min_range": 1, "max_range": 6, "damage": 8, "ranged": true, "desc": "沿正交方向延伸最多 6 格，攻击首个敌人并造成 8 点基础直伤；若其已有浸湿，则清除浸湿并施加冰冻。"},
+	"ice_breath": {"name": "冰之息", "element": "water", "kind": "ray", "min_range": 1, "max_range": 6, "damage": 8, "ranged": true, "freeze_combo": true, "desc": "沿正交方向延伸最多 6 格，攻击首个敌人并造成 8 点基础直伤；若其已有浸湿，则清除浸湿并施加冰冻。"},
 	"tailwind": {"name": "磁场加速", "element": "electric", "kind": "self", "damage": 0, "ranged": false, "desc": "自身及横纵各延伸 2 格的 5×5 区域内友军，下一次可用移动机会移动力 +2。"},
 	"double_cast": {"name": "电力引擎", "element": "electric", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "令一名相邻友军本轮额外施法一次；强化后可依次选择两名相邻友军。蓄力宣告后获得的额外施法可在当轮使用，下一轮蓄力锁定仍生效。"},
 	"fire_seed": {
@@ -228,6 +228,10 @@ static func is_placeholder(skill_id: String) -> bool:
 
 static func is_special(skill_id: String) -> bool:
 	return String(get_def(skill_id).get("category", "normal")) == "special"
+
+
+static func has_tag(skill_id: String, tag: String) -> bool:
+	return bool(get_def(skill_id).get(tag, false))
 
 
 static func special_ids_for(element: String) -> Array:

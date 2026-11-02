@@ -1393,7 +1393,7 @@ static func _apply_ice_breath(state: BattleState, caster: CombatUnit, entry: Dic
 			break
 		var had_wet := target.slow_ticks > 0
 		var hit := _hit_entry(state, caster, "ice_breath", target, SkillDB.damage_of("ice_breath"))
-		if target.is_alive() and had_wet:
+		if target.is_alive() and had_wet and SkillDB.has_tag("ice_breath", "freeze_combo"):
 			state.clear_wet(target)
 			target.frozen = true
 			state.cancel_channel(target, "冰冻")

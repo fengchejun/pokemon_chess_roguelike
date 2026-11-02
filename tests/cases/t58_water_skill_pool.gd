@@ -15,6 +15,8 @@ func _definition_and_learning(t: TestContext) -> void:
 	t.eq(RunState.upgrade_id_for_skill("water_magic_burst"), "water_magic_burst_damage", "水魔爆拥有专属强化")
 	t.eq(RunState.upgrade_id_for_skill("ice_breath"), "ice_breath_damage", "冰之息拥有专属强化")
 	t.check(not SkillDB.is_special("water_magic_burst") and not SkillDB.is_special("ice_breath"), "两个新增技能均为普通技能")
+	t.check(SkillDB.has_tag("ice_breath", "freeze_combo"), "冰冻连携显式标记在冰之息")
+	t.check(not SkillDB.has_tag("freeze_ray", "freeze_combo"), "急冻光线不参与浸湿冰冻连携")
 
 
 func _water_magic_burst(t: TestContext) -> void:
