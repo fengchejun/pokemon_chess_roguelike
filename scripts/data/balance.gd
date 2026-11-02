@@ -27,8 +27,11 @@ const OBSTACLE_DURABILITY := 2
 const TREE_DURABILITY := 1
 const NEST_DURABILITY := 3
 
-const BURN_DAMAGE := 4
 const BURN_TICKS := 2
+const BURN_MAX_HP_RATIO := 0.10
+
+static func burn_damage_for(max_hp: int) -> int:
+	return maxi(1, ceili(float(maxi(1, max_hp)) * BURN_MAX_HP_RATIO))
 const MIRROR_WATER_MOON_ROUNDS := 3
 const MIRROR_WATER_DAMAGE_BONUS := 5
 

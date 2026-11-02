@@ -6,6 +6,7 @@ extends RefCounted
 func run(t: TestContext) -> void:
 	t.begin("回合流程")
 	_t_burn(t)
+	_t_burn_ground(t)
 	_t_burn_cleared_by_water(t)
 	_t_root_and_slow(t)
 	_t_wet_phase_boundaries(t)
@@ -30,11 +31,12 @@ func _t_burn(t: TestContext) -> void:
 	var wild := state.unit_by_uid(100)
 	state.apply_burn(wild, fire)
 	t.eq(wild.burn_ticks, 2, "灼烧初始 2 回合")
+	var burn_damage := Balance.burn_damage_for(wild.max_hp)
 	state.settle_round()
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - Balance.BURN_DAMAGE, "第一次结算灼烧伤害")
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - burn_damage, "第一次结算灼烧伤害")
 	t.eq(wild.burn_ticks, 1, "灼烧剩余 1 回合")
 	state.settle_round()
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - Balance.BURN_DAMAGE * 2, "第二次结算灼烧伤害")
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - burn_damage * 2, "第二次结算灼烧伤害")
 	t.eq(wild.burn_ticks, 0, "灼烧结束")
 	# 火系免疫
 	var state2 := TestScenario.make_state([], [["fire_wild1", Vector2i(4, 3)]])
@@ -43,6 +45,25 @@ func _t_burn(t: TestContext) -> void:
 	fire2.cell = Vector2i(0, 3)
 	state2.apply_burn(state2.unit_by_uid(100), fire2)
 	t.eq(state2.unit_by_uid(100).burn_ticks, 0, "火系免疫灼烧")
+
+
+func _t_burn_ground(t: TestContext) -> void:
+	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(2, 3), TerrainDB.GRASS]])
+	var state := TestScenario.make_state(["rock_starter"], [["grass_wild1", Vector2i(7, 6)]], terrain)
+	var unit := state.unit_by_uid(1)
+	unit.cell = Vector2i(0, 3)
+	state.ignite(Vector2i(2, 3), "player")
+	t.check(state.move_unit(unit, Vector2i(2, 3)), "单位可踩上燃烧格")
+	t.eq(unit.burn_ticks, Balance.BURN_TICKS, "踩到燃烧格立即获得两回合灼烧")
+	var hp_before := unit.hp
+	var burn_damage := Balance.burn_damage_for(unit.max_hp)
+	state.settle_round()
+	t.eq(unit.hp, hp_before - burn_damage, "灼烧按最大生命百分之十造成伤害")
+	t.eq(unit.burn_ticks, 1, "第一次结算后灼烧剩余一回合")
+	state.ignite(Vector2i(2, 3), "player")
+	state.settle_round()
+	t.eq(unit.hp, hp_before - burn_damage * 2, "第二次结算再次造成最大生命百分之十伤害")
+	t.eq(unit.burn_ticks, Balance.BURN_TICKS, "灼烧结束且仍在燃烧格时重新获得灼烧")
 
 
 func _t_burn_cleared_by_water(t: TestContext) -> void:

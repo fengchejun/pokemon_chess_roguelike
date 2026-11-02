@@ -765,6 +765,17 @@ func apply_burn(target: CombatUnit, source: CombatUnit) -> bool:
 	return true
 
 
+func apply_burning_ground(unit: CombatUnit) -> bool:
+	if unit == null or not unit.is_alive() or unit.has_buff("flight"):
+		return false
+	if unit.burn_ticks > 0 or not burning_cells.has(unit.cell):
+		return false
+	if not apply_burn(unit, null):
+		return false
+	unit.burn_source_side = String(burning_sources.get(unit.cell, ""))
+	return true
+
+
 func clear_burn(target: CombatUnit) -> void:
 	if target == null:
 		return
@@ -831,6 +842,7 @@ func apply_vine_bind(unit: CombatUnit) -> void:
 
 
 func apply_vine_on_landing(unit: CombatUnit) -> void:
+	apply_burning_ground(unit)
 	if unit != null and GridSpec.is_inside(unit.cell) and terrain_at(unit.cell) == TerrainDB.VINES:
 		apply_vine_bind(unit)
 
@@ -1410,7 +1422,7 @@ func _settle_round_rules() -> void:
 	for unit in alive_units():
 		if unit.burn_ticks > 0:
 			unit.burn_ticks -= 1
-			damage_unit(null, unit, Balance.BURN_DAMAGE, {"no_element": true, "cause": "灼烧", "killer_side": unit.burn_source_side})
+			damage_unit(null, unit, Balance.burn_damage_for(unit.max_hp), {"no_element": true, "cause": "灼烧", "killer_side": unit.burn_source_side})
 	if ended:
 		return
 	for unit in alive_units():
@@ -1485,11 +1497,11 @@ func _settle_ice_slides() -> void:
 		log_event("%s 从冰面滑行到 (%d,%d)。" % [unit.display_name, next.x, next.y])
 		if bool(slide["lethal"]):
 			kill_unit(unit, "冰面滑入致死地形")
-		elif terrain_at(next) == TerrainDB.WATER and not unit.has_buff("flight"):
-			unit.burn_ticks = 0
-			# 浅水阶段检查已发生；滑行入水仍须影响下一次移动。
-			_apply_shallow_wet_to_unit(unit, 2)
-		elif terrain_at(next) == TerrainDB.VINES:
+		else:
+			if terrain_at(next) == TerrainDB.WATER and not unit.has_buff("flight"):
+				unit.burn_ticks = 0
+				# 浅水阶段检查已发生；滑行入水仍须影响下一次移动。
+				_apply_shallow_wet_to_unit(unit, 2)
 			apply_vine_on_landing(unit)
 
 
@@ -1505,9 +1517,6 @@ func _settle_burning_cells() -> void:
 		var occupant := unit_at(cell)
 		if occupant == null and is_nest_cell(cell):
 			damage_nest(1, String(burning_sources.get(cell, "")), cell)
-		if occupant != null and not occupant.has_buff("flight"):
-			apply_burn(occupant, null)
-			occupant.burn_source_side = String(burning_sources.get(cell, ""))
 		burning_cells[cell] = int(burning_cells[cell]) - 1
 		if int(burning_cells[cell]) <= 0:
 			if natural_essence_cells.has(cell):
@@ -1532,6 +1541,8 @@ func _settle_burning_cells() -> void:
 	for cell in newly_lit:
 		if not burning_cells.has(cell):
 			ignite(cell, String(spread_sources.get(cell, "")))
+	for unit in alive_units():
+		apply_burning_ground(unit)
 
 
 func _settle_temp_vines() -> void:

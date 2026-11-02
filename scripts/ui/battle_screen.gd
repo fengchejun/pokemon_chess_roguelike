@@ -575,7 +575,7 @@ func _update_unit_card() -> void:
 		lines.append(Elements.counter_hint(unit.element))
 	var statuses: Array = []
 	if unit.burn_ticks > 0:
-		statuses.append("灼烧 %d 回合" % unit.burn_ticks)
+		statuses.append("灼烧 %d 回合（每回合损失 %d HP）" % [unit.burn_ticks, Balance.burn_damage_for(unit.max_hp)])
 	if unit.parasite_source_uid >= 0:
 		var parasite_source := state.unit_by_uid(unit.parasite_source_uid)
 		var parasite_bonus := int(parasite_source.upgrades.get("leech_seed_tick_bonus", 0)) if parasite_source != null and parasite_source.side == unit.parasite_source_side else 0
