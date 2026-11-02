@@ -182,6 +182,8 @@ func _enemy_levels_and_boss(t: TestContext) -> void:
 		t.eq(reinforcement.enemy_level, 5, "增援继承当前楼层等级")
 		t.eq(reinforcement.skills.size(), 3, "增援按当前等级装备三招")
 		t.eq(reinforcement.upgrades.size(), 0, "Lv5 增援尚未达到强化等级")
+		state.nest["alive"] = false
+		state.try_release_boss()
 		state.on_captured(boss, boss.species_id, 1)
 		t.check(not boss.is_boss and boss.enemy_level == 1 and boss.upgrades.is_empty(), "捕获后首领恢复普通物种")
 		t.check(ally.inspired and state.inspiration_triggered, "捕获首领不撤销已触发的敌方鼓舞")
@@ -217,7 +219,7 @@ func _blood_and_save(t: TestContext) -> void:
 	nest_win.on_captured(nest_win.unit_by_uid(nest_win.boss_uid), boss.species_id, 1)
 	nest_win.nest["alive"] = false
 	nest_win.end_battle("victory")
-	t.eq(int(RunState.new_run(31003).settle_battle(nest_win)["boss_blood"]), 0, "捕获首领后毁巢速通不发首领之血")
+	t.eq(int(RunState.new_run(31003).settle_battle(nest_win)["boss_blood"]), 1, "破巢后捕获首领并获胜仍发首领之血")
 	var failed := _state_for(cfg, run_state.seed, 5)
 	var failed_boss := failed.unit_by_uid(failed.boss_uid)
 	failed.on_captured(failed_boss, failed_boss.species_id, 1)

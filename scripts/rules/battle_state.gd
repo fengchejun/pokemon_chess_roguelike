@@ -71,6 +71,8 @@ var speech_seen: Dictionary = {}
 var enemy_origins: Dictionary = {} # uid -> original node entry cell; persisted for revisits.
 var enemy_outcomes: Dictionary = {} # Defeat/capture is recorded once per enemy identity.
 var boss_uid: int = -1
+var boss_retreat_used: bool = false
+var _boss_effect_depth: int = 0
 var boss_portal_cell: Vector2i = Vector2i(-1, -1)
 var merchant: Dictionary = {}
 var essence_earned: int = 0
@@ -196,6 +198,54 @@ func _trigger_inspiration() -> void:
 	log_event("首领鼓舞：其他敌方单位移动力 +1，生命上限与当前生命各 +%d，持续本场。" % Balance.INSPIRATION_HP_BONUS)
 
 
+func sheltered_boss() -> CombatUnit:
+	var boss := unit_by_uid(boss_uid)
+	return boss if boss != null and boss.is_alive() and boss.sheltered else null
+
+
+func _try_shelter_boss() -> void:
+	var boss := unit_by_uid(boss_uid)
+	if boss_retreat_used or boss == null or not boss.is_on_board() or boss.side != "enemy" or boss.hp * 2 > boss.max_hp or not bool(nest.get("alive", false)):
+		return
+	boss_retreat_used = true
+	boss.sheltered = true
+	boss.last_move_direction = Vector2i.ZERO
+	nest["boss_sheltered"] = true
+	cancel_channel(boss, "首领回巢")
+	_refresh_reward_guard()
+	emit_feedback(boss, "action", "半血回巢")
+	log_event("%s 半血回巢！摧毁主巢穴后才能继续攻击或捕获；巢内不行动，异常暂停。" % boss.display_name)
+
+
+func try_release_boss() -> void:
+	if _boss_effect_depth > 0 or ended:
+		return
+	var boss := sheltered_boss()
+	if boss == null or bool(nest.get("alive", false)):
+		return
+	var origin: Vector2i = nest["cell"]
+	var candidates := GridSpec.all_cells()
+	candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var da := GridSpec.manhattan(a, origin)
+		var db := GridSpec.manhattan(b, origin)
+		return da < db if da != db else _cell_order(a) < _cell_order(b))
+	for cell in candidates:
+		if unit_at(cell) != null or is_interaction_cell(cell) or TerrainDB.blocks_move(terrain_at(cell)) or not TerrainDB.can_stand(terrain_at(cell), boss.element):
+			continue
+		boss.cell = cell
+		boss.sheltered = false
+		boss.moved = false
+		boss.skill_used = false
+		boss.capture_used = false
+		boss.extra_casts = 0
+		boss.fresh_spawn = false
+		nest["boss_sheltered"] = false
+		apply_vine_on_landing(boss)
+		emit_feedback(boss, "action", "首领出巢")
+		log_event("主巢穴已毁，%s 在 (%d,%d) 出巢；生命不恢复，本场不再回巢。" % [boss.display_name, cell.x, cell.y])
+		return
+
+
 func capture_roll() -> float:
 	return capture_rng.randf()
 
@@ -305,7 +355,7 @@ func is_nest_cell(cell: Vector2i) -> bool:
 
 func unit_at(cell: Vector2i) -> CombatUnit:
 	for unit in units:
-		if unit.is_alive() and unit.cell == cell:
+		if unit.is_on_board() and unit.cell == cell:
 			return unit
 	return null
 
@@ -320,7 +370,7 @@ func unit_by_uid(uid: int) -> CombatUnit:
 func alive_units(side: String = "") -> Array:
 	var result: Array = []
 	for unit in units:
-		if unit.is_alive() and (side == "" or unit.side == side):
+		if unit.is_on_board() and (side == "" or unit.side == side):
 			result.append(unit)
 	return result
 
@@ -539,6 +589,8 @@ func kill_unit(unit: CombatUnit, cause: String, killer_side: String = "", killer
 
 
 func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "", killer_uid: int = -1) -> void:
+	if unit.sheltered:
+		return
 	if unit.side == "enemy" and enemy_outcomes.has(unit.uid):
 		return
 	var terrain_kind := terrain_at(unit.cell)
@@ -599,7 +651,7 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 
 
 func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
-	if unit.side != "enemy" or not unit.is_alive() or enemy_outcomes.has(unit.uid):
+	if unit.side != "enemy" or not unit.is_on_board() or enemy_outcomes.has(unit.uid):
 		return
 	enemy_outcomes[unit.uid] = "captured"
 	cancel_channel(unit, "阵营改变")
@@ -635,7 +687,7 @@ func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
 # ---------------------------------------------------------------- 伤害
 
 func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictionary) -> Dictionary:
-	if target == null or not target.is_alive() or base <= 0:
+	if target == null or not target.is_on_board() or base <= 0:
 		return {"amount": 0, "killed": false}
 	var break_frozen := target.frozen and bool(opts.get("break_frozen", false))
 	if target.frozen:
@@ -735,6 +787,8 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 				apply_burn(target, source)
 			if skill_element == "water" and RelicDB.rank(relic_stacks, "water_mark") > 0:
 				apply_slow(target)
+	if amount > 0 and target.uid == boss_uid:
+		_try_shelter_boss()
 	return {"amount": amount, "killed": killed, "previous_hp": previous_hp, "hp": target.hp, "relic_healed": relic_healed}
 
 
@@ -824,7 +878,7 @@ func apply_haste(unit: CombatUnit) -> void:
 
 func _finish_movement_effects(side: String) -> void:
 	for unit in units:
-		if unit.side != side:
+		if unit.side != side or unit.sheltered:
 			continue
 		if unit.vine_sources.is_empty():
 			unit.vine_ticks = maxi(0, unit.vine_ticks - 1)
@@ -883,7 +937,8 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 		target_nest["destroyed_by_player"] = source_side == "player"
 		set_terrain(target_nest["cell"], TerrainDB.PLAIN)
 		log_event("巢穴被摧毁，永久停止生成。")
-		if node_kind == "" and not has_live_nests():
+		try_release_boss()
+		if node_kind == "" and boss_uid < 0 and not has_live_nests():
 			end_battle("victory")
 		return true
 	log_event("巢穴耐久 -1（剩 %d）。" % target_nest["hp"])
@@ -1100,7 +1155,7 @@ func _resolve_due_channels(side: String) -> void:
 			break
 		pending_casts.erase(entry)
 		var caster := unit_by_uid(int(entry["uid"]))
-		if caster == null or not caster.is_alive() or caster.side != side:
+		if caster == null or not caster.is_on_board() or caster.side != side:
 			continue
 		var result := SkillResolver.resolve_channel(self, caster, String(entry["skill_id"]), entry["cells"])
 		emit_feedback(caster, "action", "吟唱完成")
@@ -1136,7 +1191,7 @@ func _start_round_rules() -> void:
 		return
 	round += 1
 	for unit in units:
-		if not unit.is_alive():
+		if not unit.is_on_board():
 			continue
 		if unit.ice_glide_until_round < round:
 			unit.ice_glide_until_round = 0
@@ -1151,10 +1206,10 @@ func _start_round_rules() -> void:
 			unit.skill_used = true
 			unit.capture_used = true
 	for unit in units:
-		if unit.move_cancelled:
+		if unit.move_cancelled and not unit.sheltered:
 			unit.move_cancelled = false
 	for unit in units:
-		if unit.root_pending and unit.is_alive():
+		if unit.root_pending and unit.is_on_board():
 			unit.move_cancelled = true
 			unit.root_pending = false
 			log_event("%s 受到定身影响，本回合无法移动。" % unit.display_name)
@@ -1275,7 +1330,7 @@ func _step_enemy_phase_rules() -> Dictionary:
 	var action: Dictionary = _pending_actions[_pending_index]
 	_pending_index += 1
 	var unit := unit_by_uid(int(action.get("uid", -1)))
-	if unit == null or not unit.is_alive():
+	if unit == null or not unit.is_on_board():
 		return action
 	var path: Array = action.get("move_path", [])
 	for cell in path:
@@ -1376,7 +1431,7 @@ func _finish_status_effects(side: String) -> void:
 		var source_side: String = unit.parasite_source_side
 		var parasite_bonus := int(source.upgrades.get("leech_seed_tick_bonus", 0)) if source != null and source.side == source_side else 0
 		var result := damage_unit(null, unit, Balance.PARASITE_DAMAGE + parasite_bonus, {"no_element": true, "parasite_tick": true, "cause": "寄生", "killer_side": source_side, "killer_uid": source_uid})
-		if int(result.get("amount", 0)) > 0 and source != null and source.is_alive() and source.side == source_side:
+		if int(result.get("amount", 0)) > 0 and source != null and source.is_on_board() and source.side == source_side:
 			var healed := mini(source.max_hp - source.hp, Balance.PARASITE_HEAL + parasite_bonus)
 			if healed > 0:
 				source.hp += healed
@@ -1438,7 +1493,7 @@ func _settle_round_rules() -> void:
 
 
 func ice_slide_outcome(unit: CombatUnit) -> Dictionary:
-	if unit == null or not unit.is_alive() or unit.last_move_direction == Vector2i.ZERO or unit.has_buff("flight"):
+	if unit == null or not unit.is_on_board() or unit.last_move_direction == Vector2i.ZERO or unit.has_buff("flight"):
 		return {}
 	if not GridSpec.is_inside(unit.cell) or terrain_at(unit.cell) != TerrainDB.ICE:
 		return {}
@@ -1564,6 +1619,7 @@ func _player_unit_at(cell: Vector2i) -> CombatUnit:
 
 
 func check_battle_end() -> bool:
+	try_release_boss()
 	if not ended and is_free_exploration():
 		if not exploration_started:
 			exploration_started = true
@@ -1723,10 +1779,12 @@ func _signature() -> String:
 		parts.append("buff:%d:%s" % [unit.uid, str(unit.battle_buffs)])
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
 		parts.append("control:%d:%d:%d:%s" % [unit.uid, unit.shock_ticks, unit.paralyzed_ticks, str(unit.frozen)])
+		parts.append("sheltered:%d:%s" % [unit.uid, str(unit.sheltered)])
 		parts.append("parasite_layers:%d:%d" % [unit.uid, unit.parasite_ticks])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
 		parts.append("summon_power:%d:%d" % [unit.uid, unit.summon_power_bonus])
 		parts.append("vine_source:%d:%s:%d" % [unit.uid, str(unit.vine_sources), unit.vine_ticks])
+	parts.append("boss_phase:%s" % str(boss_retreat_used))
 	parts.append("pending:%s" % str(pending_casts))
 	parts.append("relics:%s" % str(relic_stacks))
 	parts.append("channel_claims:%s:%s" % [str(channel_claims.get("player", {})), str(channel_claims.get("enemy", {}))])
@@ -1772,6 +1830,7 @@ func clone() -> BattleState:
 	copy.speech_seen = speech_seen.duplicate(true)
 	copy.enemy_origins = enemy_origins.duplicate(true)
 	copy.enemy_outcomes = enemy_outcomes.duplicate()
+	copy.boss_retreat_used = boss_retreat_used
 	copy.boss_uid = boss_uid
 	copy.boss_portal_cell = boss_portal_cell
 	copy.inspiration_triggered = inspiration_triggered

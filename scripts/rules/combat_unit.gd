@@ -18,6 +18,7 @@ var skills: Array = []
 var reg_index: int = 0
 var enemy_level: int = 1
 var combat_level: int = 1
+var sheltered: bool = false
 var is_boss: bool = false
 var inspired: bool = false:
 	set(value):
@@ -165,6 +166,10 @@ func is_alive() -> bool:
 	return hp > 0
 
 
+func is_on_board() -> bool:
+	return is_alive() and not sheltered
+
+
 func hp_ratio() -> float:
 	return float(hp) / float(maxi(1, max_hp))
 
@@ -187,7 +192,7 @@ func has_buff(id: String) -> bool:
 
 
 func can_act_skill() -> bool:
-	return is_alive() and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and (not skill_used or extra_casts > 0)
+	return is_on_board() and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and (not skill_used or extra_casts > 0)
 
 
 func can_use_in_battle(skill_id: String) -> bool:
@@ -216,6 +221,7 @@ func dup() -> CombatUnit:
 	copy.reg_index = reg_index
 	copy.enemy_level = enemy_level
 	copy.combat_level = combat_level
+	copy.sheltered = sheltered
 	copy.is_boss = is_boss
 	copy.inspired = inspired
 	copy.moved = moved

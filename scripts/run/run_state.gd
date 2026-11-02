@@ -710,8 +710,8 @@ func settle_battle(battle: BattleState) -> Dictionary:
 	for entry in battle.captured:
 		(outcome["captured_names"] as Array).append(SpeciesDB.name_of(String(entry.get("species_id", ""))))
 	var failure := battle.end_reason in ["forced_retreat", "boss_timeout"]
-	# 首领之血只属于捕获首领并清场获胜的路线；毁巢速通和逃离均不发放。
-	if battle.end_reason == "victory" and battle.has_live_nests():
+	# 首领之血按捕获首领并获胜发放；回巢阶段拆巢不能取消奖励。
+	if battle.end_reason == "victory":
 		for entry in battle.captured:
 			if not bool(entry.get("was_boss", false)):
 				continue

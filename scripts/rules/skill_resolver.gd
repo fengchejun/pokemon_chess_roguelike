@@ -10,7 +10,7 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 	if state.recovery_skill_blocked(skill_id):
 		return []
 	var entries: Array = []
-	if def.is_empty() or unit == null or not unit.is_alive() or unit.channel_lock_round == state.round:
+	if def.is_empty() or unit == null or not unit.is_on_board() or unit.channel_lock_round == state.round:
 		return entries
 	if bool(def.get("channel", false)) and not state.can_begin_channel(unit):
 		return entries
@@ -84,7 +84,7 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 	if skill_id == "rock_break":
 		skill_range += int(unit.upgrades.get("rock_break_range", 0))
 	for other in state.units:
-		if other.uid == unit.uid or not other.is_alive():
+		if other.uid == unit.uid or not other.is_on_board():
 			continue
 		var distance := GridSpec.manhattan(unit.cell, other.cell)
 		if skill_id == "lightning" and other.side == unit.side:
@@ -238,7 +238,10 @@ static func _teleport_path_clear(state: BattleState, from: Vector2i, to: Vector2
 static func apply(state: BattleState, caster: CombatUnit, skill_id: String, target_entry: Dictionary, preview: bool) -> Dictionary:
 	if state.feedback_enabled:
 		state.presentation_started.emit({"kind": "skill", "uid": caster.uid if caster != null else -1, "skill": skill_id, "release": state.is_free_exploration() and bool(SkillDB.get_def(skill_id).get("channel", false)), "target": target_entry.duplicate(true)})
+	state._boss_effect_depth += 1
 	var result := _apply_rules(state, caster, skill_id, target_entry, preview)
+	state._boss_effect_depth -= 1
+	state.try_release_boss()
 	if state.feedback_enabled:
 		state.presentation_finished.emit(result)
 	return result
@@ -246,7 +249,7 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 
 static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: String, target_entry: Dictionary, preview: bool) -> Dictionary:
 	var def := SkillDB.get_def(skill_id)
-	if def.is_empty() or caster == null or not caster.is_alive() or caster.channel_lock_round == state.round:
+	if def.is_empty() or caster == null or not caster.is_on_board() or caster.channel_lock_round == state.round:
 		return {"ok": false}
 	if bool(def.get("channel", false)) and not state.can_begin_channel(caster):
 		return {"ok": false}
@@ -409,7 +412,10 @@ static func _entry_valid(state: BattleState, caster: CombatUnit, skill_id: Strin
 static func resolve_channel(state: BattleState, caster: CombatUnit, skill_id: String, cells: Array) -> Dictionary:
 	if state.feedback_enabled:
 		state.presentation_started.emit({"kind": "skill", "uid": caster.uid if caster != null else -1, "skill": skill_id, "release": true, "cells": cells.duplicate()})
+	state._boss_effect_depth += 1
 	var result := _resolve_channel_rules(state, caster, skill_id, cells)
+	state._boss_effect_depth -= 1
+	state.try_release_boss()
 	if state.feedback_enabled:
 		state.presentation_finished.emit(result)
 	return result
@@ -606,6 +612,7 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 		"conductive": skill_id == "electric_arc",
 	}
 	opts.merge(extra_opts, true)
+	var hit_cell := target.cell
 	var result := state.damage_unit(caster, target, base, opts)
 	var relic_statuses: Array = []
 	if not had_burn and target.burn_ticks > 0:
@@ -615,7 +622,7 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 	return {
 		"uid": target.uid,
 		"name": target.display_name,
-		"cell": target.cell,
+		"cell": hit_cell,
 		"damage": int(result.get("amount", 0)),
 		"modifier": modifier if int(result.get("amount", 0)) > 0 else 0,
 		"killed": bool(result.get("killed", false)),

@@ -46,7 +46,7 @@ static func _fields(object: Object) -> Dictionary:
 	for property in object.get_property_list():
 		if int(property["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE:
 			var key := String(property["name"])
-			if key in ["units", "spawn_rng", "capture_rng", "terrain_rng", "feedback_enabled"]:
+			if key in ["units", "spawn_rng", "capture_rng", "terrain_rng", "feedback_enabled", "_boss_effect_depth"]:
 				continue
 			result[key] = encode(object.get(key))
 	return result
@@ -106,5 +106,11 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		state.natural_essence_cells = state.obstacle_durability.keys().filter(func(cell): return not state.obstacle_expire_round.has(cell))
 	if state.deploy_area.is_empty():
 		state.deploy_area = state.deploy_cells.duplicate()
+	if state.nest.has("boss_sheltered") or state.sheltered_boss() != null:
+		state.nest["boss_sheltered"] = state.sheltered_boss() != null
+	if state.sheltered_boss() != null:
+		state.boss_retreat_used = true
+	state._boss_effect_depth = 0
+	state.try_release_boss()
 	state.repair_food()
 	return state

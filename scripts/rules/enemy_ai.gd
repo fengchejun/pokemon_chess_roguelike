@@ -18,7 +18,7 @@ static func plan(state: BattleState) -> Array:
 		# 同一单位最多两次施法；第二次必须来自友军已给予的额外机会。
 		for cast_index in range(2):
 			var unit := work.unit_by_uid(uid)
-			if unit == null or not unit.is_alive() or work.ended:
+			if unit == null or not unit.is_on_board() or work.ended:
 				break
 			if cast_index > 0 and (not unit.skill_used or unit.extra_casts <= 0 or not unit.can_act_skill()):
 				break
@@ -50,7 +50,7 @@ static func plan(state: BattleState) -> Array:
 static func _action_order(state: BattleState) -> Array:
 	var enemies: Array = []
 	for unit in state.units:
-		if unit.side == "enemy" and unit.is_alive() and not unit.fresh_spawn and unit.channel_lock_round != state.round:
+		if unit.side == "enemy" and unit.is_on_board() and not unit.fresh_spawn and unit.channel_lock_round != state.round:
 			enemies.append(unit)
 	enemies.sort_custom(func(a: CombatUnit, b: CombatUnit) -> bool: return a.reg_index < b.reg_index)
 	var order: Array = []

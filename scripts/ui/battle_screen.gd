@@ -511,6 +511,8 @@ func _update_header() -> void:
 	objective_label.text = "战斗目标\n敌人 %d · 击败 %d · 捕获 %d\n%s" % [state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text.strip_edges()]
 	if state.node_kind == "event":
 		objective_label.text = "收集区\n本次收集食物 %d\n可随时返回区域" % state.food_collected
+	if state.sheltered_boss() != null:
+		objective_label.text = "首领已回巢 · 巢内庇护\n摧毁主巢穴（剩余 %d 耐久）\n破巢后可继续攻击或捕获。" % int(state.nest.get("hp", 0))
 	if GridSpec.is_inside(state.boss_portal_cell):
 		objective_label.text = "首领已击败 · 敌军撤离\n训练师相邻后，点击传送门或行动按钮前往下一层。"
 	elif not state.is_free_exploration() and state.node_kind != "" and state.round >= 6:
@@ -618,7 +620,9 @@ func _update_unit_card() -> void:
 	if unit.inspired:
 		statuses.append("首领鼓舞：移动 +1，当前生命与生命上限各 +5（本场）")
 	if unit.is_boss:
-		statuses.append("半血及以下首次触发鼓舞；已触发：%s" % ("是" if state.inspiration_triggered else "否"))
+		statuses.append("半血鼓舞并回巢一次；提前拆巢可阻止回巢。")
+		if unit.sheltered:
+			statuses.append("巢内庇护：摧毁主巢穴后可攻击；异常暂停。")
 	if unit.haste_ticks > 0:
 		statuses.append("加速 +2")
 	if unit.extra_casts > 0:
@@ -1262,6 +1266,8 @@ func _show_terrain(cell: Vector2i) -> void:
 	if state.steam_cells.has(cell):
 		lines.append("蒸汽：剩余 %d 次整轮结算；站在其中不能施放技能。" % int(state.steam_cells[cell]))
 	if state.is_nest_cell(cell):
+		if bool(state.nest_at_cell(cell).get("boss_sheltered", false)):
+			lines.append("首领正在巢内庇护：摧毁巢穴使其出巢；巢内首领不占格。")
 		lines.append("巢穴耐久：%d/%d；第 2、4、6 回合尝试直接在巢穴格生成。" % [int(state.nest_at_cell(cell).get("hp", 0)), Balance.NEST_DURABILITY])
 		lines.append("可移动、停留在巢穴格。任何单位覆盖时均阻挡生成与巢穴受伤；击杀或移开覆盖者的那次攻击不会穿透巢穴。空置时任意有效伤害每次扣 1 耐久。")
 		lines.append("当前：%s；积压 %d 只。" % ["被单位覆盖" if state.nest_covered(cell) else "空置", int(state.nest_at_cell(cell).get("pending_waves", 0))])

@@ -206,6 +206,8 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 			survivors.append(fresh)
 		else:
 			survivors.append(unit)
+	battle.boss_retreat_used = false
+	battle.nest["boss_sheltered"] = false
 	battle.units = survivors
 	if bool(nodes[id].get("pending_garrison", false)):
 		battle.nest["alive"] = true

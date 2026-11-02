@@ -5,7 +5,7 @@ extends RefCounted
 
 
 static func capture_chance(target: CombatUnit, low_hp_rules: bool = false, debug_percent: int = -1) -> float:
-	if target == null or not target.is_alive():
+	if target == null or not target.is_on_board():
 		return 0.0
 	if debug_percent >= 0:
 		return clampf(float(debug_percent) / 100.0, 0.0, 1.0)
@@ -38,7 +38,7 @@ static func can_attempt(state, trainer: CombatUnit, target: CombatUnit) -> bool:
 		return false
 	if state.phase != "player" or state.ended:
 		return false
-	if not trainer.is_alive() or not target.is_alive():
+	if not trainer.is_alive() or not target.is_on_board():
 		return false
 	if trainer.capture_used:
 		return false

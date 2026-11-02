@@ -207,7 +207,7 @@ func _draw() -> void:
 	_draw_objects(font)
 	# 单位
 	for unit in units:
-		if unit.is_alive():
+		if unit.is_on_board():
 			_draw_unit(font, unit)
 	for slide in ice_slides:
 		_draw_ice_slide_arrow(slide)
@@ -311,14 +311,14 @@ func _draw_one_nest_status(font: Font, nest: Dictionary) -> void:
 	var cell: Vector2i = nest["cell"]
 	var occupied := false
 	for unit in units:
-		if unit.is_alive() and unit.cell == cell:
+		if unit.is_on_board() and unit.cell == cell:
 			occupied = true
 			break
 	var color := Color(0.75, 0.58, 1.0) if not occupied else Color(1.0, 0.72, 0.32)
 	var rect := Rect2(Vector2(cell) * TILE + Vector2(3, 3), Vector2.ONE * (TILE - 6))
 	draw_rect(rect, color, false, 2.0)
 	draw_rect(Rect2(rect.position, Vector2(62, 17)), Color(0.08, 0.10, 0.13, 0.92))
-	draw_string(font, rect.position + Vector2(2, 13), "巢%d%s" % [int(nest.get("hp", 0)), "·占据" if occupied else "·待产" if int(nest.get("pending_waves", 0)) > 0 else ""], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
+	draw_string(font, rect.position + Vector2(2, 13), "巢%d%s" % [int(nest.get("hp", 0)), "·首领" if bool(nest.get("boss_sheltered", false)) else "·占据" if occupied else "·待产" if int(nest.get("pending_waves", 0)) > 0 else ""], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
 
 
 func _draw_pending_casts(font: Font) -> void:
