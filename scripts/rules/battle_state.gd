@@ -803,6 +803,11 @@ func apply_slow(target: CombatUnit) -> void:
 	apply_wet(target, 2)
 
 
+func clear_wet(target: CombatUnit) -> void:
+	if target != null:
+		target.slow_ticks = 0
+
+
 func _apply_shallow_wet(side: String, ticks: int) -> void:
 	# 阶段交接时只检查即将行动的一方；我方在敌方阶段结束后检查。
 	# 整轮结算仍会衰减一次，因此敌方使用 1、我方使用 2，

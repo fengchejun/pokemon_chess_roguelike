@@ -33,6 +33,8 @@ const DEFS := {
 	"ice_glide": {"name": "溜冰", "element": "water", "kind": "self", "damage": 0, "ranged": false, "desc": "施放当回合及后两回合，沿相连冰面移动不消耗普通移动机会，可重复移动并越过敌方单位；不能停在单位或障碍格。"},
 	"freeze_ray": {"name": "急冻光线", "element": "water", "kind": "ray", "min_range": 1, "max_range": 6, "damage": 0, "ranged": true, "desc": "射程 6；树木与岩障截断射线。冻结命中的第一个敌人；受攻击解除。"},
 	"ice_shard": {"name": "冰锥", "element": "water", "kind": "unit", "range": 3, "damage": 11, "ranged": true, "desc": "对 3 格内一个敌人造成 11 点基础直伤。"},
+	"water_magic_burst": {"name": "水魔爆", "element": "water", "kind": "cell", "range": 4, "damage": 8, "ranged": true, "desc": "选择曼哈顿 4 格内的落点，可越过障碍；五格十字内敌人各受 8 点基础直伤，中心敌人额外受 3 点，外侧四格敌人沿远离中心方向被推 1 格。"},
+	"ice_breath": {"name": "冰之息", "element": "water", "kind": "ray", "min_range": 1, "max_range": 6, "damage": 8, "ranged": true, "desc": "沿正交方向延伸最多 6 格，攻击首个敌人并造成 8 点基础直伤；若其已有浸湿，则清除浸湿并施加冰冻。"},
 	"tailwind": {"name": "磁场加速", "element": "electric", "kind": "self", "damage": 0, "ranged": false, "desc": "自身及横纵各延伸 2 格的 5×5 区域内友军，下一次可用移动机会移动力 +2。"},
 	"double_cast": {"name": "电力引擎", "element": "electric", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "令一名相邻友军本轮额外施法一次；强化后可依次选择两名相邻友军。蓄力宣告后获得的额外施法可在当轮使用，下一轮蓄力锁定仍生效。"},
 	"fire_seed": {
@@ -212,7 +214,7 @@ static func learnable_ids_for(element: String) -> Array:
 	var ids := placeholder_ids_for(element)
 	match element:
 		"fire": ids.append_array(["fire_amplify", "flame_rush", "windfire_breath", "furnace_fist", "skyfire", "combustion", "burn_out"])
-		"water": ids.append_array(["surf", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
+		"water": ids.append_array(["surf", "water_magic_burst", "ice_breath", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
 		"electric": ids.append_array(["tailwind", "double_cast", "trial_wind_1", "trial_wind_2"])
 		"grass": ids.append_array(["leech_seed", "tree_man"])
 		"rock": ids.append_array(["rock_slide", "earth_shake"])

@@ -22,7 +22,10 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 		return entries
 	match String(def.get("kind", "")):
 		"ray":
-			_ray_targets(state, unit, skill_id, def, entries)
+			if skill_id == "ice_breath":
+				_ice_breath_targets(state, unit, entries)
+			else:
+				_ray_targets(state, unit, skill_id, def, entries)
 		"charge":
 			for dir in GridSpec.DIRS4:
 				for distance in [1, 2]:
@@ -80,6 +83,22 @@ static func _ray_targets(state: BattleState, unit: CombatUnit, skill_id: String,
 				entries.append({"type": "cell", "cell": cell})
 			if state.is_blocking_ray(cell) and skill_id != "fire_burst":
 				break
+
+
+static func _ice_breath_targets(state: BattleState, unit: CombatUnit, entries: Array) -> void:
+	for dir in GridSpec.DIRS4:
+		for distance in range(1, 7):
+			var cell: Vector2i = unit.cell + dir * distance
+			if not GridSpec.is_inside(cell):
+				break
+			if state.terrain_at(cell) == TerrainDB.OBSTACLE or state.terrain_at(cell) == TerrainDB.TREE or (state.is_nest_cell(cell) and state.unit_at(cell) == null):
+				break
+			var target := state.unit_at(cell)
+			if target == null:
+				continue
+			if target.side != unit.side:
+				entries.append({"type": "cell", "cell": cell})
+			break
 
 
 static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
@@ -148,6 +167,9 @@ static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String
 				entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "herbal_heal":
 			entries.append({"type": "cell", "cell": cell})
+		elif skill_id == "water_magic_burst":
+			if _water_magic_burst_has_enemy(state, unit, cell):
+				entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "electric_arc" and TerrainDB.is_water_body(state.terrain_at(cell)):
 			entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "electric_arc" and (state.obstacle_durability.has(cell) or (state.is_nest_cell(cell) and state.unit_at(cell) == null)):
@@ -171,6 +193,16 @@ static func _flame_rush_targets(state: BattleState, unit: CombatUnit, entries: A
 		if not TerrainDB.can_stand(state.terrain_at(cell), unit.element):
 			continue
 		entries.append({"type": "cell", "cell": cell})
+
+
+static func _water_magic_burst_has_enemy(state: BattleState, caster: CombatUnit, center: Vector2i) -> bool:
+	var enemy_side := "enemy" if caster.side == "player" else "player"
+	var cells: Array = [center] + GridSpec.neighbors4(center)
+	for cell in cells:
+		var target := state.unit_at(cell)
+		if target != null and target.side == enemy_side:
+			return true
+	return false
 
 
 static func _volt_empty_targets(state: BattleState, unit: CombatUnit, def: Dictionary, entries: Array) -> void:
@@ -349,6 +381,8 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		"ray":
 			if skill_id == "fire_burst":
 				_apply_fire_burst(state, caster, target_entry, summary)
+			elif skill_id == "ice_breath":
+				_apply_ice_breath(state, caster, target_entry, summary)
 			elif skill_id == "flame_jet" or skill_id == "freeze_ray":
 				_apply_line(state, caster, skill_id, target_entry, summary)
 			elif skill_id == "fire_seed":
@@ -390,6 +424,8 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		"cell":
 			if skill_id == "skyfire":
 				_apply_skyfire(state, caster, target_entry, summary)
+			elif skill_id == "water_magic_burst":
+				_apply_water_magic_burst(state, caster, target_entry, summary)
 			elif skill_id == "electric_arc":
 				_apply_electric_arc(state, caster, target_entry, summary)
 			elif skill_id == "tree_man":
@@ -1225,6 +1261,32 @@ static func _apply_skyfire(state: BattleState, caster: CombatUnit, entry: Dictio
 	summary["text"] = "天火在 (%d,%d) 生成 %d 格十字火焰，命中 %d 个单位。" % [center.x, center.y, ignited, summary["hits"].size()]
 
 
+static func _apply_water_magic_burst(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var center: Vector2i = entry["cell"]
+	var cells: Array = [center] + GridSpec.neighbors4(center)
+	summary["area_cells"] = cells
+	var push_targets: Array = []
+	for cell in cells:
+		var target := state.unit_at(cell)
+		if target == null or target.side == caster.side:
+			continue
+		var base_damage := 11 if cell == center else 8
+		var hit := _hit_entry(state, caster, "water_magic_burst", target, base_damage)
+		summary["hits"].append(hit)
+		if cell != center and target.is_alive():
+			push_targets.append({"target": target, "direction": cell - center})
+	for entry_data in push_targets:
+		var target: CombatUnit = entry_data["target"]
+		if not target.is_alive():
+			continue
+		var direction: Vector2i = entry_data["direction"]
+		for hit in summary["hits"]:
+			if int(hit.get("uid", -1)) == target.uid:
+				hit["push"] = PushResolver.push(state, target, direction, 1, 0, "水魔爆", caster.side, caster.uid, "water_magic_burst")
+				break
+	summary["text"] = "水魔爆炸开五格十字，命中 %d 名敌人。" % summary["hits"].size()
+
+
 static func _apply_fire_burst(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var center: Vector2i = entry["cell"]
 	var direction := _axis_dir(caster.cell, center)
@@ -1313,6 +1375,34 @@ static func _apply_line(state: BattleState, caster: CombatUnit, skill_id: String
 		summary["hits"].append(hit)
 	if summary["text"] == "":
 		summary["text"] = "喷射火焰命中 %d 个单位。" % summary["hits"].size() if skill_id == "flame_jet" else "急冻光线未命中。"
+
+
+static func _apply_ice_breath(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var dir := _axis_dir(caster.cell, entry["cell"])
+	for step in range(1, 7):
+		var cell: Vector2i = caster.cell + dir * step
+		if not GridSpec.is_inside(cell):
+			break
+		summary["ray_cells"].append(cell)
+		if state.terrain_at(cell) == TerrainDB.OBSTACLE or state.terrain_at(cell) == TerrainDB.TREE or (state.is_nest_cell(cell) and state.unit_at(cell) == null):
+			break
+		var target := state.unit_at(cell)
+		if target == null:
+			continue
+		if target.side == caster.side:
+			break
+		var had_wet := target.slow_ticks > 0
+		var hit := _hit_entry(state, caster, "ice_breath", target, SkillDB.damage_of("ice_breath"))
+		if target.is_alive() and had_wet:
+			state.clear_wet(target)
+			target.frozen = true
+			state.cancel_channel(target, "冰冻")
+			(hit["statuses"] as Array).append("冰冻")
+		summary["hits"].append(hit)
+		summary["text"] = "冰之息命中 %s：%d 伤害%s。" % [target.display_name, int(hit["damage"]), "，解除浸湿并施加冰冻" if had_wet and target.is_alive() else ""]
+		break
+	if summary["text"] == "":
+		summary["text"] = "冰之息未命中。"
 
 
 static func _apply_directional(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary, summary: Dictionary) -> void:

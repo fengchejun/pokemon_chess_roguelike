@@ -914,6 +914,11 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		var sacrifice_damage := ceili(float(unit.max_hp) * 0.5)
 		sacrifice_damage = SkillResolver.upgraded_base_damage(unit, skill_id, sacrifice_damage)
 		parts.append("全场伤害 %d · 自损 %d" % [Balance.skill_damage_for_side(sacrifice_damage, unit.side), ceili(float(unit.max_hp) * 0.5)])
+	elif skill_id == "water_magic_burst":
+		var center_damage := Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, 11), unit.side)
+		parts.append("十字 5 格 · 伤害 %d · 中心 %d · 击退" % [damage, center_damage])
+	elif skill_id == "ice_breath":
+		parts.append("伤害 %d · 浸湿转为冰冻" % damage)
 	elif skill_id == "tree_man":
 		parts.append("即时召唤 · 上限 1")
 	elif skill_id == "herbal_heal":

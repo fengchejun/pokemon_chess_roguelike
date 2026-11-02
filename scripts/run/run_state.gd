@@ -40,6 +40,8 @@ const MONSTER_UPGRADES := {
 	"drain_range": {"name": "蔓延吸取", "desc": "吸取基础直伤 +10，射程由 2 格增至 3 格。", "key": "drain_range", "value": 1, "damage_bonus": 10, "requires_skill": "drain"},
 	"herbal_heal_amount": {"name": "丰茂药草", "desc": "我方药草治疗每个目标回复 13 点生命。", "key": "herbal_heal_amount", "value": 5, "requires_skill": "herbal_heal"},
 	"ice_shard_damage": {"name": "尖锐冰锥", "desc": "冰锥基础直伤共 +10。", "key": "ice_shard_damage", "value": 5, "damage_bonus": 5, "requires_skill": "ice_shard"},
+	"water_magic_burst_damage": {"name": "爆水", "desc": "水魔爆十字范围与中心额外伤害不变，中心基础直伤 +4、外侧基础直伤 +4。", "key": "water_magic_burst_damage", "value": 4, "damage_bonus": 4, "requires_skill": "water_magic_burst"},
+	"ice_breath_damage": {"name": "冻息", "desc": "冰之息基础直伤 +4。", "key": "ice_breath_damage", "value": 4, "damage_bonus": 4, "requires_skill": "ice_breath"},
 	"ice_ground_reach": {"name": "冰面延展", "desc": "我方冰封大地向前延展至第 4 排。", "key": "ice_ground_reach", "value": 1, "requires_skill": "frozen_ground"},
 	"electric_arc_damage": {"name": "高压传导", "desc": "放电传导基础直伤共 +10。", "key": "electric_arc_damage", "value": 5, "damage_bonus": 5, "requires_skill": "electric_arc"},
 	"tailwind_reach": {"name": "扩域磁场", "desc": "磁场加速半径从 2 格扩大至 3 格，覆盖自身周围 7×7 区域。", "key": "tailwind_reach", "value": 1, "requires_skill": "tailwind"},
