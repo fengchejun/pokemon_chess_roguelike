@@ -869,10 +869,10 @@ func available_new_skills(uid: int) -> Array:
 	var known: Array = record.get("known_skills", SpeciesDB.skills_of(String(record["species_id"])))
 	var pool: Array = []
 	for skill_id in SpeciesDB.skills_of(String(record["species_id"])):
-		if not known.has(skill_id):
+		if not known.has(skill_id) and not SkillDB.is_special(String(skill_id)):
 			pool.append(skill_id)
 	for skill_id in SkillDB.learnable_ids_for(SpeciesDB.element_of(String(record["species_id"]))):
-		if not known.has(skill_id) and not pool.has(skill_id):
+		if not known.has(skill_id) and not pool.has(skill_id) and not SkillDB.is_special(String(skill_id)):
 			pool.append(skill_id)
 	return pool
 
@@ -1158,8 +1158,11 @@ func _normalize_record_growth(record: Dictionary, legacy_upgrade_style: bool) ->
 	var base_skills: Array = SpeciesDB.skills_of(species_id).duplicate()
 	var known: Array = []
 	var source_skills: Array = base_skills if legacy_upgrade_style or not record.has("known_skills") else record.get("known_skills", [])
+	var explicitly_known: Array = record.get("known_skills", [])
 	for skill_id in source_skills:
 		var id := String(skill_id)
+		if SkillDB.is_special(id) and not explicitly_known.has(id):
+			continue
 		if not known.has(id) and not SkillDB.get_def(id).is_empty() and SkillDB.element_of(id) == SpeciesDB.element_of(species_id):
 			known.append(id)
 	if known.is_empty() and not base_skills.is_empty():

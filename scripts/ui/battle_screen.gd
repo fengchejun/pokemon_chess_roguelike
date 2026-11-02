@@ -735,7 +735,7 @@ func _rebuild_skill_buttons() -> void:
 		for skill_id in unit.skills:
 			var id := String(skill_id)
 			var def := SkillDB.get_def(id)
-			var button_text := "%s（%s）" % [def.get("name", id), _skill_tag(id, unit)]
+			var button_text := "%s%s（%s）" % [def.get("name", id), "·特殊" if SkillDB.is_special(id) else "", _skill_tag(id, unit)]
 			var phase_reason := _skill_phase_block_reason(unit, id)
 			if phase_reason != "":
 				button_text += "·" + phase_reason

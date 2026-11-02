@@ -83,7 +83,7 @@ func _team_row(record: Dictionary) -> Control:
 	for skill_id in known:
 		var id := String(skill_id)
 		var enhanced := (record.get("upgrades_taken", []) as Array).has(RunState.upgrade_id_for_skill(id))
-		library_names.append("%s%s%s" % [SkillDB.name_of(id), "★" if enhanced else "", "（占位）" if SkillDB.is_placeholder(id) else ""])
+		library_names.append("%s%s%s%s" % [SkillDB.name_of(id), "★" if enhanced else "", "（占位）" if SkillDB.is_placeholder(id) else "", "（特殊）" if SkillDB.is_special(id) else ""])
 	info.add_child(UIKit.wrapped("本局招式库：" + "、".join(library_names), 12, UIKit.TEXT_DIM))
 	for slot in range(RunState.MAX_EQUIPPED_SKILLS):
 		var selector := OptionButton.new()

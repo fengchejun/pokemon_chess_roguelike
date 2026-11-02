@@ -15,7 +15,7 @@ const DEFS := {
 	"flame_jet": {"name": "喷射火焰", "element": "fire", "kind": "direction", "damage": 10, "adjacent_bonus": 3, "ranged": true, "desc": "沿选定方向喷射 3 格；障碍截断；命中单位受到 10 点基础伤害并灼烧，紧邻自身的单位额外受到 3 点伤害。"},
 	"rain_call": {"name": "造雨术", "element": "water", "kind": "cell", "range": 4, "damage": 0, "ranged": false, "desc": "指定曼哈顿距离 4 格内中心，周围 3×3 格化为浅水；障碍与深坑不变。"},
 	"surf": {"name": "冲浪", "element": "water", "kind": "self", "damage": 0, "ranged": false, "desc": "施放当回合及后两回合，沿相连浅水或深水移动不消耗普通移动机会，可重复移动并越过敌方单位；不能停在单位或障碍格。"},
-	"mirror_water_moon": {"name": "镜花水月", "element": "water", "kind": "self", "damage": 0, "ranged": false, "battle_limit": 1, "desc": "每场限用一次。施加持续三回合的镜花水月：可移动到任意未被占用的浅水或深水格且不消耗普通移动机会；水系技能基础直伤 +5。施放时使全场敌人浸湿一回合；首次受到实际伤害时提前结束状态并免疫该次伤害。"},
+	"mirror_water_moon": {"name": "镜花水月", "element": "water", "kind": "self", "damage": 0, "ranged": false, "battle_limit": 1, "category": "special", "desc": "水系特殊技能，每场限用一次。施加持续三回合的镜花水月：可移动到任意未被占用的浅水或深水格且不消耗普通移动机会；水系技能基础直伤 +5。施放时使全场敌人浸湿一回合；首次受到实际伤害时提前结束状态并免疫该次伤害。"},
 	"tsunami": {"name": "海啸", "element": "water", "kind": "direction", "damage": 18, "ranged": true, "channel": true, "desc": "选择方向警示前方宽 5、长 5 的固定区域；下次本方阶段开始，对区域内当时站在水格上的敌方单位造成 18 点基础直伤；施法者该阶段不能行动。"},
 	"rock_push": {"name": "推击", "element": "rock", "kind": "unit", "range": 1, "damage": 13, "ranged": false, "desc": "对相邻单位造成 13 点基础伤害并推开一格。"},
 	"rock_break": {"name": "碎岩", "element": "rock", "kind": "unit", "range": 2, "damage": 10, "ranged": true, "desc": "曼哈顿 2 格内攻击单位造成 10 点基础伤害，命中障碍扣 1 点耐久；解除冰冻时无视冰冻免伤并造成三倍伤害。"},
@@ -212,7 +212,7 @@ static func learnable_ids_for(element: String) -> Array:
 	var ids := placeholder_ids_for(element)
 	match element:
 		"fire": ids.append_array(["fire_amplify", "flame_rush", "windfire_breath", "furnace_fist", "skyfire", "combustion", "burn_out"])
-		"water": ids.append_array(["surf", "mirror_water_moon", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
+		"water": ids.append_array(["surf", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
 		"electric": ids.append_array(["tailwind", "double_cast", "trial_wind_1", "trial_wind_2"])
 		"grass": ids.append_array(["leech_seed", "tree_man"])
 		"rock": ids.append_array(["rock_slide", "earth_shake"])
@@ -222,6 +222,19 @@ static func learnable_ids_for(element: String) -> Array:
 static func is_placeholder(skill_id: String) -> bool:
 	var parts := skill_id.split("_")
 	return parts.size() == 3 and parts[0] == "trial" and ["fire", "water", "grass", "electric", "rock", "ice", "wind"].has(parts[1]) and ["1", "2"].has(parts[2])
+
+
+static func is_special(skill_id: String) -> bool:
+	return String(get_def(skill_id).get("category", "normal")) == "special"
+
+
+static func special_ids_for(element: String) -> Array:
+	var result: Array = []
+	for skill_id in DEFS:
+		if String(DEFS[skill_id].get("element", "")) == element and is_special(String(skill_id)):
+			result.append(String(skill_id))
+	result.sort()
+	return result
 
 
 static func name_of(skill_id: String) -> String:

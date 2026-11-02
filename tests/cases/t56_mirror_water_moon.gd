@@ -15,8 +15,10 @@ func _definition(t: TestContext) -> void:
 	var def := SkillDB.get_def("mirror_water_moon")
 	t.eq(String(def.get("name", "")), "镜花水月", "技能名称")
 	t.eq(int(def.get("battle_limit", 0)), 1, "镜花水月每场限用一次")
-	t.check(SkillDB.learnable_ids_for("water").has("mirror_water_moon"), "镜花水月进入水系学习池")
-	t.check(SpeciesDB.skills_of("water_starter").has("mirror_water_moon"), "镜花水月进入杰尼龟基础技能池")
+	t.check(SkillDB.is_special("mirror_water_moon"), "镜花水月属于特殊技能")
+	t.check(SkillDB.special_ids_for("water").has("mirror_water_moon"), "镜花水月归纳为水系特殊技能")
+	t.check(not SkillDB.learnable_ids_for("water").has("mirror_water_moon"), "特殊技能不进入普通升级学习池")
+	t.check(not SpeciesDB.skills_of("water_starter").has("mirror_water_moon"), "特殊技能不进入杰尼龟基础技能池")
 	var opening_run := RunState.new_run(5601, [{
 		"id": 1,
 		"species_id": "water_starter",
@@ -24,9 +26,32 @@ func _definition(t: TestContext) -> void:
 		"starting_skill_id": "mirror_water_moon",
 	}])
 	var opening_record := opening_run.record_by_uid(1)
-	t.eq(opening_record.get("known_skills", []), ["mirror_water_moon"], "开局可选择镜花水月作为起始技能")
-	t.eq(opening_record.get("equipped_skills", []), ["mirror_water_moon"], "开局选择后立即装备镜花水月")
+	t.eq(opening_record.get("known_skills", []), ["water_flow"], "开局不能选择特殊技能，回退到第一项基础技能")
+	t.eq(opening_record.get("equipped_skills", []), ["water_flow"], "特殊技能不会通过开局接口装备")
 	t.eq(RunState.upgrade_id_for_skill("mirror_water_moon"), "mirror_water_moon_duration", "镜花水月拥有专属强化")
+	var special_record := {
+		"uid": 2,
+		"species_id": "water_starter",
+		"level": 2,
+		"xp": 4,
+		"known_skills": ["water_flow", "mirror_water_moon"],
+		"equipped_skills": ["water_flow", "mirror_water_moon"],
+		"upgrades": {},
+		"upgrades_taken": [],
+		"claimed_even_levels": [],
+	}
+	opening_run.storage.append(special_record)
+	t.check(opening_run.available_monster_upgrades(2).has("mirror_water_moon_duration"), "通过特殊渠道获得后仍可强化")
+	var gated_run := RunState.new_run(5602, [{
+		"id": 1,
+		"species_id": "water_starter",
+		"affinity": 0,
+		"starting_skill_id": "water_flow",
+	}])
+	var gated_record := gated_run.record_by_uid(1)
+	MonsterProgression.award_xp(gated_record, 4)
+	t.check(not gated_run.available_new_skills(1).has("mirror_water_moon"), "开局未获得时不能从基础池补学特殊技能")
+	t.check(not gated_run.learn_monster_skill(1, 2, "mirror_water_moon"), "升级学习接口拒绝特殊技能")
 
 
 func _activation_and_movement(t: TestContext) -> void:
