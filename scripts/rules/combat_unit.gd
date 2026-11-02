@@ -48,6 +48,14 @@ var move_cancelled: bool = false:
 		move_cancelled = value
 		if was_active and not move_cancelled and not root_pending:
 			feedback_changed.emit("clear", "定身解除", 0, cell)
+var imprison_ticks: int = 0:
+	set(value):
+		var was_active := imprison_ticks > 0
+		var active := value > 0
+		var announce := active != was_active
+		imprison_ticks = value
+		if announce:
+			feedback_changed.emit("status" if active else "clear", "禁锢" + ("解除" if not active else ""), int(value), cell)
 var slow_ticks: int = 0:
 	set(value):
 		var was_active := slow_ticks > 0
@@ -177,6 +185,8 @@ func hp_ratio() -> float:
 
 
 func effective_move() -> int:
+	if imprison_ticks > 0:
+		return 0
 	var value := move_points
 	if inspired:
 		value += 1
@@ -203,7 +213,7 @@ func can_use_in_battle(skill_id: String) -> bool:
 
 
 func can_move_now(free_terrain: bool = false) -> bool:
-	return is_alive() and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and vine_ticks <= 0 and not move_cancelled and (free_terrain or (not moved and effective_move() > 0))
+	return is_alive() and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and vine_ticks <= 0 and imprison_ticks <= 0 and not move_cancelled and (free_terrain or (not moved and effective_move() > 0))
 
 
 func dup() -> CombatUnit:
@@ -230,6 +240,7 @@ func dup() -> CombatUnit:
 	copy.capture_used = capture_used
 	copy.root_pending = root_pending
 	copy.move_cancelled = move_cancelled
+	copy.imprison_ticks = imprison_ticks
 	copy.slow_ticks = slow_ticks
 	copy.burn_ticks = burn_ticks
 	copy.burn_source_uid = burn_source_uid

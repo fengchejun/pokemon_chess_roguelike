@@ -789,6 +789,14 @@ func apply_root(target: CombatUnit) -> void:
 	log_event("%s 被定身：下一次移动机会将被取消。" % target.display_name)
 
 
+func apply_imprison(target: CombatUnit) -> bool:
+	if target == null or not target.is_alive():
+		return false
+	target.imprison_ticks = maxi(target.imprison_ticks, _movement_effect_ticks(target))
+	log_event("%s 被禁锢：失去下一次普通移动机会，但仍可进行其他行动。" % target.display_name)
+	return true
+
+
 func apply_wet(target: CombatUnit, ticks: int = 2) -> bool:
 	if target == null or not target.is_alive() or target.element == "water" or target.has_buff("status_immune"):
 		return false
@@ -879,6 +887,7 @@ func _finish_movement_effects(side: String) -> void:
 					unit.vine_sources[cell] = ticks
 			_refresh_vine_ticks(unit)
 		unit.haste_ticks = maxi(0, unit.haste_ticks - 1)
+		unit.imprison_ticks = maxi(0, unit.imprison_ticks - 1)
 
 
 func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "") -> bool:
@@ -1765,6 +1774,7 @@ func _signature() -> String:
 		parts.append("buff:%d:%s" % [unit.uid, str(unit.battle_buffs)])
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
+		parts.append("imprison:%d:%d" % [unit.uid, unit.imprison_ticks])
 		parts.append("mirror:%d:%d" % [unit.uid, unit.mirror_until_round])
 		parts.append("summon_power:%d:%d" % [unit.uid, unit.summon_power_bonus])
 		parts.append("vine_source:%d:%s:%d" % [unit.uid, str(unit.vine_sources), unit.vine_ticks])
