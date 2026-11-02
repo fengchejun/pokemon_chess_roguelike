@@ -899,6 +899,21 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("地形免费移动 %d 回合" % (3 + int(unit.upgrades.get("ice_glide_duration", 0)) if skill_id == "ice_glide" else 3 + int(unit.upgrades.get("surf_duration", 0))))
 	elif skill_id == "mirror_water_moon":
 		parts.append("%d 回合 · 水伤 +%d · 受击免疫" % [Balance.MIRROR_WATER_MOON_ROUNDS + int(unit.upgrades.get("mirror_water_moon_duration", 0)), Balance.MIRROR_WATER_DAMAGE_BONUS])
+	elif skill_id == "flame_rush":
+		parts.append("伤害 %d · 跃迁燃烧格" % damage)
+	elif skill_id == "windfire_breath":
+		parts.append("前方 8 格 · 伤害 %d · 击退 1 格" % damage)
+	elif skill_id == "furnace_fist":
+		var furnace_heal := 5 + int(unit.upgrades.get("furnace_fist_healing", 0))
+		parts.append("伤害 %d · 回复 %d/%d" % [damage, furnace_heal, furnace_heal + 5])
+	elif skill_id == "skyfire":
+		parts.append("十字 5 格 · 伤害 %d · 灼烧" % damage)
+	elif skill_id == "combustion":
+		parts.append("伤害 %d · 灼烧 %d" % [damage, Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, 16), unit.side)])
+	elif skill_id == "burn_out":
+		var sacrifice_damage := ceili(float(unit.max_hp) * 0.5)
+		sacrifice_damage = SkillResolver.upgraded_base_damage(unit, skill_id, sacrifice_damage)
+		parts.append("全场伤害 %d · 自损 %d" % [Balance.skill_damage_for_side(sacrifice_damage, unit.side), ceili(float(unit.max_hp) * 0.5)])
 	elif skill_id == "tree_man":
 		parts.append("即时召唤 · 上限 1")
 	elif skill_id == "herbal_heal":
@@ -917,6 +932,8 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("射线 %d-%d" % [int(def.get("min_range", 1)), int(def.get("max_range", 8)) + SkillResolver._range_bonus(state, unit, skill_id) + (int(unit.upgrades.get("freeze_ray_range", 0)) if skill_id == "freeze_ray" else 0)])
 	elif skill_id == "lightning":
 		parts.append("全场锁定 · 蓄力")
+	elif skill_id == "flame_rush":
+		parts.append("全图燃烧格落点")
 	elif kind == "unit":
 		var actual_range := int(def.get("range", 1))
 		if SkillDB.is_placeholder(skill_id):
@@ -924,6 +941,8 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		elif skill_id == "rock_break":
 			actual_range += int(unit.upgrades.get(skill_id + "_range", 0))
 		parts.append("射程 %d" % actual_range)
+	elif bool(def.get("global_range", false)):
+		parts.append("全图落点")
 	elif kind == "cell":
 		parts.append("落点 %d%s" % [int(def.get("range", 3)), " · 蓄力" if bool(def.get("channel", false)) else ""])
 	elif kind == "charge":
@@ -989,6 +1008,8 @@ func _action_detail(action: Dictionary) -> String:
 		if hit.get("push") != null and bool(hit["push"].get("death", false)):
 			text += "（推入致死地形）"
 		parts.append(text)
+	if int(meta.get("self_damage", 0)) > 0:
+		parts.append("自身损失 %d" % int(meta["self_damage"]))
 	if meta.get("self_death", false):
 		parts.append("自毁")
 	return "；".join(parts)
@@ -1528,6 +1549,10 @@ func _on_skill_pressed(skill_id: String) -> void:
 			board.area_cells = SkillResolver.support_area(unit.cell, 2 + int(unit.upgrades.get("tailwind_reach", 0)) if skill_id == "tailwind" else 2, skill_id == "tailwind")
 		if skill_id == "earth_shake":
 			for affected in SkillResolver.front_area_cells(unit.cell, entry["dir"], 3):
+				if not board.area_cells.has(affected):
+					board.area_cells.append(affected)
+		if skill_id == "windfire_breath":
+			for affected in SkillResolver.half_circle_cells(unit.cell, entry["dir"]):
 				if not board.area_cells.has(affected):
 					board.area_cells.append(affected)
 	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)

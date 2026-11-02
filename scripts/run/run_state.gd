@@ -58,6 +58,12 @@ const MONSTER_UPGRADES := {
 	"tree_man_hp_bonus": {"name": "坚根守卫", "desc": "大树守卫召唤树人最大生命 +10。", "key": "tree_man_hp_bonus", "value": 10, "requires_skill": "tree_man"},
 	"ice_glide_duration": {"name": "长滑", "desc": "溜冰的地形移动效果延长 1 回合。", "key": "ice_glide_duration", "value": 1, "requires_skill": "ice_glide"},
 	"mirror_water_moon_duration": {"name": "镜水长明", "desc": "镜花水月的持续效果延长 1 回合。", "key": "mirror_water_moon_duration", "value": 1, "requires_skill": "mirror_water_moon"},
+	"flame_rush_damage": {"name": "烈焰掠袭", "desc": "炎袭落点范围的基础直伤 +5。", "key": "flame_rush_damage", "value": 5, "damage_bonus": 5, "requires_skill": "flame_rush"},
+	"windfire_breath_damage": {"name": "风火怒号", "desc": "风怒炎息的基础直伤 +5。", "key": "windfire_breath_damage", "value": 5, "damage_bonus": 5, "requires_skill": "windfire_breath"},
+	"furnace_fist_training": {"name": "炎炉精修", "desc": "炎炉拳基础直伤 +5，命中回复量 +3。", "key": "furnace_fist_healing", "value": 3, "damage_bonus": 5, "requires_skill": "furnace_fist"},
+	"skyfire_damage": {"name": "焚天", "desc": "天火基础直伤 +4。", "key": "skyfire_damage", "value": 4, "damage_bonus": 4, "requires_skill": "skyfire"},
+	"combustion_damage": {"name": "爆焰", "desc": "爆燃基础直伤 +4，灼烧目标仍按双倍基础值结算。", "key": "combustion_damage", "value": 4, "damage_bonus": 4, "requires_skill": "combustion"},
+	"burn_out_damage": {"name": "焚魂", "desc": "燃尽造成的基础直伤 +5，自身生命代价不变。", "key": "burn_out_damage", "value": 5, "damage_bonus": 5, "requires_skill": "burn_out"},
 }
 
 

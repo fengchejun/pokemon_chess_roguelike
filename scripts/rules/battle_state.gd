@@ -60,6 +60,8 @@ var obstacle_durability: Dictionary = {}
 var obstacle_origin: Dictionary = {}
 var obstacle_expire_round: Dictionary = {}
 var burning_cells: Dictionary = {}
+var burning_origin: Dictionary = {}
+var burning_forced: Dictionary = {}
 var steam_cells: Dictionary = {}
 var vine_origin: Dictionary = {}
 var vine_expire_round: Dictionary = {}
@@ -199,6 +201,9 @@ func capture_roll() -> float:
 func load_map(map_data: Dictionary) -> void:
 	terrain = map_data["terrain"].duplicate()
 	burning_cells = {}
+	burning_origin = {}
+	burning_forced = {}
+	burning_sources = {}
 	steam_cells = map_data.get("steam_cells", {}).duplicate()
 	vine_origin = {}
 	vine_expire_round = {}
@@ -256,6 +261,8 @@ func set_terrain(cell: Vector2i, value: int) -> void:
 			kill_unit(occupant, "藤蔓消失后落入" + TerrainDB.name_of(value))
 	if value != TerrainDB.GRASS and value != TerrainDB.VINES and value != TerrainDB.TREE:
 		burning_cells.erase(cell)
+		burning_origin.erase(cell)
+		burning_forced.erase(cell)
 	if value == TerrainDB.OBSTACLE or value == TerrainDB.TREE:
 		steam_cells.erase(cell)
 	if value == TerrainDB.VINES:
@@ -269,14 +276,24 @@ func place_temp_vines(cell: Vector2i) -> void:
 	vine_expire_round[cell] = round + 1
 
 
-func ignite(cell: Vector2i, source_side: String = "") -> void:
+func ignite(cell: Vector2i, source_side: String = "", force: bool = false) -> bool:
 	if not GridSpec.is_inside(cell):
-		return
-	if terrain_at(cell) != TerrainDB.GRASS and terrain_at(cell) != TerrainDB.VINES and terrain_at(cell) != TerrainDB.TREE:
-		return
-	burning_cells[cell] = 2
+		return false
+	var current_terrain := terrain_at(cell)
+	var flammable := current_terrain == TerrainDB.GRASS or current_terrain == TerrainDB.VINES or current_terrain == TerrainDB.TREE
+	if not flammable and not force:
+		return false
+	var was_burning := burning_cells.has(cell)
+	if not was_burning:
+		burning_origin[cell] = current_terrain
+		burning_forced[cell] = force
+	elif force:
+		burning_forced[cell] = true
+	burning_cells[cell] = Balance.BURN_TICKS
 	burning_sources[cell] = source_side
-	log_event("(%d,%d) 的可燃物被点燃。" % [cell.x, cell.y])
+	if not was_burning:
+		log_event("(%d,%d) %s。" % [cell.x, cell.y, "生成魔法火焰" if force else "的可燃物被点燃"])
+	return true
 
 
 func add_steam(cell: Vector2i) -> void:
@@ -731,13 +748,13 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	return {"amount": amount, "killed": killed, "previous_hp": previous_hp, "hp": target.hp, "relic_healed": relic_healed}
 
 
-func apply_burn(target: CombatUnit, source: CombatUnit) -> void:
+func apply_burn(target: CombatUnit, source: CombatUnit) -> bool:
 	if target.has_buff("status_immune"):
-		return
+		return false
 	if target.element == "fire":
-		return
+		return false
 	if not target.is_alive():
-		return
+		return false
 	var was_burning := target.burn_ticks > 0
 	var burn_ticks := Balance.BURN_TICKS
 	target.burn_ticks = burn_ticks
@@ -745,6 +762,15 @@ func apply_burn(target: CombatUnit, source: CombatUnit) -> void:
 	target.burn_source_side = source.side if source != null else ""
 	if not was_burning:
 		log_event("%s 被点燃（灼烧 %d 回合）。" % [target.display_name, burn_ticks])
+	return true
+
+
+func clear_burn(target: CombatUnit) -> void:
+	if target == null:
+		return
+	target.burn_ticks = 0
+	target.burn_source_uid = -1
+	target.burn_source_side = ""
 
 
 func apply_root(target: CombatUnit) -> void:
@@ -850,6 +876,8 @@ func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "") -> b
 		var drop_food := node_kind != "" and terrain_at(cell) == TerrainDB.TREE and terrain_rng.randf() < 0.25 and not food_cells.has(cell)
 		obstacle_durability.erase(cell)
 		burning_cells.erase(cell)
+		burning_origin.erase(cell)
+		burning_forced.erase(cell)
 		var origin := int(obstacle_origin.get(cell, TerrainDB.PLAIN))
 		obstacle_origin.erase(cell)
 		obstacle_expire_round.erase(cell)
@@ -1488,9 +1516,14 @@ func _settle_burning_cells() -> void:
 					earn_essence("terrain:%d:%d" % [cell.x, cell.y], 1)
 			burning_sources.erase(cell)
 			burning_cells.erase(cell)
-			obstacle_durability.erase(cell)
 			var was_vines := terrain_at(cell) == TerrainDB.VINES
-			var restored := int(vine_origin.get(cell, TerrainDB.PLAIN)) if was_vines else TerrainDB.PLAIN
+			var forced := bool(burning_forced.get(cell, false))
+			var origin := int(burning_origin.get(cell, TerrainDB.PLAIN))
+			var restored := origin if forced and origin not in [TerrainDB.GRASS, TerrainDB.VINES, TerrainDB.TREE] else (int(vine_origin.get(cell, TerrainDB.PLAIN)) if was_vines else TerrainDB.PLAIN)
+			burning_origin.erase(cell)
+			burning_forced.erase(cell)
+			if restored not in [TerrainDB.OBSTACLE, TerrainDB.TREE]:
+				obstacle_durability.erase(cell)
 			if was_vines:
 				log_event("藤蔓烧尽，(%d,%d) 恢复为%s。" % [cell.x, cell.y, TerrainDB.name_of(restored)])
 			set_terrain(cell, restored)
@@ -1700,7 +1733,7 @@ func _signature() -> String:
 	var fire_keys: Array = burning_cells.keys().duplicate()
 	fire_keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
 	for cell in fire_keys:
-		parts.append("burning:%d,%d:%d" % [cell.x, cell.y, int(burning_cells[cell])])
+		parts.append("burning:%d,%d:%d:%d:%d" % [cell.x, cell.y, int(burning_cells[cell]), int(burning_origin.get(cell, TerrainDB.PLAIN)), int(bool(burning_forced.get(cell, false)))])
 	parts.append("nests:%s" % str(all_nests()))
 	parts.append("terrain_rng:%d" % terrain_rng.state)
 	for unit in units:
@@ -1755,6 +1788,8 @@ func clone() -> BattleState:
 	copy.obstacle_origin = obstacle_origin.duplicate()
 	copy.obstacle_expire_round = obstacle_expire_round.duplicate()
 	copy.burning_cells = burning_cells.duplicate()
+	copy.burning_origin = burning_origin.duplicate()
+	copy.burning_forced = burning_forced.duplicate()
 	copy.steam_cells = steam_cells.duplicate()
 	copy.vine_origin = vine_origin.duplicate()
 	copy.vine_expire_round = vine_expire_round.duplicate()

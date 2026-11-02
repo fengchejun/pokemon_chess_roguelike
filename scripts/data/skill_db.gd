@@ -55,6 +55,57 @@ const DEFS := {
 		"ranged": false,
 		"desc": "选择正交 1～2 格内的位置作为方向，冲撞最多 2 格；撞到单位或障碍就停下。单位受 11 点基础伤害并被推 1 格，障碍受 1 点耐久伤害；沿途致死地形仍会使地面单位倒下。",
 	},
+	"flame_rush": {
+		"name": "炎袭",
+		"element": "fire",
+		"kind": "teleport",
+		"damage": 10,
+		"ranged": false,
+		"desc": "全图选择一格未被占用、可站立的燃烧格并跃迁过去；对落点周围八格内的敌人各造成 10 点基础直伤。",
+	},
+	"windfire_breath": {
+		"name": "风怒炎息",
+		"element": "fire",
+		"kind": "direction",
+		"damage": 12,
+		"ranged": false,
+		"desc": "选择方向，覆盖正前方两排共 8 格；命中范围内敌人各造成 12 点基础直伤，并沿远离施法者的方向推动 1 格。",
+	},
+	"furnace_fist": {
+		"name": "炎炉拳",
+		"element": "fire",
+		"kind": "unit",
+		"range": 1,
+		"damage": 10,
+		"ranged": false,
+		"desc": "攻击曼哈顿距离 1 格内的一名敌人，造成 10 点基础直伤并回复自身 5 HP；目标命中前已灼烧时回复 10 HP，并清除其灼烧。",
+	},
+	"skyfire": {
+		"name": "天火",
+		"element": "fire",
+		"kind": "cell",
+		"global_range": true,
+		"damage": 8,
+		"ranged": true,
+		"desc": "全图选择中心，生成中心与上下左右共 5 格十字火焰；十字内所有单位受 8 点基础直伤并尝试附加灼烧。火焰保留两轮。",
+	},
+	"combustion": {
+		"name": "爆燃",
+		"element": "fire",
+		"kind": "unit",
+		"range": 2,
+		"damage": 8,
+		"ranged": true,
+		"desc": "攻击曼哈顿距离 2 格内一名敌人，造成 8 点基础直伤；目标命中前已灼烧时改为基础 16 点，并清除其灼烧。",
+	},
+	"burn_out": {
+		"name": "燃尽",
+		"element": "fire",
+		"kind": "self",
+		"damage": 0,
+		"ranged": false,
+		"desc": "对全场敌人造成施法者最大生命一半的基础直伤并尝试附加灼烧；随后损失施法者最大生命一半的当前 HP，可能因此倒下。",
+	},
 	"water_flow": {
 		"name": "水炮",
 		"element": "water",
@@ -160,7 +211,7 @@ static func placeholder_ids_for(element: String) -> Array:
 static func learnable_ids_for(element: String) -> Array:
 	var ids := placeholder_ids_for(element)
 	match element:
-		"fire": ids.append("fire_amplify")
+		"fire": ids.append_array(["fire_amplify", "flame_rush", "windfire_breath", "furnace_fist", "skyfire", "combustion", "burn_out"])
 		"water": ids.append_array(["surf", "mirror_water_moon", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
 		"electric": ids.append_array(["tailwind", "double_cast", "trial_wind_1", "trial_wind_2"])
 		"grass": ids.append_array(["leech_seed", "tree_man"])
