@@ -118,6 +118,9 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 					}
 					if _better(candidate, best, path.size()):
 						best = candidate
+	var guard_scores := {}
+	for current in work.all_nests():
+		guard_scores[current["cell"]] = _nest_guard_score(work, current)
 	for position in positions:
 		var guard_state := work.clone()
 		var defender := guard_state.unit_by_uid(unit.uid)
@@ -126,12 +129,9 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 			var cell: Vector2i = current["cell"]
 			if not guard_state.can_guard_nest(defender, cell):
 				continue
-			var distance := 100
-			for target in guard_state.alive_units("player"):
-				distance = mini(distance, GridSpec.manhattan(target.cell, cell))
-			if distance > 5 and guard_state.sheltered_boss() == null:
+			var value := int(guard_scores.get(cell, 0)) - _pending_hazard(guard_state, position, "player")
+			if value <= 0:
 				continue
-			var value := 20 + (18 if distance <= 3 else 5) + (18 if guard_state.sheltered_boss() != null else 0) - guard_state.nest_guard_charges(cell) * 5 - _pending_hazard(guard_state, position, "player")
 			var candidate := {"uid": unit.uid, "move_path": paths[position], "free_terrain_move": bool(free_paths.get(position, false)), "skill": {}, "guard": cell, "score": value, "lethal": 0}
 			if _better(candidate, best, (paths[position] as Array).size()):
 				best = candidate
@@ -139,6 +139,35 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 		return best
 	# 没有可得分攻击：向最近的己方单位接近。
 	return _approach_action(work, unit, positions, paths, free_paths)
+
+
+static func _nest_guard_score(state: BattleState, nest: Dictionary) -> int:
+	# 健康巢穴优先进攻；受损后才按附近威胁投入守军，避免无限叠护。
+	var hp := int(nest.get("hp", 0))
+	var shelter := state.sheltered_boss() != null
+	if hp >= Balance.NEST_DURABILITY and not shelter:
+		return 0
+	var pressure := 0
+	for target in state.alive_units("player"):
+		if target.frozen or target.paralyzed_ticks > 0 or target.fresh_spawn:
+			continue
+		var offensive := false
+		for skill_id in target.skills:
+			if SkillDB.damage_of(skill_id) > 0 and target.can_use_in_battle(skill_id):
+				offensive = true
+				break
+		if not offensive:
+			continue
+		var distance := 1 << 30
+		for near in GridSpec.neighbors4(nest["cell"]):
+			distance = mini(distance, PathFinder.path_distance(state, target.cell, near, target.element, target.has_buff("flight")))
+		if distance <= 3:
+			pressure += 1
+	var charges := state.nest_guard_charges(nest["cell"])
+	if pressure <= charges:
+		return 0
+	var value := (8 if hp >= 2 else 42) + mini(pressure, 3) * 6 + (22 if shelter else 0) - charges * 12
+	return value
 
 
 static func _dedupe_entries(state: BattleState, unit: CombatUnit, skill_id: String) -> Array:

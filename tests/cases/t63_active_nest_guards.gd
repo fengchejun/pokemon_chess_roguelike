@@ -77,6 +77,10 @@ func _interrupt(t: TestContext) -> void:
 
 func _ai(t: TestContext) -> void:
 	var state := _state()
+	state.nest["hp"] = 1
+	var attacker := CombatUnit.make("rock_starter", "player", 2)
+	attacker.cell = Vector2i(3, 3)
+	state.units.append(attacker)
 	state.unit_by_uid(100).skills = []
 	state.unit_by_uid(101).skills = []
 	state.unit_by_uid(100).moved = true
