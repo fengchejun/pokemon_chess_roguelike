@@ -139,6 +139,25 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 		if skill_id == "rock_push":
 			if distance != 1:
 				continue
+		elif skill_id == "mountain_chain":
+			if distance != 1 or other.side == unit.side:
+				continue
+			var offset: Vector2i = other.cell - unit.cell
+			if offset.x != 0 and offset.y != 0:
+				continue
+		elif skill_id == "rock_blast":
+			if distance != int(def.get("range", 3)) or other.side == unit.side:
+				continue
+			if not _orthogonally_aligned(unit.cell, other.cell):
+				continue
+			if not _rock_blast_path_clear(state, unit.cell, other.cell):
+				continue
+		elif skill_id == "water_drop_stone":
+			if not _water_drop_reaches(state, unit, other):
+				continue
+		elif skill_id == "imprint":
+			if distance <= 0 or distance > skill_range or not _can_imprint_source(state, unit, other):
+				continue
 		elif distance > skill_range:
 			continue
 		if skill_id in ["herbal_heal", "double_cast", "first_aid", "antidote"]:
@@ -150,7 +169,7 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 				continue
 			if skill_id == "antidote" and other.hp >= other.max_hp and not state.has_removable_debuff(other):
 				continue
-		elif skill_id != "volt_replace" and other.side == unit.side:
+		elif skill_id != "volt_replace" and skill_id != "imprint" and other.side == unit.side:
 			continue
 		if _concealed(state, skill_id, distance, other):
 			continue
@@ -161,7 +180,10 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 		for first_index in range(adjacent_allies.size() - 1):
 			for second_index in range(first_index + 1, adjacent_allies.size()):
 				entries.append({"type": "unit_pair", "units": [adjacent_allies[first_index]["unit"], adjacent_allies[second_index]["unit"]], "cell": adjacent_allies[second_index]["cell"]})
-	if (int(def.get("damage", 0)) > 0 or skill_id == "rock_smash" or skill_id == "rock_break") and skill_id not in ["furnace_fist", "combustion", "leaf_wind"]:
+	if (
+		(int(def.get("damage", 0)) > 0 or skill_id == "rock_smash" or skill_id == "rock_break")
+		and skill_id not in ["furnace_fist", "combustion", "leaf_wind", "mountain_chain", "rock_blast", "water_drop_stone"]
+	):
 		for cell in GridSpec.all_cells():
 			var distance := GridSpec.manhattan(unit.cell, cell)
 			if distance == 0 or distance > skill_range:
@@ -172,6 +194,136 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 				entries.append({"type": "nest", "cell": cell})
 			elif skill_id == "rock_break" and unit.has_buff("rock_break") and state.terrain_at(cell) == TerrainDB.FRAGILE:
 				entries.append({"type": "cell", "cell": cell})
+
+
+static func _orthogonally_aligned(from: Vector2i, to: Vector2i) -> bool:
+	return from.x == to.x or from.y == to.y
+
+
+static func _rock_blast_path_clear(state: BattleState, from: Vector2i, to: Vector2i) -> bool:
+	var distance := GridSpec.manhattan(from, to)
+	if distance <= 1:
+		return true
+	var dir := _axis_dir(from, to)
+	for step in range(1, distance):
+		if state.is_blocking_ray(from + dir * step):
+			return false
+	return true
+
+
+static func water_drop_obstacle_route(state: BattleState, caster: CombatUnit, target: CombatUnit) -> Array:
+	var route: Array = []
+	if caster == null or target == null or not target.is_alive():
+		return route
+	var distance := GridSpec.manhattan(caster.cell, target.cell)
+	if distance <= 1 or not _orthogonally_aligned(caster.cell, target.cell):
+		return route
+	var dir := _axis_dir(caster.cell, target.cell)
+	for step in range(1, distance):
+		var cell := caster.cell + dir * step
+		if state.terrain_at(cell) != TerrainDB.OBSTACLE:
+			return []
+		route.append(cell)
+	return route
+
+
+static func _water_drop_reaches(state: BattleState, caster: CombatUnit, target: CombatUnit) -> bool:
+	var distance := GridSpec.manhattan(caster.cell, target.cell)
+	if distance == 1:
+		return true
+	if not _orthogonally_aligned(caster.cell, target.cell):
+		return false
+	var route := water_drop_obstacle_route(state, caster, target)
+	return route.size() == distance - 1
+
+
+static func _can_imprint_source(state: BattleState, caster: CombatUnit, source: CombatUnit) -> bool:
+	if source.last_skill_id == "" or not SkillDB.is_copyable(source.last_skill_id):
+		return false
+	if source.last_skill_upgraded and int(caster.upgrades.get("imprint_upgraded", 0)) <= 0:
+		return false
+	var replay := _imprint_replay_entry(state, caster, source)
+	return not replay.is_empty() and _entry_valid_for_skill(state, caster, source.last_skill_id, replay)
+
+
+static func _entry_valid_for_skill(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary) -> bool:
+	var key := _entry_key(entry)
+	for candidate in targets(state, caster, skill_id):
+		if _entry_key(candidate) == key:
+			return true
+	return false
+
+
+static func _imprint_replay_entry(state: BattleState, caster: CombatUnit, source: CombatUnit) -> Dictionary:
+	var copied_id := source.last_skill_id
+	if not SkillDB.is_copyable(copied_id):
+		return {}
+	var copied_kind := SkillDB.kind_of(copied_id)
+	if copied_kind == "self":
+		return {"type": "cell", "cell": caster.cell}
+	var candidates := targets(state, caster, copied_id)
+	if candidates.is_empty():
+		return {}
+	if copied_kind == "unit":
+		for candidate in candidates:
+			if int(candidate.get("unit", -1)) == source.uid:
+				return candidate
+			if (candidate.get("units", []) as Array).has(source.uid):
+				return candidate
+		var original_target := _entry_target_cell(source.last_skill_target, state)
+		if source.last_skill_from != Vector2i(-1, -1) and original_target != Vector2i(-1, -1):
+			var original_offset: Vector2i = original_target - source.last_skill_from
+			var desired: Vector2i = caster.cell + original_offset
+			for candidate in candidates:
+				if Vector2i(candidate.get("cell", Vector2i(-1, -1))) == desired:
+					return candidate
+		return {}
+	var original_cell := _entry_target_cell(source.last_skill_target, state)
+	var original_from := source.last_skill_from
+	if original_cell == Vector2i(-1, -1) or original_from == Vector2i(-1, -1):
+		return candidates[0]
+	var offset: Vector2i = original_cell - original_from
+	var dir := Vector2i(signi(offset.x), signi(offset.y))
+	if copied_kind == "ray":
+		var best: Dictionary = {}
+		var best_distance := -1
+		for candidate in candidates:
+			var cell: Vector2i = candidate.get("cell", Vector2i(-1, -1))
+			if _axis_dir(caster.cell, cell) != dir:
+				continue
+			var distance := GridSpec.manhattan(caster.cell, cell)
+			if distance > best_distance:
+				best = candidate
+				best_distance = distance
+		return best
+	if copied_kind == "direction":
+		for candidate in candidates:
+			if Vector2i(candidate.get("dir", Vector2i.ZERO)) == dir:
+				return candidate
+		return {}
+	var desired: Vector2i = caster.cell + offset
+	for candidate in candidates:
+		if Vector2i(candidate.get("cell", Vector2i(-1, -1))) == desired:
+			return candidate
+	var nearest: Dictionary = {}
+	var nearest_distance := 1 << 30
+	for candidate in candidates:
+		var cell: Vector2i = candidate.get("cell", Vector2i(-1, -1))
+		var distance := GridSpec.manhattan(cell, desired)
+		if distance < nearest_distance:
+			nearest = candidate
+			nearest_distance = distance
+	return nearest
+
+
+static func _entry_target_cell(entry: Dictionary, state: BattleState) -> Vector2i:
+	if entry.has("cell"):
+		return entry["cell"]
+	if entry.has("unit"):
+		var target := state.unit_by_uid(int(entry["unit"]))
+		if target != null:
+			return target.cell
+	return Vector2i(-1, -1)
 
 
 static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
@@ -435,6 +587,7 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 	if not _entry_valid(state, caster, skill_id, target_entry):
 		return {"ok": false}
 	var movement_used_before := caster.moved
+	var cast_origin := caster.cell
 	var summary := {
 		"ok": true,
 		"skill_id": skill_id,
@@ -451,6 +604,8 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		"_nest_covered_cells": state.all_nests().filter(func(n): return state.nest_covered(n["cell"])).map(func(n): return n["cell"]), "_nest_covered": state.nest_covered(), "_nest_hit": false,
 		"text": "",
 	}
+	if not preview:
+		_record_skill_use(state, caster, skill_id, target_entry, cast_origin)
 	if bool(def.get("channel", false)):
 		var cells: Array = []
 		if skill_id == "fire_burst" or skill_id == "rock_slide" or skill_id == "herbal_heal":
@@ -548,6 +703,14 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 						_apply_push(state, caster, target_entry, summary)
 					"rock_smash", "rock_break":
 						_apply_rock_smash(state, caster, skill_id, target_entry, summary)
+					"imprint":
+						_apply_imprint(state, caster, target_entry, summary, preview)
+					"mountain_chain":
+						_apply_mountain_chain(state, caster, target_entry, summary)
+					"rock_blast":
+						_apply_rock_blast(state, caster, target_entry, summary)
+					"water_drop_stone":
+						_apply_water_drop_stone(state, caster, target_entry, summary)
 					"tree_wrath":
 						_apply_tree_wrath(state, caster, target_entry, summary)
 					"first_aid":
@@ -593,12 +756,27 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 				"mirror_water_moon": _apply_mirror_water_moon(state, caster, summary)
 				"burn_out": _apply_burn_out(state, caster, summary)
 				"rooted_grass": _apply_rooted_grass(state, caster, summary)
+				"mountain_form": _apply_mountain_form(state, caster, summary)
 				_: _apply_heal(state, caster, target_entry, summary)
 	_consume_fire_amp_if_used(state, caster, summary)
+	if not preview and skill_id == "imprint":
+		_record_skill_use(state, caster, skill_id, target_entry, cast_origin)
 	if SkillDB.battle_limit_of(skill_id) > 0:
 		caster.battle_skill_uses[skill_id] = int(caster.battle_skill_uses.get(skill_id, 0)) + 1
 	caster.moved = movement_used_before if skill_id in ["surf", "ice_glide", "mirror_water_moon"] else true
 	return summary
+
+
+static func _record_skill_use(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary, from_cell: Vector2i = Vector2i(-1, -1)) -> void:
+	var upgrade_id := RunState.upgrade_id_for_skill(skill_id)
+	var upgrade_info := RunState.upgrade_info(upgrade_id)
+	caster.last_skill_id = skill_id
+	caster.last_skill_from = from_cell if from_cell != Vector2i(-1, -1) else caster.cell
+	caster.last_skill_target = entry.duplicate(true)
+	caster.last_skill_upgraded = (
+		not upgrade_info.is_empty()
+		and caster.upgrades.has(String(upgrade_info.get("key", "")))
+	)
 
 
 static func _entry_valid(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary) -> bool:
@@ -794,18 +972,20 @@ static func _hit_nest(state: BattleState, caster: CombatUnit, cell: Vector2i, su
 
 static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String, target: CombatUnit, base: int, extra_opts: Dictionary = {}) -> Dictionary:
 	var def := SkillDB.get_def(skill_id)
+	var hit_element := String(extra_opts.get("element", def.get("element", "")))
 	if base > 0:
-		base = upgraded_base_damage(caster, skill_id, base)
+		if not bool(extra_opts.get("ignore_skill_upgrade", false)):
+			base = upgraded_base_damage(caster, skill_id, base)
 		base += caster.fire_amp_stacks
 		base += caster.electric_resonance_bonus
-		if String(def.get("element", "")) == "water" and state.mirror_water_travel_active(caster):
+		if hit_element == "water" and state.mirror_water_travel_active(caster):
 			base += Balance.MIRROR_WATER_DAMAGE_BONUS
-	var modifier := Elements.modifier(String(def.get("element", "")), target.element) if base > 0 else 0
+	var modifier := Elements.modifier(hit_element, target.element) if base > 0 else 0
 	var had_burn := target.burn_ticks > 0
 	var had_wet := target.slow_ticks > 0
 	var opts := {
 		"skill_id": skill_id,
-		"element": String(def.get("element", "")),
+		"element": hit_element,
 		"skill_direct": true,
 		"ranged": SkillDB.is_ranged(skill_id),
 		"cause": SkillDB.name_of(skill_id),
@@ -1389,6 +1569,153 @@ static func _apply_rock_create(state: BattleState, caster: CombatUnit, entry: Di
 	if not summary["obstacles_damaged"].is_empty():
 		text += "；击中 %d 处障碍" % summary["obstacles_damaged"].size()
 	summary["text"] = text
+
+
+static func mountain_chain_segment_count(state: BattleState, caster: CombatUnit) -> int:
+	var count := int(SkillDB.get_def("mountain_chain").get("segments_base", 2))
+	count += int(caster.upgrades.get("mountain_chain_segments", 0))
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var cell: Vector2i = caster.cell + Vector2i(dx, dy)
+			if GridSpec.is_inside(cell) and state.terrain_at(cell) == TerrainDB.OBSTACLE:
+				count += 1
+	return count
+
+
+static func mountain_form_area(caster: CombatUnit) -> Array:
+	return support_area(caster.cell, 1 + int(caster.upgrades.get("mountain_form_radius", 0)), true)
+
+
+static func _apply_mountain_chain(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var target := state.unit_by_uid(int(entry["unit"]))
+	if target == null:
+		return
+	var segments := mountain_chain_segment_count(state, caster)
+	summary["segments_total"] = segments
+	summary["continuous"] = true
+	summary["area_cells"].append(target.cell)
+	for index in segments:
+		if not target.is_alive():
+			break
+		var hit := _hit_entry(state, caster, "mountain_chain", target, SkillDB.damage_of("mountain_chain"))
+		hit["segment_index"] = index + 1
+		hit["segments_total"] = segments
+		hit["continuous"] = true
+		summary["hits"].append(hit)
+	summary["text"] = "山脉连袭：%d 段 × %d 基础伤害，命中 %s%s" % [
+		segments,
+		SkillDB.damage_of("mountain_chain"),
+		target.display_name,
+		"，目标倒下" if not target.is_alive() else "",
+	]
+	state.log_event(summary["text"])
+
+
+static func _apply_mountain_form(state: BattleState, caster: CombatUnit, summary: Dictionary) -> void:
+	var duration := int(SkillDB.get_def("mountain_form").get("duration", 1))
+	caster.mountain_form_ticks = maxi(caster.mountain_form_ticks, duration)
+	summary["buff_applied"] = "mountain_form"
+	summary["area_cells"] = mountain_form_area(caster)
+	summary["text"] = "山岳形态生效 1 回合：3×3 内友军与自身伤害减免三分之一后由施法者承受。"
+	state.log_event(summary["text"])
+
+
+static func _apply_rock_blast(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var target := state.unit_by_uid(int(entry["unit"]))
+	if target == null:
+		return
+	var impact_cell := target.cell
+	var dir := _axis_dir(caster.cell, impact_cell)
+	var hit := _hit_entry(state, caster, "rock_blast", target, SkillDB.damage_of("rock_blast"))
+	summary["hits"].append(hit)
+	if target.is_alive():
+		hit["push"] = PushResolver.push(state, target, dir, 1, 0, "岩爆弹", caster.side, caster.uid, "rock_blast")
+	var fragment_damage := int(SkillDB.get_def("rock_blast").get("fragment_damage", 3))
+	var upgrade_info := RunState.upgrade_info("rock_blast_damage")
+	if not upgrade_info.is_empty() and caster.upgrades.has(String(upgrade_info.get("key", ""))):
+		fragment_damage += int(upgrade_info.get("fragment_bonus", 0))
+	var perpendicular := Vector2i(dir.y, dir.x)
+	for side_sign in [-1, 1]:
+		var fragment_dir := perpendicular * int(side_sign)
+		for step in range(1, int(SkillDB.get_def("rock_blast").get("fragment_range", 2)) + 1):
+			var cell := impact_cell + fragment_dir * step
+			if not GridSpec.is_inside(cell):
+				break
+			summary["area_cells"].append(cell)
+			if TerrainDB.blocks_rays(state.terrain_at(cell)) or state.is_interaction_cell(cell):
+				break
+			var occupant := state.unit_at(cell)
+			if occupant == null:
+				continue
+			var fragment := _hit_entry(state, caster, "rock_blast", occupant, fragment_damage, {"ignore_skill_upgrade": true})
+			fragment["fragment"] = true
+			fragment["fragment_cell"] = cell
+			summary["hits"].append(fragment)
+			break
+	summary["text"] = "岩爆弹命中 %s：%d 伤害并向两侧分裂。" % [target.display_name, hit["damage"]]
+	if hit["push"] != null and bool(hit["push"].get("death", false)):
+		summary["text"] += "目标被推入致死地形。"
+	state.log_event(summary["text"])
+
+
+static func _apply_water_drop_stone(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var target := state.unit_by_uid(int(entry["unit"]))
+	if target == null:
+		return
+	var route := water_drop_obstacle_route(state, caster, target)
+	for cell in route:
+		var before := int(state.obstacle_durability.get(cell, 0))
+		var destroyed := state.damage_obstacle(cell, 1, caster.side)
+		var actual := before - int(state.obstacle_durability.get(cell, 0))
+		summary["obstacles_damaged"].append({"cell": cell, "damage": actual, "destroyed": destroyed})
+		summary["area_cells"].append(cell)
+	var hit := _hit_entry(state, caster, "water_drop_stone", target, SkillDB.damage_of("water_drop_stone"))
+	summary["hits"].append(hit)
+	var bonus_damage := 0
+	if target.is_alive() and target.slow_ticks > 0:
+		bonus_damage = int(SkillDB.get_def("water_drop_stone").get("wet_bonus", 3))
+		var upgrade_info := RunState.upgrade_info("water_drop_stone_damage")
+		if not upgrade_info.is_empty() and caster.upgrades.has(String(upgrade_info.get("key", ""))):
+			bonus_damage += int(upgrade_info.get("wet_bonus", 0))
+		var bonus := _hit_entry(state, caster, "water_drop_stone", target, bonus_damage, {
+			"element": String(SkillDB.get_def("water_drop_stone").get("wet_bonus_element", "water")),
+			"ignore_skill_upgrade": true,
+			"ranged": false,
+			"cause": "水滴石穿·浸湿",
+		})
+		bonus["bonus_for"] = "浸湿"
+		summary["hits"].append(bonus)
+	var text := "水滴石穿：%s 受到 %d 点伤害" % [target.display_name, hit["damage"]]
+	if not route.is_empty():
+		text += "；贯穿 %d 格岩石，每格耐久 -1" % route.size()
+	if bonus_damage > 0:
+		text += "；浸湿追加 %d 点水属性伤害" % bonus_damage
+	summary["text"] = text
+	state.log_event(text)
+
+
+static func _apply_imprint(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary, preview: bool) -> void:
+	var source := state.unit_by_uid(int(entry.get("unit", -1)))
+	if source == null or not _can_imprint_source(state, caster, source):
+		summary["ok"] = false
+		summary["text"] = "拓印失败：目标没有可复制的普通技能。"
+		return
+	var copied_id := source.last_skill_id
+	var replay_entry := _imprint_replay_entry(state, caster, source)
+	var replay := _apply_rules(state, caster, copied_id, replay_entry, preview)
+	if not bool(replay.get("ok", false)):
+		summary["ok"] = false
+		summary["text"] = "拓印失败：复制的技能当前无法打出。"
+		return
+	for key in replay:
+		if key not in ["ok", "skill_id", "caster_uid"]:
+			summary[key] = replay[key]
+	summary["copied_skill_id"] = copied_id
+	summary["copied_from_uid"] = source.uid
+	summary["copied_skill_name"] = SkillDB.name_of(copied_id)
+	summary["text"] = "拓印复制 %s 的%s并打出：%s" % [
+		source.display_name, SkillDB.name_of(copied_id), String(replay.get("text", "")),
+	]
 
 
 static func _axis_dir(from: Vector2i, to: Vector2i) -> Vector2i:

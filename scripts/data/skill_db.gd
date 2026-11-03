@@ -198,7 +198,78 @@ const DEFS := {
 		"ranged": false,
 		"desc": "选择上下左右方向，在正前方横排生成临时障碍（3 格，出界裁剪）；该格有单位时改为造成 10 点基础伤害且不生成；我方的临时障碍在本轮敌方阶段后消失，敌方的在下一轮敌方阶段后消失。",
 	},
+	"imprint": {
+		"name": "拓印",
+		"element": "rock",
+		"kind": "unit",
+		"range": 5,
+		"damage": 0,
+		"ranged": false,
+		"category": "special",
+		"desc": "复制曼哈顿 5 格内一名单位最近使用的普通技能，按复制技能的规则即时打出；拓印不会保留复制招式。基础拓印不能复制已强化技能，任何拓印都不能复制特殊技能。",
+	},
+	"mountain_chain": {
+		"name": "山脉连袭",
+		"element": "rock",
+		"kind": "unit",
+		"range": 1,
+		"damage": 4,
+		"segments_base": 2,
+		"ranged": false,
+		"enemy_only": true,
+		"continuous": true,
+		"desc": "攻击正交相邻的一名敌人；基础 2 段，自身 3×3 内每有一格岩石障碍则增加 1 段，每段造成 4 点连续伤害。",
+	},
+	"mountain_form": {
+		"name": "山岳形态",
+		"element": "rock",
+		"kind": "self",
+		"damage": 0,
+		"ranged": false,
+		"duration": 1,
+		"buff": true,
+		"desc": "持续 1 回合的增益状态：自身 3×3 内友军与自身受到的伤害先减免三分之一并向上取整，再由施法者承受。解药只能解除异常状态，不会解除山岳形态。",
+	},
+	"rock_blast": {
+		"name": "岩爆弹",
+		"element": "rock",
+		"kind": "unit",
+		"range": 3,
+		"exact_range": true,
+		"orthogonal": true,
+		"damage": 12,
+		"fragment_damage": 3,
+		"fragment_range": 2,
+		"ranged": true,
+		"enemy_only": true,
+		"desc": "攻击正交方向 3 格的一名敌人，造成 12 点伤害并向后推开 1 格；障碍和中间单位会阻挡。命中后从命中格向垂直于发射方向的两侧各延伸 2 格，首个命中单位各受 3 点伤害。",
+	},
+	"water_drop_stone": {
+		"name": "水滴石穿",
+		"element": "rock",
+		"kind": "unit",
+		"range": 1,
+		"damage": 12,
+		"wet_bonus": 3,
+		"wet_bonus_element": "water",
+		"ranged": false,
+		"obstacle_extension": true,
+		"desc": "攻击正交方向 1 格的单位；连续岩石障碍格可作为攻击范围延伸，途经的每格岩石失去 1 点耐久。目标受到 12 点岩系伤害；若已浸湿，额外独立结算 3 点水属性伤害。",
+	},
 }
+
+const ROCK_SKILL_POOL := [
+	"rock_push",
+	"rock_break",
+	"rock_create",
+	"rock_slide",
+	"earth_shake",
+	"mountain_chain",
+	"mountain_form",
+	"rock_blast",
+	"water_drop_stone",
+	"imprint",
+]
 
 static func get_def(skill_id: String) -> Dictionary:
 	if is_placeholder(skill_id):
@@ -226,7 +297,7 @@ static func learnable_ids_for(element: String) -> Array:
 		"water": ids.append_array(["surf", "water_magic_burst", "ice_breath", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
 		"electric": ids.append_array(["tailwind", "double_cast", "magnet_pull", "glare", "electromagnetic_laser", "electric_resonance", "electric_spark", "trial_wind_1", "trial_wind_2"])
 		"grass": ids.append_array(["leech_seed", "tree_man", "first_aid", "rooted_grass", "leaf_wind", "antidote"])
-		"rock": ids.append_array(["rock_slide", "earth_shake"])
+		"rock": ids.append_array(["rock_slide", "earth_shake", "mountain_chain", "mountain_form", "rock_blast", "water_drop_stone"])
 	return ids
 
 
@@ -237,6 +308,11 @@ static func is_placeholder(skill_id: String) -> bool:
 
 static func is_special(skill_id: String) -> bool:
 	return String(get_def(skill_id).get("category", "normal")) == "special"
+
+
+static func is_copyable(skill_id: String) -> bool:
+	var def := get_def(skill_id)
+	return not def.is_empty() and not is_special(skill_id)
 
 
 static func has_tag(skill_id: String, tag: String) -> bool:

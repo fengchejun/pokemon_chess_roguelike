@@ -75,6 +75,11 @@ const MONSTER_UPGRADES := {
 	"skyfire_damage": {"name": "焚天", "desc": "天火基础直伤 +4。", "key": "skyfire_damage", "value": 4, "damage_bonus": 4, "requires_skill": "skyfire"},
 	"combustion_damage": {"name": "爆焰", "desc": "爆燃基础直伤 +4，灼烧目标仍按双倍基础值结算。", "key": "combustion_damage", "value": 4, "damage_bonus": 4, "requires_skill": "combustion"},
 	"burn_out_damage": {"name": "焚魂", "desc": "燃尽造成的基础直伤 +5，自身生命代价不变。", "key": "burn_out_damage", "value": 5, "damage_bonus": 5, "requires_skill": "burn_out"},
+	"imprint_mastery": {"name": "拓印精通", "desc": "拓印可以复制已经强化的普通技能。", "key": "imprint_upgraded", "value": 1, "requires_skill": "imprint"},
+	"mountain_chain_segments": {"name": "群山回响", "desc": "山脉连袭基础段数由 2 增至 3；周围岩障追加段数不变。", "key": "mountain_chain_segments", "value": 1, "requires_skill": "mountain_chain"},
+	"mountain_form_radius": {"name": "磐岳延展", "desc": "山岳形态吸收范围由 3×3 扩大至 5×5。", "key": "mountain_form_radius", "value": 1, "requires_skill": "mountain_form"},
+	"rock_blast_damage": {"name": "裂岩增爆", "desc": "岩爆弹主弹基础直伤 +5，两侧分裂弹各 +2。", "key": "rock_blast_damage", "value": 5, "damage_bonus": 5, "fragment_bonus": 2, "requires_skill": "rock_blast"},
+	"water_drop_stone_damage": {"name": "水势穿石", "desc": "水滴石穿主伤害 +4，浸湿追加伤害由 3 提高至 5。", "key": "water_drop_stone_damage", "value": 4, "damage_bonus": 4, "wet_bonus": 2, "requires_skill": "water_drop_stone"},
 }
 
 

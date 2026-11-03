@@ -184,6 +184,20 @@ var electric_resonance_bonus: int = 0:
 		electric_resonance_bonus = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "电共鸣蓄伤" + ("解除" if not active else ""), int(value), cell)
+var mountain_form_ticks: int = 0:
+	set(value):
+		var was_active := mountain_form_ticks > 0
+		var active := value > 0
+		var announce := active != was_active
+		mountain_form_ticks = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "山岳形态" + ("解除" if not active else ""), int(value), cell)
+
+# 最近一次成功施放，供「拓印」读取。
+var last_skill_id: String = ""
+var last_skill_from: Vector2i = Vector2i(-1, -1)
+var last_skill_target: Dictionary = {}
+var last_skill_upgraded: bool = false
 
 # 其他
 var fresh_spawn: bool = false       # 本回合新生成：在巢穴格待机，不能移动或施法
@@ -282,6 +296,11 @@ func dup() -> CombatUnit:
 	copy.mirror_until_round = mirror_until_round
 	copy.fire_amp_stacks = fire_amp_stacks
 	copy.electric_resonance_bonus = electric_resonance_bonus
+	copy.mountain_form_ticks = mountain_form_ticks
+	copy.last_skill_id = last_skill_id
+	copy.last_skill_from = last_skill_from
+	copy.last_skill_target = last_skill_target.duplicate(true)
+	copy.last_skill_upgraded = last_skill_upgraded
 	copy.fresh_spawn = fresh_spawn
 	copy.summon_owner_uid = summon_owner_uid
 	copy.summon_power_bonus = summon_power_bonus

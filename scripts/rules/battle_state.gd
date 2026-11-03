@@ -729,6 +729,26 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		emit_feedback(target, "shield", "镜花水月·免疫", 0)
 		log_event("镜花水月的镜影替 %s 承受了 %d 点伤害。" % [target.display_name, amount])
 		return {"amount": 0, "killed": false, "previous_hp": target.hp, "hp": target.hp, "mirror_immune": true}
+	var absorbed_from_uid := -1
+	var absorbed_by_uid := -1
+	if amount > 0:
+		var mountain_bearer := _mountain_form_bearer(target)
+		if mountain_bearer != null:
+			absorbed_from_uid = target.uid
+			absorbed_by_uid = mountain_bearer.uid
+			amount = mountain_form_reduced_damage(amount)
+			if mountain_bearer.uid != target.uid:
+				emit_feedback(target, "shield", "山岳形态·转移", 0)
+				log_event("%s 的山岳形态吸收 %s 受到的伤害，减免至 %d 并由自身承受。" % [
+					mountain_bearer.display_name, target.display_name, amount,
+				])
+				target = mountain_bearer
+				break_frozen = false
+				was_frozen_before_hit = target.frozen
+				was_burning = target.burn_ticks > 0
+				matchup_modifier = 0
+			else:
+				log_event("%s 的山岳形态将受到的伤害减免至 %d。" % [target.display_name, amount])
 	if amount > 0:
 		damage_reward_at(target.cell)
 	if break_frozen:
@@ -784,7 +804,35 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 				apply_burn(target, source)
 			if hit_element == "water" and RelicDB.rank(relic_stacks, "water_mark") > 0 and target.slow_ticks <= 0:
 				apply_slow(target)
-	return {"amount": amount, "killed": killed, "previous_hp": previous_hp, "hp": target.hp, "relic_healed": relic_healed, "thawed_wet": thawed_wet}
+	return {
+		"amount": amount,
+		"killed": killed,
+		"previous_hp": previous_hp,
+		"hp": target.hp,
+		"relic_healed": relic_healed,
+		"thawed_wet": thawed_wet,
+		"absorbed_from_uid": absorbed_from_uid,
+		"absorbed_by_uid": absorbed_by_uid,
+	}
+
+
+static func mountain_form_reduced_damage(amount: int) -> int:
+	return maxi(1, ceili(float(amount) * 2.0 / 3.0))
+
+
+func _mountain_form_bearer(target: CombatUnit) -> CombatUnit:
+	if target == null or not target.is_alive():
+		return null
+	if target.mountain_form_ticks > 0:
+		return target
+	for unit in alive_units(target.side):
+		if unit.mountain_form_ticks <= 0:
+			continue
+		var offset: Vector2i = target.cell - unit.cell
+		var radius := 1 + int(unit.upgrades.get("mountain_form_radius", 0))
+		if absi(offset.x) <= radius and absi(offset.y) <= radius:
+			return unit
+	return null
 
 
 func apply_burn(target: CombatUnit, source: CombatUnit) -> bool:
@@ -1650,6 +1698,8 @@ func _settle_round_rules() -> void:
 	for unit in units:
 		if unit.slow_ticks > 0:
 			unit.slow_ticks = maxi(0, unit.slow_ticks - 1)
+		if unit.mountain_form_ticks > 0:
+			unit.mountain_form_ticks = maxi(0, unit.mountain_form_ticks - 1)
 		if unit.shock_ticks > 0:
 			unit.shock_ticks -= 1
 		if unit.frozen and unit.frozen_ticks > 0:
@@ -1964,6 +2014,8 @@ func _signature() -> String:
 		parts.append("buff:%d:%s" % [unit.uid, str(unit.battle_buffs)])
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.electric_resonance_bonus, unit.summon_owner_uid])
+		parts.append("mountain_form:%d:%d" % [unit.uid, unit.mountain_form_ticks])
+		parts.append("last_skill:%d:%s:%s:%s" % [unit.uid, unit.last_skill_id, str(unit.last_skill_from), str(unit.last_skill_target)])
 		parts.append("imprison:%d:%d" % [unit.uid, unit.imprison_ticks])
 		parts.append("vine_reapply:%d:%d:%d,%d" % [unit.uid, unit.vine_reapply_round, unit.vine_reapply_cell.x, unit.vine_reapply_cell.y])
 		parts.append("frozen:%d:%d:%d" % [unit.uid, int(unit.frozen), unit.frozen_ticks])

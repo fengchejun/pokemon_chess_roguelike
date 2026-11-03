@@ -584,6 +584,8 @@ func _update_unit_card() -> void:
 		statuses.append("火焰增幅 +%d：下一次造成技能直伤时消耗" % unit.fire_amp_stacks)
 	if unit.electric_resonance_bonus > 0:
 		statuses.append("电共鸣蓄伤 +%d：下一次造成实际技能伤害时消耗" % unit.electric_resonance_bonus)
+	if unit.mountain_form_ticks > 0:
+		statuses.append("山岳形态 %d 回合：3×3 内友军与自身伤害减免三分之一后转移给施法者" % unit.mountain_form_ticks)
 	if unit.ice_glide_until_round > 0 and unit.ice_glide_until_round >= state.round:
 		statuses.append("溜冰：至第 %d 回合，沿连通冰面移动不消耗普通移动机会" % unit.ice_glide_until_round)
 	if unit.surf_until_round > 0 and unit.surf_until_round >= state.round:
@@ -627,6 +629,11 @@ func _update_unit_card() -> void:
 	if statuses.is_empty():
 		statuses.append("无")
 	lines.append("状态：" + "、".join(statuses))
+	if unit.last_skill_id != "":
+		lines.append("最后使用：%s%s" % [
+			SkillDB.name_of(unit.last_skill_id),
+			"（已强化）" if unit.last_skill_upgraded else "",
+		])
 	var slide := state.ice_slide_outcome(unit)
 	if not slide.is_empty():
 		var direction_name := String(GridSpec.DIR_NAMES.get(slide["direction"], "未知"))
@@ -955,6 +962,25 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("感电 +%d · 麻痹 +%d" % [SkillResolver.resonance_shock_bonus(unit), SkillResolver.resonance_paralysis_bonus(unit)])
 	elif skill_id == "electric_spark":
 		parts.append("直线 3 格 · 伤害 %d · 带电灼烧" % damage)
+	elif skill_id == "imprint":
+		parts.append("复制最后普通技能 · 不保留")
+	elif skill_id == "mountain_chain":
+		parts.append("基础 %d 段 · 周围岩石加段 · 每段 %d" % [2 + int(unit.upgrades.get("mountain_chain_segments", 0)), damage])
+	elif skill_id == "mountain_form":
+		parts.append("%d×%d 减伤三分之一 · 转移给自身 · 1 回合" % [
+			3 + 2 * int(unit.upgrades.get("mountain_form_radius", 0)),
+			3 + 2 * int(unit.upgrades.get("mountain_form_radius", 0)),
+		])
+	elif skill_id == "rock_blast":
+		parts.append("伤害 %d · 击退 1 格 · 两侧分裂 %d 伤害" % [
+			damage,
+			3 + (2 if int(unit.upgrades.get("rock_blast_damage", 0)) > 0 else 0),
+		])
+	elif skill_id == "water_drop_stone":
+		parts.append("伤害 %d · 浸湿追加 %d · 岩石延伸" % [
+			damage,
+			3 + (2 if int(unit.upgrades.get("water_drop_stone_damage", 0)) > 0 else 0),
+		])
 	elif skill_id == "fire_burst" and int(unit.upgrades.get("fireball_damage", 0)) > 0:
 		parts.append("伤害 %d · 中心 %d" % [damage, Balance.skill_damage_for_side(base_damage + int(unit.upgrades["fireball_damage"]), unit.side)])
 	elif skill_id == "double_cast" and int(unit.upgrades.get("double_cast_range", 0)) > 0:

@@ -253,6 +253,8 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 				total += actor_after.fire_amp_stacks - actor_before.fire_amp_stacks
 			if actor_after.electric_resonance_bonus > actor_before.electric_resonance_bonus:
 				total += actor_after.electric_resonance_bonus - actor_before.electric_resonance_bonus
+			if actor_after.mountain_form_ticks > actor_before.mountain_form_ticks:
+				total += 18
 			if actor_after.ice_glide_until_round > actor_before.ice_glide_until_round and before.terrain_at(actor_after.cell) == TerrainDB.ICE:
 				total += 13
 			if actor_after.surf_until_round > actor_before.surf_until_round and TerrainDB.is_water_body(before.terrain_at(actor_after.cell)):
