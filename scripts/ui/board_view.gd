@@ -17,6 +17,7 @@ var vine_expire_round: Dictionary = {}
 var nest: Dictionary = {}
 var extra_nests: Array = []
 var pending_casts: Array = []
+var nest_guard_counts: Dictionary = {}
 var storm_strikes: Array = []
 var battle_round: int = 0
 var reward: Dictionary = {}
@@ -55,6 +56,9 @@ func set_from_state(state: BattleState) -> void:
 	steam_cells = state.steam_cells.duplicate()
 	vine_origin = state.vine_origin.duplicate()
 	vine_expire_round = state.vine_expire_round.duplicate()
+	nest_guard_counts.clear()
+	for current in state.all_nests():
+		nest_guard_counts[current["cell"]] = state.nest_guard_charges(current["cell"])
 	nest = state.nest.duplicate(true)
 	extra_nests = state.extra_nests.duplicate(true)
 	pending_casts = state.pending_casts.duplicate(true)
@@ -78,6 +82,7 @@ func set_from_state(state: BattleState) -> void:
 
 
 func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
+	nest_guard_counts.clear()
 	storm_strikes = map.get("storm_strikes", []).duplicate(true)
 	terrain = (map.get("terrain", []) as Array).duplicate()
 	obstacle_durability = {}
@@ -313,16 +318,11 @@ func _draw_one_nest_status(font: Font, nest: Dictionary) -> void:
 	if not bool(nest.get("alive", false)):
 		return
 	var cell: Vector2i = nest["cell"]
-	var occupied := false
-	for unit in units:
-		if unit.is_on_board() and unit.cell == cell:
-			occupied = true
-			break
-	var color := Color(0.75, 0.58, 1.0) if not occupied else Color(1.0, 0.72, 0.32)
+	var color := Color(1.0, 0.72, 0.32) if int(nest_guard_counts.get(cell, 0)) > 0 else Color(0.75, 0.58, 1.0)
 	var rect := Rect2(Vector2(cell) * TILE + Vector2(3, 3), Vector2.ONE * (TILE - 6))
 	draw_rect(rect, color, false, 2.0)
 	draw_rect(Rect2(rect.position, Vector2(62, 17)), Color(0.08, 0.10, 0.13, 0.92))
-	draw_string(font, rect.position + Vector2(2, 13), "巢%d%s" % [int(nest.get("hp", 0)), "·首领" if bool(nest.get("boss_sheltered", false)) else "·占据" if occupied else "·待产" if int(nest.get("pending_waves", 0)) > 0 else ""], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
+	draw_string(font, rect.position + Vector2(2, 13), "巢%d%s" % [int(nest.get("hp", 0)), "·护%d" % int(nest_guard_counts.get(cell, 0)) if int(nest_guard_counts.get(cell, 0)) > 0 else "·首领" if bool(nest.get("boss_sheltered", false)) else "·待产" if int(nest.get("pending_waves", 0)) > 0 else ""], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
 
 
 func _draw_pending_casts(font: Font) -> void:
@@ -408,6 +408,8 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	draw_rect(Rect2(bar_rect.position, Vector2(bar_rect.size.x * ratio, bar_rect.size.y)), hp_color)
 	# 状态徽章
 	var badges_text := ""
+	if unit.guard_nest.x >= 0 and GridSpec.manhattan(unit.cell, unit.guard_nest) == 1 and not unit.frozen and unit.paralyzed_ticks <= 0:
+		badges_text += "护"
 	if unit.burn_ticks > 0:
 		badges_text += "灼"
 	if unit.parasite_source_uid >= 0:

@@ -223,68 +223,31 @@ func _t_haste_next_move(t: TestContext) -> void:
 
 
 func _t_nest_spawn(t: TestContext) -> void:
-	for battle_round in range(1, Balance.MAX_ROUNDS + 1):
-		t.eq(Balance.nest_wave_due(battle_round), battle_round in [2, 4, 6], "8 回合制仅第 2、4、6 回合新增产怪计划：%d" % battle_round)
-		t.eq(Balance.nest_warning_due(battle_round), battle_round in [1, 3, 5], "产怪前一回合显示预警：%d" % battle_round)
+	for battle_round in range(1, 13):
+		t.eq(Balance.nest_wave_due(battle_round), battle_round % 2 == 0, "持续偶数轮产怪")
+		t.eq(Balance.nest_warning_due(battle_round), battle_round % 2 == 1, "持续奇数轮预警")
 	var state := TestScenario.make_state([], [["fire_wild1", Vector2i(5, 4)]], [], {}, {}, ["fire_wild1"])
-	t.eq(state.alive_enemy_count(), 1, "初始 1 只野生")
 	state.start_round()
-	t.eq(state.round, 2, "进入第 2 回合")
-	t.eq(state.alive_enemy_count(), 2, "第 2 回合巢穴生成 1 只")
-	var spawned := _newest_enemy(state)
-	t.check(spawned != null, "找到生成单位")
-	if spawned != null:
-		t.eq(spawned.fresh_spawn, true, "新生成单位本回合不能再次行动")
-		t.check(not spawned.moved and spawned.cell == state.nest["cell"], "新生成单位在巢穴格待机且本轮不能移动")
-		spawned.cell = Vector2i(5, 7)
-		state.start_round()
-		t.eq(state.alive_enemy_count(), 2, "第 3 回合不产怪")
-		state.start_round()
-		t.eq(state.alive_enemy_count(), 3, "第 4 回合再生成 1 只")
-		var fourth_spawn := _newest_enemy(state)
-		fourth_spawn.cell = Vector2i(4, 7)
-		state.start_round()
-		t.eq(state.alive_enemy_count(), 3, "第 5 回合只预警，不新增怪")
-		state.start_round()
-		t.eq(state.alive_enemy_count(), 4, "第 6 回合生成第三只增援")
-	# 摧毁巢穴后停止
-	var state2 := TestScenario.make_state([], [["fire_wild1", Vector2i(5, 4)]], [], {}, {}, ["fire_wild1"])
-	state2.nest["hp"] = 1
-	state2.damage_nest(2)
-	t.eq(state2.nest["alive"], false, "巢穴被摧毁")
-	state2.start_round()
-	t.eq(state2.alive_enemy_count(), 1, "摧毁后不再生成")
-	# 巢穴格被占：生成被阻止
-	var state3 := TestScenario.make_state([], [["fire_wild1", Vector2i(5, 4)]], [], {}, {}, ["fire_wild1"])
-	var nest_cell: Vector2i = state3.nest["cell"]
-	var exits: Array = [state3.nest["cell"]]
-	for cell in exits:
-		var blocker := CombatUnit.make("fire_wild1", "enemy", 900 + exits.find(cell))
-		blocker.cell = cell
-		state3.units.append(blocker)
-	var ring := GridSpec.neighbors8(nest_cell)
-	for cell in ring:
-		var blocker2 := CombatUnit.make("fire_wild1", "enemy", 950 + ring.find(cell))
-		blocker2.cell = cell
-		state3.units.append(blocker2)
-	var before := state3.alive_enemy_count()
-	state3.start_round()
-	t.eq(state3.alive_enemy_count(), before, "巢穴格与相邻格全被占时生成被阻止")
-	var queued := TestScenario.make_state([], [["fire_wild1", Vector2i(5, 4)]], [], {}, {}, ["fire_wild1"])
-	var gate := CombatUnit.make("water_starter", "player", 901)
-	gate.cell = queued.nest["cell"]
-	queued.units.append(gate)
-	for _turn in range(2, 7):
-		queued.start_round()
-	t.eq(queued.round, 6, "占巢持续到第 6 回合")
-	t.eq(int(queued.nest["pending_waves"]), 3, "第 2、4、6 回合的三次产怪均排队保留")
-	t.eq(queued.alive_enemy_count(), 1, "占巢期间没有怪物穿过巢穴格")
-	gate.cell = Vector2i(0, 0)
-	queued.start_round()
-	t.eq(int(queued.nest["pending_waves"]), 2, "第 7 回合巢穴格空出后只补产一只")
-	queued.units.back().cell = Vector2i(4, 7)
-	queued.start_round()
-	t.eq(int(queued.nest["pending_waves"]), 1, "第 8 回合不新增波次，但继续补产队列中的一只")
+	var spawned: CombatUnit = state.units.back()
+	t.check(spawned.fresh_spawn and GridSpec.manhattan(spawned.cell, state.nest["cell"]) == 1, "出生轮在四邻空格待机")
+	t.check(not spawned.can_move_now() and not spawned.can_act_skill(), "出生轮无行动")
+	var blocked := TestScenario.make_state([], [["fire_wild1", Vector2i(5, 4)]], [], {}, {}, ["fire_wild1"])
+	for cell in GridSpec.neighbors4(blocked.nest["cell"]):
+		blocked.set_terrain(cell, TerrainDB.OBSTACLE)
+	for index in range(2, 11):
+		blocked.start_round()
+	t.eq(blocked.nest["pending_waves"], 5, "四邻封闭时第2至10轮计划均积压")
+	t.eq(blocked.alive_enemy_count(), 1, "封闭时不生成")
+	blocked.set_terrain(Vector2i(7, 6), TerrainDB.PLAIN)
+	blocked.start_round()
+	t.eq(blocked.nest["pending_waves"], 4, "奇数轮出现空格也能补产一只")
+	t.eq(blocked.units.back().cell, Vector2i(7, 6), "补产使用四邻空格")
+	blocked.damage_nest(1)
+	blocked.damage_nest(1)
+	blocked.damage_nest(1)
+	var count := blocked.units.size()
+	blocked.start_round()
+	t.eq(blocked.units.size(), count, "巢穴摧毁后不再产怪")
 
 
 func _newest_enemy(state: BattleState) -> CombatUnit:

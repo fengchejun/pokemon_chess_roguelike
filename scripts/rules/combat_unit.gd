@@ -18,6 +18,10 @@ var skills: Array = []
 var reg_index: int = 0
 var enemy_level: int = 1
 var combat_level: int = 1
+var guard_nest := Vector2i(-1, -1)
+var guard_charge: bool = false
+var spawned_from_nest: bool = false
+var spawn_round: int = 0
 var sheltered: bool = false
 var is_boss: bool = false
 var inspired: bool = false:
@@ -157,7 +161,7 @@ var fire_amp_stacks: int = 0:
 			feedback_changed.emit("buff" if active else "clear", "火焰增幅" + ("解除" if not active else ""), int(value), cell)
 
 # 其他
-var fresh_spawn: bool = false       # 本回合新生成：在巢穴格待机，不能移动或施法
+var fresh_spawn: bool = false       # 本回合新生成：在巢穴四邻格待机，不能移动或施法
 var summon_owner_uid: int = -1
 var summon_power_bonus: int = 0
 
@@ -192,7 +196,7 @@ func has_buff(id: String) -> bool:
 
 
 func can_act_skill() -> bool:
-	return is_on_board() and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and (not skill_used or extra_casts > 0)
+	return is_on_board() and guard_nest.x < 0 and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and (not skill_used or extra_casts > 0)
 
 
 func can_use_in_battle(skill_id: String) -> bool:
@@ -221,6 +225,10 @@ func dup() -> CombatUnit:
 	copy.reg_index = reg_index
 	copy.enemy_level = enemy_level
 	copy.combat_level = combat_level
+	copy.guard_nest = guard_nest
+	copy.guard_charge = guard_charge
+	copy.spawned_from_nest = spawned_from_nest
+	copy.spawn_round = spawn_round
 	copy.sheltered = sheltered
 	copy.is_boss = is_boss
 	copy.inspired = inspired

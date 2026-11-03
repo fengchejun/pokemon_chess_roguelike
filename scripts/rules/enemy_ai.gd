@@ -23,7 +23,7 @@ static func plan(state: BattleState) -> Array:
 			if cast_index > 0 and (not unit.skill_used or unit.extra_casts <= 0 or not unit.can_act_skill()):
 				break
 			var action := _decide(work, unit)
-			var has_effect: bool = not (action["move_path"] as Array).is_empty() or not (action["skill"] as Dictionary).is_empty()
+			var has_effect: bool = not (action["move_path"] as Array).is_empty() or not (action["skill"] as Dictionary).is_empty() or action.has("guard")
 			if not has_effect or (cast_index > 0 and (action["skill"] as Dictionary).is_empty()):
 				break
 			_execute_on(work, action)
@@ -112,12 +112,29 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 						"move_path": path,
 						"free_terrain_move": bool(free_paths.get(position, false)),
 						"skill": {"id": skill_id, "target": entry},
-						"score": skill_score + _nest_clearance_score(work, unit, position) - _pending_hazard(base, position, "player"),
+						"score": skill_score - _pending_hazard(base, position, "player"),
 						"meta": result,
 						"lethal": score["kills"],
 					}
 					if _better(candidate, best, path.size()):
 						best = candidate
+	for position in positions:
+		var guard_state := work.clone()
+		var defender := guard_state.unit_by_uid(unit.uid)
+		defender.cell = position
+		for current in guard_state.all_nests():
+			var cell: Vector2i = current["cell"]
+			if not guard_state.can_guard_nest(defender, cell):
+				continue
+			var distance := 100
+			for target in guard_state.alive_units("player"):
+				distance = mini(distance, GridSpec.manhattan(target.cell, cell))
+			if distance > 5 and guard_state.sheltered_boss() == null:
+				continue
+			var value := 20 + (18 if distance <= 3 else 5) + (18 if guard_state.sheltered_boss() != null else 0) - guard_state.nest_guard_charges(cell) * 5 - _pending_hazard(guard_state, position, "player")
+			var candidate := {"uid": unit.uid, "move_path": paths[position], "free_terrain_move": bool(free_paths.get(position, false)), "skill": {}, "guard": cell, "score": value, "lethal": 0}
+			if _better(candidate, best, (paths[position] as Array).size()):
+				best = candidate
 	if not best.is_empty() and int(best["score"]) > 0:
 		return best
 	# 没有可得分攻击：向最近的己方单位接近。
@@ -412,13 +429,6 @@ static func _harms_own_nest(before: BattleState, after: BattleState) -> bool:
 	return false
 
 
-static func _nest_clearance_score(state: BattleState, unit: CombatUnit, position: Vector2i) -> int:
-	var current := state.nest_at_cell(unit.cell)
-	if int(current.get("hp", 0)) <= 0 or int(current.get("pending_waves", 0)) <= 0:
-		return 0
-	return 24 if state.is_nest_cell(unit.cell) and position != unit.cell else 0
-
-
 static func _priority(state: BattleState, unit: CombatUnit) -> int:
 	if unit.is_trainer:
 		return PRIORITY_TRAINER
@@ -472,10 +482,6 @@ static func _approach_action(work: BattleState, unit: CombatUnit, positions: Arr
 	var targets := work.alive_units("player")
 	if targets.is_empty():
 		return {"uid": unit.uid, "move_path": [], "skill": {}}
-	if int(work.nest_at_cell(unit.cell).get("pending_waves", 0)) > 0 and work.is_nest_cell(unit.cell):
-		for position in positions:
-			if position != unit.cell and _pending_hazard(work, position, "player") == 0:
-				return {"uid": unit.uid, "move_path": paths[position], "free_terrain_move": bool(free_paths.get(position, false)), "skill": {}}
 	var best_cell := unit.cell
 	var best_distance := 1 << 30
 	var best_cost := 0
@@ -516,6 +522,8 @@ static func _execute_on(work: BattleState, action: Dictionary) -> void:
 	if not action.get("move_path", []).is_empty():
 		unit.moved = unit.moved if bool(action.get("free_terrain_move", false)) else true
 		work.apply_vine_on_landing(unit)
+	if action.has("guard"):
+		work.begin_nest_guard(unit, action["guard"])
 	var skill: Dictionary = action.get("skill", {})
 	if not skill.is_empty():
 		var skill_used_before := unit.skill_used
@@ -532,6 +540,8 @@ static func describe(action: Dictionary, state: BattleState) -> String:
 	var unit := state.unit_by_uid(int(action.get("uid", -1)))
 	var name := unit.display_name if unit != null else "?"
 	var parts: Array = []
+	if action.has("guard"):
+		parts.append("守护巢穴（消耗技能机会）")
 	var path: Array = action.get("move_path", [])
 	if not path.is_empty():
 		var dest: Vector2i = path[path.size() - 1]

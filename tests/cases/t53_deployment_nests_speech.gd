@@ -40,14 +40,17 @@ func _nests(t: TestContext) -> void:
 	second["cell"] = Vector2i(7, 4)
 	state.extra_nests = [second]
 	state.start_round()
-	t.check(state.unit_at(state.nest["cell"]) != null and state.unit_at(second["cell"]) != null, "两个巢穴独立生成")
-	t.eq(second["pending_waves"], 0, "第二巢穴独立扣除积压")
+	t.eq(state.alive_enemy_count(), 3, "两个巢穴各生成一只")
+	t.check(state.unit_at(state.nest["cell"]) == null and state.unit_at(second["cell"]) == null, "双巢穴本格均保持空置")
+	t.eq(second["pending_waves"], 0, "第二巢穴独立消费队列")
+	for cell in GridSpec.neighbors4(second["cell"]):
+		state.set_terrain(cell, TerrainDB.OBSTACLE)
 	second["pending_waves"] = 1
 	state._try_spawn_wave(second)
-	t.eq(second["pending_waves"], 1, "占据第二巢穴时保留积压")
-	state.unit_at(second["cell"]).cell = Vector2i(7, 5)
+	t.eq(second["pending_waves"], 1, "第二巢穴四邻堵塞时积压")
+	state.set_terrain(Vector2i(7, 5), TerrainDB.PLAIN)
 	state._try_spawn_wave(second)
-	t.eq(second["pending_waves"], 0, "第二巢穴腾空后兑现积压")
+	t.eq(second["pending_waves"], 0, "四邻空出后兑现积压")
 	# Distinct nests in a single area attack are each hit once.
 	state.units = state.units.filter(func(unit): return unit.side == "player")
 	second["cell"] = Vector2i(5, 2)

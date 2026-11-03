@@ -184,7 +184,7 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 			continue
 		if unit.is_alive():
 			var fresh := CombatUnit.make(unit.species_id, "enemy", unit.uid)
-			for field in ["cell", "max_hp", "move_points", "skills", "enemy_level", "combat_level", "is_boss", "upgrades", "reg_index"]:
+			for field in ["cell", "max_hp", "move_points", "skills", "enemy_level", "combat_level", "is_boss", "upgrades", "reg_index", "spawned_from_nest", "spawn_round"]:
 				fresh.set(field, unit.get(field))
 			var original: Vector2i = battle.enemy_origins.get(unit.uid, Vector2i(-1, -1))
 			if not GridSpec.is_inside(original) and unit.uid >= 100 and unit.uid - 100 < (cfg.get("enemies", []) as Array).size():
@@ -197,7 +197,7 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 				var db := GridSpec.manhattan(b, original)
 				return da < db if da != db else a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
 			for cell in cells:
-				if not occupied.has(cell) and not battle.is_interaction_cell(cell) and TerrainDB.can_stand(battle.terrain_at(cell), fresh.element):
+				if not occupied.has(cell) and not battle.is_interaction_cell(cell) and not battle.is_nest_cell(cell) and TerrainDB.can_stand(battle.terrain_at(cell), fresh.element):
 					fresh.cell = cell
 					occupied[cell] = true
 					break

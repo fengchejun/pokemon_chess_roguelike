@@ -354,7 +354,7 @@ func _mod_hover_text(cell: Vector2i) -> String:
 	if (map.get("nest_cells", [map.get("nest_cell", Vector2i(-1, -1))]) as Array).has(cell):
 		if run.region_mode and run.get_region().node_mode(run.get_region().active_node) == "event":
 			return "该格为后续占领事件保留，暂不能改造。"
-		return "巢穴：第 2、4、6 回合直接在本格尝试产怪；出生轮待机。可站上阻挡生成，积压保留；任何单位覆盖时保护巢穴，空置时任意有效伤害每次扣 1 耐久。"
+		return "巢穴不可站立；每两轮在上下左右空格生成增援，无空格则积压，出生轮待机。邻接敌人可消耗技能机会守护，增加拦截并共同分伤。第9轮起出生的增援击杀无经验。"
 	if MapGenerator.mod_protected(map, cell):
 		return "【%s】该格受保护（部署区 / 巢穴 / 奖励 / 果实），不能改造。" % tool_name
 	var terrain := int(map["terrain"][GridSpec.index(cell)])

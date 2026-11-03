@@ -8,11 +8,11 @@ const GRID_H := 8
 
 const STORM_START_ROUND := 8
 const MAX_ROUNDS := STORM_START_ROUND # 旧测试兼容常量，不再是战斗上限。
-const LAST_NEST_WAVE_ROUND := 6
 const NEST_SPAWN_INTERVAL := 2
+const REINFORCEMENT_XP_LAST_ROUND := 8
 
 static func nest_wave_due(battle_round: int) -> bool:
-	return battle_round > 0 and battle_round <= LAST_NEST_WAVE_ROUND and battle_round % NEST_SPAWN_INTERVAL == 0
+	return battle_round > 0 and battle_round % NEST_SPAWN_INTERVAL == 0
 
 
 static func nest_warning_due(battle_round: int) -> bool:

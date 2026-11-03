@@ -407,6 +407,8 @@ static func randomize_nests(map: Dictionary, cfg: Dictionary, rng: RandomNumberG
 		var cell: Vector2i = candidates.pop_at(index)
 		if selected.any(func(other): return GridSpec.manhattan(cell, other) < 3):
 			continue
+		if not _nests_accessible(map, selected + [cell]):
+			continue
 		selected.append(cell)
 	if selected.size() != int(cfg.get("nest_count", 1)):
 		return false
@@ -423,3 +425,18 @@ static func _has_landscape_pair(terrain: Array) -> bool:
 			if GridSpec.is_inside(other) and int(terrain[GridSpec.index(cell)]) != TerrainDB.PLAIN and terrain[GridSpec.index(cell)] == terrain[GridSpec.index(other)]:
 				return true
 	return false
+
+
+static func _nests_accessible(map: Dictionary, cells: Array) -> bool:
+	var blocked: Array = map["terrain"].duplicate()
+	for cell in cells:
+		blocked[GridSpec.index(cell)] = TerrainDB.OBSTACLE
+	for cell in cells:
+		var accessible := false
+		for near in GridSpec.neighbors4(cell):
+			if TerrainDB.can_stand(int(blocked[GridSpec.index(near)]), "rock") and _validate(blocked, [near]):
+				accessible = true
+				break
+		if not accessible:
+			return false
+	return true

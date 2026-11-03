@@ -112,5 +112,6 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		state.boss_retreat_used = true
 	state._boss_effect_depth = 0
 	state.try_release_boss()
+	state.relocate_nest_occupants()
 	state.repair_food()
 	return state

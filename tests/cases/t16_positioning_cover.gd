@@ -106,20 +106,11 @@ func _test_tree_cover(t: TestContext) -> void:
 
 func _test_nest_cover(t: TestContext) -> void:
 	var state := TestScenario.make_state(["rock_starter"], [["rock_wild1", Vector2i(7, 7)]])
-	t.eq((state.nest["exits"] as Array).size(), 0, "巢穴不再有巢穴格")
-	t.check(state.nest_covered(), "敌方覆盖巢穴")
-	state.damage_nest(1)
+	t.check(state.unit_at(state.nest["cell"]) == null, "初始化将原占巢敌人移到合法空格")
+	t.check(not state.nest_covered(), "站位不再自动使巢穴免伤")
 	state.damage_nest(99)
-	t.eq(int(state.nest["hp"]), Balance.NEST_DURABILITY, "覆盖时所有伤害均无法损伤巢穴")
-	state.unit_by_uid(100).cell = Vector2i(5, 7)
-	t.check(not state.nest_covered(), "移开后暴露巢穴")
-	state.damage_nest(99)
-	t.eq(int(state.nest["hp"]), Balance.NEST_DURABILITY - 1, "空置时高伤只扣1耐久")
-	state.trainer().cell = state.nest["cell"]
-	state.damage_nest(1)
-	t.eq(int(state.nest["hp"]), Balance.NEST_DURABILITY - 1, "己方覆盖同样保护巢穴")
-	state.trainer().cell = Vector2i.ZERO
-	state.unit_by_uid(1).cell = Vector2i(6, 7)
-	var preview := state.preview_skill(state.unit_by_uid(1), "rock_break", {"type": "nest", "cell": Vector2i(7, 7)})
-	t.eq(int(preview.get("nest_damaged", {}).get("damage", -1)), 1, "碎岩预览显示1耐久")
-	t.eq(int(state.nest["hp"]), Balance.NEST_DURABILITY - 1, "预览不改实际耐久")
+	t.eq(state.nest["hp"], Balance.NEST_DURABILITY - 1, "巢穴每次受击扣一点")
+	state.unit_by_uid(1).cell = Vector2i(5, 7)
+	var preview := state.preview_skill(state.unit_by_uid(1), "rock_break", {"type": "nest", "cell": state.nest["cell"]})
+	t.eq(int(preview.get("nest_damaged", {}).get("damage", -1)), 1, "碎岩预览显示巢穴一点耐久")
+	t.eq(state.nest["hp"], Balance.NEST_DURABILITY - 1, "预览不改实战")

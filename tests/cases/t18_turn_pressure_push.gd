@@ -69,51 +69,18 @@ func _test_channel_full_round(t: TestContext) -> void:
 
 func _test_spawn_wait(t: TestContext) -> void:
 	var state := TestScenario.make_state([], [["fire_wild1", Vector2i(5, 4)]], [], {}, {}, ["rock_wild1"])
-	var exit_cell: Vector2i = state.nest["cell"]
 	state.start_round()
 	var spawn: CombatUnit = state.units.back()
-	t.check(spawn.fresh_spawn and not spawn.moved and spawn.cell == exit_cell, "第 2 回合增援出生后在巢穴格待机")
-	var plan := EnemyAI.plan(state)
-	t.check(not _contains_uid(plan, spawn.uid), "出生轮敌方队列不移动或施法")
+	t.check(spawn.fresh_spawn and GridSpec.manhattan(spawn.cell, state.nest["cell"]) == 1, "四邻生成且出生轮待机")
+	t.check(not _contains_uid(EnemyAI.plan(state), spawn.uid), "出生轮AI不规划行动")
 	state.begin_enemy_phase()
 	while not state.enemy_phase_finished() and not state.ended:
 		state.step_enemy_phase()
 	state.end_enemy_phase()
-	t.check(not spawn.fresh_spawn and not spawn.moved and spawn.can_move_now(), "下一完整回合增援恢复移动资格")
+	t.check(not spawn.fresh_spawn and spawn.can_move_now(), "下一轮恢复行动资格")
 	state.start_round()
-	t.eq(state.round, 4, "进入第 4 回合")
-	t.eq(state.alive_enemy_count(), 2, "第 2 回合增援占住巢穴格时第 4 回合产怪排队")
-	t.eq(int(state.nest["pending_waves"]), 1, "被堵住的第 4 回合产怪仍在队列中")
-	spawn.cell = Vector2i(5, 7)
-	state.start_round()
-	t.eq(state.alive_enemy_count(), 3, "巢穴格腾出后下一回合补产一只")
-	t.check(state.units.back().fresh_spawn and not state.units.back().moved and state.units.back().cell == exit_cell, "补产增援同样在巢穴格待机")
-	var blocked := TestScenario.make_state([], [["fire_wild1", Vector2i(5, 4)]], [], {}, {}, ["rock_wild1"])
-	var blocker := CombatUnit.make("water_starter", "player", 50)
-	blocker.cell = blocked.nest["cell"]
-	blocked.units.append(blocker)
-	blocked.start_round()
-	t.eq(int(blocked.nest["pending_waves"]), 1, "巢穴格被占时保留待产队列")
-	blocker.cell = Vector2i(0, 0)
-	blocked.start_round()
-	t.eq(int(blocked.nest["pending_waves"]), 0, "次轮解除占巢后立即补产")
-	t.check(blocked.units.back().fresh_spawn and not blocked.units.back().moved, "补产增援出生轮不可移动")
-	var trapped_terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [
-		[Vector2i(5, 7), TerrainDB.OBSTACLE], [Vector2i(6, 6), TerrainDB.OBSTACLE],
-	])
-	var trapped := TestScenario.make_state([], [["fire_wild1", Vector2i(5, 4)]], trapped_terrain, {}, {}, ["rock_wild1"])
-	trapped.start_round()
-	t.eq(trapped.units.back().cell, trapped.nest["cell"], "增援不检查接敌路径，出生轮留在巢穴格")
-	t.check(trapped.units.back().fresh_spawn and not trapped.units.back().moved, "周围有无合法路径都不能在出生轮移动")
-	var warned := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(5, 4)]], [], {}, {}, ["rock_wild1"])
-	var fire := warned.unit_by_uid(1)
-	fire.cell = Vector2i(4, 7)
-	var warned_exit: Vector2i = warned.nest["cell"]
-	t.check(bool(warned.cast_skill(fire, "fire_burst", {"type": "cell", "cell": warned_exit}).get("ok", false)), "在巢穴格锁定合法火球落点")
-	warned.start_round()
-	var escaped: CombatUnit = warned.units.back()
-	t.eq(escaped.cell, warned_exit, "增援不会躲避已警示的巢穴格落点")
-	t.check(escaped.hp < escaped.max_hp, "出生轮待机时会受到已警示的火球打击")
+	t.eq(state.alive_enemy_count(), 3, "第4轮可利用另一邻格继续生成")
+	t.check(state.unit_at(state.nest["cell"]) == null, "生成过程不占用巢穴本格")
 
 
 func _test_occupied_lethal_collision(t: TestContext) -> void:

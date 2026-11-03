@@ -64,9 +64,10 @@ func _fire(t: TestContext) -> void:
 		t.eq(result["area_cells"].size(), 9, "火球仍为九宫格")
 	var covered := _state("fire_burst", [["rock_wild1", Vector2i(4, 3)]])
 	covered.nest["cell"] = Vector2i(4, 3)
+	covered.relocate_nest_occupants()
 	covered.unit_by_uid(100).hp = 1
 	SkillResolver.resolve_channel(covered, covered.unit_by_uid(1), "fire_burst", [Vector2i(4, 3)])
-	t.eq(covered.nest["hp"], 3, "同次火球击倒占巢者不穿透伤巢")
+	t.eq(covered.nest["hp"], 2, "敌人位于巢穴邻格时火球可正常伤巢")
 	var ai := _state("fire_burst", [["fire_wild1", Vector2i(4, 3)]])
 	ai.unit_by_uid(100).skills = ["fire_burst"]
 	ai.unit_by_uid(1).hp = 100

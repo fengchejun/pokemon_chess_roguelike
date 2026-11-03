@@ -171,6 +171,7 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	capture_rng.seed = hash("capture:%d:%d" % [seed_value, battle_index_value])
 	terrain_rng.seed = hash("terrain:%d:%d" % [seed_value, battle_index_value])
 	log_event("战斗开始：%s，敌方 %d 只。" % [String(cfg.get("region", "?")), cfg.get("enemies", []).size()])
+	relocate_nest_occupants()
 	start_round()
 
 
@@ -232,7 +233,7 @@ func try_release_boss() -> void:
 		var db := GridSpec.manhattan(b, origin)
 		return da < db if da != db else _cell_order(a) < _cell_order(b))
 	for cell in candidates:
-		if unit_at(cell) != null or is_interaction_cell(cell) or TerrainDB.blocks_move(terrain_at(cell)) or not TerrainDB.can_stand(terrain_at(cell), boss.element):
+		if unit_at(cell) != null or is_interaction_cell(cell) or is_nest_cell(cell) or TerrainDB.blocks_move(terrain_at(cell)) or not TerrainDB.can_stand(terrain_at(cell), boss.element):
 			continue
 		boss.cell = cell
 		boss.sheltered = false
@@ -456,7 +457,7 @@ func can_interact_at(cell: Vector2i) -> bool:
 
 
 func move_cost_for(unit: CombatUnit, cell: Vector2i) -> int:
-	if is_interaction_cell(cell):
+	if is_interaction_cell(cell) or (is_nest_cell(cell) and not unit.has_buff("flight")):
 		return -1
 	## 主动移动进入该格的消耗；-1 表示不可进入。
 	## 潮汐效果：我方单位进入水面不额外消耗移动力。
@@ -528,7 +529,7 @@ func active_summon(owner_uid: int) -> CombatUnit:
 
 
 func summon_tree(owner: CombatUnit, cell: Vector2i) -> CombatUnit:
-	if owner == null or not owner.is_alive() or active_summon(owner.uid) != null or not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or not TerrainDB.can_stand(terrain_at(cell), "grass"):
+	if owner == null or not owner.is_alive() or active_summon(owner.uid) != null or not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or is_nest_cell(cell) or not TerrainDB.can_stand(terrain_at(cell), "grass"):
 		return null
 	var next_uid := 1
 	for existing in units:
@@ -640,7 +641,7 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 		enemy_kills.append({
 			"uid": unit.uid,
 			"enemy_level": unit.enemy_level,
-			"xp_reward": Balance.xp_for_enemy_level(unit.enemy_level),
+			"xp_reward": 0 if unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND else Balance.xp_for_enemy_level(unit.enemy_level),
 			"species_id": unit.species_id,
 			"by_player": killer_side == "player",
 			"killer_side": killer_side,
@@ -655,6 +656,8 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
 	if unit.side != "enemy" or not unit.is_on_board() or enemy_outcomes.has(unit.uid):
 		return
+	unit.guard_nest = Vector2i(-1, -1)
+	unit.guard_charge = false
 	enemy_outcomes[unit.uid] = "captured"
 	cancel_channel(unit, "阵营改变")
 	emit_feedback(unit, "action", "捕获成功")
@@ -743,6 +746,10 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 			damage_reward_at(target.cell)
 	if break_frozen:
 		amount *= int(opts.get("frozen_multiplier", 1))
+	var guard_divisor := maxi(1, int(opts.get("guard_divisor", 1)))
+	if guard_divisor > 1:
+		var remainder := amount % guard_divisor
+		amount = amount / guard_divisor + (1 if int(opts.get("guard_rank", 0)) < remainder else 0)
 	if amount > 0 and not bool(opts.get("parasite_tick", false)) and target.parasite_source_uid >= 0:
 		target.parasite_source_uid = -1
 		target.parasite_source_side = ""
@@ -926,10 +933,7 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 		return false
 	if amount <= 0:
 		return false
-	if nest_covered(target_cell):
-		log_event("单位覆盖巢穴，巢穴未受到这次伤害（%d）。" % amount)
-		return false
-	# 任意有效伤害命中均扣 1 耐久；占位单位覆盖巢穴。
+	# 未被主动守护拦截的有效命中每次扣1耐久。
 	target_nest["hp"] = maxi(0, int(target_nest["hp"]) - 1)
 	_relay_feedback("damage", "耐久 -1", 1, target_nest["cell"], -1)
 	if int(target_nest["hp"]) <= 0:
@@ -947,9 +951,58 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 	return false
 
 
-func nest_covered(target_cell: Vector2i = Vector2i(-1, -1)) -> bool:
-	var target_nest: Dictionary = nest if target_cell.x < 0 else nest_at_cell(target_cell)
-	return bool(target_nest.get("alive", false)) and unit_at(target_nest["cell"]) != null
+func nest_covered(_target_cell: Vector2i = Vector2i(-1, -1)) -> bool:
+	# 兼容旧技能汇总字段；巢穴现在不允许占格，守护由主动拦截处理。
+	return false
+
+
+func active_nest_guards(cell: Vector2i) -> Array:
+	var guards: Array = []
+	if not is_nest_cell(cell):
+		return guards
+	for unit in alive_units("enemy"):
+		if unit.guard_nest == cell and GridSpec.manhattan(unit.cell, cell) == 1 and not unit.fresh_spawn and not unit.frozen and unit.paralyzed_ticks <= 0:
+			guards.append(unit)
+	guards.sort_custom(func(a: CombatUnit, b: CombatUnit) -> bool: return a.uid < b.uid)
+	return guards
+
+
+func nest_guard_charges(cell: Vector2i) -> int:
+	return active_nest_guards(cell).filter(func(unit): return unit.guard_charge).size()
+
+
+func can_guard_nest(unit: CombatUnit, cell: Vector2i) -> bool:
+	return unit != null and unit.side == "enemy" and unit.can_act_skill() and unit.channel_lock_round != round and is_nest_cell(cell) and GridSpec.manhattan(unit.cell, cell) == 1
+
+
+func begin_nest_guard(unit: CombatUnit, cell: Vector2i) -> bool:
+	if not can_guard_nest(unit, cell):
+		return false
+	unit.guard_nest = cell
+	unit.guard_charge = true
+	unit.skill_used = true
+	unit.extra_casts = 0
+	emit_feedback(unit, "buff", "守护巢穴")
+	log_event("%s 放弃本阶段施法，守护巢穴并增加一次拦截；当前守军均分伤害。" % unit.display_name)
+	return true
+
+
+func relocate_nest_occupants() -> void:
+	for unit in units:
+		if not unit.is_on_board() or not is_nest_cell(unit.cell):
+			continue
+		var origin: Vector2i = unit.cell
+		var candidates := GridSpec.all_cells()
+		candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			var da := GridSpec.manhattan(a, origin)
+			var db := GridSpec.manhattan(b, origin)
+			return da < db if da != db else _cell_order(a) < _cell_order(b))
+		for cell in candidates:
+			if is_nest_cell(cell) or is_interaction_cell(cell) or unit_at(cell) != null or TerrainDB.blocks_move(terrain_at(cell)) or not TerrainDB.can_stand(terrain_at(cell), unit.element):
+				continue
+			unit.cell = cell
+			unit.last_move_direction = Vector2i.ZERO
+			break
 
 
 func place_temp_obstacle(cell: Vector2i, origin: int, expire_round: int) -> void:
@@ -1113,7 +1166,7 @@ func _record_skill_use(side: String, skill_id: String) -> void:
 
 
 func can_begin_channel(caster: CombatUnit) -> bool:
-	if caster == null:
+	if caster == null or caster.guard_nest.x >= 0:
 		return false
 	var claim: Dictionary = channel_claims.get(caster.side, {})
 	return int(claim.get("round", -1)) != round or int(claim.get("uid", -1)) == caster.uid
@@ -1245,11 +1298,11 @@ func _try_spawn_wave(target: Dictionary = {}) -> void:
 	if not bool(current.get("alive", false)) or reinforcement_pool.is_empty():
 		return
 	var species_id: String = reinforcement_pool[spawn_rng.randi_range(0, reinforcement_pool.size() - 1)]
-	var candidates: Array = [current["cell"]]
+	var candidates: Array = GridSpec.neighbors4(current["cell"])
 	for cell in candidates:
 		if not GridSpec.is_inside(cell):
 			continue
-		if is_interaction_cell(cell) or TerrainDB.blocks_move(terrain_at(cell)):
+		if is_interaction_cell(cell) or is_nest_cell(cell) or TerrainDB.blocks_move(terrain_at(cell)):
 			continue
 		if unit_at(cell) != null:
 			continue
@@ -1260,6 +1313,8 @@ func _try_spawn_wave(target: Dictionary = {}) -> void:
 		_configure_enemy(enemy, enemy.uid)
 		enemy.cell = cell
 		enemy.fresh_spawn = true
+		enemy.spawned_from_nest = true
+		enemy.spawn_round = round
 		enemy.reg_index = units.size()
 		units.append(enemy)
 		enemy_origins[enemy.uid] = cell
@@ -1267,9 +1322,9 @@ func _try_spawn_wave(target: Dictionary = {}) -> void:
 		_watch_feedback(enemy)
 		current["pending_waves"] = maxi(0, int(current.get("pending_waves", 0)) - 1)
 		apply_vine_on_landing(enemy)
-		log_event("巢穴生成 1 只野生宝可梦（%s）；出生轮在巢穴格待机，下一回合才能行动。" % enemy.display_name)
+		log_event("巢穴生成 1 只野生宝可梦（%s）；出生轮在巢穴相邻格待机，下一回合才能行动。" % enemy.display_name)
 		return
-	log_event("巢穴格被占，本次产怪排队至下一回合。")
+	log_event("巢穴上下左右没有合法空格，本次产怪积压。")
 
 
 func _cell_order(cell: Vector2i) -> int:
@@ -1298,6 +1353,9 @@ func _begin_enemy_phase_rules() -> Array:
 	_finish_movement_effects("player")
 	_apply_shallow_wet("enemy", 1)
 	phase = PHASE_ENEMY
+	for unit in units:
+		unit.guard_nest = Vector2i(-1, -1)
+		unit.guard_charge = false
 	_resolve_due_channels("enemy")
 	_refresh_reward_guard()
 	if ended or is_free_exploration():
@@ -1342,6 +1400,8 @@ func _step_enemy_phase_rules() -> Dictionary:
 		unit.moved = unit.moved if bool(action.get("free_terrain_move", false)) else true
 		apply_vine_on_landing(unit)
 		log_event("%s 移动 %d 格。" % [unit.display_name, path.size()])
+	if action.has("guard"):
+		begin_nest_guard(unit, action["guard"])
 	var skill: Dictionary = action.get("skill", {})
 	if not skill.is_empty() and unit.can_act_skill() and not ended:
 		var skill_used_before := unit.skill_used
@@ -1535,7 +1595,7 @@ func ice_slide_outcome(unit: CombatUnit) -> Dictionary:
 	var next: Vector2i = unit.cell + unit.last_move_direction
 	var blocked := not GridSpec.is_inside(next)
 	if not blocked:
-		blocked = unit_at(next) != null or is_interaction_cell(next) or TerrainDB.blocks_move(terrain_at(next))
+		blocked = unit_at(next) != null or is_interaction_cell(next) or is_nest_cell(next) or TerrainDB.blocks_move(terrain_at(next))
 	var lethal := false
 	if not blocked:
 		lethal = TerrainDB.is_lethal(terrain_at(next)) and (terrain_at(next) != TerrainDB.DEEP or unit.element != "water")
@@ -1700,7 +1760,7 @@ func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) 
 	for cell in cells:
 		if added >= count:
 			break
-		if not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or species_pool.is_empty():
+		if not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or is_nest_cell(cell) or species_pool.is_empty():
 			continue
 		var species_id := String(species_pool[next_enemy_uid % species_pool.size()])
 		if not TerrainDB.can_stand(terrain_at(cell), SpeciesDB.element_of(species_id)):
@@ -1813,6 +1873,7 @@ func _signature() -> String:
 		parts.append("buff:%d:%s" % [unit.uid, str(unit.battle_buffs)])
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
 		parts.append("control:%d:%d:%d:%s" % [unit.uid, unit.shock_ticks, unit.paralyzed_ticks, str(unit.frozen)])
+		parts.append("guard:%d:%s:%s:%s:%d" % [unit.uid, str(unit.guard_nest), str(unit.guard_charge), str(unit.spawned_from_nest), unit.spawn_round])
 		parts.append("sheltered:%d:%s" % [unit.uid, str(unit.sheltered)])
 		parts.append("parasite_layers:%d:%d" % [unit.uid, unit.parasite_ticks])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])

@@ -10,7 +10,7 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 	if state.recovery_skill_blocked(skill_id):
 		return []
 	var entries: Array = []
-	if def.is_empty() or unit == null or not unit.is_on_board() or unit.channel_lock_round == state.round:
+	if def.is_empty() or unit == null or not unit.is_on_board() or unit.guard_nest.x >= 0 or unit.channel_lock_round == state.round:
 		return entries
 	if bool(def.get("channel", false)) and not state.can_begin_channel(unit):
 		return entries
@@ -147,7 +147,7 @@ static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String
 				entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "rock_slide":
 			entries.append({"type": "cell", "cell": cell})
-		elif skill_id == "tree_man" and state.unit_at(cell) == null and not state.is_interaction_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), "grass"):
+		elif skill_id == "tree_man" and state.unit_at(cell) == null and not state.is_interaction_cell(cell) and not state.is_nest_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), "grass"):
 			entries.append({"type": "cell", "cell": cell})
 
 
@@ -157,7 +157,7 @@ static func _volt_empty_targets(state: BattleState, unit: CombatUnit, def: Dicti
 		var distance := GridSpec.manhattan(unit.cell, cell)
 		if distance < 1 or distance > skill_range:
 			continue
-		if state.unit_at(cell) != null or state.is_interaction_cell(cell):
+		if state.unit_at(cell) != null or state.is_interaction_cell(cell) or state.is_nest_cell(cell):
 			continue
 		if TerrainDB.can_stand(state.terrain_at(cell), unit.element):
 			entries.append({"type": "cell", "cell": cell})
@@ -169,7 +169,7 @@ static func _teleport_targets(state: BattleState, unit: CombatUnit, def: Diction
 		var distance := GridSpec.manhattan(unit.cell, cell)
 		if distance == 0 or distance > skill_range:
 			continue
-		if state.unit_at(cell) != null or state.is_interaction_cell(cell):
+		if state.unit_at(cell) != null or state.is_interaction_cell(cell) or state.is_nest_cell(cell):
 			continue
 		if not TerrainDB.can_stand(state.terrain_at(cell), unit.element):
 			continue
@@ -240,6 +240,8 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 		state.presentation_started.emit({"kind": "skill", "uid": caster.uid if caster != null else -1, "skill": skill_id, "release": state.is_free_exploration() and bool(SkillDB.get_def(skill_id).get("channel", false)), "target": target_entry.duplicate(true)})
 	state._boss_effect_depth += 1
 	var result := _apply_rules(state, caster, skill_id, target_entry, preview)
+	if bool(result.get("guard_intercepted", false)):
+		result["text"] = String(result.get("text", "")) + "（守军拦截并分伤）"
 	state._boss_effect_depth -= 1
 	state.try_release_boss()
 	if state.feedback_enabled:
@@ -249,7 +251,7 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 
 static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: String, target_entry: Dictionary, preview: bool) -> Dictionary:
 	var def := SkillDB.get_def(skill_id)
-	if def.is_empty() or caster == null or not caster.is_on_board() or caster.channel_lock_round == state.round:
+	if def.is_empty() or caster == null or not caster.is_on_board() or caster.guard_nest.x >= 0 or caster.channel_lock_round == state.round:
 		return {"ok": false}
 	if bool(def.get("channel", false)) and not state.can_begin_channel(caster):
 		return {"ok": false}
@@ -573,8 +575,26 @@ static func _hit_obstacle(state: BattleState, cell: Vector2i, summary: Dictionar
 	state.log_event("(%d,%d) %s" % [cell.x, cell.y, summary["text"]])
 
 
-static func _hit_nest(state: BattleState, caster: CombatUnit, cell: Vector2i, summary: Dictionary, amount: int = 1) -> bool:
-	if amount <= 0 or not state.is_nest_cell(cell) or (summary.get("_nest_covered_cells", []) as Array).has(cell) or state.nest_covered(cell) or (summary.get("_nest_hit_cells", []) as Array).has(cell):
+static func _hit_nest(state: BattleState, caster: CombatUnit, cell: Vector2i, summary: Dictionary, amount: int = 1, guard_base: int = -1) -> bool:
+	if amount <= 0 or not state.is_nest_cell(cell) or (summary.get("_nest_hit_cells", []) as Array).has(cell):
+		return false
+	if not summary.has("_nest_hit_cells"):
+		summary["_nest_hit_cells"] = []
+	summary["_nest_hit_cells"].append(cell)
+	var guards := state.active_nest_guards(cell)
+	if caster.side == "player" and state.nest_guard_charges(cell) > 0:
+		for guard in guards:
+			if guard.guard_charge:
+				guard.guard_charge = false
+				break
+		var skill_id := String(summary.get("skill_id", ""))
+		var base := guard_base if guard_base >= 0 else maxi(1, SkillDB.damage_of(skill_id))
+		for index in range(guards.size()):
+			var hit := _hit_entry(state, caster, skill_id, guards[index], base, {"guard_divisor": guards.size(), "guard_rank": index, "base_upgraded": skill_id == "fire_burst"})
+			hit["guard_intercept"] = true
+			summary["hits"].append(hit)
+		state.log_event("巢穴攻击被拦截，%d 名守军均分承受伤害；剩余 %d 次拦截。" % [guards.size(), state.nest_guard_charges(cell)])
+		summary["guard_intercepted"] = true
 		return false
 	var current := state.nest_at_cell(cell)
 	var old_hp := int(current["hp"])
@@ -582,9 +602,6 @@ static func _hit_nest(state: BattleState, caster: CombatUnit, cell: Vector2i, su
 	var actual := old_hp - int(current["hp"])
 	if actual > 0:
 		summary["_nest_hit"] = true
-		if not summary.has("_nest_hit_cells"):
-			summary["_nest_hit_cells"] = []
-		summary["_nest_hit_cells"].append(cell)
 		summary["nest_damaged"] = {"cell": cell, "damage": actual, "destroyed": destroyed}
 		if not summary.has("nests_damaged"):
 			summary["nests_damaged"] = []
@@ -1099,7 +1116,7 @@ static func _apply_fire_burst(state: BattleState, caster: CombatUnit, entry: Dic
 		if state.is_nest_cell(cell):
 			var hit_nest: Dictionary = state.nest_at_cell(cell)
 			var old_hp := int(hit_nest["hp"])
-			_hit_nest(state, caster, cell, summary, 4)
+			_hit_nest(state, caster, cell, summary, 4, fireball_base_damage(caster, cell == center))
 			nest_damage += old_hp - int(hit_nest["hp"])
 	summary["text"] = "火球术命中九宫格：%d 个单位受伤。" % summary["hits"].size()
 	if nest_damage > 0:

@@ -78,8 +78,8 @@ func _nests(t: TestContext) -> void:
 	var damaged := state.clone()
 	damaged.damage_nest(1, "enemy")
 	t.check(EnemyAI._harms_own_nest(state, damaged), "即时技能的己巢损伤也会被识别")
-	state.trainer().cell = state.nest["cell"]
-	t.check(EnemyAI._channel_score(state, actor, "fire_burst", {"type": "cell", "cell": state.nest["cell"]}) > 0, "玩家占巢时仍可攻击玩家，不把占巢变成免伤")
+	state.trainer().cell = Vector2i(4, 1)
+	t.check(EnemyAI._channel_score(state, actor, "fire_burst", {"type": "cell", "cell": Vector2i(4, 0)}) > 0, "敌人仍会攻击不会伤巢的玩家落点")
 
 func _rock_break(t: TestContext) -> void:
 	for side in ["player", "enemy"]:
