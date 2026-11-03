@@ -1,0 +1,107 @@
+extends RefCounted
+
+const ROCK := Vector2i(3, 3)
+const VINE := Vector2i(4, 3)
+
+func run(t: TestContext) -> void:
+	t.begin("离开节点清理临时地形与召唤物")
+	for reason in ["escape", "victory", "explored", "forced_retreat"]:
+		var state := _state()
+		state.end_battle(reason)
+		var region := RegionState.create_floor(0, "grass")
+		t.check(region.store_battle("battle_1", state), "离场保存节点")
+		var restored := region.load_battle("battle_1")
+		_clean(t, restored)
+		t.eq(state.terrain_at(ROCK), TerrainDB.OBSTACLE, "清理节点副本不反改战斗结算对象")
+		t.eq(state.active_summon(1) != null, true, "原战斗召唤物不因保存提前死亡")
+		t.eq(restored.enemy_kills, state.enemy_kills, "离场清理不追加击杀")
+		t.eq(restored.essence_earned, state.essence_earned, "离场清理不追加原质")
+	var active := _state()
+	var raw := BattleSnapshot.load_state(BattleSnapshot.save_state(active))
+	t.eq(raw.terrain_at(ROCK), TerrainDB.OBSTACLE, "战斗中途存读档保留临时岩障")
+	t.check(raw.active_summon(1) != null, "战斗中途存读档保留召唤物")
+	var live_region := RegionState.create_floor(0, "grass")
+	live_region.store_battle("battle_1", active)
+	t.eq(live_region.load_battle("battle_1").terrain_at(VINE), TerrainDB.VINES, "未离场节点快照仍保留临时藤蔓")
+	var resumed := live_region.resume_node("battle_1", [], {"reinforce": ["rock_wild1"]})
+	_clean(t, resumed)
+	t.eq(resumed.alive_enemy_count(), 4, "重访不把敌方召唤物计作永久驻军")
+	var legacy := _state()
+	legacy.end_battle("escape")
+	var region := RegionState.create_floor(0, "grass")
+	region.nodes["battle_1"]["snapshot"] = BattleSnapshot.save_state(legacy)
+	var saved_region := RegionState.from_dict(region.to_dict())
+	_clean(t, saved_region.load_battle("battle_1"))
+	var reader := BattleSnapshot.load_state(BattleSnapshot.save_state(legacy))
+	t.eq(reader.terrain_at(ROCK), TerrainDB.OBSTACLE, "通用快照读入不误清仍需展示的战斗记录")
+	var moved := _state()
+	moved.unit_by_uid(1).cell = Vector2i(2, 3)
+	PushResolver.push_obstacle(moved, moved.unit_by_uid(1), ROCK)
+	# 右边是藤蔓，搬运后恢复它的深坑底层。
+	t.eq(moved.terrain_at(VINE), TerrainDB.OBSTACLE, "测试临时岩障已搬运")
+	moved.end_battle("escape")
+	region.store_battle("battle_1", moved)
+	var cleared := region.load_battle("battle_1")
+	t.eq(cleared.terrain_at(VINE), TerrainDB.PIT, "搬运临时岩障离场恢复目标底层")
+	t.check(cleared.obstacle_expire_round.is_empty(), "搬运临时岩障不留到重访")
+	_ui(t)
+	var occupied := _state()
+	occupied.unit_by_uid(100).cell = VINE
+	occupied.apply_vine_on_landing(occupied.unit_by_uid(100))
+	var hp := occupied.unit_by_uid(100).hp
+	occupied.end_battle("escape")
+	region.store_battle("battle_1", occupied)
+	var persisted := region.load_battle("battle_1")
+	t.eq(persisted.unit_by_uid(100).hp, hp, "离场恢复深坑不追加死亡或伤害结算")
+	t.check(persisted.unit_by_uid(100).vine_sources.is_empty(), "离场清除临时藤蔓束缚来源")
+	var next := region.resume_node("battle_1", [], {})
+	t.check(TerrainDB.can_stand(next.terrain_at(next.unit_by_uid(100).cell), next.unit_by_uid(100).element), "重访将敌人安置在恢复地形后的合法位置")
+	t.finish()
+
+func _state() -> BattleState:
+	var state := TestScenario.make_state(["grass_starter"], [["grass_wild1", Vector2i(6, 6)]])
+	state.node_kind = "battle"
+	state.unit_by_uid(1).cell = Vector2i(1, 3)
+	state.set_terrain(ROCK, TerrainDB.WATER)
+	state.place_temp_obstacle(ROCK, TerrainDB.WATER, 50)
+	state.set_terrain(VINE, TerrainDB.PIT)
+	state.place_temp_vines(VINE)
+	state.ignite(VINE, "player")
+	state.summon_tree(state.unit_by_uid(1), Vector2i(4, 4))
+	state.summon_tree(state.unit_by_uid(100), Vector2i(5, 5))
+	state.set_terrain(Vector2i(3, 5), TerrainDB.WATER)
+	state.set_terrain(Vector2i(4, 5), TerrainDB.ICE)
+	state.place_temp_obstacle(Vector2i(5, 3), TerrainDB.GRASS, 50)
+	state.obstacle_expire_round.erase(Vector2i(5, 3))
+	return state
+
+func _clean(t: TestContext, state: BattleState) -> void:
+	t.eq(state.terrain_at(ROCK), TerrainDB.WATER, "离场临时岩障恢复底层水面")
+	t.eq(state.terrain_at(VINE), TerrainDB.PIT, "离场藤蔓恢复底层深坑")
+	t.check(state.obstacle_expire_round.is_empty() and state.vine_expire_round.is_empty(), "临时计时全部清除")
+	t.check(not state.obstacle_durability.has(ROCK) and not state.vine_origin.has(VINE), "耐久与恢复记录清理")
+	t.check(not state.burning_cells.has(VINE) and not state.burning_sources.has(VINE), "生成物消失后无残留燃烧")
+	t.check(state.units.all(func(u): return u.summon_owner_uid < 0), "双方召唤物均不跨节点保留")
+	t.eq(state.terrain_at(Vector2i(3, 5)), TerrainDB.WATER, "普通水面保留")
+	t.eq(state.terrain_at(Vector2i(4, 5)), TerrainDB.ICE, "普通冰面保留")
+	t.eq(state.terrain_at(Vector2i(5, 3)), TerrainDB.OBSTACLE, "没有到期计时的障碍沿用永久地形规则")
+
+func _ui(t: TestContext) -> void:
+	var app = load("res://scripts/main.gd").new()
+	app.autosave_enabled = false
+	t.tree.root.add_child(app)
+	app.run = RunState.new_run(4242)
+	app.run.region_mode = true
+	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
+	var region = app.run.get_region()
+	region.active_node = "battle_1"
+	var state := _state()
+	state.end_battle("escape")
+	region.store_battle("battle_1", state)
+	app.run.region_data = region.to_dict()
+	app.show_preview([1, 2, 3])
+	var preview = app.current_screen
+	t.eq(preview.map["terrain"][GridSpec.index(ROCK)], TerrainDB.WATER, "重访预览不再显示临时岩障")
+	t.eq(preview.map["terrain"][GridSpec.index(VINE)], TerrainDB.PIT, "重访预览显示藤蔓消失后的地形")
+	t.check(preview.deploy_enemies.all(func(u): return u.summon_owner_uid < 0), "重访预览不显示上场召唤物")
+	app.free()

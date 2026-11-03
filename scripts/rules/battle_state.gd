@@ -306,6 +306,37 @@ func normalize_nest_terrain() -> void:
 		natural_essence_cells.erase(cell)
 
 
+func clear_node_temporaries() -> void:
+	# 节点离场清理，不结算伤害或奖励；恢复地形后由重访流程重新安置敌军。
+	var cells: Array = obstacle_expire_round.keys()
+	for cell in vine_expire_round:
+		if not cells.has(cell):
+			cells.append(cell)
+	for cell in cells:
+		var origin := int(obstacle_origin.get(cell, TerrainDB.PLAIN)) if obstacle_expire_round.has(cell) else int(vine_origin.get(cell, TerrainDB.PLAIN))
+		if origin == TerrainDB.VINES:
+			origin = int(vine_origin.get(cell, TerrainDB.PLAIN))
+		if not is_nest_cell(cell):
+			terrain[GridSpec.index(cell)] = origin
+		obstacle_durability.erase(cell)
+		obstacle_origin.erase(cell)
+		obstacle_expire_round.erase(cell)
+		obstacle_reward_origins.erase(cell)
+		natural_essence_cells.erase(cell)
+		vine_origin.erase(cell)
+		vine_expire_round.erase(cell)
+		burning_cells.erase(cell)
+		burning_sources.erase(cell)
+		steam_cells.erase(cell)
+		for unit in units:
+			unit.vine_sources.erase(cell)
+			_refresh_vine_ticks(unit)
+	for unit in units:
+		if unit.summon_owner_uid >= 0:
+			enemy_origins.erase(unit.uid)
+	units = units.filter(func(unit: CombatUnit) -> bool: return unit.summon_owner_uid < 0)
+
+
 func terrain_at(cell: Vector2i) -> int:
 	return int(terrain[GridSpec.index(cell)])
 

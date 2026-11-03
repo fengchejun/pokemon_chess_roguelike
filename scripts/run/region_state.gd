@@ -146,7 +146,10 @@ func store_battle(id: String, battle: BattleState) -> bool:
 	var node: Dictionary = nodes[id]
 	if not ["battle", "boss", "event"].has(node_mode(id)):
 		return false
-	node["snapshot"] = Snapshot.save_state(battle)
+	var persisted := battle.clone()
+	if battle.ended:
+		persisted.clear_node_temporaries()
+	node["snapshot"] = Snapshot.save_state(persisted)
 	if battle.ended and battle.end_reason in ["victory", "explored"]:
 		unlock_neighbors(id)
 	if node["type"] == "boss":
@@ -170,13 +173,18 @@ func store_battle(id: String, battle: BattleState) -> bool:
 func load_battle(id: String) -> BattleState:
 	if not nodes.has(id) or (nodes[id]["snapshot"] as Dictionary).is_empty():
 		return null
-	return Snapshot.load_state(nodes[id]["snapshot"])
+	var battle := Snapshot.load_state(nodes[id]["snapshot"])
+	# 兼容旧版已离开节点但仍保存临时效果的快照。战斗中途读档不走此分支。
+	if battle != null and battle.ended:
+		battle.clear_node_temporaries()
+	return battle
 
 
 func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleState:
 	var battle := load_battle(id)
 	if battle == null:
 		return null
+	battle.clear_node_temporaries()
 	var survivors: Array = []
 	var occupied := {}
 	for unit in battle.units:
