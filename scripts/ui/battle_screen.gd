@@ -1256,7 +1256,7 @@ func _show_terrain(cell: Vector2i) -> void:
 		return
 	var value := state.terrain_at(cell)
 	var terrain_name := "巢穴（不可站立）" if state.is_nest_cell(cell) else TerrainDB.name_of(value)
-	var description := "类障碍格：地面不能通过，飞行可越过但不能停留。" if state.is_nest_cell(cell) else String(TerrainDB.DESCRIPTIONS.get(value, ""))
+	var description := "独立巢穴格，不叠加其他地形；地面不能通过，飞行可越过但不能停留。" if state.is_nest_cell(cell) else String(TerrainDB.DESCRIPTIONS.get(value, ""))
 	var lines: Array = ["地块 (%d,%d)：%s" % [cell.x, cell.y, terrain_name], description]
 	var selected := state.unit_by_uid(selected_uid)
 	var move_cost := -1 if state.is_nest_cell(cell) else state.move_cost_for(selected, cell) if selected != null else TerrainDB.move_cost(value, "")
@@ -1285,7 +1285,7 @@ func _show_terrain(cell: Vector2i) -> void:
 		if bool(state.nest_at_cell(cell).get("boss_sheltered", false)):
 			lines.append("首领正在巢内庇护：摧毁巢穴使其出巢；巢内首领不占格。")
 		lines.append("巢穴耐久：%d/%d；每两轮在上下左右合法空格生成。" % [int(state.nest_at_cell(cell).get("hp", 0)), Balance.NEST_DURABILITY])
-		lines.append("巢穴不可站立；敌人可用技能机会守护邻接巢穴。每名守军提供一次拦截，攻击伤害由当前守军均分；用尽后攻击巢穴扣1耐久。")
+		lines.append("巢穴不可站立或叠加其他地形；敌人可用技能机会守护邻接巢穴。每名守军提供一次拦截，攻击伤害由当前守军均分；用尽后攻击巢穴扣1耐久。")
 		lines.append("当前守护：%d 次；积压 %d 只。" % [state.nest_guard_charges(cell), int(state.nest_at_cell(cell).get("pending_waves", 0))])
 	if cell == state.reward.get("cell", Vector2i(-1, -1)):
 		match String(state.reward.get("state", "")):

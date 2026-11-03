@@ -33,7 +33,7 @@ func run(t: TestContext) -> void:
 		else:
 			result = SkillResolver.apply(state, caster, skill, entry, false)
 		t.check(bool(result.get("ok", false)), "%s可命中空置巢穴" % skill)
-		t.eq(state.nest["hp"], 9, "%s每次命中仅扣1耐久" % skill)
+		t.eq(state.nest["hp"], 10 if skill == "tsunami" else 9, "%s按独立巢穴规则结算" % skill)
 	var state := _state()
 	var unit := state.unit_by_uid(1)
 	t.check(not state.move_options(unit).has(state.nest["cell"]), "普通移动不能停在巢穴")
@@ -66,8 +66,7 @@ func run(t: TestContext) -> void:
 	t.eq(restored.unit_at(restored.nest["cell"]), null, "旧快照占巢单位恢复时迁移")
 	t.eq(restored.unit_by_uid(100).hp, legacy.unit_by_uid(100).hp, "旧单位迁移不改变生命")
 	var burning := _state()
-	burning.burning_cells[burning.nest["cell"]] = 1
-	burning.burning_sources[burning.nest["cell"]] = "player"
+	burning.ignite(burning.nest["cell"], "player")
 	burning._settle_burning_cells()
-	t.eq(burning.nest["hp"], 9, "环境伤害仍可削减巢穴耐久")
+	t.eq(burning.nest["hp"], 10, "巢穴不叠加燃烧地形")
 	t.finish()

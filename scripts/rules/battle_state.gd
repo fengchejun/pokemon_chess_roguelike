@@ -278,6 +278,7 @@ func load_map(map_data: Dictionary) -> void:
 			var other := nest.duplicate(true)
 			other["cell"] = cell
 			extra_nests.append(other)
+	normalize_nest_terrain()
 	reward = {
 		"state": "map",  # map / guarding / carried / lost / destroyed
 		"cell": map_data["reward_cell"],
@@ -289,11 +290,27 @@ func load_map(map_data: Dictionary) -> void:
 
 # ---------------------------------------------------------------- 查询
 
+func normalize_nest_terrain() -> void:
+	# 存活巢穴独占格子；平地仅作内部底板，不保留其他地形或临时效果。
+	for current in all_nests():
+		if not bool(current.get("alive", false)):
+			continue
+		var cell: Vector2i = current["cell"]
+		if not GridSpec.is_inside(cell):
+			continue
+		terrain[GridSpec.index(cell)] = TerrainDB.PLAIN
+		for effects_by_cell in [obstacle_durability, obstacle_origin, obstacle_expire_round, burning_cells, burning_sources, steam_cells, vine_origin, vine_expire_round]:
+			effects_by_cell.erase(cell)
+		natural_essence_cells.erase(cell)
+
+
 func terrain_at(cell: Vector2i) -> int:
 	return int(terrain[GridSpec.index(cell)])
 
 
 func set_terrain(cell: Vector2i, value: int) -> void:
+	if is_nest_cell(cell):
+		return
 	var was_vines := terrain_at(cell) == TerrainDB.VINES
 	terrain[GridSpec.index(cell)] = value
 	if was_vines and value != TerrainDB.VINES:
@@ -320,6 +337,8 @@ func set_terrain(cell: Vector2i, value: int) -> void:
 
 
 func place_temp_vines(cell: Vector2i) -> void:
+	if is_nest_cell(cell):
+		return
 	if terrain_at(cell) != TerrainDB.VINES:
 		vine_origin[cell] = terrain_at(cell)
 	set_terrain(cell, TerrainDB.VINES)
@@ -327,6 +346,8 @@ func place_temp_vines(cell: Vector2i) -> void:
 
 
 func ignite(cell: Vector2i, source_side: String = "") -> void:
+	if is_nest_cell(cell):
+		return
 	if not GridSpec.is_inside(cell):
 		return
 	if terrain_at(cell) != TerrainDB.GRASS and terrain_at(cell) != TerrainDB.VINES and terrain_at(cell) != TerrainDB.TREE:
@@ -337,6 +358,8 @@ func ignite(cell: Vector2i, source_side: String = "") -> void:
 
 
 func add_steam(cell: Vector2i) -> void:
+	if is_nest_cell(cell):
+		return
 	if not GridSpec.is_inside(cell):
 		return
 	if TerrainDB.blocks_move(terrain_at(cell)):
@@ -1006,6 +1029,8 @@ func relocate_nest_occupants() -> void:
 
 
 func place_temp_obstacle(cell: Vector2i, origin: int, expire_round: int) -> void:
+	if is_nest_cell(cell):
+		return
 	natural_essence_cells.erase(cell)
 	set_terrain(cell, TerrainDB.OBSTACLE)
 	obstacle_durability[cell] = Balance.OBSTACLE_DURABILITY

@@ -130,7 +130,7 @@ static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String
 		if distance > skill_range or (distance == 0 and (skill_id == "rock_slide" or skill_id == "tree_man")):
 			continue
 		if skill_id == "seed_sow":
-			if state.terrain_at(cell) in [TerrainDB.PLAIN, TerrainDB.ICE]:
+			if not state.is_nest_cell(cell) and state.terrain_at(cell) in [TerrainDB.PLAIN, TerrainDB.ICE]:
 				entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "rain_dance" or skill_id == "rain_call":
 			if _rain_would_change(state, unit, cell):
@@ -200,7 +200,7 @@ static func rain_cells(caster: CombatUnit, center: Vector2i) -> Array:
 static func _rain_would_change(state: BattleState, caster: CombatUnit, center: Vector2i) -> bool:
 	for cell in rain_cells(caster, center):
 		var terrain := state.terrain_at(cell)
-		if TerrainDB.can_convert_to_water(terrain):
+		if not state.is_nest_cell(cell) and TerrainDB.can_convert_to_water(terrain):
 			return true
 	return false
 
@@ -765,7 +765,7 @@ static func _apply_water_flow(state: BattleState, caster: CombatUnit, entry: Dic
 
 
 static func _convert_to_water(state: BattleState, cell: Vector2i, summary: Dictionary) -> bool:
-	if not GridSpec.is_inside(cell):
+	if not GridSpec.is_inside(cell) or state.is_nest_cell(cell):
 		return false
 	var terrain := state.terrain_at(cell)
 	if not TerrainDB.can_convert_to_water(terrain):
@@ -893,6 +893,9 @@ static func _apply_volt_step(state: BattleState, caster: CombatUnit, entry: Dict
 
 static func _apply_seed_sow(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var cell: Vector2i = entry["cell"]
+	if state.is_nest_cell(cell):
+		summary["text"] = "巢穴格不能播种。"
+		return
 	var from := state.terrain_at(cell)
 	state.set_terrain(cell, TerrainDB.GRASS)
 	summary["terrain_changes"].append({"cell": cell, "from": from, "to": TerrainDB.GRASS})
@@ -1005,7 +1008,7 @@ static func _apply_rain_dance(state: BattleState, caster: CombatUnit, entry: Dic
 	for cell in rain_cells(caster, center):
 		summary["area_cells"].append(cell)
 		var terrain := state.terrain_at(cell)
-		if TerrainDB.can_convert_to_water(terrain):
+		if not state.is_nest_cell(cell) and TerrainDB.can_convert_to_water(terrain):
 			state.set_terrain(cell, TerrainDB.WATER)
 			summary["terrain_changes"].append({"cell": cell, "from": terrain, "to": TerrainDB.WATER})
 		if caster.has_buff("rain_call"):

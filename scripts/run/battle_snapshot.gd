@@ -111,6 +111,7 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 	if state.sheltered_boss() != null:
 		state.boss_retreat_used = true
 	state._boss_effect_depth = 0
+	state.normalize_nest_terrain()
 	state.try_release_boss()
 	state.relocate_nest_occupants()
 	state.repair_food()
