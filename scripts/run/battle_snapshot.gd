@@ -89,6 +89,7 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 			unit.frozen = true
 		state.units.append(unit)
 	state.nest["exits"] = [] # Old exits no longer affect movement, targeting or spawning.
+	state.enforce_player_nest_landing_rule()
 	var rng: Dictionary = snapshot["rng"]
 	state.spawn_rng.seed = int(rng["spawn_seed"])
 	state.spawn_rng.state = int(rng["spawn_state"])

@@ -43,6 +43,11 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 		if occupant != null:
 			_summarize_collision(state, summary, target, occupant, next, collision_bonus, source_side, source_uid, other_relic_bonus)
 			break
+		if target.side == "player" and state.is_nest_cell(next):
+			summary["blocked"] = true
+			summary["collisions"].append({"kind": "nest", "cell": next})
+			state.log_event("%s 被巢穴边界挡住，不能被推上巢穴格。" % target.display_name)
+			break
 		if not target.has_buff("flight") and TerrainDB.is_lethal(terrain) and (terrain != TerrainDB.DEEP or target.element != "water"):
 			target.last_move_direction = direction
 			target.cell = next

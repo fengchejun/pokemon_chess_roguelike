@@ -498,7 +498,7 @@ func _update_header() -> void:
 		state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text,
 	]
 	status_label.visible = false
-	objective_label.text = "战斗目标\n敌人 %d · 击败 %d · 捕获 %d\n%s" % [state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text.strip_edges()]
+	objective_label.text = "战斗目标（清场或毁巢）\n敌人 %d · 击败 %d · 捕获 %d\n%s" % [state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text.strip_edges()]
 	if state.node_kind == "event":
 		objective_label.text = "收集区\n本次收集食物 %d\n可随时返回区域" % state.food_collected
 	if GridSpec.is_inside(state.boss_portal_cell):
@@ -609,7 +609,7 @@ func _update_unit_card() -> void:
 	elif unit.channel_lock_round == state.round:
 		statuses.append("吟唱代价：本阶段不能行动")
 	if unit.vine_ticks > 0:
-		statuses.append("藤蔓束缚（旧存档兼容：仅限制移动）")
+		statuses.append("禁锢（旧存档藤蔓字段兼容）")
 	if unit.inspired:
 		statuses.append("首领鼓舞：移动 +1，当前生命与生命上限各 +5（本场）")
 	if unit.is_boss:
@@ -668,7 +668,7 @@ func _move_status(unit: CombatUnit) -> String:
 	if unit.paralyzed_ticks > 0:
 		return "无法移动（麻痹）"
 	if unit.vine_ticks > 0:
-		return "无法移动（藤蔓束缚）"
+		return "无法移动（禁锢）"
 	if unit.move_cancelled:
 		return "无法移动（本回合被定身或施法锁定）"
 	if state.terrain_travel_mode(unit) >= 0:
@@ -1302,8 +1302,12 @@ func _show_terrain(cell: Vector2i) -> void:
 		lines.append("蒸汽：剩余 %d 次整轮结算；站在其中不能施放技能。" % int(state.steam_cells[cell]))
 	if state.is_nest_cell(cell):
 		lines.append("巢穴耐久：%d/%d；第 2、4、6 回合尝试直接在巢穴格生成。" % [int(state.nest_at_cell(cell).get("hp", 0)), Balance.NEST_DURABILITY])
-		lines.append("可移动、停留在巢穴格。任何单位覆盖时均阻挡生成与巢穴受伤；击杀或移开覆盖者的那次攻击不会穿透巢穴。空置时任意有效伤害每次扣 1 耐久。")
-		lines.append("当前：%s；积压 %d 只。" % ["被单位覆盖" if state.nest_covered(cell) else "空置", int(state.nest_at_cell(cell).get("pending_waves", 0))])
+		lines.append("我方不能停留在巢穴格；敌方可以占据，但会暂停产怪并保护巢穴。击杀占据者的那次攻击不会穿透，后续攻击才能伤害空巢。空置时任意有效伤害每次扣 1 耐久。")
+		var occupant := state.unit_at(cell)
+		var nest_state := "空置，可被攻击"
+		if occupant != null and occupant.side == "enemy":
+			nest_state = "敌方单位占据；先击杀该敌人才能攻击巢穴，期间暂停产怪"
+		lines.append("当前：%s；积压 %d 只。" % [nest_state, int(state.nest_at_cell(cell).get("pending_waves", 0))])
 	if cell == state.reward.get("cell", Vector2i(-1, -1)):
 		match String(state.reward.get("state", "")):
 			"map", "guarding":

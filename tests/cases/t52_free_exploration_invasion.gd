@@ -5,13 +5,19 @@ func run(t: TestContext) -> void:
 	state.node_kind = "battle"
 	state.round = 8
 	state.unit_by_uid(100).hp = 0
-	t.check(not state.is_free_exploration(), "巢穴未毁不胜利")
+	t.check(state.is_free_exploration(), "清场后即使巢穴未毁也解锁区域")
 	state.nest["alive"] = false
 	state.unit_by_uid(1).skill_used = true
 	state.unit_by_uid(1).moved = true
 	state.check_battle_end()
-	t.check(state.is_free_exploration() and state.can_leave_node(), "清敌毁巢进入自由探索")
+	t.check(state.is_free_exploration() and state.can_leave_node(), "清场并毁巢仍进入自由探索")
 	t.check(not state.ended and not state.unit_by_uid(1).skill_used, "停留地图恢复行动")
+	var nest_only := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	nest_only.node_kind = "battle"
+	nest_only.nest["hp"] = 1
+	nest_only.damage_nest(1, "player")
+	t.check(nest_only.alive_enemy_count() > 0 and not nest_only.has_live_nests(), "仅摧毁巢穴时敌人仍存活")
+	t.check(nest_only.battle_objective_met() and nest_only.can_leave_node(), "破坏巢穴也可单独解锁区域")
 	state.end_enemy_phase()
 	t.eq(state.round, 8, "自由探索不增加回合")
 	t.check(not state.ended, "第八回合胜利不强制逃离")

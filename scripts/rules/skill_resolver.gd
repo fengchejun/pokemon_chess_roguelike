@@ -121,6 +121,8 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 		var distance := GridSpec.manhattan(unit.cell, other.cell)
 		if skill_id == "lightning" and other.side == unit.side:
 			continue
+		if skill_id == "volt_replace" and _player_forbidden_landing(state, unit, other.cell):
+			continue
 		if skill_id == "rock_push":
 			if distance != 1:
 				continue
@@ -191,14 +193,15 @@ static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String
 		elif skill_id == "rock_slide":
 			entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "tree_man" and state.unit_at(cell) == null and not state.is_interaction_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), "grass"):
-			entries.append({"type": "cell", "cell": cell})
+			if not _player_forbidden_landing(state, unit, cell):
+				entries.append({"type": "cell", "cell": cell})
 
 
 static func _flame_rush_targets(state: BattleState, unit: CombatUnit, entries: Array) -> void:
 	for cell in GridSpec.all_cells():
 		if cell == unit.cell or not state.burning_cells.has(cell):
 			continue
-		if state.unit_at(cell) != null or state.is_interaction_cell(cell):
+		if state.unit_at(cell) != null or state.is_interaction_cell(cell) or _player_forbidden_landing(state, unit, cell):
 			continue
 		if not TerrainDB.can_stand(state.terrain_at(cell), unit.element):
 			continue
@@ -221,7 +224,7 @@ static func _volt_empty_targets(state: BattleState, unit: CombatUnit, def: Dicti
 		var distance := GridSpec.manhattan(unit.cell, cell)
 		if distance < 1 or distance > skill_range:
 			continue
-		if state.unit_at(cell) != null or state.is_interaction_cell(cell):
+		if state.unit_at(cell) != null or state.is_interaction_cell(cell) or _player_forbidden_landing(state, unit, cell):
 			continue
 		if TerrainDB.can_stand(state.terrain_at(cell), unit.element):
 			entries.append({"type": "cell", "cell": cell})
@@ -233,13 +236,17 @@ static func _teleport_targets(state: BattleState, unit: CombatUnit, def: Diction
 		var distance := GridSpec.manhattan(unit.cell, cell)
 		if distance == 0 or distance > skill_range:
 			continue
-		if state.unit_at(cell) != null or state.is_interaction_cell(cell):
+		if state.unit_at(cell) != null or state.is_interaction_cell(cell) or _player_forbidden_landing(state, unit, cell):
 			continue
 		if not TerrainDB.can_stand(state.terrain_at(cell), unit.element):
 			continue
 		if not _teleport_path_clear(state, unit.cell, cell, unit.element):
 			continue
 		entries.append({"type": "cell", "cell": cell})
+
+
+static func _player_forbidden_landing(state: BattleState, unit: CombatUnit, cell: Vector2i) -> bool:
+	return unit.side == "player" and state.is_nest_cell(cell)
 
 
 static func _concealed(state: BattleState, skill_id: String, distance: int, target: CombatUnit) -> bool:
@@ -986,6 +993,8 @@ static func _apply_discharge(state: BattleState, caster: CombatUnit, entry: Dict
 
 static func _apply_volt_step(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var dest: Vector2i = entry["cell"]
+	if _player_forbidden_landing(state, caster, dest):
+		return
 	caster.cell = dest
 	state.apply_vine_on_landing(caster)
 	summary["self_move"] = dest
@@ -998,6 +1007,8 @@ static func _apply_volt_step(state: BattleState, caster: CombatUnit, entry: Dict
 
 static func _apply_flame_rush(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var dest: Vector2i = entry["cell"]
+	if _player_forbidden_landing(state, caster, dest):
+		return
 	var origin := caster.cell
 	caster.cell = dest
 	caster.last_move_direction = dest - origin
@@ -1530,6 +1541,8 @@ static func _apply_swap(state: BattleState, caster: CombatUnit, entry: Dictionar
 	var target := state.unit_by_uid(int(entry["unit"]))
 	if target == null:
 		return
+	if _player_forbidden_landing(state, caster, target.cell):
+		return
 	var origin := caster.cell
 	var direction := _axis_dir(caster.cell, target.cell) if (caster.cell.x == target.cell.x or caster.cell.y == target.cell.y) else Vector2i.ZERO
 	caster.cell = target.cell
@@ -1547,6 +1560,8 @@ static func _apply_swap(state: BattleState, caster: CombatUnit, entry: Dictionar
 
 static func _apply_volt_replace_empty(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var dest: Vector2i = entry["cell"]
+	if _player_forbidden_landing(state, caster, dest):
+		return
 	var origin := caster.cell
 	caster.cell = dest
 	caster.last_move_direction = _axis_dir(origin, dest) if origin.x == dest.x or origin.y == dest.y else Vector2i.ZERO

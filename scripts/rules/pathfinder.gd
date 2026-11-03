@@ -89,6 +89,8 @@ static func stop_cells(state, unit: CombatUnit) -> Dictionary:
 	var cells := {}
 	var options := reachable(state, unit)
 	for cell in options:
+		if unit.side == "player" and state.is_nest_cell(cell):
+			continue
 		if state.unit_at(cell) == null and not state.is_interaction_cell(cell) and not TerrainDB.blocks_move(state.terrain_at(cell)):
 			cells[cell] = options[cell]
 	return cells

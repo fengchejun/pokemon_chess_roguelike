@@ -61,6 +61,7 @@ static func skill_damage_for_side(base: int, side: String) -> int:
 
 const EXP_PER_KILL := 2
 const EXP_PER_CAPTURE := 2
+const EXP_PER_NEST := 3
 
 const CARRIED_LIMIT := 6
 const DEPLOY_LIMIT := 3

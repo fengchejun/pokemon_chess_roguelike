@@ -85,7 +85,9 @@ func _summary_box(run: RunState) -> Control:
 	if String(outcome.get("reason", "")) == "forced_retreat":
 		lines.append("本场经验：0（强制撤退不结算本场经验）")
 	else:
-		lines.append("本场怪物经验合计：+%d（按击败、捕获与战场目标的实际贡献结算）" % int(outcome.get("exp", 0)))
+		lines.append("本场怪物经验合计：+%d（按击败、捕获、毁巢与战场目标的实际贡献结算）" % int(outcome.get("exp", 0)))
+		if int(outcome.get("nest_exp", 0)) > 0:
+			lines.append("其中毁巢共享经验：+%d（含未诞生怪物与巢穴自身）" % int(outcome.get("nest_exp", 0)))
 	if bool(outcome.get("growth_migrated", false)):
 		lines.append("旧本局存档已迁移：旧经验、等级与全队强化清零，保留关卡和奖励。")
 	if bool(outcome.get("upgrade_migrated", false)):

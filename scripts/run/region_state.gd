@@ -153,7 +153,7 @@ func store_battle(id: String, battle: BattleState) -> bool:
 		var boss := battle.unit_by_uid(battle.boss_uid)
 		node["cleared"] = boss != null and (not boss.is_alive() or boss.side == "player")
 	elif node_mode(id) == "battle":
-		node["cleared"] = battle.alive_enemy_count() == 0 and not battle.has_live_nests()
+		node["cleared"] = battle.battle_objective_met()
 		if bool(node["cleared"]):
 			node["mode"] = "event"
 			node["pending_replenish"] = false
@@ -222,7 +222,7 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 		var candidates: Array = battle.deploy_cells.duplicate()
 		candidates.append_array(GridSpec.all_cells())
 		for cell in candidates:
-			if battle.unit_at(cell) == null and not battle.is_interaction_cell(cell) and TerrainDB.can_stand(battle.terrain_at(cell), player.element):
+			if battle.unit_at(cell) == null and not battle.is_interaction_cell(cell) and not battle.is_nest_cell(cell) and TerrainDB.can_stand(battle.terrain_at(cell), player.element):
 				player.cell = cell
 				battle.units.append(player)
 				placed = true
@@ -250,6 +250,9 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 	battle.reward.erase("run_settled_outcome")
 	for current in battle.all_nests():
 		current["destroyed_by_player"] = false
+		current.erase("destroyed_unborn_monsters")
+		current.erase("destroyed_unborn_xp")
+		current.erase("destroyed_nest_xp")
 	battle.start_round()
 	return battle
 

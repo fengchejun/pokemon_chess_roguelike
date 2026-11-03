@@ -682,6 +682,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		"monster_affinity": [],
 		"kills": battle.enemy_kills.size(),
 		"captures": battle.captured.size(),
+		"nest_exp": 0,
 		"boss_blood": 0,
 		"captured_names": [],
 		"deaths": battle.deaths.duplicate(true),
@@ -738,7 +739,9 @@ func settle_battle(battle: BattleState) -> Dictionary:
 			shared_bonus += 1
 		for current in battle.all_nests():
 			if bool(current.get("destroyed_by_player", false)):
-				shared_bonus += 3
+				var nest_bonus := int(current.get("destroyed_unborn_xp", 0)) + int(current.get("destroyed_nest_xp", Balance.EXP_PER_NEST))
+				shared_bonus += nest_bonus
+				outcome["nest_exp"] = int(outcome["nest_exp"]) + nest_bonus
 		for id in original:
 			var unit := battle.unit_by_uid(int(id))
 			if unit != null and unit.is_alive():

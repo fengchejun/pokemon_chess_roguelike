@@ -112,7 +112,7 @@ var vine_ticks: int = 0:
 		var announce := active != was_active
 		vine_ticks = value
 		if announce:
-			feedback_changed.emit("status" if active else "clear", "藤蔓束缚" + ("解除" if not active else ""), int(value), cell)
+			feedback_changed.emit("status" if active else "clear", "禁锢" + ("解除" if not active else ""), int(value), cell)
 var vine_sources: Dictionary = {} # 束缚来源格 -> 剩余行动阶段；地块消失时按来源清除。
 var haste_ticks: int = 0:
 	set(value):

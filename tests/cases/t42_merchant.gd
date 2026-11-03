@@ -62,6 +62,7 @@ func run(t: TestContext) -> void:
 	t.check(not Merchant.use_item(app.run, state, "potion", target.uid)["ok"], "自由探索禁止治疗药")
 	state.node_kind = "battle"
 	state.nest["alive"] = true
+	state.add_garrison(1, ["rock_wild1"])
 	t.check(Merchant.use_item(app.run, state, "potion", target.uid)["ok"], "正式战斗训练师使用治疗药")
 	t.eq(target.hp, 16, "治疗15HP")
 	t.check(trainer.skill_used and trainer.capture_used and not state.can_undo(), "道具消耗行动并提交移动")

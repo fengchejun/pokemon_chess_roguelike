@@ -143,6 +143,11 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 		if slot >= deploy_cells.size():
 			break
 		unit.cell = map_data.get("deploy_positions", {}).get(unit.uid, deploy_cells[slot])
+		if is_nest_cell(unit.cell):
+			for fallback in deploy_cells:
+				if not is_nest_cell(fallback) and unit_at(fallback) == null:
+					unit.cell = fallback
+					break
 		unit.reg_index = units.size()
 		units.append(unit)
 		_watch_feedback(unit)
@@ -255,7 +260,7 @@ func set_terrain(cell: Vector2i, value: int) -> void:
 				unit.vine_sources.erase(cell)
 				_refresh_vine_ticks(unit)
 				if unit.is_alive():
-					log_event("%s 来源于 (%d,%d) 的藤蔓束缚解除。" % [unit.display_name, cell.x, cell.y])
+					log_event("%s 来源于 (%d,%d) 的禁锢解除。" % [unit.display_name, cell.x, cell.y])
 		var occupant := unit_at(cell)
 		if occupant != null and occupant.vine_ticks > 0 and occupant.vine_sources.is_empty():
 			# 兼容旧战场状态中尚未记录束缚来源的单位。
@@ -498,6 +503,8 @@ func active_summon(owner_uid: int) -> CombatUnit:
 func summon_tree(owner: CombatUnit, cell: Vector2i) -> CombatUnit:
 	if owner == null or not owner.is_alive() or active_summon(owner.uid) != null or not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or not TerrainDB.can_stand(terrain_at(cell), "grass"):
 		return null
+	if owner.side == "player" and is_nest_cell(cell):
+		return null
 	var next_uid := 1
 	for existing in units:
 		next_uid = maxi(next_uid, existing.uid + 1)
@@ -617,6 +624,10 @@ func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
 	emit_feedback(unit, "action", "捕获成功")
 	var field_join := bool(capture_options.get("capture_field_join", false))
 	var was_boss := unit.is_boss
+	var join_cell := Vector2i(-1, -1)
+	if field_join and is_nest_cell(unit.cell):
+		join_cell = _find_capture_join_cell(unit)
+		field_join = GridSpec.is_inside(join_cell)
 	captured.append({"species_id": species_id, "hp": keep_hp, "uid": unit.uid, "on_field": field_join, "was_boss": was_boss})
 	if unit.inspired:
 		unit.inspired = false
@@ -629,16 +640,43 @@ func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
 		unit.is_boss = false
 		unit.upgrades.clear()
 	if field_join:
+		if GridSpec.is_inside(join_cell):
+			unit.cell = join_cell
 		unit.side = "player"
 		unit.hp = clampi(keep_hp, 1, unit.max_hp)
 		unit.moved = false
 		unit.skill_used = false
 		unit.capture_used = false
 		unit.fresh_spawn = false
-		log_event("%s 被捕获，原地加入我方，本回合可移动和施法。" % unit.display_name)
+		log_event("%s 被捕获，%s，本回合可移动和施法。" % [unit.display_name, "转到附近合法格后加入我方" if GridSpec.is_inside(join_cell) else "原地加入我方"])
 	else:
 		unit.hp = 0
-		log_event("%s 被捕获，离开战场。" % unit.display_name)
+		log_event("%s 被捕获，%s。" % [unit.display_name, "巢穴格不能由我方占据，改为离开战场" if is_nest_cell(unit.cell) else "离开战场"])
+
+
+func _find_capture_join_cell(unit: CombatUnit) -> Vector2i:
+	var candidates := GridSpec.all_cells()
+	candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var da := GridSpec.manhattan(a, unit.cell)
+		var db := GridSpec.manhattan(b, unit.cell)
+		return da < db if da != db else _cell_order(a) < _cell_order(b)
+	)
+	for cell in candidates:
+		if cell == unit.cell or unit_at(cell) != null or is_nest_cell(cell) or is_interaction_cell(cell):
+			continue
+		if TerrainDB.can_stand(terrain_at(cell), unit.element):
+			return cell
+	return Vector2i(-1, -1)
+
+
+func enforce_player_nest_landing_rule() -> void:
+	for unit in alive_units("player"):
+		if not is_nest_cell(unit.cell):
+			continue
+		var destination := _find_capture_join_cell(unit)
+		if GridSpec.is_inside(destination):
+			unit.cell = destination
+			log_event("%s 位于旧存档的巢穴格，已转移到附近合法格。" % unit.display_name)
 
 
 # ---------------------------------------------------------------- 伤害
@@ -647,17 +685,18 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	if target == null or not target.is_alive() or base <= 0:
 		return {"amount": 0, "killed": false}
 	var break_frozen := target.frozen and bool(opts.get("break_frozen", false))
+	var was_frozen_before_hit := target.frozen
+	var hit_element := String(opts.get("element", ""))
 	var amount := base
 	if source != null and bool(opts.get("skill_direct", false)):
 		amount = Balance.skill_damage_for_side(amount, source.side)
 	var is_lethal_check := true
 	var matchup_modifier := 0
 	if not bool(opts.get("no_element", false)):
-		var skill_element: String = opts.get("element", "")
-		matchup_modifier = Elements.modifier(skill_element, target.element)
+		matchup_modifier = Elements.modifier(hit_element, target.element)
 		if source != null and bool(opts.get("skill_direct", false)):
-			amount = Elements.direct_damage(amount, skill_element, target.element)
-		if skill_element == "fire" and int(effects.get("fire_bonus", 0)) > 0:
+			amount = Elements.direct_damage(amount, hit_element, target.element)
+		if hit_element == "fire" and int(effects.get("fire_bonus", 0)) > 0:
 			if source != null and source.side == "player":
 				amount += int(effects["fire_bonus"])
 	var target_in_grass := GridSpec.is_inside(target.cell) and terrain_at(target.cell) == TerrainDB.GRASS
@@ -729,6 +768,9 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		killed = true
 		var killer_side: String = source.side if source != null else String(opts.get("killer_side", ""))
 		kill_unit(target, cause, killer_side, source.uid if source != null else int(opts.get("killer_uid", -1)))
+	var thawed_wet := false
+	if amount > 0 and was_frozen_before_hit and target.is_alive() and source != null and bool(opts.get("skill_direct", false)) and hit_element == "fire":
+		thawed_wet = apply_wet(target, 1, true)
 	if source != null and source.side == "player" and target.side == "enemy" and bool(opts.get("skill_direct", false)) and amount > 0:
 		if killed and was_burning and source.is_alive():
 			var healed := mini(source.max_hp - source.hp, 4 * RelicDB.rank(relic_stacks, "ember_recovery"))
@@ -738,12 +780,11 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 				relic_healed = healed
 				log_event("余烬：%s 恢复 %d HP。" % [source.display_name, healed])
 		elif not killed:
-			var skill_element := String(opts.get("element", ""))
-			if skill_element == "fire" and RelicDB.rank(relic_stacks, "fire_mark") > 0 and target.burn_ticks <= 0:
+			if hit_element == "fire" and RelicDB.rank(relic_stacks, "fire_mark") > 0 and target.burn_ticks <= 0:
 				apply_burn(target, source)
-			if skill_element == "water" and RelicDB.rank(relic_stacks, "water_mark") > 0 and target.slow_ticks <= 0:
+			if hit_element == "water" and RelicDB.rank(relic_stacks, "water_mark") > 0 and target.slow_ticks <= 0:
 				apply_slow(target)
-	return {"amount": amount, "killed": killed, "previous_hp": previous_hp, "hp": target.hp, "relic_healed": relic_healed}
+	return {"amount": amount, "killed": killed, "previous_hp": previous_hp, "hp": target.hp, "relic_healed": relic_healed, "thawed_wet": thawed_wet}
 
 
 func apply_burn(target: CombatUnit, source: CombatUnit) -> bool:
@@ -813,8 +854,8 @@ func apply_freeze(target: CombatUnit) -> bool:
 	return true
 
 
-func apply_wet(target: CombatUnit, ticks: int = 2) -> bool:
-	if target == null or not target.is_alive() or target.element == "water" or target.has_buff("status_immune"):
+func apply_wet(target: CombatUnit, ticks: int = 2, ignore_element_immunity: bool = false) -> bool:
+	if target == null or not target.is_alive() or (target.element == "water" and not ignore_element_immunity) or target.has_buff("status_immune"):
 		return false
 	var was_wet := target.slow_ticks > 0
 	target.slow_ticks = maxi(target.slow_ticks, maxi(1, ticks))
@@ -1005,6 +1046,16 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 			earn_essence("nest" if target_nest == nest else "nest:%d:%d" % [target_nest["cell"].x, target_nest["cell"].y], 8, target_nest["cell"])
 		target_nest["alive"] = false
 		target_nest["destroyed_by_player"] = source_side == "player"
+		if source_side == "player":
+			var unborn := remaining_unborn_monsters_for_nest(target_nest)
+			target_nest["destroyed_unborn_monsters"] = unborn
+			target_nest["destroyed_unborn_xp"] = unborn * Balance.EXP_PER_KILL
+			target_nest["destroyed_nest_xp"] = Balance.EXP_PER_NEST
+			log_event("巢穴经验：未诞生 %d 只（%d XP），巢穴自身 %d XP。" % [
+				unborn,
+				unborn * Balance.EXP_PER_KILL,
+				Balance.EXP_PER_NEST,
+			])
 		set_terrain(target_nest["cell"], TerrainDB.PLAIN)
 		log_event("巢穴被摧毁，永久停止生成。")
 		if node_kind == "" and not has_live_nests():
@@ -1012,6 +1063,17 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 		return true
 	log_event("巢穴耐久 -1（剩 %d）。" % target_nest["hp"])
 	return false
+
+
+func remaining_unborn_monsters_for_nest(target_nest: Dictionary) -> int:
+	if target_nest.is_empty() or reinforcement_pool.is_empty():
+		return 0
+	var count := maxi(0, int(target_nest.get("pending_waves", 0)))
+	var scheduled: Array = target_nest.get("scheduled_waves", [])
+	for wave_round in range(Balance.NEST_SPAWN_INTERVAL, Balance.MAX_ROUNDS, Balance.NEST_SPAWN_INTERVAL):
+		if wave_round > round and not scheduled.has(wave_round):
+			count += 1
+	return count
 
 
 func nest_covered(target_cell: Vector2i = Vector2i(-1, -1)) -> bool:
@@ -1586,6 +1648,8 @@ func ice_slide_outcome(unit: CombatUnit) -> Dictionary:
 	var blocked := not GridSpec.is_inside(next)
 	if not blocked:
 		blocked = unit_at(next) != null or is_interaction_cell(next) or TerrainDB.blocks_move(terrain_at(next))
+	if not blocked and unit.side == "player" and is_nest_cell(next):
+		blocked = true
 	var lethal := false
 	if not blocked:
 		lethal = TerrainDB.is_lethal(terrain_at(next)) and (terrain_at(next) != TerrainDB.DEEP or unit.element != "water")
@@ -1741,8 +1805,12 @@ func check_battle_end() -> bool:
 	return ended
 
 
+func battle_objective_met() -> bool:
+	return alive_enemy_count() == 0 or not has_live_nests()
+
+
 func can_leave_node() -> bool:
-	return node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not has_live_nests())
+	return node_kind == "event" or (node_kind == "battle" and battle_objective_met())
 
 
 func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) -> int:
@@ -1805,7 +1873,7 @@ func end_battle(reason: String) -> void:
 	end_reason = reason
 	phase = PHASE_ENDED
 	var text: String = {
-		"victory": "全部敌人被击败或捕获，胜利！",
+		"victory": "清场或摧毁巢穴，区域目标完成！",
 		"forced_retreat": "训练家倒下，本局失败。",
 		"boss_timeout": "第 8 回合结束，未能击败首领，本局失败。",
 		"escape": "第 %d 回合结束，强制撤离当前区域。" % Balance.MAX_ROUNDS if node_kind != "" else "第 %d 回合结束，野生宝可梦逃离。" % Balance.MAX_ROUNDS,
@@ -1956,7 +2024,7 @@ func clone() -> BattleState:
 
 
 func is_free_exploration() -> bool:
-	return node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not has_live_nests()) or (node_kind == "boss" and GridSpec.is_inside(boss_portal_cell))
+	return node_kind == "event" or (node_kind == "battle" and battle_objective_met()) or (node_kind == "boss" and GridSpec.is_inside(boss_portal_cell))
 
 
 func recovery_skill_blocked(skill_id: String) -> bool:
