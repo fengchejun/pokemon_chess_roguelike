@@ -88,6 +88,7 @@ func _test_ui_flow(t: TestContext) -> void:
 	var restored_run := RunState.from_dict(app.run.to_dict())
 	t.eq(restored_run.preview_used_reward_item, "map:water", "存档恢复后仍记得本场已用卡")
 	var restored_map := MapGenerator.generate_card_preview(restored_run.seed, restored_run.battle_index, "water", MapGenerator.generate(restored_run.seed, restored_run.battle_index, 0, [], restored_run.current_theme()))
+	MapGenerator.populate_treasure(restored_map["map"], restored_run.place_region_enemies(restored_run.battle_config(), restored_map["map"]), restored_run.seed, restored_run.battle_index, "battle")
 	t.eq((restored_map["map"] as Dictionary)["terrain"], saved_terrain, "读档后可复原同一张地貌卡地图")
 	app.back_to_prep(app.current_screen.deploy_uids)
 	app.show_preview([1, 2, 3])

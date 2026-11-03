@@ -46,6 +46,7 @@ static func terrain_counts(map: Dictionary) -> Dictionary:
 			TerrainDB.WATER: counts["water"] += 1
 			TerrainDB.GRASS: counts["grass"] += 1
 			TerrainDB.OBSTACLE: counts["rock"] += 1
+	counts["rock"] = maxi(0, int(counts["rock"]) - (map.get("chests", {}) as Dictionary).size())
 	counts["steam"] = (map.get("steam_cells", {}) as Dictionary).size()
 	return counts
 
@@ -349,6 +350,7 @@ static func mod_protected(map: Dictionary, cell: Vector2i) -> bool:
 	protected_cells.append_array(map.get("deploy_area", Balance.DEPLOY_AREA))
 	protected_cells.append_array(map.get("nest_cells", [map["nest_cell"]]))
 	protected_cells.append(map["reward_cell"])
+	protected_cells.append_array(map.get("chests", {}).keys())
 	protected_cells.append_array(map.get("fruit_cells", []))
 	return protected_cells.has(cell)
 
@@ -440,3 +442,45 @@ static func _nests_accessible(map: Dictionary, cells: Array) -> bool:
 		if not accessible:
 			return false
 	return true
+
+
+static func populate_treasure(map: Dictionary, cfg: Dictionary, seed_value: int, battle_index: int, mode: String, node_id: String = "") -> void:
+	if bool(map.get("treasure_generated", false)):
+		return
+	map["treasure_generated"] = true
+	map["reward"] = {"state": "absent", "cell": Vector2i(-1, -1), "owner_uid": -1, "guard_uid": -1}
+	map["extra_rewards"] = []
+	map["chests"] = {}
+	map["carrier_uid"] = -1
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("treasure:%d:%d:%s" % [seed_value, battle_index, node_id])
+	var enemies: Array = cfg.get("enemies", []) if mode != "event" else []
+	var eligible: Array = []
+	for index in range(enemies.size()):
+		if index != int(cfg.get("boss_index", -1)):
+			eligible.append(index)
+	while not eligible.is_empty():
+		var index: int = eligible.pop_at(rng.randi_range(0, eligible.size() - 1))
+		if rng.randf() < Balance.REWARD_CARRIER_CHANCE:
+			map["carrier_uid"] = 100 + index
+			break
+	if rng.randf() >= (Balance.CHEST_EVENT_CHANCE if mode == "event" else Balance.CHEST_BATTLE_CHANCE):
+		return
+	var count := 2 if rng.randf() < Balance.CHEST_DOUBLE_CHANCE else 1
+	var cells: Array = []
+	for cell in GridSpec.all_cells():
+		if int(map["terrain"][GridSpec.index(cell)]) != TerrainDB.PLAIN or (map.get("deploy_area", Balance.DEPLOY_AREA) as Array).has(cell) or cell == map.get("merchant_cell", Vector2i(-1, -1)) or cell == map.get("portal_cell", Vector2i(-1, -1)):
+			continue
+		if (map.get("nest_cells", [map["nest_cell"]]) as Array).has(cell) or enemies.any(func(pair): return pair[1] == cell):
+			continue
+		cells.append(cell)
+	while not cells.is_empty() and map["chests"].size() < count:
+		var cell: Vector2i = cells.pop_at(rng.randi_range(0, cells.size() - 1))
+		var blockers: Array = map.get("nest_cells", [map["nest_cell"]]).duplicate() if mode != "event" else []
+		blockers.append_array(map["chests"].keys())
+		blockers.append(cell)
+		if not _nests_accessible(map, blockers):
+			continue
+		map["chests"][cell] = 1
+		map["terrain"][GridSpec.index(cell)] = TerrainDB.OBSTACLE
+		(map["obstacle_cells"] as Array).append(cell)

@@ -21,6 +21,8 @@ var nest_guard_counts: Dictionary = {}
 var storm_strikes: Array = []
 var battle_round: int = 0
 var reward: Dictionary = {}
+var extra_rewards: Array = []
+var chests: Dictionary = {}
 var fruits: Array = []
 var food_cells: Array = []
 var merchant_cell := Vector2i(-1, -1)
@@ -65,6 +67,8 @@ func set_from_state(state: BattleState) -> void:
 	storm_strikes = state.storm_strikes.duplicate(true)
 	battle_round = state.round
 	reward = state.reward.duplicate(true)
+	extra_rewards = state.extra_rewards.duplicate(true)
+	chests = state.chests.duplicate()
 	fruits = []
 	food_cells = state.food_cells.duplicate()
 	merchant_cell = state.merchant.get("cell", Vector2i(-1, -1)) if state.node_kind == "event" else Vector2i(-1, -1)
@@ -111,6 +115,8 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 				extra_nests.append(other)
 	pending_casts = []
 	battle_round = 0
+	extra_rewards = map.get("extra_rewards", []).duplicate(true)
+	chests = map.get("chests", {}).duplicate()
 	reward = map.get("reward", {"state": "map", "cell": map.get("reward_cell", Vector2i(-1, -1)), "owner_uid": -1}).duplicate(true)
 	fruits = []
 	food_cells = map.get("food_cells", []).duplicate()
@@ -300,10 +306,15 @@ func _draw_terrain(rect: Rect2, value: int) -> void:
 func _draw_objects(font: Font) -> void:
 	for current in [nest] + extra_nests:
 		_draw_nest_object(font, current)
-	if not reward.is_empty():
-		var state_name := String(reward.get("state", ""))
-		if state_name == "map" or state_name == "guarding":
-			_draw_star(reward["cell"])
+	for point in [reward] + extra_rewards:
+		if point.get("state") in ["map", "guarding"]:
+			_draw_star(point["cell"])
+	for cell in chests:
+		var center := cell_center(cell)
+		draw_rect(Rect2(center - Vector2(22, 16), Vector2(44, 32)), Color("a66d32"))
+		draw_rect(Rect2(center - Vector2(22, 16), Vector2(44, 32)), Color("f4cf78"), false, 3)
+		draw_line(center - Vector2(22, 5), center + Vector2(22, -5), Color("f4cf78"), 2)
+		draw_rect(Rect2(center - Vector2(3, 7), Vector2(6, 13)), Color("ffe39a"))
 	for food_cell in food_cells:
 		var center := cell_center(food_cell)
 		draw_rect(Rect2(center - Vector2(12, 12), Vector2(24, 24)), Color("b58c4b"))
@@ -424,6 +435,8 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		draw_string(font, center + Vector2(20, -18), badges_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 0.6, 0.3))
 	if unit.capture_used:
 		draw_string(font, center + Vector2(20, 32), "捕", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.8, 0.9))
+	if unit.reward_carrier:
+		draw_string(font, center + Vector2(18, -18), "★", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("ffe17d"))
 	if unit.fresh_spawn:
 		draw_string(font, center + Vector2(-30, -18), "新", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.95, 0.8, 0.4))
 	if String(reward.get("state", "")) == "carried" and int(reward.get("owner_uid", -1)) == unit.uid:

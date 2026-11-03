@@ -501,11 +501,12 @@ func _update_header() -> void:
 			reward_text = "　奖励因持有者倒下而失去"
 		"destroyed":
 			reward_text = "　奖励已摧毁"
+	reward_text = "奖励待拾取 %d · 奖励已持有 %d" % [state.all_rewards().filter(func(p): return p.get("state") in ["map", "guarding"]).size(), state.all_rewards().filter(func(p): return p.get("state") == "carried" and not bool(p.get("credited", false))).size()]
 	status_label.text = "敌人剩余 %d｜已击败 %d｜已捕获 %d%s" % [
 		state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text,
 	]
 	status_label.visible = false
-	objective_label.text = "战斗目标\n敌人 %d · 击败 %d · 捕获 %d\n%s" % [state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text.strip_edges()]
+	objective_label.text = "战斗目标\n敌人 %d · 击败 %d · 捕获 %d" % [state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size()]
 	if state.has_live_nests():
 		var guards := 0
 		for current in state.all_nests():
@@ -521,6 +522,7 @@ func _update_header() -> void:
 		objective_label.text += "\n" + ("天雷已锁定 %d 格：本轮末落雷，伤害为最大生命50%%，可误伤敌人。" % state.storm_strikes.size() if not state.storm_strikes.is_empty() else "第8轮末开始预告天雷，可移动躲避。")
 	if state.is_free_exploration():
 		objective_label.text += "\n自由探索 · 无限行动 · 禁止恢复"
+	objective_label.text += "\n宝箱 %d · 待拾 %d · 持有 %d" % [state.chests.size(), state.all_rewards().filter(func(p): return p.get("state") in ["map", "guarding"]).size(), state.all_rewards().filter(func(p): return p.get("state") == "carried" and not bool(p.get("credited", false))).size()]
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
 
 
@@ -640,7 +642,7 @@ func _update_unit_card() -> void:
 		statuses.append("额外施法 %d 次" % unit.extra_casts)
 	for buff_id in unit.battle_buffs:
 		statuses.append("本场 Buff：%s" % BattleBuffDB.name_of(String(buff_id)))
-	if String(state.reward.get("state", "")) == "carried" and int(state.reward.get("owner_uid", -1)) == unit.uid:
+	if state.all_rewards().any(func(p): return p.get("state") == "carried" and int(p.get("owner_uid", -1)) == unit.uid and not bool(p.get("credited", false))):
 		statuses.append("持有战场奖励：战斗结束前须存活")
 	if statuses.is_empty():
 		statuses.append("无")
@@ -664,6 +666,8 @@ func _update_unit_card() -> void:
 		lines.append("捕获概率：%d%%（训练家在周围八格可尝试%s）" % [
 			mini(100, CaptureSystem.chance_percent(unit, low_hp_rules, state.debug_capture_percent) + (20 if state.capture_aid else 0)), "，目标需不高于半血" if low_hp_rules else "",
 		])
+	if unit.reward_carrier:
+		lines.append("携带奖励点：击杀后原格掉落；落入深水、岩浆或深坑时不掉落。")
 	if unit.fresh_spawn:
 		lines.append("本回合新生成：不能移动或施法")
 	if unit.summon_owner_uid >= 0:
@@ -1265,11 +1269,11 @@ func _show_terrain(cell: Vector2i) -> void:
 	if terrain_label == null:
 		return
 	var value := state.terrain_at(cell)
-	var terrain_name := "巢穴（不可站立）" if state.is_nest_cell(cell) else TerrainDB.name_of(value)
-	var description := "独立巢穴格，不叠加其他地形；地面不能通过，飞行可越过但不能停留。" if state.is_nest_cell(cell) else String(TerrainDB.DESCRIPTIONS.get(value, ""))
+	var terrain_name := "宝箱（耐久1，不可站立）" if state.is_chest_cell(cell) else "巢穴（不可站立）" if state.is_nest_cell(cell) else TerrainDB.name_of(value)
+	var description := "宝箱阻挡移动和射线，飞行可越过但不能停留；命中一次攻击后留下奖励点。" if state.is_chest_cell(cell) else "独立巢穴格，不叠加其他地形；地面不能通过，飞行可越过但不能停留。" if state.is_nest_cell(cell) else String(TerrainDB.DESCRIPTIONS.get(value, ""))
 	var lines: Array = ["地块 (%d,%d)：%s" % [cell.x, cell.y, terrain_name], description]
 	var selected := state.unit_by_uid(selected_uid)
-	var move_cost := -1 if state.is_nest_cell(cell) else state.move_cost_for(selected, cell) if selected != null else TerrainDB.move_cost(value, "")
+	var move_cost := -1 if state.is_nest_cell(cell) or state.is_chest_cell(cell) else state.move_cost_for(selected, cell) if selected != null else TerrainDB.move_cost(value, "")
 	lines.append("移动消耗：%s" % (str(move_cost) if move_cost >= 0 else "不可进入"))
 	if state.is_interaction_cell(cell):
 		lines.append(("传送门" if cell == state.boss_portal_cell else "商人") + "：此格不能站立；训练师相邻后，点击设施或选择训练师行动栏中的互动按钮。")
@@ -1283,7 +1287,7 @@ func _show_terrain(cell: Vector2i) -> void:
 	if value == TerrainDB.ICE:
 		lines.append("冰面：每次整轮末最多随机冻结一格相邻浅水或深水；新冰下一轮才会扩张。")
 		lines.append("单位本轮在冰面留下位移方向时，蓝色箭头指向回合末滑行格；红色表示致死落点，灰色止步标记表示被挡住。")
-	if state.obstacle_durability.has(cell):
+	if state.obstacle_durability.has(cell) and not state.is_chest_cell(cell):
 		var max_hp := Balance.TREE_DURABILITY if value == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
 		lines.append("障碍耐久：%d/%d；树木和岩障会截断射线。" % [int(state.obstacle_durability[cell]), max_hp])
 	for strike in state.storm_strikes:
@@ -1297,6 +1301,10 @@ func _show_terrain(cell: Vector2i) -> void:
 		lines.append("巢穴耐久：%d/%d；每两轮在上下左右合法空格生成。" % [int(state.nest_at_cell(cell).get("hp", 0)), Balance.NEST_DURABILITY])
 		lines.append("巢穴不可站立或叠加其他地形；敌人可用技能机会守护邻接巢穴。每名守军提供一次拦截，攻击伤害由当前守军均分；用尽后攻击巢穴扣1耐久。")
 		lines.append("当前守护：%d 次；积压 %d 只。" % [state.nest_guard_charges(cell), int(state.nest_at_cell(cell).get("pending_waves", 0))])
+	if state.is_chest_cell(cell):
+		lines.append("命中一次攻击后破坏，原格生成奖励点；碰撞不损伤宝箱。")
+	if state.all_rewards().any(func(p): return p.get("cell") == cell and p.get("state") in ["map", "guarding"]):
+		lines.append("奖励点不受攻击破坏；我方守点经过敌方行动后取得，持有者存活离场可获得一次三选一。")
 	if cell == state.reward.get("cell", Vector2i(-1, -1)):
 		match String(state.reward.get("state", "")):
 			"map", "guarding":

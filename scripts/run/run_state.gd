@@ -726,7 +726,9 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		pending_captures.clear()
 		pending_reward_choices = 0
 		pending_bonus_choices = 0
-	var bonus_earned := not failure and battle.reward_bonus_earned() and not bool(battle.reward.get("credited", false))
+	var bonus_points := battle.earned_reward_points(true) if not failure else []
+	var bonus_count := bonus_points.size()
+	var bonus_earned := bonus_count > 0
 	if not failure and (not region_mode or battle.node_kind != "event"):
 		var gains: Dictionary = {}
 		var original: Dictionary = {}
@@ -754,7 +756,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		for capture in battle.captured:
 			shared_bonus += Balance.xp_for_event(capture)
 		if bonus_earned:
-			shared_bonus += 1
+			shared_bonus += bonus_count
 		for current in battle.all_nests():
 			if bool(current.get("destroyed_by_player", false)):
 				shared_bonus += 3
@@ -778,11 +780,11 @@ func settle_battle(battle: BattleState) -> Dictionary:
 			kills += 1
 	stats["kills"] = int(stats["kills"]) + kills
 	if bonus_earned:
-		pending_bonus_choices += 1
-		battle.reward["credited"] = true
+		pending_bonus_choices += bonus_count
+		for point in bonus_points:
+			point["credited"] = true
 	outcome["bonus_choice_earned"] = bonus_earned
-	if not failure and (not region_mode or bool(battle.reward.get("node_reward_available", false))):
-		pending_reward_choices += 1
+	outcome["bonus_choices_earned"] = bonus_count
 	pending_reward_choices += pending_bonus_choices
 	pending_bonus_choices = 0
 	outcome["pending_reward_choices"] = pending_reward_choices

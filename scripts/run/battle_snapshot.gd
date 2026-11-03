@@ -85,6 +85,9 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		if int(snapshot.get("version", 1)) < 3:
 			RunState.rebase_upgrade_values(unit.upgrades)
 		state.units.append(unit)
+	if not snapshot["fields"].has("extra_rewards") and state.reward.get("state") in ["map", "guarding"]:
+		state.reward["state"] = "absent"
+		state.reward["cell"] = Vector2i(-1, -1)
 	# 首领节点只保留主巢穴；旧档沿用主巢穴耐久与摧毁状态。
 	if state.node_kind == "boss" or state.boss_uid >= 0:
 		state.extra_nests.clear()

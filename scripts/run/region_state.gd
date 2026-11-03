@@ -192,7 +192,7 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 			continue
 		if unit.is_alive():
 			var fresh := CombatUnit.make(unit.species_id, "enemy", unit.uid)
-			for field in ["cell", "max_hp", "move_points", "skills", "enemy_level", "combat_level", "is_boss", "upgrades", "reg_index", "spawned_from_nest", "spawn_round"]:
+			for field in ["cell", "max_hp", "move_points", "skills", "enemy_level", "combat_level", "is_boss", "upgrades", "reg_index", "spawned_from_nest", "spawn_round", "reward_carrier"]:
 				fresh.set(field, unit.get(field))
 			var original: Vector2i = battle.enemy_origins.get(unit.uid, Vector2i(-1, -1))
 			if not GridSpec.is_inside(original) and unit.uid >= 100 and unit.uid - 100 < (cfg.get("enemies", []) as Array).size():

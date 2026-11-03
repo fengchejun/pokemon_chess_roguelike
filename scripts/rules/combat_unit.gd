@@ -161,6 +161,7 @@ var fire_amp_stacks: int = 0:
 			feedback_changed.emit("buff" if active else "clear", "火焰增幅" + ("解除" if not active else ""), int(value), cell)
 
 # 其他
+var reward_carrier: bool = false
 var fresh_spawn: bool = false       # 本回合新生成：在巢穴四邻格待机，不能移动或施法
 var summon_owner_uid: int = -1
 var summon_power_bonus: int = 0
@@ -260,6 +261,7 @@ func dup() -> CombatUnit:
 	copy.surf_until_round = surf_until_round
 	copy.fire_amp_stacks = fire_amp_stacks
 	copy.fresh_spawn = fresh_spawn
+	copy.reward_carrier = reward_carrier
 	copy.summon_owner_uid = summon_owner_uid
 	copy.summon_power_bonus = summon_power_bonus
 	return copy

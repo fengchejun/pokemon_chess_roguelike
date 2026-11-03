@@ -100,6 +100,8 @@ func earn_essence(key: String, amount: int, at: Vector2i = Vector2i(-1, -1)) -> 
 		_relay_feedback("essence", "原质 +%d" % amount, amount, cell, -1)
 var inspiration_triggered: bool = false
 var reward: Dictionary = {}
+var extra_rewards: Array = []
+var chests: Dictionary = {}
 var fruits: Array = []
 var units: Array = []
 var deploy_cells: Array = []
@@ -161,6 +163,7 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 		_configure_enemy(enemy, enemy_index, enemy_index == int(cfg.get("boss_index", -1)))
 		if enemy.is_boss:
 			boss_uid = enemy.uid
+		enemy.reward_carrier = enemy.uid == int(map_data.get("carrier_uid", -1)) and not enemy.is_boss
 		enemy.cell = pair[1]
 		enemy_origins[enemy.uid] = enemy.cell
 		enemy.reg_index = units.size()
@@ -281,12 +284,13 @@ func load_map(map_data: Dictionary) -> void:
 			other["cell"] = cell
 			extra_nests.append(other)
 	normalize_nest_terrain()
-	reward = {
-		"state": "map",  # map / guarding / carried / lost / destroyed
-		"cell": map_data["reward_cell"],
-		"owner_uid": -1,
-		"guard_uid": -1,
-	}
+	reward = map_data.get("reward", {"state": "absent", "cell": Vector2i(-1, -1), "owner_uid": -1, "guard_uid": -1}).duplicate(true)
+	extra_rewards = map_data.get("extra_rewards", []).duplicate(true)
+	chests = map_data.get("chests", {}).duplicate()
+	for cell in chests:
+		terrain[GridSpec.index(cell)] = TerrainDB.OBSTACLE
+		obstacle_durability[cell] = 1
+		natural_essence_cells.erase(cell)
 	fruits = []
 
 
@@ -342,7 +346,7 @@ func terrain_at(cell: Vector2i) -> int:
 
 
 func set_terrain(cell: Vector2i, value: int) -> void:
-	if is_nest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell):
 		return
 	var was_vines := terrain_at(cell) == TerrainDB.VINES
 	terrain[GridSpec.index(cell)] = value
@@ -370,7 +374,7 @@ func set_terrain(cell: Vector2i, value: int) -> void:
 
 
 func place_temp_vines(cell: Vector2i) -> void:
-	if is_nest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell):
 		return
 	if terrain_at(cell) != TerrainDB.VINES:
 		vine_origin[cell] = terrain_at(cell)
@@ -379,7 +383,7 @@ func place_temp_vines(cell: Vector2i) -> void:
 
 
 func ignite(cell: Vector2i, source_side: String = "") -> void:
-	if is_nest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell):
 		return
 	if not GridSpec.is_inside(cell):
 		return
@@ -391,7 +395,7 @@ func ignite(cell: Vector2i, source_side: String = "") -> void:
 
 
 func add_steam(cell: Vector2i) -> void:
-	if is_nest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell):
 		return
 	if not GridSpec.is_inside(cell):
 		return
@@ -441,65 +445,87 @@ func trainer() -> CombatUnit:
 	return null
 
 
+func all_rewards() -> Array:
+	return [reward] + extra_rewards
+
+
 func reward_owner() -> CombatUnit:
 	return unit_by_uid(int(reward.get("owner_uid", -1)))
 
 
-func damage_reward_at(cell: Vector2i) -> void:
-	if not ["map", "guarding"].has(String(reward.get("state", ""))) or reward.get("cell", Vector2i(-1, -1)) != cell:
+func add_reward_point(cell: Vector2i, source_id: String) -> void:
+	if all_rewards().any(func(point): return point.get("id", "") == source_id):
 		return
-	var holder := unit_at(cell)
-	if holder != null and holder.side == "player":
-		return
-	reward["state"] = "destroyed"
-	log_event("奖励格受到伤害，奖励被摧毁。")
+	var point := {"id": source_id, "state": "map", "cell": cell, "owner_uid": -1, "guard_uid": -1, "credited": false}
+	if reward.get("state", "absent") == "absent":
+		reward.merge(point, true)
+	else:
+		extra_rewards.append(point)
+	_relay_feedback("buff", "奖励点出现", 0, cell, -1)
+	log_event("(%d,%d) 出现奖励点，拾取并保住持有者后可兑换一次三选一。" % [cell.x, cell.y])
+
+
+func damage_reward_at(_cell: Vector2i) -> void:
+	# 奖励点不再被攻击摧毁；兼容既有技能调用入口。
+	pass
 
 
 func _begin_reward_guard() -> void:
-	if String(reward.get("state", "")) != "map":
-		return
-	var unit := unit_at(reward["cell"])
-	if unit == null or unit.side != "player":
-		return
-	reward["state"] = "guarding"
-	reward["guard_uid"] = unit.uid
-	log_event("%s 开始守住奖励点；敌方行动结束时仍存活并站在此处即可取得战后奖励。" % unit.display_name)
+	for point in all_rewards():
+		if point.get("state") != "map":
+			continue
+		var unit := unit_at(point["cell"])
+		if unit != null and unit.side == "player":
+			point["state"] = "guarding"
+			point["guard_uid"] = unit.uid
+			log_event("%s 开始守住奖励点。" % unit.display_name)
 
 
 func _finish_reward_guard() -> void:
-	if String(reward.get("state", "")) != "guarding":
-		return
-	var unit := unit_by_uid(int(reward.get("guard_uid", -1)))
-	if unit != null and unit.is_alive() and unit.side == "player" and unit.cell == reward["cell"]:
-		reward["state"] = "carried"
-		reward["owner_uid"] = unit.uid
-		emit_feedback(unit, "buff", "获得战场奖励")
-		log_event("%s 取得战场奖励；若存活到战斗结束，获得一次额外的战后三选一。" % unit.display_name)
-	else:
-		reward["state"] = "map"
-		reward["guard_uid"] = -1
-		log_event("奖励点未被守住，可在下回合重新尝试。")
+	for point in all_rewards():
+		if point.get("state") != "guarding":
+			continue
+		var unit := unit_by_uid(int(point.get("guard_uid", -1)))
+		if unit != null and unit.is_alive() and unit.side == "player" and unit.cell == point["cell"]:
+			point["state"] = "carried"
+			point["owner_uid"] = unit.uid
+			emit_feedback(unit, "buff", "获得战场奖励")
+			log_event("%s 取得奖励点，存活离场可额外三选一。" % unit.display_name)
+		else:
+			point["state"] = "map"
+			point["guard_uid"] = -1
 
 
 func _refresh_reward_guard() -> void:
-	if String(reward.get("state", "")) != "guarding":
-		return
-	var unit := unit_by_uid(int(reward.get("guard_uid", -1)))
-	if unit == null or not unit.is_alive() or unit.cell != reward["cell"] or unit.side != "player":
-		reward["state"] = "map"
-		reward["guard_uid"] = -1
-		log_event("守点者离开奖励格，本次守点中断。")
+	for point in all_rewards():
+		if point.get("state") != "guarding":
+			continue
+		var unit := unit_by_uid(int(point.get("guard_uid", -1)))
+		if unit == null or not unit.is_alive() or unit.side != "player" or unit.cell != point["cell"]:
+			point["state"] = "map"
+			point["guard_uid"] = -1
+
+
+func earned_reward_points(uncredited_only: bool = false) -> Array:
+	if not ended or end_reason in ["forced_retreat", "boss_timeout"]:
+		return []
+	return all_rewards().filter(func(point):
+		var holder := unit_by_uid(int(point.get("owner_uid", -1)))
+		return point.get("state") == "carried" and holder != null and holder.is_alive() and holder.side == "player" and (not uncredited_only or not bool(point.get("credited", false))))
 
 
 func reward_bonus_earned() -> bool:
-	var unit := reward_owner()
-	return ended and end_reason != "forced_retreat" and String(reward.get("state", "")) == "carried" and unit != null and unit.is_alive() and unit.side == "player"
+	return not earned_reward_points().is_empty()
+
+
+func is_chest_cell(cell: Vector2i) -> bool:
+	return chests.has(cell)
 
 
 func is_blocking_ray(cell: Vector2i) -> bool:
 	if TerrainDB.blocks_rays(terrain_at(cell)):
 		return true
-	if is_nest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell):
 		return true
 	return unit_at(cell) != null
 
@@ -662,12 +688,16 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 		text = "落入熔岩"
 	emit_feedback(unit, "death", text)
 	cancel_channel(unit, "施法者倒下")
-	if int(reward.get("guard_uid", -1)) == unit.uid and String(reward.get("state", "")) == "guarding":
-		reward["state"] = "destroyed"
-		log_event("守点单位倒下，战场奖励失去。")
-	if int(reward.get("owner_uid", -1)) == unit.uid and String(reward.get("state", "")) == "carried":
-		reward["state"] = "lost"
-		log_event("奖励持有者倒下，战后额外奖励失去。")
+	for point in all_rewards():
+		if point.get("state") == "guarding" and int(point.get("guard_uid", -1)) == unit.uid:
+			point["state"] = "map"
+			point["guard_uid"] = -1
+		if point.get("state") == "carried" and int(point.get("owner_uid", -1)) == unit.uid:
+			point["state"] = "lost"
+	if unit.side == "enemy" and unit.reward_carrier:
+		unit.reward_carrier = false
+		if not TerrainDB.is_lethal(terrain_kind):
+			add_reward_point(unit.cell, "enemy:%d" % unit.uid)
 	if unit.is_trainer:
 		unit.hp = 0
 		log_event("训练家落入致死地形，本局立即失败。")
@@ -714,6 +744,7 @@ func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
 		return
 	unit.guard_nest = Vector2i(-1, -1)
 	unit.guard_charge = false
+	unit.reward_carrier = false
 	enemy_outcomes[unit.uid] = "captured"
 	cancel_channel(unit, "阵营改变")
 	emit_feedback(unit, "action", "捕获成功")
@@ -968,6 +999,17 @@ func claim_obstacle_essence(cell: Vector2i, source_side: String) -> void:
 
 
 func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "") -> bool:
+	if amount > 0 and is_chest_cell(cell):
+		chests.erase(cell)
+		obstacle_origin.erase(cell)
+		obstacle_expire_round.erase(cell)
+		obstacle_reward_origins.erase(cell)
+		natural_essence_cells.erase(cell)
+		obstacle_durability.erase(cell)
+		set_terrain(cell, TerrainDB.PLAIN)
+		add_reward_point(cell, "chest:%d:%d" % [cell.x, cell.y])
+		log_event("宝箱被打开，原格生成奖励点。")
+		return true
 	if not obstacle_durability.has(cell):
 		return false
 	var left := int(obstacle_durability[cell]) - amount
@@ -1002,6 +1044,7 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 		if source_side == "player":
 			earn_essence("nest" if target_nest == nest else "nest:%d:%d" % [target_nest["cell"].x, target_nest["cell"].y], 8, target_nest["cell"])
 		target_nest["alive"] = false
+		add_reward_point(target_nest["cell"], "nest:%d:%d" % [target_nest["cell"].x, target_nest["cell"].y])
 		target_nest["destroyed_by_player"] = source_side == "player"
 		set_terrain(target_nest["cell"], TerrainDB.PLAIN)
 		log_event("巢穴被摧毁，永久停止生成。")
@@ -1068,7 +1111,7 @@ func relocate_nest_occupants() -> void:
 
 
 func place_temp_obstacle(cell: Vector2i, origin: int, expire_round: int) -> void:
-	if is_nest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell):
 		return
 	natural_essence_cells.erase(cell)
 	obstacle_reward_origins.erase(cell)
@@ -1776,6 +1819,26 @@ func _player_unit_at(cell: Vector2i) -> CombatUnit:
 	return null
 
 
+func reward_safe_portal_cell(preferred: Vector2i) -> Vector2i:
+	if not all_rewards().any(func(point): return point.get("cell") == preferred and point.get("state") in ["map", "guarding"]):
+		return preferred
+	var cells := GridSpec.all_cells()
+	cells.sort_custom(func(a, b):
+		var da := GridSpec.manhattan(a, preferred)
+		var db := GridSpec.manhattan(b, preferred)
+		return da < db if da != db else a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
+	for cell in cells:
+		if is_nest_cell(cell) or is_interaction_cell(cell) or not TerrainDB.can_stand(terrain_at(cell), "rock"):
+			continue
+		if all_rewards().any(func(point): return point.get("cell") == cell and point.get("state") in ["map", "guarding"]):
+			continue
+		var occupant := unit_at(cell)
+		if occupant != null and occupant.side == "player":
+			continue
+		return cell
+	return preferred
+
+
 func check_battle_end() -> bool:
 	try_release_boss()
 	if not ended and is_free_exploration():
@@ -1794,7 +1857,7 @@ func check_battle_end() -> bool:
 				end_battle("victory")
 				return true
 			if boss_portal_cell == Vector2i(-1, -1):
-				boss_portal_cell = boss.cell
+				boss_portal_cell = reward_safe_portal_cell(boss.cell)
 				units = units.filter(func(unit: CombatUnit) -> bool: return unit.side != "enemy" or not unit.is_alive())
 				stop_nests()
 				pending_casts = pending_casts.filter(func(cast: Dictionary) -> bool: return String(cast.get("side", "")) != "enemy")
@@ -1953,11 +2016,13 @@ func _signature() -> String:
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
 		parts.append("control:%d:%d:%d:%s" % [unit.uid, unit.shock_ticks, unit.paralyzed_ticks, str(unit.frozen)])
 		parts.append("guard:%d:%s:%s:%s:%d" % [unit.uid, str(unit.guard_nest), str(unit.guard_charge), str(unit.spawned_from_nest), unit.spawn_round])
+		parts.append("carrier:%d:%s" % [unit.uid, str(unit.reward_carrier)])
 		parts.append("sheltered:%d:%s" % [unit.uid, str(unit.sheltered)])
 		parts.append("parasite_layers:%d:%d" % [unit.uid, unit.parasite_ticks])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
 		parts.append("summon_power:%d:%d" % [unit.uid, unit.summon_power_bonus])
 		parts.append("vine_source:%d:%s:%d" % [unit.uid, str(unit.vine_sources), unit.vine_ticks])
+	parts.append("treasure:%s:%s" % [str(all_rewards()), str(chests)])
 	parts.append("storm:%d:%s" % [storm_last_round, str(storm_strikes)])
 	parts.append("boss_phase:%s" % str(boss_retreat_used))
 	parts.append("pending:%s" % str(pending_casts))
@@ -2013,6 +2078,8 @@ func clone() -> BattleState:
 	copy.boss_portal_cell = boss_portal_cell
 	copy.inspiration_triggered = inspiration_triggered
 	copy.reward = reward.duplicate(true)
+	copy.extra_rewards = extra_rewards.duplicate(true)
+	copy.chests = chests.duplicate()
 	copy.fruits = fruits.duplicate()
 	copy.deploy_cells = deploy_cells.duplicate()
 	copy.next_enemy_uid = next_enemy_uid
@@ -2087,7 +2154,7 @@ func stop_nests() -> void:
 		current["pending_waves"] = 0
 
 func food_cell_valid(cell: Vector2i) -> bool:
-	return GridSpec.is_inside(cell) and not all_nests().any(func(current): return current["cell"] == cell) and not deploy_area.has(cell) and not is_interaction_cell(cell) and (cell != reward.get("cell") or reward.get("state") == "destroyed") and terrain_at(cell) in [TerrainDB.PLAIN, TerrainDB.GRASS, TerrainDB.WATER, TerrainDB.ICE]
+	return GridSpec.is_inside(cell) and not all_nests().any(func(current): return current["cell"] == cell) and not deploy_area.has(cell) and not is_interaction_cell(cell) and not all_rewards().any(func(point): return point.get("cell") == cell and point.get("state") in ["map", "guarding"]) and terrain_at(cell) in [TerrainDB.PLAIN, TerrainDB.GRASS, TerrainDB.WATER, TerrainDB.ICE]
 
 func seed_initial_food() -> void:
 	for cell in GridSpec.all_cells():
@@ -2106,7 +2173,7 @@ func repair_food() -> void:
 			var db := GridSpec.manhattan(b, cell)
 			return da < db if da != db else _cell_order(a) < _cell_order(b))
 		for target in candidates:
-			if food_cell_valid(target) and unit_at(target) == null and not food_cells.has(target) and target != reward.get("cell"):
+			if food_cell_valid(target) and unit_at(target) == null and not food_cells.has(target):
 				food_cells.append(target)
 				break
 		log_event("已修复与巢穴、设施或部署区重叠的粮食。")

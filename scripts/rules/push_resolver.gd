@@ -86,7 +86,7 @@ static func _summarize_collision(state, summary: Dictionary, target: CombatUnit,
 ## 推击直接命中岩障：先损伤，再搬运；不用于其他击退技能。
 static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i) -> Dictionary:
 	var result := {"from": cell, "to": cell, "damage": 0, "destroyed": false, "moved": false, "filled": false, "blocked": false, "hits": [], "terrain_changes": []}
-	if state.terrain_at(cell) != TerrainDB.OBSTACLE or not state.obstacle_durability.has(cell) or GridSpec.manhattan(caster.cell, cell) != 1:
+	if state.is_chest_cell(cell) or state.terrain_at(cell) != TerrainDB.OBSTACLE or not state.obstacle_durability.has(cell) or GridSpec.manhattan(caster.cell, cell) != 1:
 		return result
 	result["damage"] = 1
 	result["destroyed"] = state.damage_obstacle(cell, 1, caster.side)

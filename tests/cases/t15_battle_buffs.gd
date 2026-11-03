@@ -43,7 +43,7 @@ func _t_reward_credit(t: TestContext) -> void:
 	guarding.cell = guard_death.reward["cell"]
 	guard_death.begin_enemy_phase()
 	guard_death.damage_unit(guard_death.unit_by_uid(100), guarding, 99, {"no_element": true, "cause": "测试"})
-	t.eq(guard_death.reward["state"], "destroyed", "守点者死亡则奖励被毁")
+	t.eq(guard_death.reward["state"], "map", "守点者死亡不摧毁地面奖励点")
 	var enemy_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 4)]])
 	enemy_state.reward["cell"] = Vector2i(6, 4)
 	enemy_state.begin_enemy_phase()
@@ -52,7 +52,7 @@ func _t_reward_credit(t: TestContext) -> void:
 	damage_state.reward["cell"] = Vector2i(4, 3)
 	damage_state.unit_by_uid(1).cell = Vector2i(0, 3)
 	SkillResolver.resolve_channel(damage_state, damage_state.unit_by_uid(1), "fire_burst", [Vector2i(4, 3)])
-	t.eq(damage_state.reward["state"], "destroyed", "空奖励格被火球伤害摧毁")
+	t.eq(damage_state.reward["state"], "map", "空奖励格不被火球摧毁")
 	var fallen := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
 	var carrier := fallen.unit_by_uid(1)
 	carrier.cell = fallen.reward["cell"]

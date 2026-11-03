@@ -65,6 +65,9 @@ func _ready() -> void:
 			map["nest_hp"] = int(saved.nest.get("hp", 0))
 			map["reward_cell"] = saved.reward.get("cell", Vector2i(-1, -1))
 			map["reward"] = saved.reward.duplicate(true)
+			map["extra_rewards"] = saved.extra_rewards.duplicate(true)
+			map["chests"] = saved.chests.duplicate()
+			map["treasure_generated"] = true
 			map["food_cells"] = saved.food_cells.duplicate()
 			map["obstacle_cells"] = saved.obstacle_durability.keys()
 		elif region.node_mode(region.active_node) == "event":
@@ -75,6 +78,7 @@ func _ready() -> void:
 	if run.preview_used_reward_item.begins_with("map:"):
 		card_result = MapGenerator.generate_card_preview(run.seed, run.battle_index, run.preview_used_reward_item.trim_prefix("map:"), map)
 		map = (card_result["map"] as Dictionary).duplicate(true)
+	_prepare_treasure()
 	base_map = map.duplicate(true)
 	for modification in run.preview_modifications:
 		if typeof(modification) != TYPE_DICTIONARY:
@@ -256,6 +260,7 @@ func _on_use_reward_item() -> void:
 	if reward_id.begins_with("map:"):
 		card_result = MapGenerator.generate_card_preview(run.seed, run.battle_index, reward_id.trim_prefix("map:"), map)
 		map = (card_result["map"] as Dictionary).duplicate(true)
+		_prepare_treasure()
 		base_map = map.duplicate(true)
 	card_selector.disabled = true
 	card_selector.clear()
@@ -341,6 +346,8 @@ func _on_cell_hovered(cell: Vector2i) -> void:
 		for id in unit.skills:
 			skills.append(SkillDB.name_of(String(id)))
 		hint_label.text = "%s · Lv.%d · HP %d/%d · %s" % [unit.display_name, unit.combat_level, unit.hp, unit.max_hp, "、".join(skills)]
+		if unit.reward_carrier:
+			hint_label.text += " · 携带奖励点"
 	else:
 		hint_label.text = _mod_hover_text(cell)
 	hint_label.add_theme_color_override("font_color", UIKit.TEXT)
@@ -351,6 +358,8 @@ func _mod_hover_text(cell: Vector2i) -> String:
 	var run: RunState = app.run
 	var rule: Dictionary = MOD_RULES.get(mod_kind, {})
 	var tool_name := String(rule.get("name", mod_kind))
+	if (map.get("chests", {}) as Dictionary).has(cell):
+		return "宝箱：不可站立，命中一次攻击后破坏，在原格留下不可被攻击摧毁的奖励点。"
 	if (map.get("nest_cells", [map.get("nest_cell", Vector2i(-1, -1))]) as Array).has(cell):
 		if run.region_mode and run.get_region().node_mode(run.get_region().active_node) == "event":
 			return "该格为后续占领事件保留，暂不能改造。"
@@ -384,8 +393,18 @@ func _on_reset() -> void:
 	_refresh()
 
 
+func _prepare_treasure() -> void:
+	if persistent_node:
+		return
+	var run: RunState = app.run
+	var region = run.get_region() if run.region_mode else null
+	var mode: String = region.node_mode(region.active_node) if region != null else "battle"
+	MapGenerator.populate_treasure(map, run.place_region_enemies(run.battle_config(), map), run.seed, run.battle_index, mode, region.active_node if region != null else "")
+
+
 func _refresh() -> void:
 	var run: RunState = app.run
+	_prepare_treasure()
 	deploy_enemies = _preview_units(run)
 	deploy_players = run.build_deploy_units(deploy_uids)
 	var placement := Deployment.prepare(map, deploy_enemies, deploy_players, run.preview_deploy_positions)
@@ -412,7 +431,7 @@ func _refresh() -> void:
 			sample.seed_initial_food()
 			map["food_cells"] = sample.food_cells.duplicate()
 			if mode == "event":
-				map["reward"] = {"state": "destroyed", "cell": map.get("reward_cell", Vector2i(-1, -1))}
+				# 收集区同样可以生成宝箱和奖励点。
 				if region.nodes[id].has("merchant") and not GridSpec.is_inside(map.get("merchant_cell", Vector2i(-1, -1))):
 					map["merchant_cell"] = Merchant.choose_battle_cell(sample, deploy_positions)
 		if mode == "event":
@@ -454,6 +473,7 @@ func _preview_units(run: RunState) -> Array:
 			unit.skills = BattleDB.enemy_skills_for_level(unit.species_id, unit.enemy_level)
 			unit.max_hp = MonsterProgression.max_hp(unit.species_id, unit.enemy_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0)
 			unit.hp = unit.max_hp
+		unit.reward_carrier = unit.uid == int(map.get("carrier_uid", -1)) and not unit.is_boss
 		unit.cell = pair[1]
 		units.append(unit)
 		index += 1

@@ -31,6 +31,7 @@ static func make_map(terrain: Array, nest_cell: Vector2i = Vector2i(7, 7), rewar
 		"nest_cell": nest_cell,
 		"nest_exits": [nest_cell + Vector2i(-1, 0)],
 		"reward_cell": reward_cell,
+		"reward": {"state": "map", "cell": reward_cell, "owner_uid": -1, "guard_uid": -1},
 		"fruit_cells": fruits,
 		"deploy_cells": Balance.DEPLOY_CELLS.duplicate(),
 	}

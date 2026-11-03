@@ -104,6 +104,8 @@ func _test_monster_growth_in_battle(t: TestContext) -> void:
 func _test_settlement_resume(t: TestContext) -> void:
 	var run_state := RunState.new_run(20261018)
 	var battle := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
+	battle.reward["state"] = "carried"
+	battle.reward["owner_uid"] = 1
 	run_state.mark_deployed([1])
 	battle.kill_unit(battle.unit_by_uid(100), "测试击败", "player")
 	battle.check_battle_end()

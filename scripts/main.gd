@@ -360,7 +360,7 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 			state.seed_initial_food()
 		if state.node_kind == "event":
 			state.stop_nests()
-			state.reward["state"] = "destroyed"
+			# 收集区允许宝箱掉落的奖励点。
 		run.region_data = region.to_dict()
 	if run.region_mode:
 		var current = run.get_region()
@@ -407,7 +407,7 @@ func finish_battle(battle: BattleState) -> void:
 	run.sync_from_battle(battle)
 	if run.region_mode:
 		var region = run.get_region()
-		battle.reward["node_reward_available"] = battle.end_reason == "victory" and not bool(region.nodes[region.active_node].get("reward_claimed", false))
+		battle.reward["node_reward_available"] = false # 奖励只来自实际拾取的奖励点。
 	var outcome := run.settle_battle(battle)
 	if run.region_mode:
 		if battle.node_kind != "event" and not run.run_failed:

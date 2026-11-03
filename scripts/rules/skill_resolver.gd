@@ -45,7 +45,7 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 					continue
 				entries.append({"type": "dir", "dir": dir, "cell": unit.cell + dir})
 		"self":
-			if skill_id != "lightning" or not state.alive_units("enemy" if unit.side == "player" else "player").is_empty() or (unit.side == "player" and state.has_live_nests()):
+			if skill_id != "lightning" or not state.alive_units("enemy" if unit.side == "player" else "player").is_empty() or (unit.side == "player" and (state.has_live_nests() or not state.chests.is_empty())):
 				entries.append({"type": "cell", "cell": unit.cell})
 	return entries
 
@@ -291,6 +291,10 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 			for current in state.all_nests():
 				if caster.side == "player" and bool(current.get("alive", false)) and not state.nest_covered(current["cell"]) and not cells.has(current["cell"]):
 					cells.append(current["cell"])
+			if caster.side == "player":
+				for chest_cell in state.chests:
+					if not cells.has(chest_cell):
+						cells.append(chest_cell)
 		elif skill_id == "tsunami":
 			cells = tsunami_cells(caster.cell, target_entry["dir"])
 		elif skill_id == "earth_shake":
@@ -328,7 +332,7 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		caster.moved = true
 		return summary
 	if String(def.get("kind", "")) == "unit" and String(target_entry.get("type", "")) == "cell" and state.obstacle_durability.has(target_entry["cell"]):
-		if skill_id in ["rock_push", "push"] and state.terrain_at(target_entry["cell"]) == TerrainDB.OBSTACLE:
+		if skill_id in ["rock_push", "push"] and not state.is_chest_cell(target_entry["cell"]) and state.terrain_at(target_entry["cell"]) == TerrainDB.OBSTACLE:
 			var pushed := PushResolver.push_obstacle(state, caster, target_entry["cell"])
 			summary["obstacle_push"] = pushed
 			summary["obstacles_damaged"].append({"cell": target_entry["cell"], "damage": pushed["damage"], "destroyed": pushed["destroyed"]})
@@ -1061,7 +1065,7 @@ static func _apply_rock_create(state: BattleState, caster: CombatUnit, entry: Di
 		if state.is_nest_cell(cell):
 			_hit_nest(state, caster, cell, summary, SkillDB.damage_of("rock_create"))
 			continue
-		if (String(state.reward.get("state", "")) == "map" and cell == state.reward["cell"]) or state.fruits.has(cell):
+		if state.all_rewards().any(func(point): return point.get("cell") == cell and point.get("state") in ["map", "guarding"]) or state.fruits.has(cell):
 			continue
 		var terrain := state.terrain_at(cell)
 		if terrain not in [TerrainDB.PLAIN, TerrainDB.GRASS, TerrainDB.WATER, TerrainDB.ICE]:
