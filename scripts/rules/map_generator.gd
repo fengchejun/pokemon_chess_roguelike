@@ -360,15 +360,15 @@ static func apply_modification(map: Dictionary, cell: Vector2i, kind: String) ->
 	var value := int(terrain[GridSpec.index(cell)])
 	match kind:
 		"water":
-			if value != TerrainDB.PLAIN:
+			if value not in [TerrainDB.PLAIN, TerrainDB.ICE]:
 				return false
 			terrain[GridSpec.index(cell)] = TerrainDB.WATER
 		"grass":
-			if value != TerrainDB.PLAIN:
+			if value not in [TerrainDB.PLAIN, TerrainDB.ICE]:
 				return false
 			terrain[GridSpec.index(cell)] = TerrainDB.GRASS
 		"rock":
-			if value != TerrainDB.PLAIN:
+			if value not in [TerrainDB.PLAIN, TerrainDB.ICE]:
 				return false
 			terrain[GridSpec.index(cell)] = TerrainDB.OBSTACLE
 			(map["obstacle_cells"] as Array).append(cell)

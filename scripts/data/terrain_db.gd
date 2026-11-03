@@ -104,3 +104,7 @@ static func is_soft_ground(terrain: int) -> bool:
 
 static func is_water_body(terrain: int) -> bool:
 	return terrain == WATER or terrain == DEEP
+
+
+static func can_convert_to_water(terrain: int) -> bool:
+	return terrain in [PLAIN, GRASS, VINES, FRAGILE, ICE]

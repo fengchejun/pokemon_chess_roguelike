@@ -160,7 +160,7 @@ func _ready() -> void:
 		button.button_pressed = id == mod_kind
 		button.disabled = run.mod_points() <= 0
 		button.tooltip_text = "%s：%s → %s" % [
-			rule["name"], TerrainDB.name_of(int(rule["ok_from"])), TerrainDB.name_of(int(rule["to"])),
+			rule["name"], "平地/冰面" if id in ["water", "grass", "rock"] else TerrainDB.name_of(int(rule["ok_from"])), TerrainDB.name_of(int(rule["to"])),
 		]
 		button.pressed.connect(func() -> void: _set_mod_kind(id))
 		if row_index < 3:
@@ -360,14 +360,15 @@ func _mod_hover_text(cell: Vector2i) -> String:
 	var terrain := int(map["terrain"][GridSpec.index(cell)])
 	var from_terrain := int(rule.get("ok_from", TerrainDB.PLAIN))
 	var to_terrain := int(rule.get("to", TerrainDB.PLAIN))
-	if terrain != from_terrain:
+	var accepts_ice := terrain == TerrainDB.ICE and mod_kind in ["water", "grass", "rock"]
+	if terrain != from_terrain and not accepts_ice:
 		return "【%s】需要%s（当前：%s），该格不能改造。" % [
-			tool_name, TerrainDB.name_of(from_terrain), TerrainDB.name_of(terrain),
+			tool_name, "平地/冰面" if mod_kind in ["water", "grass", "rock"] else TerrainDB.name_of(from_terrain), TerrainDB.name_of(terrain),
 		]
 	if mod_used >= run.mod_points():
-		return "【%s】%s → %s：未使用改造工具，或次数已用尽。" % [tool_name, TerrainDB.name_of(from_terrain), TerrainDB.name_of(to_terrain)]
+		return "【%s】%s → %s：未使用改造工具，或次数已用尽。" % [tool_name, TerrainDB.name_of(terrain), TerrainDB.name_of(to_terrain)]
 	return "【%s】%s → %s：点击应用，消耗 1 次（剩余 %d 次）。" % [
-		tool_name, TerrainDB.name_of(from_terrain), TerrainDB.name_of(to_terrain),
+		tool_name, TerrainDB.name_of(terrain), TerrainDB.name_of(to_terrain),
 		run.mod_points() - mod_used,
 	]
 

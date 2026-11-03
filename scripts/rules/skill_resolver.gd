@@ -130,7 +130,7 @@ static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String
 		if distance > skill_range or (distance == 0 and (skill_id == "rock_slide" or skill_id == "tree_man")):
 			continue
 		if skill_id == "seed_sow":
-			if state.terrain_at(cell) == TerrainDB.PLAIN:
+			if state.terrain_at(cell) in [TerrainDB.PLAIN, TerrainDB.ICE]:
 				entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "rain_dance" or skill_id == "rain_call":
 			if _rain_would_change(state, unit, cell):
@@ -200,7 +200,7 @@ static func rain_cells(caster: CombatUnit, center: Vector2i) -> Array:
 static func _rain_would_change(state: BattleState, caster: CombatUnit, center: Vector2i) -> bool:
 	for cell in rain_cells(caster, center):
 		var terrain := state.terrain_at(cell)
-		if terrain in [TerrainDB.PLAIN, TerrainDB.GRASS, TerrainDB.VINES, TerrainDB.FRAGILE]:
+		if TerrainDB.can_convert_to_water(terrain):
 			return true
 	return false
 
@@ -753,7 +753,7 @@ static func _convert_to_water(state: BattleState, cell: Vector2i, summary: Dicti
 	if not GridSpec.is_inside(cell):
 		return false
 	var terrain := state.terrain_at(cell)
-	if terrain != TerrainDB.PLAIN and terrain != TerrainDB.GRASS and terrain != TerrainDB.VINES and terrain != TerrainDB.FRAGILE:
+	if not TerrainDB.can_convert_to_water(terrain):
 		return false
 	state.set_terrain(cell, TerrainDB.WATER)
 	summary["terrain_changes"].append({"cell": cell, "from": terrain, "to": TerrainDB.WATER})
@@ -990,7 +990,7 @@ static func _apply_rain_dance(state: BattleState, caster: CombatUnit, entry: Dic
 	for cell in rain_cells(caster, center):
 		summary["area_cells"].append(cell)
 		var terrain := state.terrain_at(cell)
-		if terrain == TerrainDB.PLAIN or terrain == TerrainDB.GRASS or terrain == TerrainDB.VINES or terrain == TerrainDB.FRAGILE:
+		if TerrainDB.can_convert_to_water(terrain):
 			state.set_terrain(cell, TerrainDB.WATER)
 			summary["terrain_changes"].append({"cell": cell, "from": terrain, "to": TerrainDB.WATER})
 		if caster.has_buff("rain_call"):
@@ -1038,7 +1038,7 @@ static func _apply_rock_create(state: BattleState, caster: CombatUnit, entry: Di
 		if (String(state.reward.get("state", "")) == "map" and cell == state.reward["cell"]) or state.fruits.has(cell):
 			continue
 		var terrain := state.terrain_at(cell)
-		if terrain != TerrainDB.PLAIN and terrain != TerrainDB.GRASS and terrain != TerrainDB.WATER:
+		if terrain not in [TerrainDB.PLAIN, TerrainDB.GRASS, TerrainDB.WATER, TerrainDB.ICE]:
 			continue
 		state.place_temp_obstacle(cell, terrain, expire_round)
 		summary["terrain_changes"].append({"cell": cell, "from": terrain, "to": TerrainDB.OBSTACLE})
