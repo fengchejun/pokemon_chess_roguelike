@@ -198,7 +198,7 @@ func _draw() -> void:
 		cells.append(actor.cell)
 	var def := SkillDB.get_def(skill)
 	var declaration := bool(def.get("channel", false)) and not bool(info.get("release", false))
-	var support := String(def.get("kind", "")) in ["self", "teleport"] or skill in ["herbal_heal", "double_cast", "leech_seed", "rain_call", "rain_dance", "tree_man", "tailwind", "wild_vines", "frozen_ground"]
+	var support := String(def.get("kind", "")) in ["self", "teleport"] or skill in ["herbal_heal", "first_aid", "antidote", "double_cast", "leech_seed", "rain_call", "rain_dance", "tree_man", "tailwind", "wild_vines", "frozen_ground"]
 	var flight := clampf((elapsed - 0.2) / 0.3, 0.0, 1.0)
 	for cell in cells:
 		var target := (Vector2(cell) + Vector2.ONE * 0.5) * BoardView.TILE

@@ -832,6 +832,50 @@ func clear_wet(target: CombatUnit) -> void:
 		target.slow_ticks = 0
 
 
+func has_removable_debuff(target: CombatUnit) -> bool:
+	if target == null:
+		return false
+	return (
+		target.burn_ticks > 0
+		or target.slow_ticks > 0
+		or target.shock_ticks > 0
+		or target.paralyzed_ticks > 0
+		or target.root_pending
+		or target.move_cancelled
+		or target.imprison_ticks > 0
+		or target.vine_ticks > 0
+		or not target.vine_sources.is_empty()
+		or target.vine_reapply_round > 0
+		or target.parasite_source_uid >= 0
+	)
+
+
+func clear_debuff_status(target: CombatUnit) -> bool:
+	## 解药等净化效果共用入口；冰冻与正向 Buff 不在清除范围内。
+	if target == null:
+		return false
+	var removed := has_removable_debuff(target)
+	var ended_imprison := target.imprison_ticks > 0
+	var remains_on_vines: bool = not target.has_buff("flight") and GridSpec.is_inside(target.cell) and terrain_at(target.cell) == TerrainDB.VINES
+	clear_burn(target)
+	clear_wet(target)
+	target.shock_ticks = 0
+	target.paralyzed_ticks = 0
+	target.root_pending = false
+	target.move_cancelled = false
+	target.imprison_ticks = 0
+	target.vine_sources.clear()
+	target.vine_ticks = 0
+	target.vine_reapply_round = 0
+	target.vine_reapply_cell = Vector2i(-1, -1)
+	target.parasite_source_uid = -1
+	target.parasite_source_side = ""
+	if ended_imprison and remains_on_vines:
+		target.vine_reapply_round = round + 2
+		target.vine_reapply_cell = target.cell
+	return removed
+
+
 func _apply_shallow_wet(side: String, ticks: int) -> void:
 	# 阶段交接时只检查即将行动的一方；我方在敌方阶段结束后检查。
 	# 整轮结算仍会衰减一次，因此敌方使用 1、我方使用 2，
@@ -1916,7 +1960,7 @@ func is_free_exploration() -> bool:
 
 
 func recovery_skill_blocked(skill_id: String) -> bool:
-	return is_free_exploration() and skill_id in ["herbal_heal", "drain", "leech_seed"]
+	return is_free_exploration() and skill_id in ["herbal_heal", "drain", "leech_seed", "first_aid", "antidote"]
 
 
 func reset_exploration_actions() -> void:

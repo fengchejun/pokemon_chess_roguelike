@@ -29,6 +29,10 @@ const DEFS := {
 	"leech_seed": {"name": "寄生种子", "element": "grass", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "使相邻敌人寄生；每次整轮结算目标失去 4 HP、存活的施法者恢复至多 4 HP。目标受到其他实际伤害时先清除寄生。"},
 	"tree_man": {"name": "大树守卫", "element": "grass", "kind": "cell", "range": 3, "damage": 0, "ranged": false, "desc": "立即在曼哈顿 3 格内空格召唤树人，基础 10 HP；落点周围八格每处水域 +3 HP、草丛/藤蔓 +5 HP、树木 +5 HP 和 5 技能威力。每名单位最多拥有一个存活召唤物，出生轮不能行动。"},
 	"tree_wrath": {"name": "大树之怒", "element": "grass", "kind": "unit", "range": 1, "damage": 10, "ranged": false, "desc": "对相邻一格的一名敌方单位造成 10 点基础伤害。"},
+	"first_aid": {"name": "急救", "element": "grass", "kind": "unit", "range": 2, "damage": 0, "ranged": true, "desc": "为曼哈顿 2 格内一名受伤友军或自己回复 8 HP，不超过生命上限。"},
+	"rooted_grass": {"name": "落地生根", "element": "grass", "kind": "self", "damage": 0, "ranged": false, "desc": "将自身周围 3×3、包含脚下格在内的有效地面转为草丛；跳过障碍、树木、水域、冰面、熔岩、深坑和设施。"},
+	"leaf_wind": {"name": "叶之风", "element": "grass", "kind": "unit", "range": 2, "damage": 8, "ranged": true, "desc": "对曼哈顿 2 格内一名敌人造成 8 点基础直伤；施法者位于草丛或藤蔓格时改为 12 点。"},
+	"antidote": {"name": "解药", "element": "grass", "kind": "unit", "range": 2, "damage": 0, "ranged": true, "desc": "解除曼哈顿 2 格内一名友军或自己的所有可解除异常状态，冰冻除外，并回复 3 HP。"},
 	"frozen_ground": {"name": "冰封大地", "element": "water", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 3×3 地形生成冰面，可覆盖深水和深坑。"},
 	"ice_glide": {"name": "溜冰", "element": "water", "kind": "self", "damage": 0, "ranged": false, "desc": "施放当回合及后两回合，沿相连冰面移动不消耗普通移动机会，可重复移动并越过敌方单位；不能停在单位或障碍格。"},
 	"freeze_ray": {"name": "急冻光线", "element": "water", "kind": "ray", "min_range": 1, "max_range": 6, "damage": 0, "ranged": true, "desc": "射程 6；树木与岩障截断射线。第一个敌人被冰冻一回合，期间无法行动；受到伤害时立即解冻并正常受伤。"},
@@ -216,7 +220,7 @@ static func learnable_ids_for(element: String) -> Array:
 		"fire": ids.append_array(["fire_amplify", "flame_rush", "windfire_breath", "furnace_fist", "skyfire", "combustion", "burn_out"])
 		"water": ids.append_array(["surf", "water_magic_burst", "ice_breath", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
 		"electric": ids.append_array(["tailwind", "double_cast", "trial_wind_1", "trial_wind_2"])
-		"grass": ids.append_array(["leech_seed", "tree_man"])
+		"grass": ids.append_array(["leech_seed", "tree_man", "first_aid", "rooted_grass", "leaf_wind", "antidote"])
 		"rock": ids.append_array(["rock_slide", "earth_shake"])
 	return ids
 

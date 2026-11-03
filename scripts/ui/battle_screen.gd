@@ -929,6 +929,16 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("即时召唤 · 上限 1")
 	elif skill_id == "herbal_heal":
 		parts.append("吟唱治疗 %d · 固定曼哈顿 2 格" % (Balance.HERBAL_HEAL + int(unit.upgrades.get("herbal_heal_amount", 0))))
+	elif skill_id == "first_aid":
+		parts.append("回复 %d" % SkillResolver.first_aid_healing(unit))
+	elif skill_id == "rooted_grass":
+		var rooted_width := 3 + 2 * int(unit.upgrades.get("rooted_grass_radius", 0))
+		parts.append("%d×%d 草丛 · 含自身" % [rooted_width, rooted_width])
+	elif skill_id == "leaf_wind":
+		var strong_damage := Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, 12), unit.side)
+		parts.append("伤害 %d · 草丛/藤蔓 %d" % [damage, strong_damage])
+	elif skill_id == "antidote":
+		parts.append("解除异常（冰冻除外） · 回复 %d" % SkillResolver.antidote_healing(unit))
 	elif skill_id == "tailwind":
 		var width := 5 + 2 * int(unit.upgrades.get("tailwind_reach", 0))
 		parts.append("自身周围 %d×%d · 移动力 +2" % [width, width])
@@ -1558,6 +1568,8 @@ func _on_skill_pressed(skill_id: String) -> void:
 			board.attack_cells.append(cell)
 		if skill_id == "tailwind" or skill_id == "herbal_heal":
 			board.area_cells = SkillResolver.support_area(unit.cell, 2 + int(unit.upgrades.get("tailwind_reach", 0)) if skill_id == "tailwind" else 2, skill_id == "tailwind")
+		if skill_id == "rooted_grass":
+			board.area_cells = SkillResolver.rooted_grass_area(unit)
 		if skill_id == "earth_shake":
 			for affected in SkillResolver.front_area_cells(unit.cell, entry["dir"], 3):
 				if not board.area_cells.has(affected):

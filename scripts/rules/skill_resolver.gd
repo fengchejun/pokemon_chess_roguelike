@@ -55,9 +55,12 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 					continue
 				entries.append({"type": "dir", "dir": dir, "cell": unit.cell + dir})
 		"self":
-			if skill_id == "burn_out" and state.alive_units("enemy" if unit.side == "player" else "player").is_empty():
+			if skill_id == "rooted_grass":
+				if not rooted_grass_cells(state, unit).is_empty():
+					entries.append({"type": "cell", "cell": unit.cell})
+			elif skill_id == "burn_out" and state.alive_units("enemy" if unit.side == "player" else "player").is_empty():
 				return entries
-			if skill_id != "lightning" or not state.alive_units("enemy" if unit.side == "player" else "player").is_empty() or (unit.side == "player" and state.has_live_nests()):
+			elif skill_id != "lightning" or not state.alive_units("enemy" if unit.side == "player" else "player").is_empty() or (unit.side == "player" and state.has_live_nests()):
 				entries.append({"type": "cell", "cell": unit.cell})
 	return entries
 
@@ -105,6 +108,7 @@ static func _ice_breath_targets(state: BattleState, unit: CombatUnit, entries: A
 
 static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
 	var skill_range := int(def.get("range", 1))
+	var allows_self := skill_id in ["first_aid", "antidote"]
 	if SkillDB.is_placeholder(skill_id):
 		skill_range += int(unit.upgrades.get(skill_id + "_range", 0))
 	if unit.side == "player" and skill_id == "drain":
@@ -112,7 +116,7 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 	if skill_id == "rock_break":
 		skill_range += int(unit.upgrades.get("rock_break_range", 0))
 	for other in state.units:
-		if other.uid == unit.uid or not other.is_alive():
+		if not other.is_alive() or (other.uid == unit.uid and not allows_self):
 			continue
 		var distance := GridSpec.manhattan(unit.cell, other.cell)
 		if skill_id == "lightning" and other.side == unit.side:
@@ -122,10 +126,14 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 				continue
 		elif distance > skill_range:
 			continue
-		if skill_id == "herbal_heal" or skill_id == "double_cast":
+		if skill_id in ["herbal_heal", "double_cast", "first_aid", "antidote"]:
 			if other.side != unit.side:
 				continue
 			if skill_id == "double_cast" and other.channel_lock_round == state.round:
+				continue
+			if skill_id == "first_aid" and other.hp >= other.max_hp:
+				continue
+			if skill_id == "antidote" and other.hp >= other.max_hp and not state.has_removable_debuff(other):
 				continue
 		elif skill_id != "volt_replace" and other.side == unit.side:
 			continue
@@ -138,7 +146,7 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 		for first_index in range(adjacent_allies.size() - 1):
 			for second_index in range(first_index + 1, adjacent_allies.size()):
 				entries.append({"type": "unit_pair", "units": [adjacent_allies[first_index]["unit"], adjacent_allies[second_index]["unit"]], "cell": adjacent_allies[second_index]["cell"]})
-	if (int(def.get("damage", 0)) > 0 or skill_id == "rock_smash" or skill_id == "rock_break") and skill_id not in ["furnace_fist", "combustion"]:
+	if (int(def.get("damage", 0)) > 0 or skill_id == "rock_smash" or skill_id == "rock_break") and skill_id not in ["furnace_fist", "combustion", "leaf_wind"]:
 		for cell in GridSpec.all_cells():
 			var distance := GridSpec.manhattan(unit.cell, cell)
 			if distance == 0 or distance > skill_range:
@@ -423,6 +431,12 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 						_apply_rock_smash(state, caster, skill_id, target_entry, summary)
 					"tree_wrath":
 						_apply_tree_wrath(state, caster, target_entry, summary)
+					"first_aid":
+						_apply_first_aid(state, caster, target_entry, summary)
+					"antidote":
+						_apply_antidote(state, caster, target_entry, summary)
+					"leaf_wind":
+						_apply_leaf_wind(state, caster, target_entry, summary)
 		"cell":
 			if skill_id == "skyfire":
 				_apply_skyfire(state, caster, target_entry, summary)
@@ -454,6 +468,7 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 				"ice_glide", "surf": _apply_terrain_travel(state, caster, skill_id, summary)
 				"mirror_water_moon": _apply_mirror_water_moon(state, caster, summary)
 				"burn_out": _apply_burn_out(state, caster, summary)
+				"rooted_grass": _apply_rooted_grass(state, caster, summary)
 				_: _apply_heal(state, caster, target_entry, summary)
 	_consume_fire_amp_if_used(state, caster, summary)
 	if SkillDB.battle_limit_of(skill_id) > 0:
@@ -1552,6 +1567,65 @@ static func _apply_tree_wrath(state: BattleState, caster: CombatUnit, entry: Dic
 	summary["text"] = "大树之怒命中 %s：%d 伤害。" % [target.display_name, hit["damage"]]
 
 
+static func first_aid_healing(caster: CombatUnit) -> int:
+	return 8 + int(caster.upgrades.get("first_aid_healing", 0))
+
+
+static func antidote_healing(caster: CombatUnit) -> int:
+	return 3 + int(caster.upgrades.get("antidote_healing", 0))
+
+
+static func _apply_first_aid(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var target := state.unit_by_uid(int(entry["unit"]))
+	if target == null:
+		return
+	var healed := mini(first_aid_healing(caster), target.max_hp - target.hp)
+	target.hp += healed
+	state.feedback_heal(target, healed)
+	summary["heal"] = {"uid": target.uid, "amount": healed}
+	summary["area_cells"].append(target.cell)
+	summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": -healed})
+	summary["text"] = "急救恢复 %s %d HP。" % [target.display_name, healed]
+	state.log_event(summary["text"])
+
+
+static func _apply_antidote(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var target := state.unit_by_uid(int(entry["unit"]))
+	if target == null:
+		return
+	var removed := state.clear_debuff_status(target)
+	var healed := mini(antidote_healing(caster), target.max_hp - target.hp)
+	target.hp += healed
+	state.feedback_heal(target, healed)
+	summary["heal"] = {"uid": target.uid, "amount": healed}
+	summary["area_cells"].append(target.cell)
+	summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": -healed})
+	summary["status_cleansed"] = removed
+	summary["text"] = "解药%s%s，恢复 %s %d HP。" % [
+		"解除异常状态" if removed else "未发现可解除异常",
+		"（冰冻保留）" if target.frozen else "",
+		target.display_name,
+		healed,
+	]
+	state.log_event(summary["text"])
+
+
+static func _apply_leaf_wind(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var target := state.unit_by_uid(int(entry["unit"]))
+	if target == null:
+		return
+	var terrain := state.terrain_at(caster.cell)
+	var base_damage := 12 if terrain == TerrainDB.GRASS or terrain == TerrainDB.VINES else 8
+	var hit := _hit_entry(state, caster, "leaf_wind", target, base_damage)
+	summary["hits"].append(hit)
+	summary["area_cells"].append(target.cell)
+	summary["text"] = "叶之风命中 %s：%d 伤害%s。" % [
+		target.display_name,
+		int(hit["damage"]),
+		"（草丛/藤蔓强化）" if base_damage == 12 else "",
+	]
+
+
 static func _apply_heal(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var center: Vector2i = entry["cell"]
 	summary["area_cells"] = support_area(center, 2, false)
@@ -1584,6 +1658,35 @@ static func support_area(center: Vector2i, radius: int, square: bool) -> Array:
 		if (square and absi(cell.x - center.x) <= radius and absi(cell.y - center.y) <= radius) or (not square and GridSpec.manhattan(center, cell) <= radius):
 			cells.append(cell)
 	return cells
+
+
+static func rooted_grass_area(caster: CombatUnit) -> Array:
+	return support_area(caster.cell, 1 + int(caster.upgrades.get("rooted_grass_radius", 0)), true)
+
+
+static func rooted_grass_cells(state: BattleState, caster: CombatUnit) -> Array:
+	var cells: Array = []
+	for cell in rooted_grass_area(caster):
+		if state.obstacle_durability.has(cell) or state.is_interaction_cell(cell) or state.is_nest_cell(cell):
+			continue
+		if state.terrain_at(cell) in [TerrainDB.PLAIN, TerrainDB.VINES, TerrainDB.FRAGILE]:
+			cells.append(cell)
+	return cells
+
+
+static func _apply_rooted_grass(state: BattleState, caster: CombatUnit, summary: Dictionary) -> void:
+	summary["area_cells"] = rooted_grass_area(caster)
+	for cell in rooted_grass_cells(state, caster):
+		var from := state.terrain_at(cell)
+		state.set_terrain(cell, TerrainDB.GRASS)
+		summary["terrain_changes"].append({"cell": cell, "from": from, "to": TerrainDB.GRASS})
+	summary["text"] = "落地生根：将以 %s 为中心的 %d×%d 区域中 %d 格转为草丛。" % [
+		caster.display_name,
+		3 + 2 * int(caster.upgrades.get("rooted_grass_radius", 0)),
+		3 + 2 * int(caster.upgrades.get("rooted_grass_radius", 0)),
+		summary["terrain_changes"].size(),
+	]
+	state.log_event(summary["text"])
 
 
 static func _apply_tree_summon(state: BattleState, caster: CombatUnit, cell: Vector2i, summary: Dictionary) -> void:
