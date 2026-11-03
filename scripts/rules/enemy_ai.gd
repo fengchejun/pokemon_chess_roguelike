@@ -127,8 +127,6 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 static func _dedupe_entries(state: BattleState, unit: CombatUnit, skill_id: String) -> Array:
 	## 射线类只保留“最近命中”和“最远落点”两个代表性选项，避免重复克隆。
 	var entries := SkillResolver.targets(state, unit, skill_id)
-	if bool(SkillDB.get_def(skill_id).get("channel", false)) and state.round >= Balance.MAX_ROUNDS:
-		return []
 	if SkillDB.kind_of(skill_id) != "ray" or skill_id == "fire_burst":
 		return entries
 	var by_dir: Dictionary = {}
@@ -200,6 +198,9 @@ static func _channel_score(state: BattleState, caster: CombatUnit, skill_id: Str
 
 
 static func _pending_hazard(state: BattleState, cell: Vector2i, source_side: String) -> int:
+	for strike in state.storm_strikes:
+		if strike["cell"] == cell and int(strike["due_round"]) <= state.round:
+			return 200
 	for cast in state.pending_casts:
 		if String(cast["side"]) != source_side:
 			continue

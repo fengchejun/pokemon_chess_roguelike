@@ -221,7 +221,7 @@ func _tsunami(t: TestContext) -> void:
 	t.check(not actions.is_empty() and String(actions[0].get("skill", {}).get("id", "")) == "tsunami", "敌人持有海啸时能选择有水域目标的吟唱")
 	enemy_state.round = Balance.MAX_ROUNDS
 	actions = EnemyAI.plan(enemy_state)
-	t.check(actions.is_empty() or String(actions[0].get("skill", {}).get("id", "")) != "tsunami", "末轮敌人不会开始来不及落下的海啸")
+	t.check(not actions.is_empty() and String(actions[0].get("skill", {}).get("id", "")) == "tsunami", "第8回合敌人仍可选择海啸")
 
 
 func _range_changes(t: TestContext) -> void:

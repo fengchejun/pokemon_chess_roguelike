@@ -352,6 +352,7 @@ func _layout_overlays() -> void:
 	relic_panel.custom_minimum_size.x = side_space - 24.0
 	relic_scroll.custom_minimum_size = Vector2(260, minf(170.0, maxf(50.0, size.y * 0.22)))
 	relic_panel.reset_size()
+	_fit_relic_panel()
 	team_panel.position = Vector2(14, maxf(178, corner_top_left.position.y + corner_top_left.get_combined_minimum_size().y + 10))
 	team_panel.custom_minimum_size.x = side_space - 28.0
 	_fit_team_panel()
@@ -373,7 +374,7 @@ func _layout_corner_cards() -> void:
 func _fit_terrain_panel() -> void:
 	if terrain_scroll == null or terrain_label == null:
 		return
-	var available := maxf(120.0, size.y - 270.0)
+	var available := maxf(120.0, size.y - maxf(270.0, relic_panel.position.y + relic_panel.size.y + 28.0))
 	var height := clampf(terrain_label.get_minimum_size().y + 24.0, 120.0, available)
 	terrain_scroll.custom_minimum_size = Vector2(266, height - 20.0)
 	terrain_panel.custom_minimum_size.y = height
@@ -491,7 +492,7 @@ func _update_header() -> void:
 	var state := _display_state()
 	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
 	var region_name := "收集区" if state.node_kind == "event" else "首领区" if state.node_kind == "boss" else "%d/6 战" % (BattleDB.local_battle_of(state.battle_index) + 1)
-	round_label.text = "第 %d 层 · %s\n第 %d/%d 回合 · %s" % [BattleDB.floor_of(state.battle_index) + 1, region_name, maxi(1, state.round), Balance.MAX_ROUNDS, phase_text]
+	round_label.text = "第 %d 层 · %s\n第 %d 回合 · %s" % [BattleDB.floor_of(state.battle_index) + 1, region_name, maxi(1, state.round), phase_text]
 	var reward_text := ""
 	match String(state.reward.get("state", "")):
 		"map":
@@ -515,8 +516,8 @@ func _update_header() -> void:
 		objective_label.text = "首领已回巢 · 巢内庇护\n摧毁主巢穴（剩余 %d 耐久）\n破巢后可继续攻击或捕获。" % int(state.nest.get("hp", 0))
 	if GridSpec.is_inside(state.boss_portal_cell):
 		objective_label.text = "首领已击败 · 敌军撤离\n训练师相邻后，点击传送门或行动按钮前往下一层。"
-	elif not state.is_free_exploration() and state.node_kind != "" and state.round >= 6:
-		objective_label.text += "\n%s" % ("本回合结束将强制撤离。" if state.round >= 8 else "即将到达第 8 回合强制撤离期限。")
+	elif not state.is_free_exploration() and state.round >= 7:
+		objective_label.text += "\n" + ("天雷已锁定 %d 格：本轮末落雷，伤害为最大生命50%%，可误伤敌人。" % state.storm_strikes.size() if not state.storm_strikes.is_empty() else "第8轮末开始预告天雷，可移动躲避。")
 	if state.is_free_exploration():
 		objective_label.text += "\n自由探索 · 无限行动 · 禁止恢复"
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
@@ -546,8 +547,11 @@ func _update_relic_panel() -> void:
 func _fit_relic_panel() -> void:
 	if relic_list == null or relic_scroll == null:
 		return
+	objective_panel.reset_size()
+	relic_panel.position.y = maxf(130.0, objective_panel.position.y + objective_panel.size.y + 10.0)
 	relic_scroll.custom_minimum_size.y = minf(170.0, maxf(34.0, relic_list.get_combined_minimum_size().y))
 	relic_panel.reset_size()
+	_fit_terrain_panel()
 
 
 func _update_unit_card() -> void:
@@ -755,8 +759,6 @@ func _rebuild_skill_buttons() -> void:
 			var button := UIKit.small_button(button_text)
 			button.name = "SkillButton_%s" % id
 			button.tooltip_text = String(def.get("desc", ""))
-			if not state.is_free_exploration() and state.round >= Balance.MAX_ROUNDS and bool(def.get("channel", false)):
-				button.tooltip_text += "\n第 %d 回合开始吟唱无法在本场结算。" % Balance.MAX_ROUNDS
 			var entries := state.skill_targets(unit, id)
 			if phase_reason != "":
 				button.disabled = true
@@ -1263,6 +1265,9 @@ func _show_terrain(cell: Vector2i) -> void:
 	if state.obstacle_durability.has(cell):
 		var max_hp := Balance.TREE_DURABILITY if value == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
 		lines.append("障碍耐久：%d/%d；树木和岩障会截断射线。" % [int(state.obstacle_durability[cell]), max_hp])
+	for strike in state.storm_strikes:
+		if strike["cell"] == cell:
+			lines.append("天雷预告：第 %d 轮双方行动结束后命中此格，造成当时单位最大生命50%%伤害，敌我均受伤；离开即可躲避。" % int(strike["due_round"]))
 	if state.steam_cells.has(cell):
 		lines.append("蒸汽：剩余 %d 次整轮结算；站在其中不能施放技能。" % int(state.steam_cells[cell]))
 	if state.is_nest_cell(cell):
@@ -1540,8 +1545,6 @@ func _on_skill_pressed(skill_id: String) -> void:
 				if not board.area_cells.has(affected):
 					board.area_cells.append(affected)
 	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
-	if not state.is_free_exploration() and state.round >= Balance.MAX_ROUNDS and bool(SkillDB.get_def(skill_id).get("channel", false)):
-		hint_label.text += " 第 %d 回合开始吟唱将不会在本场结算。" % Balance.MAX_ROUNDS
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_rebuild_skill_buttons()
 	_position_action_panel()

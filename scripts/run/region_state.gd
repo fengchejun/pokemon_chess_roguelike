@@ -206,6 +206,8 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 			survivors.append(fresh)
 		else:
 			survivors.append(unit)
+	battle.storm_strikes.clear()
+	battle.storm_last_round = 0
 	battle.boss_retreat_used = false
 	battle.nest["boss_sheltered"] = false
 	battle.units = survivors

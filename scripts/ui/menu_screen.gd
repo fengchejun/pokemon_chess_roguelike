@@ -6,7 +6,7 @@ var help_box: PanelContainer = null
 const HELP_TEXT := "流程：编成（出战名单 6 只、每场勾选 1 至 3 只作战）→ 地图预览与可选改造 → 战斗 → 战后结算 → 下一场。\n" \
 	+ "属性克制暂时关闭：七种元素仍影响技能、状态与地形反应，直接伤害不按属性增减。\n" \
 	+ "地形：浅水在双方行动阶段交接时赋予浸湿；草丛、藤蔓和树木可被点燃；水面蒸汽禁止站在其中的单位施法。易碎地面可塌陷；深水与深坑可造成坠落。\n" \
-	+ "行动：每只宝可梦每回合 1 次移动 + 1 次技能；训练家每回合 1 次捕获。第 %d 回合结束后野生逃离。\n" \
+	+ "行动：每只宝可梦每回合 1 次移动 + 1 次技能；训练家每回合 1 次捕获。第 %d 轮末起预告落雷，下一轮末打击原格，造成最大生命50%%伤害，敌我均可命中；无回合上限。\n" \
 	+ "消耗品：战后取得三选一卡，可留在本局背包；每场在地图预览页最多使用一张，点击即消耗。地貌卡刷新地图并使对应地形比旧图更多，改造工具提供两次手动改造。\n" \
 	+ "捕获：训练家周围八格每回合可尝试 1 次；整备页可分别启用半血保证捕获与捕获后原地转阵营。默认使用 v2 概率判定与离场处理。\n" \
 	+ "战损：宝可梦倒下进入濒死；训练家倒下则整局立即失败，本场未收容的捕获和奖励失效，需重新开始。\n" \
@@ -63,7 +63,7 @@ func _ready() -> void:
 	help_box.name = "HelpBox"
 	help_box.visible = false
 	column.add_child(help_box)
-	help_box.add_child(UIKit.wrapped(HELP_TEXT % [Balance.MAX_ROUNDS, Balance.SUPPLY_INTERVAL], 14, UIKit.TEXT))
+	help_box.add_child(UIKit.wrapped(HELP_TEXT % [Balance.STORM_START_ROUND, Balance.SUPPLY_INTERVAL], 14, UIKit.TEXT))
 
 
 func _on_new_run() -> void:

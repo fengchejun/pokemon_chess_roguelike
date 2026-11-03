@@ -311,7 +311,9 @@ func _t_escape_flow(t: TestContext) -> void:
 	run.mark_deployed([1])
 	state.round = Balance.MAX_ROUNDS
 	state.settle_round()
-	t.eq(state.end_reason, "escape", "野生逃离结束")
+	t.check(not state.ended, "第8回合不自动逃离")
+	state.end_battle("escape")
+	t.eq(state.end_reason, "escape", "主动撤离结束")
 	var outcome := run.settle_battle(state)
 	t.eq(run.pending_reward_choices, 1, "野生逃离仍获得一次常规战后奖励选择")
 	t.eq(outcome.has("carrier_exp"), false, "逃离也不结算旧携带者经验")

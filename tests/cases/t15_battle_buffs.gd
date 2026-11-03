@@ -68,7 +68,9 @@ func _t_reward_credit(t: TestContext) -> void:
 	final_state.begin_enemy_phase()
 	final_state.end_enemy_phase()
 	t.eq(final_state.reward["state"], "carried", "第八回合敌方结束后仍可领取战后奖励")
-	t.check(final_state.reward_bonus_earned(), "第八回合逃离结算也记录奖励")
+	t.check(not final_state.ended, "第八回合领取守点后战斗仍继续")
+	final_state.end_battle("victory")
+	t.check(final_state.reward_bonus_earned(), "后续胜利结算仍记录守点奖励")
 
 
 func _t_flight_and_defense(t: TestContext) -> void:

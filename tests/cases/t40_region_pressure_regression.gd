@@ -160,8 +160,9 @@ func run(t: TestContext) -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
 	reinforced.round = 8
 	reinforced.end_enemy_phase()
-	t.eq(reinforced.end_reason, "boss_timeout", "支援后首领战仍在第八回合失败")
+	t.check(not reinforced.ended and not reinforced.storm_strikes.is_empty(), "支援后首领战第8回合继续并预告天雷")
+	reinforced.damage_unit(null, reinforced.trainer(), 999, {"no_element": true})
 	support_app.finish_battle(reinforced)
-	t.check(support_app.run.run_failed and support_app.current_screen.name == "RunEndScreen", "首领超时终止本局")
+	t.check(support_app.run.run_failed and support_app.current_screen.name == "RunEndScreen", "首领战训练家阵亡仍终止本局")
 	support_app.queue_free()
 	t.finish()

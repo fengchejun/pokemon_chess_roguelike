@@ -170,7 +170,7 @@ func _multiple_and_ai(t: TestContext) -> void:
 	actions = EnemyAI.plan(ai)
 	channels = actions.filter(func(action: Dictionary) -> bool:
 		return String(action.get("skill", {}).get("id", "")) == "fire_burst")
-	t.eq(channels.size(), 0, "敌方末轮不会选择无收益吟唱")
+	t.check(not channels.is_empty(), "第8回合敌方仍可开始后续会生效的吟唱")
 
 
 func _last_round(t: TestContext) -> void:
@@ -180,7 +180,7 @@ func _last_round(t: TestContext) -> void:
 	state.round = Balance.MAX_ROUNDS
 	var hp := state.unit_by_uid(100).hp
 	var result := state.cast_skill(caster, "fire_burst", {"type": "cell", "cell": Vector2i(4, 3)})
-	t.check(bool(result.get("ok", false)) and String(result.get("text", "")).contains("不会生效"), "最后一回合可宣告但提示不会结算")
+	t.check(bool(result.get("ok", false)) and not String(result.get("text", "")).contains("不会生效"), "第8回合吟唱不再提示无效")
 	t.eq(state.unit_by_uid(100).hp, hp, "末轮宣告无即时伤害")
 	state.end_battle("escape")
 	t.eq(state.pending_casts.size(), 0, "战斗结束清除未结算吟唱")

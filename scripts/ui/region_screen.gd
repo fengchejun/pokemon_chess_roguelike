@@ -32,7 +32,7 @@ func _ready() -> void:
 	team_button.pressed.connect(_show_team)
 	header.add_child(team_button)
 	column.add_child(UIKit.label("移动 %d 次｜%s｜首领驻军 %d 名 · 全体敌人等级 +%d" % [region.visits, region.next_pressure_text(), 5 if region.support_triggered else 3, app.run.invasion_level_bonus], 16, UIKit.ACCENT))
-	column.add_child(UIKit.wrapped("初始营地邻区已解锁。可进入任意已解锁区域；确认进入才计移动，首领除外。正式战斗最多 8 回合；胜利后自由探索。超时撤退不解锁邻区。", 14))
+	column.add_child(UIKit.wrapped("初始营地邻区已解锁。可进入任意已解锁区域；确认进入才计移动，首领除外。正式战斗无回合上限；第8轮末起预告天雷，下一轮末落雷。胜利后自由探索；主动撤离不解锁邻区。", 14))
 	graph = Control.new()
 	graph.name = "AreaGraph"
 	graph.custom_minimum_size.y = 350
@@ -107,7 +107,7 @@ func _draw_regions() -> void:
 func _confirm_entry(id: String) -> void:
 	var node: Dictionary = region.nodes[id]
 	var kind: String = region.node_mode(id)
-	var details: String = "营地：篝火休息与宝可梦互动。" if kind == "camp" else "首领：8 回合内击败或捕获，否则本局失败。" if kind == "boss" else "收集区：无限行动，可随时离开；禁止恢复技能。" if kind == "event" else "战斗区：清空敌人与巢穴后无限探索；第 8 回合未胜则强撤，不解锁邻区，重访补足 4 名。"
+	var details: String = "营地：篝火休息与宝可梦互动。" if kind == "camp" else "首领：击败或捕获后开启传送门；第8轮末起预告天雷，无回合上限。" if kind == "boss" else "收集区：无限行动，可随时离开；禁止恢复技能。" if kind == "event" else "战斗区：清空敌人与巢穴后无限探索；第8轮末起预告天雷，可主动撤离，重访补足4名。"
 	if kind == "boss" and not app.run.storage.is_empty():
 		details += "\n进入首领区后无法返回营地。进入下一层时，营地留守的 %d 只宝可梦将被抛弃，无法进入永久收藏。" % app.run.storage.size()
 	if kind == "boss" and app.run.carried.size() >= Balance.CARRIED_LIMIT:

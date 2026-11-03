@@ -34,7 +34,7 @@ func feedback_heal(unit: CombatUnit, amount: int) -> void:
 
 ## 一场战斗的全部状态与规则入口。
 ## 回合结构：我方阶段（自由顺序）→ 敌方阶段（固定顺序执行预告的同一计划）→ 环境结算 → 下一回合。
-## 第 MAX_ROUNDS 回合结算后仍存活的野生宝可梦逃离。
+## 第八轮结束预告落雷，下一轮末打击固定地格；战斗不再限时结束。
 
 const PHASE_PLAYER := "player"
 const PHASE_ENEMY := "enemy"
@@ -71,6 +71,8 @@ var speech_seen: Dictionary = {}
 var enemy_origins: Dictionary = {} # uid -> original node entry cell; persisted for revisits.
 var enemy_outcomes: Dictionary = {} # Defeat/capture is recorded once per enemy identity.
 var boss_uid: int = -1
+var storm_strikes: Array = [] # {cell, due_round}；属于独立环境威胁，不占吟唱名额。
+var storm_last_round: int = 0
 var boss_retreat_used: bool = false
 var _boss_effect_depth: int = 0
 var boss_portal_cell: Vector2i = Vector2i(-1, -1)
@@ -1481,15 +1483,48 @@ func _settle_round_rules() -> void:
 			steam_cells.erase(cell)
 	# 5. 停留拾取食物
 	_pickups()
-	# 6. 胜负与时限
+	# 6. 胜负与持续天雷压力
 	if check_battle_end():
 		return
 	if is_free_exploration():
 		return
-	if boss_portal_cell == Vector2i(-1, -1) and round >= Balance.MAX_ROUNDS and (alive_enemy_count() > 0 or node_kind in ["battle", "event"]):
-		end_battle("boss_timeout" if boss_uid >= 0 else "escape")
+	_settle_storm()
+	if ended or is_free_exploration():
 		return
 	log_event("环境结算完成。")
+
+
+func _settle_storm() -> void:
+	if ended or is_free_exploration() or round < Balance.STORM_START_ROUND or storm_last_round >= round:
+		return
+	storm_last_round = round
+	var due: Array = []
+	var later: Array = []
+	for strike in storm_strikes:
+		if int(strike["due_round"]) <= round:
+			due.append(strike["cell"])
+		else:
+			later.append(strike)
+	storm_strikes = later
+	for cell in due:
+		if ended:
+			return
+		_relay_feedback("action", "天雷落下", 0, cell, -1)
+		var target := unit_at(cell)
+		if target == null:
+			continue
+		var amount := ceili(target.max_hp * 0.5)
+		damage_unit(null, target, amount, {"no_element": true, "cause": "天雷轰击"})
+	if check_battle_end() or is_free_exploration():
+		storm_strikes.clear()
+		return
+	var marked := {}
+	for unit in alive_units("player"):
+		if not marked.has(unit.cell):
+			marked[unit.cell] = true
+			storm_strikes.append({"cell": unit.cell, "due_round": round + 1})
+	if not marked.is_empty():
+		log_event("天雷预告：锁定 %d 格，第 %d 轮双方行动结束后造成落点单位最大生命 50%% 伤害（向上取整，敌我均可命中）。" % [marked.size(), round + 1])
 
 
 func ice_slide_outcome(unit: CombatUnit) -> Dictionary:
@@ -1709,17 +1744,16 @@ func set_enemy_level_bonus(bonus: int) -> void:
 func end_battle(reason: String) -> void:
 	if ended:
 		return
-	if reason == "escape" and node_kind != "" and trainer() != null and round >= Balance.MAX_ROUNDS:
-		say_once("trainer_escape", Balance.TRAINER_UID, trainer().cell, "敌人的增援要来了！快撤！")
 	ended = true
+	storm_strikes.clear()
 	pending_casts.clear()
 	end_reason = reason
 	phase = PHASE_ENDED
 	var text: String = {
 		"victory": "全部敌人被击败或捕获，胜利！",
 		"forced_retreat": "训练家倒下，本局失败。",
-		"boss_timeout": "第 8 回合结束，未能击败首领，本局失败。",
-		"escape": "第 %d 回合结束，强制撤离当前区域。" % Balance.MAX_ROUNDS if node_kind != "" else "第 %d 回合结束，野生宝可梦逃离。" % Balance.MAX_ROUNDS,
+		"boss_timeout": "旧版首领超时失败记录。",
+		"escape": "主动撤离当前战斗。",
 	}.get(reason, reason)
 	log_event("战斗结束：" + text)
 
@@ -1784,6 +1818,7 @@ func _signature() -> String:
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
 		parts.append("summon_power:%d:%d" % [unit.uid, unit.summon_power_bonus])
 		parts.append("vine_source:%d:%s:%d" % [unit.uid, str(unit.vine_sources), unit.vine_ticks])
+	parts.append("storm:%d:%s" % [storm_last_round, str(storm_strikes)])
 	parts.append("boss_phase:%s" % str(boss_retreat_used))
 	parts.append("pending:%s" % str(pending_casts))
 	parts.append("relics:%s" % str(relic_stacks))
@@ -1830,6 +1865,8 @@ func clone() -> BattleState:
 	copy.speech_seen = speech_seen.duplicate(true)
 	copy.enemy_origins = enemy_origins.duplicate(true)
 	copy.enemy_outcomes = enemy_outcomes.duplicate()
+	copy.storm_strikes = storm_strikes.duplicate(true)
+	copy.storm_last_round = storm_last_round
 	copy.boss_retreat_used = boss_retreat_used
 	copy.boss_uid = boss_uid
 	copy.boss_portal_cell = boss_portal_cell
@@ -1877,6 +1914,7 @@ func recovery_skill_blocked(skill_id: String) -> bool:
 
 
 func reset_exploration_actions() -> void:
+	storm_strikes.clear()
 	round = maxi(1, round)
 	phase = PHASE_PLAYER
 	pending_casts.clear()
@@ -1948,7 +1986,7 @@ func check_speech_events() -> void:
 		if round == 1:
 			say_once("trainer_start", actor.uid, actor.cell, "好好大干一场吧！")
 		if round == 7 and not is_free_exploration():
-			say_once("trainer_warning", actor.uid, actor.cell, "准备撤退，别恋战！")
+			say_once("trainer_warning", actor.uid, actor.cell, "天雷要来了！注意脚下的预告！")
 	if node_kind == "event" and not merchant.is_empty():
 		var cell: Vector2i = merchant["cell"]
 		var threatened := alive_units("enemy").any(func(unit): return GridSpec.manhattan(unit.cell, cell) <= 3)

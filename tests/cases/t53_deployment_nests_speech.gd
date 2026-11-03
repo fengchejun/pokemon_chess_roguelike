@@ -156,4 +156,4 @@ func _speech(t: TestContext) -> void:
 	t.check(state.speech_seen.has("boss_roar"), "Boss 半血怒吼")
 	state.round = Balance.MAX_ROUNDS
 	state.end_battle("escape")
-	t.check(state.speech_seen.has("trainer_escape"), "实际强撤发表逃跑宣言")
+	t.check(not state.speech_seen.has("trainer_escape"), "主动撤离不再发表旧版限时逃跑宣言")

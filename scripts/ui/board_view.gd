@@ -17,6 +17,7 @@ var vine_expire_round: Dictionary = {}
 var nest: Dictionary = {}
 var extra_nests: Array = []
 var pending_casts: Array = []
+var storm_strikes: Array = []
 var battle_round: int = 0
 var reward: Dictionary = {}
 var fruits: Array = []
@@ -57,6 +58,7 @@ func set_from_state(state: BattleState) -> void:
 	nest = state.nest.duplicate(true)
 	extra_nests = state.extra_nests.duplicate(true)
 	pending_casts = state.pending_casts.duplicate(true)
+	storm_strikes = state.storm_strikes.duplicate(true)
 	battle_round = state.round
 	reward = state.reward.duplicate(true)
 	fruits = []
@@ -76,6 +78,7 @@ func set_from_state(state: BattleState) -> void:
 
 
 func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
+	storm_strikes = map.get("storm_strikes", []).duplicate(true)
 	terrain = (map.get("terrain", []) as Array).duplicate()
 	obstacle_durability = {}
 	burning_cells = {}
@@ -209,6 +212,7 @@ func _draw() -> void:
 	for unit in units:
 		if unit.is_on_board():
 			_draw_unit(font, unit)
+	_draw_storm_strikes(font)
 	for slide in ice_slides:
 		_draw_ice_slide_arrow(slide)
 	for cell in vine_expire_round:
@@ -509,3 +513,15 @@ func _draw_nest_object(font: Font, nest: Dictionary) -> void:
 		draw_polyline(points + PackedVector2Array([points[0]]), Color(0.9, 0.8, 1.0), 2.0)
 		draw_string(font, center + Vector2(-10, 8), "巢", HORIZONTAL_ALIGNMENT_CENTER, 20, 18, Color.WHITE)
 		draw_string(font, center + Vector2(-20, -26), "耐久 %d/3" % int(nest.get("hp", 3)), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.9, 0.8, 1.0))
+
+
+func _draw_storm_strikes(font: Font) -> void:
+	for strike in storm_strikes:
+		var cell: Vector2i = strike["cell"]
+		var rect := Rect2(Vector2(cell) * TILE + Vector2(3, 3), Vector2.ONE * (TILE - 6))
+		draw_rect(rect, Color(1.0, 0.68, 0.1, 0.12))
+		draw_rect(rect, Color("ffbf43"), false, 3.0)
+		draw_line(rect.position + Vector2(3, 3), rect.end - Vector2(3, 3), Color(1.0, 0.67, 0.15, 0.4), 2.0)
+		draw_line(rect.position + Vector2(rect.size.x - 3, 3), rect.position + Vector2(3, rect.size.y - 3), Color(1.0, 0.67, 0.15, 0.65), 2.0)
+		draw_rect(Rect2(rect.position, Vector2(rect.size.x, 15)), Color("352413"))
+		draw_string(font, rect.position + Vector2(2, 12), "轮末雷50%", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("ffe39b"))

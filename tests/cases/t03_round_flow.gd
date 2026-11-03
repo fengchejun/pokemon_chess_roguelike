@@ -340,7 +340,7 @@ func _t_escape_round8(t: TestContext) -> void:
 	t.check(not state.ended, "第 7 回合结算后战斗继续")
 	state.round = Balance.MAX_ROUNDS
 	state.settle_round()
-	t.eq(state.end_reason, "escape", "第 8 回合结算后野生逃离")
+	t.check(not state.ended and not state.storm_strikes.is_empty(), "第8回合不强撤，开始预告天雷")
 
 
 func _t_victory(t: TestContext) -> void:

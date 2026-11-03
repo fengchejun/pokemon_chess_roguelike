@@ -80,7 +80,8 @@ func run(t: TestContext) -> void:
 	var foe_cell := foe.cell
 	combat.state.round = 8
 	combat.state.end_enemy_phase()
-	t.eq(combat.state.end_reason, "escape", "普通战斗八回合强制撤离")
+	t.check(not combat.state.ended and not combat.state.storm_strikes.is_empty(), "普通战斗第8回合继续并预告落雷")
+	combat.state.end_battle("escape")
 	app.finish_battle(combat.state)
 	app.continue_after_settlement()
 	app.enter_region_node("battle_1")
