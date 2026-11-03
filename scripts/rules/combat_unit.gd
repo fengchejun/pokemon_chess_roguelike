@@ -176,6 +176,14 @@ var fire_amp_stacks: int = 0:
 		fire_amp_stacks = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "火焰增幅" + ("解除" if not active else ""), int(value), cell)
+var electric_resonance_bonus: int = 0:
+	set(value):
+		var was_active := electric_resonance_bonus > 0
+		var active := value > 0
+		var announce := active != was_active or (value > electric_resonance_bonus and value > 0)
+		electric_resonance_bonus = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "电共鸣蓄伤" + ("解除" if not active else ""), int(value), cell)
 
 # 其他
 var fresh_spawn: bool = false       # 本回合新生成：在巢穴格待机，不能移动或施法
@@ -273,6 +281,7 @@ func dup() -> CombatUnit:
 	copy.surf_until_round = surf_until_round
 	copy.mirror_until_round = mirror_until_round
 	copy.fire_amp_stacks = fire_amp_stacks
+	copy.electric_resonance_bonus = electric_resonance_bonus
 	copy.fresh_spawn = fresh_spawn
 	copy.summon_owner_uid = summon_owner_uid
 	copy.summon_power_bonus = summon_power_bonus

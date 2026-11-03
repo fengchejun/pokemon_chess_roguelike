@@ -36,6 +36,8 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 			_unit_targets(state, unit, skill_id, def, entries)
 			if skill_id == "volt_replace":
 				_volt_empty_targets(state, unit, def, entries)
+		"electric_laser":
+			_electromagnetic_laser_targets(state, unit, def, entries)
 		"cell":
 			_cell_targets(state, unit, skill_id, def, entries)
 		"teleport":
@@ -53,9 +55,20 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 					continue
 				if skill_id == "wild_vines" and wild_vines_cells(state, unit, dir).is_empty():
 					continue
+				if skill_id == "electric_spark" and electric_spark_cells(state, unit, dir).is_empty():
+					continue
 				entries.append({"type": "dir", "dir": dir, "cell": unit.cell + dir})
 		"self":
-			if skill_id == "rooted_grass":
+			if skill_id == "magnet_pull":
+				if magnet_pull_target(state, unit) != null:
+					entries.append({"type": "cell", "cell": unit.cell})
+			elif skill_id == "glare":
+				if not glare_candidates(state, unit).is_empty():
+					entries.append({"type": "cell", "cell": unit.cell})
+			elif skill_id == "electric_resonance":
+				if not resonance_candidates(state, unit).is_empty():
+					entries.append({"type": "cell", "cell": unit.cell})
+			elif skill_id == "rooted_grass":
 				if not rooted_grass_cells(state, unit).is_empty():
 					entries.append({"type": "cell", "cell": unit.cell})
 			elif skill_id == "burn_out" and state.alive_units("enemy" if unit.side == "player" else "player").is_empty():
@@ -243,6 +256,105 @@ static func _teleport_targets(state: BattleState, unit: CombatUnit, def: Diction
 		if not _teleport_path_clear(state, unit.cell, cell, unit.element):
 			continue
 		entries.append({"type": "cell", "cell": cell})
+
+
+static func magnet_pull_range(caster: CombatUnit) -> int:
+	return 5 + int(caster.upgrades.get("magnet_pull_reach", 0))
+
+
+static func magnet_pull_target(state: BattleState, caster: CombatUnit) -> CombatUnit:
+	if caster == null or not caster.is_alive():
+		return null
+	var best: CombatUnit = null
+	var best_distance := 1 << 30
+	for enemy in state.alive_units("enemy" if caster.side == "player" else "player"):
+		if enemy.cell.x != caster.cell.x and enemy.cell.y != caster.cell.y:
+			continue
+		var distance := GridSpec.manhattan(caster.cell, enemy.cell)
+		if distance < 2 or distance > magnet_pull_range(caster):
+			continue
+		if not _electric_line_clear(state, caster.cell, enemy.cell, true):
+			continue
+		if distance < best_distance or (distance == best_distance and (best == null or enemy.reg_index < best.reg_index)):
+			best = enemy
+			best_distance = distance
+	return best
+
+
+static func glare_radius(caster: CombatUnit) -> int:
+	return 1 + int(caster.upgrades.get("glare_radius", 0))
+
+
+static func glare_area(caster: CombatUnit) -> Array:
+	return support_area(caster.cell, glare_radius(caster), true)
+
+
+static func glare_candidates(state: BattleState, caster: CombatUnit) -> Array:
+	var result: Array = []
+	var area := glare_area(caster)
+	for enemy in state.alive_units("enemy" if caster.side == "player" else "player"):
+		if area.has(enemy.cell) and enemy.paralyzed_ticks <= 0 and not enemy.has_buff("status_immune"):
+			result.append(enemy)
+	return result
+
+
+static func resonance_area(caster: CombatUnit) -> Array:
+	return support_area(caster.cell, 1, true)
+
+
+static func resonance_candidates(state: BattleState, caster: CombatUnit) -> Array:
+	var result: Array = []
+	var area := resonance_area(caster)
+	for target in state.alive_units():
+		if area.has(target.cell) and (target.shock_ticks > 0 or target.paralyzed_ticks > 0):
+			result.append(target)
+	return result
+
+
+static func electric_spark_cells(state: BattleState, caster: CombatUnit, dir: Vector2i) -> Array:
+	var cells: Array = []
+	var found_enemy := false
+	for distance in range(1, 4):
+		var cell: Vector2i = caster.cell + dir * distance
+		if not GridSpec.is_inside(cell):
+			break
+		cells.append(cell)
+		var target := state.unit_at(cell)
+		if target != null and target.side != caster.side:
+			found_enemy = true
+		if state.is_interaction_cell(cell) or TerrainDB.blocks_move(state.terrain_at(cell)):
+			break
+	return cells if found_enemy else []
+
+
+static func _electromagnetic_laser_targets(state: BattleState, caster: CombatUnit, def: Dictionary, entries: Array) -> void:
+	var max_range := int(def.get("range", 4))
+	for target in state.alive_units("enemy" if caster.side == "player" else "player"):
+		if target.cell.x != caster.cell.x and target.cell.y != caster.cell.y:
+			continue
+		var distance := GridSpec.manhattan(caster.cell, target.cell)
+		if distance < 1 or distance > max_range:
+			continue
+		if not _electric_line_clear(state, caster.cell, target.cell, false):
+			continue
+		var blocked_by_terrain := not _electric_line_clear(state, caster.cell, target.cell, true)
+		if blocked_by_terrain and target.shock_ticks <= 0 and target.paralyzed_ticks <= 0:
+			continue
+		entries.append({"type": "unit", "unit": target.uid, "cell": target.cell, "pierces_obstacle": blocked_by_terrain})
+
+
+static func _electric_line_clear(state: BattleState, from_cell: Vector2i, to_cell: Vector2i, include_terrain_blockers: bool) -> bool:
+	var distance := GridSpec.manhattan(from_cell, to_cell)
+	if distance <= 1:
+		return true
+	var dir := _axis_dir(from_cell, to_cell)
+	for step in range(1, distance):
+		var cell: Vector2i = from_cell + dir * step
+		if state.unit_at(cell) != null or state.is_interaction_cell(cell):
+			return false
+		if include_terrain_blockers and TerrainDB.blocks_rays(state.terrain_at(cell)):
+			return false
+	return true
 
 
 static func _player_forbidden_landing(state: BattleState, unit: CombatUnit, cell: Vector2i) -> bool:
@@ -457,6 +569,8 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 				_apply_rain_dance(state, caster, target_entry, summary)
 			else:
 				_apply_seed_sow(state, caster, target_entry, summary)
+		"electric_laser":
+			_apply_electromagnetic_laser(state, caster, target_entry, summary)
 		"teleport":
 			if skill_id == "flame_rush":
 				_apply_flame_rush(state, caster, target_entry, summary)
@@ -464,13 +578,16 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 				_apply_volt_step(state, caster, target_entry, summary)
 		"direction":
 			match skill_id:
-				"flame_jet", "wild_vines", "frozen_ground", "windfire_breath":
+				"flame_jet", "wild_vines", "frozen_ground", "windfire_breath", "electric_spark":
 					_apply_directional(state, caster, skill_id, target_entry, summary)
 				"rock_create":
 					_apply_rock_create(state, caster, target_entry, summary)
 		"self":
 			match skill_id:
 				"tailwind": _apply_magnetic(state, caster, summary)
+				"magnet_pull": _apply_magnet_pull(state, caster, summary)
+				"glare": _apply_glare(state, caster, summary)
+				"electric_resonance": _apply_electric_resonance(state, caster, summary)
 				"fire_amplify": _apply_fire_amplify(state, caster, summary)
 				"ice_glide", "surf": _apply_terrain_travel(state, caster, skill_id, summary)
 				"mirror_water_moon": _apply_mirror_water_moon(state, caster, summary)
@@ -522,13 +639,12 @@ static func _resolve_channel_rules(state: BattleState, caster: CombatUnit, skill
 			var hit := _hit_entry(state, caster, "lightning", target, SkillDB.damage_of("lightning"))
 			summary["hits"].append(hit)
 			if target.is_alive():
-				if target.shock_ticks > 0:
-					target.paralyzed_ticks = 2
-					state.cancel_channel(target, "麻痹")
-				target.shock_ticks = 2
+				var had_shock: bool = target.shock_ticks > 0
+				if state.apply_shock(target, Balance.LIGHTNING_SHOCK_TICKS):
+					(hit["statuses"] as Array).append("麻痹" if had_shock else "感电")
 				if index == 0 and int(caster.upgrades.get("lightning_first_shock", 0)) > 0:
-					target.paralyzed_ticks = 2
-					state.cancel_channel(target, "双重感电")
+					if state.apply_shock(target, 1):
+						(hit["statuses"] as Array).append("麻痹")
 		summary["text"] = "打雷落下：%d 个单位受击。" % summary["hits"].size()
 	elif skill_id == "rock_slide":
 		summary["area_cells"] = cells.duplicate()
@@ -609,12 +725,14 @@ static func tsunami_cells(origin: Vector2i, dir: Vector2i) -> Array:
 
 
 static func _consume_fire_amp_if_used(state: BattleState, caster: CombatUnit, summary: Dictionary) -> void:
-	if caster.fire_amp_stacks <= 0:
-		return
 	for hit in summary.get("hits", []):
 		if int(hit.get("damage", 0)) > 0:
-			state.log_event("%s 的火焰增幅 +%d 已用于本次技能。" % [caster.display_name, caster.fire_amp_stacks])
-			caster.fire_amp_stacks = 0
+			if caster.fire_amp_stacks > 0:
+				state.log_event("%s 的火焰增幅 +%d 已用于本次技能。" % [caster.display_name, caster.fire_amp_stacks])
+				caster.fire_amp_stacks = 0
+			if caster.electric_resonance_bonus > 0:
+				state.log_event("%s 的电共鸣蓄伤 +%d 已用于本次技能。" % [caster.display_name, caster.electric_resonance_bonus])
+				caster.electric_resonance_bonus = 0
 			return
 
 
@@ -679,6 +797,7 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 	if base > 0:
 		base = upgraded_base_damage(caster, skill_id, base)
 		base += caster.fire_amp_stacks
+		base += caster.electric_resonance_bonus
 		if String(def.get("element", "")) == "water" and state.mirror_water_travel_active(caster):
 			base += Balance.MIRROR_WATER_DAMAGE_BONUS
 	var modifier := Elements.modifier(String(def.get("element", "")), target.element) if base > 0 else 0
@@ -1449,6 +1568,27 @@ static func _apply_directional(state: BattleState, caster: CombatUnit, skill_id:
 	if skill_id == "windfire_breath":
 		_apply_windfire_breath(state, caster, entry, summary)
 		return
+	if skill_id == "electric_spark":
+		var spark_dir: Vector2i = entry["dir"]
+		var spark_cells := electric_spark_cells(state, caster, spark_dir)
+		summary["ray_cells"] = spark_cells.duplicate()
+		for cell in spark_cells:
+			summary["area_cells"].append(cell)
+			var target := state.unit_at(cell)
+			if target != null and target.side != caster.side:
+				var had_electric_status: bool = target.shock_ticks > 0 or target.paralyzed_ticks > 0
+				var hit := _hit_entry(state, caster, "electric_spark", target, SkillDB.damage_of("electric_spark"))
+				if target.is_alive() and had_electric_status and state.apply_burn(target, caster):
+					(hit["statuses"] as Array).append("灼烧")
+				summary["hits"].append(hit)
+			if state.is_interaction_cell(cell) or TerrainDB.blocks_move(state.terrain_at(cell)):
+				break
+		summary["text"] = "电极火花沿%s方向命中 %d 名敌人%s。" % [
+			GridSpec.DIR_NAMES.get(spark_dir, ""),
+			summary["hits"].size(),
+			"；带电目标附加灼烧" if summary["hits"].any(func(hit): return (hit.get("statuses", []) as Array).has("灼烧")) else "",
+		]
+		return
 	if skill_id == "flame_jet":
 		_apply_line(state, caster, skill_id, entry, summary)
 		return
@@ -1535,6 +1675,52 @@ static func _apply_electric_arc(state: BattleState, caster: CombatUnit, entry: D
 		state.damage_reward_at(cell)
 	summary["area_cells"] = visited.keys()
 	summary["text"] = "放电传导命中 %d 个单位。" % summary["hits"].size()
+
+
+static func _apply_electromagnetic_laser(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var target := state.unit_by_uid(int(entry.get("unit", -1)))
+	if target == null:
+		return
+	var dir := _axis_dir(caster.cell, target.cell)
+	for step in range(1, GridSpec.manhattan(caster.cell, target.cell) + 1):
+		summary["ray_cells"].append(caster.cell + dir * step)
+	var hit := _hit_entry(state, caster, "electromagnetic_laser", target, SkillDB.damage_of("electromagnetic_laser"))
+	summary["hits"].append(hit)
+	summary["area_cells"].append(target.cell)
+	var pierced := not _electric_line_clear(state, caster.cell, target.cell, true)
+	summary["text"] = "电磁镭射命中 %s：%d 伤害%s。" % [
+		target.display_name,
+		int(hit["damage"]),
+		"（感电/麻痹穿透障碍）" if pierced else "",
+	]
+
+
+static func resonance_shock_bonus(caster: CombatUnit) -> int:
+	return Balance.ELECTRIC_RESONANCE_SHOCK_BONUS + int(caster.upgrades.get("electric_resonance_power", 0))
+
+
+static func resonance_paralysis_bonus(caster: CombatUnit) -> int:
+	return Balance.ELECTRIC_RESONANCE_PARALYSIS_BONUS + int(caster.upgrades.get("electric_resonance_power", 0))
+
+
+static func _apply_electric_resonance(state: BattleState, caster: CombatUnit, summary: Dictionary) -> void:
+	summary["area_cells"] = resonance_area(caster)
+	var gained := 0
+	var shock_layers := 0
+	var paralysis_layers := 0
+	for target in resonance_candidates(state, caster):
+		if target.shock_ticks > 0:
+			target.shock_ticks = maxi(0, target.shock_ticks - 1)
+			gained += resonance_shock_bonus(caster)
+			shock_layers += 1
+		if target.paralyzed_ticks > 0:
+			target.paralyzed_ticks = maxi(0, target.paralyzed_ticks - 1)
+			gained += resonance_paralysis_bonus(caster)
+			paralysis_layers += 1
+	caster.electric_resonance_bonus += gained
+	summary["resonance_gain"] = gained
+	summary["text"] = "电共鸣消耗 %d 层感电、%d 层麻痹，为下一次技能蓄伤 +%d。" % [shock_layers, paralysis_layers, gained]
+	state.log_event(summary["text"])
 
 
 static func _apply_swap(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
@@ -1708,6 +1894,57 @@ static func _apply_tree_summon(state: BattleState, caster: CombatUnit, cell: Vec
 	summary["area_cells"] = [cell]
 	var summon := state.summon_tree(caster, cell)
 	summary["text"] = "落点不可用或已有召唤物，取消召唤。" if summon == null else "召唤树人：生命 %d，技能威力 +%d；出生轮待机。" % [summon.max_hp, summon.summon_power_bonus]
+
+
+static func _apply_magnet_pull(state: BattleState, caster: CombatUnit, summary: Dictionary) -> void:
+	var target := magnet_pull_target(state, caster)
+	if target == null:
+		return
+	var from_cell := target.cell
+	var dir := _axis_dir(target.cell, caster.cell)
+	var distance := 2 if target.shock_ticks > 0 or target.paralyzed_ticks > 0 else 1
+	var moved := 0
+	summary["area_cells"].append(from_cell)
+	for step in distance:
+		var next: Vector2i = target.cell + dir
+		if next == caster.cell or not GridSpec.is_inside(next) or state.unit_at(next) != null or state.is_interaction_cell(next) or TerrainDB.blocks_move(state.terrain_at(next)):
+			break
+		target.cell = next
+		target.last_move_direction = dir
+		moved += 1
+		summary["area_cells"].append(next)
+		var terrain := state.terrain_at(next)
+		if not target.has_buff("flight") and (terrain == TerrainDB.WATER or terrain == TerrainDB.DEEP):
+			target.burn_ticks = 0
+		if TerrainDB.is_lethal(terrain) and (terrain != TerrainDB.DEEP or target.element != "water"):
+			state.kill_unit(target, "磁吸拉入" + TerrainDB.name_of(terrain), caster.side, caster.uid)
+			break
+	if target.is_alive() and moved > 0:
+		state.apply_vine_on_landing(target, false)
+	summary["pull"] = {"uid": target.uid, "from": from_cell, "to": target.cell, "distance": moved, "status_boosted": distance == 2}
+	summary["text"] = "磁吸将 %s 向%s拉近 %d 格%s。" % [
+		target.display_name,
+		GridSpec.DIR_NAMES.get(dir, "自身"),
+		moved,
+		"（感电/麻痹追加一格）" if distance == 2 else "",
+	]
+	state.log_event(summary["text"])
+
+
+static func _apply_glare(state: BattleState, caster: CombatUnit, summary: Dictionary) -> void:
+	summary["area_cells"] = glare_area(caster)
+	var shocked := 0
+	var paralyzed := 0
+	for target in glare_candidates(state, caster).duplicate():
+		var had_shock: bool = target.shock_ticks > 0
+		if not state.apply_shock(target, 1):
+			continue
+		if had_shock and target.paralyzed_ticks > 0:
+			paralyzed += 1
+		else:
+			shocked += 1
+	summary["text"] = "眩光使 %d 名敌人感电%s。" % [shocked, "，%d 名转为麻痹" % paralyzed if paralyzed > 0 else ""]
+	state.log_event(summary["text"])
 
 
 static func _apply_magnetic(state: BattleState, caster: CombatUnit, summary: Dictionary) -> void:

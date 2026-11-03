@@ -582,6 +582,8 @@ func _update_unit_card() -> void:
 		statuses.append("寄生：整轮末失去 %d HP；其他伤害会解除" % (Balance.PARASITE_DAMAGE + parasite_bonus))
 	if unit.fire_amp_stacks > 0:
 		statuses.append("火焰增幅 +%d：下一次造成技能直伤时消耗" % unit.fire_amp_stacks)
+	if unit.electric_resonance_bonus > 0:
+		statuses.append("电共鸣蓄伤 +%d：下一次造成实际技能伤害时消耗" % unit.electric_resonance_bonus)
 	if unit.ice_glide_until_round > 0 and unit.ice_glide_until_round >= state.round:
 		statuses.append("溜冰：至第 %d 回合，沿连通冰面移动不消耗普通移动机会" % unit.ice_glide_until_round)
 	if unit.surf_until_round > 0 and unit.surf_until_round >= state.round:
@@ -942,6 +944,17 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	elif skill_id == "tailwind":
 		var width := 5 + 2 * int(unit.upgrades.get("tailwind_reach", 0))
 		parts.append("自身周围 %d×%d · 移动力 +2" % [width, width])
+	elif skill_id == "magnet_pull":
+		parts.append("射程 %d · 拉近 1 格/带电 2 格" % SkillResolver.magnet_pull_range(unit))
+	elif skill_id == "glare":
+		var glare_width := 3 + 2 * int(unit.upgrades.get("glare_radius", 0))
+		parts.append("%d×%d · 敌人感电 1 层" % [glare_width, glare_width])
+	elif skill_id == "electromagnetic_laser":
+		parts.append("伤害 %d · 射程 4 · 带电目标可穿障" % damage)
+	elif skill_id == "electric_resonance":
+		parts.append("感电 +%d · 麻痹 +%d" % [SkillResolver.resonance_shock_bonus(unit), SkillResolver.resonance_paralysis_bonus(unit)])
+	elif skill_id == "electric_spark":
+		parts.append("直线 3 格 · 伤害 %d · 带电灼烧" % damage)
 	elif skill_id == "fire_burst" and int(unit.upgrades.get("fireball_damage", 0)) > 0:
 		parts.append("伤害 %d · 中心 %d" % [damage, Balance.skill_damage_for_side(base_damage + int(unit.upgrades["fireball_damage"]), unit.side)])
 	elif skill_id == "double_cast" and int(unit.upgrades.get("double_cast_range", 0)) > 0:
@@ -1267,6 +1280,12 @@ func _preview_overlays(preview: Dictionary) -> void:
 		var unit := state.unit_by_uid(selected_uid)
 		if unit != null:
 			board.arrows.append({"from": unit.cell, "to": preview["self_move"], "color": Color(1.0, 0.8, 0.3)})
+	var pull = preview.get("pull")
+	if pull != null:
+		var pull_from: Vector2i = pull.get("from", Vector2i(-1, -1))
+		var pull_to: Vector2i = pull.get("to", Vector2i(-1, -1))
+		if GridSpec.is_inside(pull_from) and GridSpec.is_inside(pull_to) and pull_from != pull_to:
+			board.arrows.append({"from": pull_from, "to": pull_to, "color": Color(0.55, 0.9, 1.0)})
 	for change in preview.get("terrain_changes", []):
 		board.markers.append({
 			"cell": change["cell"], "kind": "text", "text": "变%s" % TerrainDB.name_of(int(change["to"])),
@@ -1574,6 +1593,16 @@ func _on_skill_pressed(skill_id: String) -> void:
 			board.area_cells = SkillResolver.support_area(unit.cell, 2 + int(unit.upgrades.get("tailwind_reach", 0)) if skill_id == "tailwind" else 2, skill_id == "tailwind")
 		if skill_id == "rooted_grass":
 			board.area_cells = SkillResolver.rooted_grass_area(unit)
+		if skill_id == "glare":
+			board.area_cells = SkillResolver.glare_area(unit)
+		if skill_id == "electric_resonance":
+			board.area_cells = SkillResolver.resonance_area(unit)
+		if skill_id == "magnet_pull":
+			for direction in GridSpec.DIRS4:
+				for distance in range(1, SkillResolver.magnet_pull_range(unit) + 1):
+					var reach: Vector2i = unit.cell + direction * distance
+					if GridSpec.is_inside(reach):
+						board.area_cells.append(reach)
 		if skill_id == "earth_shake":
 			for affected in SkillResolver.front_area_cells(unit.cell, entry["dir"], 3):
 				if not board.area_cells.has(affected):
@@ -1584,6 +1613,10 @@ func _on_skill_pressed(skill_id: String) -> void:
 					board.area_cells.append(affected)
 		if skill_id == "wild_vines":
 			for affected in SkillResolver.wild_vines_cells(state, unit, entry["dir"]):
+				if not board.area_cells.has(affected):
+					board.area_cells.append(affected)
+		if skill_id == "electric_spark":
+			for affected in SkillResolver.electric_spark_cells(state, unit, entry["dir"]):
 				if not board.area_cells.has(affected):
 					board.area_cells.append(affected)
 	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)

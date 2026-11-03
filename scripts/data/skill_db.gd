@@ -41,6 +41,11 @@ const DEFS := {
 	"ice_breath": {"name": "冰之息", "element": "water", "kind": "ray", "min_range": 1, "max_range": 6, "damage": 8, "ranged": true, "freeze_combo": true, "desc": "沿正交方向延伸最多 6 格，攻击首个敌人并造成 8 点基础直伤；若其已有浸湿，则清除浸湿并施加一回合冰冻。"},
 	"tailwind": {"name": "磁场加速", "element": "electric", "kind": "self", "damage": 0, "ranged": false, "desc": "自身及横纵各延伸 2 格的 5×5 区域内友军，下一次可用移动机会移动力 +2。"},
 	"double_cast": {"name": "电力引擎", "element": "electric", "kind": "unit", "range": 1, "damage": 0, "ranged": false, "desc": "令一名相邻友军本轮额外施法一次；强化后可依次选择两名相邻友军。蓄力宣告后获得的额外施法可在当轮使用，下一轮蓄力锁定仍生效。"},
+	"magnet_pull": {"name": "磁吸", "element": "electric", "kind": "self", "damage": 0, "ranged": false, "desc": "自动选择四正交方向 5 格内最近且路径可见的敌人，将其向自身拉近 1 格；目标有感电或麻痹时拉近 2 格。障碍与中间单位会截断路径。"},
+	"glare": {"name": "眩光", "element": "electric", "kind": "self", "damage": 0, "ranged": false, "desc": "对自身周围 3×3 内所有敌人施加一层感电；麻痹中的目标不能获得感电。已有感电的目标再获得一层时转为麻痹。"},
+	"electromagnetic_laser": {"name": "电磁镭射", "element": "electric", "kind": "electric_laser", "range": 4, "damage": 12, "ranged": true, "desc": "选择四正交方向 4 格内一名敌人造成 12 点基础直伤；障碍会阻挡。目标有感电或麻痹时可越过地形障碍攻击，但仍不能越过中间单位。"},
+	"electric_resonance": {"name": "电共鸣", "element": "electric", "kind": "self", "damage": 0, "ranged": false, "desc": "消耗自身周围 3×3 内每名单位一层感电或麻痹，为施法者下一次造成实际伤害的技能分别蓄积 3 点或 5 点伤害；范围内友军和敌人均生效。"},
+	"electric_spark": {"name": "电极火花", "element": "electric", "kind": "direction", "range": 3, "damage": 8, "ranged": true, "desc": "选择四正交方向，对前方 3 格内所有敌人造成 8 点基础直伤；命中前已有感电或麻痹的目标额外尝试施加烧伤。障碍会截断。"},
 	"fire_seed": {
 		"name": "火种",
 		"element": "fire",
@@ -219,7 +224,7 @@ static func learnable_ids_for(element: String) -> Array:
 	match element:
 		"fire": ids.append_array(["fire_amplify", "flame_rush", "windfire_breath", "furnace_fist", "skyfire", "combustion", "burn_out"])
 		"water": ids.append_array(["surf", "water_magic_burst", "ice_breath", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
-		"electric": ids.append_array(["tailwind", "double_cast", "trial_wind_1", "trial_wind_2"])
+		"electric": ids.append_array(["tailwind", "double_cast", "magnet_pull", "glare", "electromagnetic_laser", "electric_resonance", "electric_spark", "trial_wind_1", "trial_wind_2"])
 		"grass": ids.append_array(["leech_seed", "tree_man", "first_aid", "rooted_grass", "leaf_wind", "antidote"])
 		"rock": ids.append_array(["rock_slide", "earth_shake"])
 	return ids

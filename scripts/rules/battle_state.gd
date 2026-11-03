@@ -854,6 +854,36 @@ func apply_freeze(target: CombatUnit) -> bool:
 	return true
 
 
+func apply_shock(target: CombatUnit, ticks: int = 1) -> bool:
+	if target == null or not target.is_alive() or target.has_buff("status_immune"):
+		return false
+	if target.paralyzed_ticks > 0:
+		target.shock_ticks = 0
+		log_event("%s 仍处于麻痹，麻痹消除前不能施加感电。" % target.display_name)
+		return false
+	if target.shock_ticks > 0:
+		target.shock_ticks = 0
+		apply_paralysis(target)
+		log_event("%s 的感电叠层转为麻痹。" % target.display_name)
+		return true
+	target.shock_ticks = maxi(1, ticks)
+	log_event("%s 获得感电。" % target.display_name)
+	return true
+
+
+func apply_paralysis(target: CombatUnit, ticks: int = Balance.PARALYSIS_TICKS) -> bool:
+	if target == null or not target.is_alive():
+		return false
+	var next_ticks := maxi(1, ticks)
+	var changed := next_ticks > target.paralyzed_ticks
+	target.shock_ticks = 0
+	target.paralyzed_ticks = maxi(target.paralyzed_ticks, next_ticks)
+	cancel_channel(target, "麻痹")
+	if changed:
+		log_event("%s 被麻痹 %d 回合。" % [target.display_name, target.paralyzed_ticks])
+	return changed
+
+
 func apply_wet(target: CombatUnit, ticks: int = 2) -> bool:
 	if target == null or not target.is_alive() or target.element == "water" or target.has_buff("status_immune"):
 		return false
@@ -1933,7 +1963,7 @@ func _signature() -> String:
 	for unit in units:
 		parts.append("buff:%d:%s" % [unit.uid, str(unit.battle_buffs)])
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
-		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
+		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.electric_resonance_bonus, unit.summon_owner_uid])
 		parts.append("imprison:%d:%d" % [unit.uid, unit.imprison_ticks])
 		parts.append("vine_reapply:%d:%d:%d,%d" % [unit.uid, unit.vine_reapply_round, unit.vine_reapply_cell.x, unit.vine_reapply_cell.y])
 		parts.append("frozen:%d:%d:%d" % [unit.uid, int(unit.frozen), unit.frozen_ticks])
