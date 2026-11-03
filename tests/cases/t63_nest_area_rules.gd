@@ -38,7 +38,8 @@ func _frozen_fire_wet(t: TestContext) -> void:
 	aquatic_caster.cell = Vector2i(2, 3)
 	aquatic.apply_freeze(aquatic_target)
 	aquatic.damage_unit(aquatic_caster, aquatic_target, 5, {"skill_direct": true, "element": "fire", "cause": "融冰水系测试"})
-	t.check(aquatic_target.slow_ticks == 1, "融冰浸湿可作为水系免疫浸湿的明确例外")
+	t.check(not aquatic_target.frozen, "水系目标受到实际火系技能伤害仍会解冻")
+	t.eq(aquatic_target.slow_ticks, 0, "水系目标不会获得融冰浸湿")
 
 
 func _objective_either_route(t: TestContext) -> void:

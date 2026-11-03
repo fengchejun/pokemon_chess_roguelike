@@ -770,7 +770,7 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		kill_unit(target, cause, killer_side, source.uid if source != null else int(opts.get("killer_uid", -1)))
 	var thawed_wet := false
 	if amount > 0 and was_frozen_before_hit and target.is_alive() and source != null and bool(opts.get("skill_direct", false)) and hit_element == "fire":
-		thawed_wet = apply_wet(target, 1, true)
+		thawed_wet = apply_wet(target, 1)
 	if source != null and source.side == "player" and target.side == "enemy" and bool(opts.get("skill_direct", false)) and amount > 0:
 		if killed and was_burning and source.is_alive():
 			var healed := mini(source.max_hp - source.hp, 4 * RelicDB.rank(relic_stacks, "ember_recovery"))
@@ -854,8 +854,8 @@ func apply_freeze(target: CombatUnit) -> bool:
 	return true
 
 
-func apply_wet(target: CombatUnit, ticks: int = 2, ignore_element_immunity: bool = false) -> bool:
-	if target == null or not target.is_alive() or (target.element == "water" and not ignore_element_immunity) or target.has_buff("status_immune"):
+func apply_wet(target: CombatUnit, ticks: int = 2) -> bool:
+	if target == null or not target.is_alive() or target.element == "water" or target.has_buff("status_immune"):
 		return false
 	var was_wet := target.slow_ticks > 0
 	target.slow_ticks = maxi(target.slow_ticks, maxi(1, ticks))
