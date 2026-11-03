@@ -61,6 +61,7 @@ static func _action_order(state: BattleState) -> Array:
 
 static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 	var best: Dictionary = {}
+	var repair_best: Dictionary = {}
 	var positions: Array = [unit.cell]
 	var paths: Dictionary = {unit.cell: []}
 	var free_paths: Dictionary = {unit.cell: false}
@@ -105,8 +106,18 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 					var channel_score := _channel_score(base, base_unit, skill_id, entry)
 					var route_score := _route_opening_score(base, sim, unit.uid)
 					var skill_score := int(score["total"]) + channel_score + route_score + (30 if skill_id == "tree_man" else 0)
-					if skill_score <= 0:
-						continue
+					var repair_only := skill_score <= 0
+					if repair_only:
+						if base.reinforcement_pool.is_empty():
+							continue
+						var projected := sim
+						if sim.pending_casts.size() > base.pending_casts.size():
+							projected = sim.clone()
+							var cast: Dictionary = sim.pending_casts.back()
+							SkillResolver.resolve_channel(projected, projected.unit_by_uid(unit.uid), skill_id, cast["cells"])
+						skill_score = _nest_spawn_repair_score(base, projected, unit.uid)
+						if skill_score <= 0:
+							continue
 					var candidate := {
 						"uid": unit.uid,
 						"move_path": path,
@@ -116,7 +127,11 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 						"meta": result,
 						"lethal": score["kills"],
 					}
-					if _better(candidate, best, path.size()):
+					if repair_only:
+						candidate["nest_spawn_repair"] = true
+						if _better(candidate, repair_best, path.size()):
+							repair_best = candidate
+					elif _better(candidate, best, path.size()):
 						best = candidate
 	var guard_scores := {}
 	for current in work.all_nests():
@@ -137,8 +152,54 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 				best = candidate
 	if not best.is_empty() and int(best["score"]) > 0:
 		return best
-	# 没有可得分攻击：向最近的己方单位接近。
+	if not repair_best.is_empty() and int(repair_best["score"]) > 0:
+		return repair_best
+	# 没有可得分攻击或出生格疏通任务：向最近的己方单位接近。
 	return _approach_action(work, unit, positions, paths, free_paths)
+
+
+static func _spawn_terrain_options(state: BattleState, cell: Vector2i, terrain: int) -> int:
+	var count := 0
+	if state.is_interaction_cell(cell) or state.is_nest_cell(cell) or TerrainDB.blocks_move(terrain):
+		return 0
+	for species_id in state.reinforcement_pool:
+		if TerrainDB.can_stand(terrain, SpeciesDB.element_of(species_id)):
+			count += 1
+	return count
+
+
+static func _nest_spawn_repair_score(before: BattleState, after: BattleState, actor_uid: int) -> int:
+	if before.reinforcement_pool.is_empty() or _harms_own_nest(before, after):
+		return 0
+	var actor := before.unit_by_uid(actor_uid)
+	if actor == null:
+		return 0
+	# 工程任务不以误伤、牺牲友军换取产怪空格。
+	for ally in before.alive_units("enemy"):
+		var later := after.unit_by_uid(ally.uid)
+		if later == null or not later.is_on_board() or later.hp < ally.hp:
+			return 0
+	var score := 0
+	var checked := {}
+	for current in before.all_nests():
+		if not bool(current.get("alive", false)) or GridSpec.manhattan(actor.cell, current["cell"]) > 4:
+			continue
+		for cell in GridSpec.neighbors4(current["cell"]):
+			if checked.has(cell) or before.unit_at(cell) != null or after.unit_at(cell) != null:
+				continue
+			checked[cell] = true
+			var old_options := _spawn_terrain_options(before, cell, before.terrain_at(cell))
+			var new_options := _spawn_terrain_options(after, cell, after.terrain_at(cell))
+			if new_options < old_options:
+				score -= 20
+			elif new_options > old_options:
+				score += 10
+			elif before.obstacle_durability.has(cell) and int(after.obstacle_durability.get(cell, 0)) < int(before.obstacle_durability[cell]):
+				# 允许分两次拆障，但障碍下面也必须是增援能站立的地形。
+				var origin := int(before.obstacle_origin.get(cell, TerrainDB.PLAIN))
+				if _spawn_terrain_options(before, cell, origin) > old_options:
+					score += 4
+	return mini(score, 16)
 
 
 static func _nest_guard_score(state: BattleState, nest: Dictionary) -> int:
@@ -569,6 +630,8 @@ static func describe(action: Dictionary, state: BattleState) -> String:
 	var unit := state.unit_by_uid(int(action.get("uid", -1)))
 	var name := unit.display_name if unit != null else "?"
 	var parts: Array = []
+	if bool(action.get("nest_spawn_repair", false)):
+		parts.append("疏通巢穴出生格")
 	if action.has("guard"):
 		parts.append("守护巢穴（消耗技能机会）")
 	var path: Array = action.get("move_path", [])
