@@ -214,7 +214,12 @@ func _blood_and_save(t: TestContext) -> void:
 	var escaped := _state_for(cfg, run_state.seed, 5)
 	escaped.on_captured(escaped.unit_by_uid(escaped.boss_uid), boss.species_id, 1)
 	escaped.end_battle("escape")
-	t.eq(int(RunState.new_run(31003).settle_battle(escaped)["boss_blood"]), 0, "捕获首领后超时逃离不发首领之血")
+	t.check(not escaped.ended, "首领战规则入口拒绝主动逃离")
+	# 旧版逃离结算记录仍需兼容，但新版不再产生。
+	escaped.ended = true
+	escaped.end_reason = "escape"
+	escaped.phase = BattleState.PHASE_ENDED
+	t.eq(int(RunState.new_run(31003).settle_battle(escaped)["boss_blood"]), 0, "旧版首领逃离记录不发首领之血")
 	var nest_win := _state_for(cfg, run_state.seed, 5)
 	nest_win.on_captured(nest_win.unit_by_uid(nest_win.boss_uid), boss.species_id, 1)
 	nest_win.nest["alive"] = false

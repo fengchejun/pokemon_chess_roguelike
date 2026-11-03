@@ -1748,7 +1748,21 @@ func check_battle_end() -> bool:
 
 
 func can_leave_node() -> bool:
-	return node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not has_live_nests())
+	return not ended and phase == PHASE_PLAYER and (node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not has_live_nests()))
+
+
+func can_escape() -> bool:
+	return not ended and phase == PHASE_PLAYER and node_kind != "boss" and boss_uid < 0
+
+
+func leave_node() -> bool:
+	if can_leave_node():
+		end_battle("explored" if node_kind == "event" else "victory")
+	elif can_escape():
+		end_battle("escape")
+	else:
+		return false
+	return ended
 
 
 func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) -> int:
@@ -1802,6 +1816,8 @@ func set_enemy_level_bonus(bonus: int) -> void:
 
 
 func end_battle(reason: String) -> void:
+	if reason == "escape" and (node_kind == "boss" or boss_uid >= 0):
+		return
 	if ended:
 		return
 	ended = true

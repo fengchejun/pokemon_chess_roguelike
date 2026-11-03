@@ -2,7 +2,7 @@ class_name PushResolver
 extends RefCounted
 
 ## 强制位移：推击与击退共用。
-## 结算顺序：逐格移动 → 碰撞加伤 → 障碍/巢穴耐久 → 致死地形处死。
+## 结算顺序：逐格移动 → 单位碰撞加伤 → 致死地形处死；碰撞不损伤障碍或巢穴耐久。
 
 
 static func push(state, target: CombatUnit, direction: Vector2i, distance: int, collision_bonus: int, cause: String, source_side: String = "", source_uid: int = -1, skill_id: String = "") -> Dictionary:
@@ -81,5 +81,3 @@ static func _summarize_collision(state, summary: Dictionary, target: CombatUnit,
 	state.damage_unit(null, target, target_damage, {"no_element": true, "cause": "碰撞", "collision": true, "killer_side": source_side, "killer_uid": source_uid})
 	if occupant != null:
 		state.damage_unit(null, occupant, other_damage, {"no_element": true, "cause": "被撞", "collision": true, "killer_side": source_side, "killer_uid": source_uid})
-	else:
-		state.damage_obstacle(cell, 1, source_side)

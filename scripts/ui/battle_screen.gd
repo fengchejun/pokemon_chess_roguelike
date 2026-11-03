@@ -325,14 +325,10 @@ func _action_row() -> Control:
 	end_turn_button.name = "EndTurnButton"
 	end_turn_button.pressed.connect(do_end_turn)
 	row1.add_child(end_turn_button)
-	if state.node_kind != "":
-		leave_node_button = UIKit.small_button("返回区域")
-		leave_node_button.pressed.connect(func() -> void:
-			if not busy and not _playback_active() and state.can_leave_node():
-				state.end_battle("explored" if state.node_kind == "event" else "victory")
-				refresh_all()
-		)
-		column.add_child(leave_node_button)
+	leave_node_button = UIKit.small_button("返回区域")
+	leave_node_button.name = "LeaveNodeButton"
+	leave_node_button.pressed.connect(do_leave_node)
+	column.add_child(leave_node_button)
 	return column
 
 
@@ -961,7 +957,9 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 
 func _update_action_buttons() -> void:
 	if leave_node_button != null:
-		leave_node_button.disabled = busy or _playback_active() or state.ended or not state.can_leave_node()
+		leave_node_button.text = "返回区域" if state.can_leave_node() else "首领战不可撤退" if state.node_kind == "boss" or state.boss_uid >= 0 else "撤退"
+		leave_node_button.tooltip_text = "首领战必须击败或捕获首领。" if state.node_kind == "boss" or state.boss_uid >= 0 else "离开当前节点；未清场时按撤退结算。"
+		leave_node_button.disabled = busy or _playback_active() or state.ended or not (state.can_leave_node() or state.can_escape())
 	if end_turn_button != null:
 		end_turn_button.disabled = busy or state.ended or state.is_free_exploration() or state.phase != BattleState.PHASE_PLAYER
 	if undo_button != null:
@@ -1771,6 +1769,13 @@ func do_undo() -> bool:
 	board.clear_overlays()
 	_refresh_after_action()
 	return true
+
+
+func do_leave_node() -> void:
+	if busy or _playback_active() or state == null:
+		return
+	if state.leave_node():
+		refresh_all()
 
 
 func do_end_turn() -> void:

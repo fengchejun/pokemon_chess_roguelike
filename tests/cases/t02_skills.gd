@@ -246,7 +246,7 @@ func _t_push_collision(t: TestContext) -> void:
 	var wild2 := state2.unit_by_uid(100)
 	t.eq(wild2.hp, SpeciesDB.hp_of("water_wild1") - SkillDB.damage_of("push") - Balance.COLLISION_DAMAGE, "碰撞追加配置的伤害")
 	t.eq(wild2.cell, Vector2i(3, 3), "被障碍挡住")
-	t.eq(state2.obstacle_durability.get(Vector2i(4, 3), 0), 1, "障碍耐久 −1")
+	t.eq(state2.obstacle_durability.get(Vector2i(4, 3), 0), Balance.OBSTACLE_DURABILITY, "单位被推撞障碍不扣耐久")
 
 
 func _t_rock_smash(t: TestContext) -> void:
