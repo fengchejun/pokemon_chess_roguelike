@@ -81,3 +81,74 @@ static func _summarize_collision(state, summary: Dictionary, target: CombatUnit,
 	state.damage_unit(null, target, target_damage, {"no_element": true, "cause": "碰撞", "collision": true, "killer_side": source_side, "killer_uid": source_uid})
 	if occupant != null:
 		state.damage_unit(null, occupant, other_damage, {"no_element": true, "cause": "被撞", "collision": true, "killer_side": source_side, "killer_uid": source_uid})
+
+
+## 推击直接命中岩障：先损伤，再搬运；不用于其他击退技能。
+static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i) -> Dictionary:
+	var result := {"from": cell, "to": cell, "damage": 0, "destroyed": false, "moved": false, "filled": false, "blocked": false, "hits": [], "terrain_changes": []}
+	if state.terrain_at(cell) != TerrainDB.OBSTACLE or not state.obstacle_durability.has(cell) or GridSpec.manhattan(caster.cell, cell) != 1:
+		return result
+	result["damage"] = 1
+	result["destroyed"] = state.damage_obstacle(cell, 1, caster.side)
+	state._relay_feedback("damage", "岩障耐久 -1", 1, cell, -1)
+	if result["destroyed"]:
+		return result
+	var next: Vector2i = cell + (cell - caster.cell)
+	if not GridSpec.is_inside(next) or state.is_nest_cell(next) or state.is_interaction_cell(next) or TerrainDB.blocks_move(state.terrain_at(next)):
+		result["blocked"] = true
+		state.log_event("岩障前方受阻，留在原格。")
+		return result
+	var occupant := state.unit_at(next)
+	if occupant != null:
+		var amount := Balance.COLLISION_DAMAGE
+		if caster.side == "player":
+			amount += int(state.effects.get("push_collision", 0))
+			if occupant.side == "enemy":
+				amount += 4 * RelicDB.rank(state.relic_stacks, "wall_crash")
+		var hit := state.damage_unit(null, occupant, amount, {"no_element": true, "collision": true, "cause": "岩障碰撞", "killer_side": caster.side, "killer_uid": caster.uid})
+		result["hits"].append({"uid": occupant.uid, "name": occupant.display_name, "cell": next, "damage": int(hit.get("amount", 0)), "killed": bool(hit.get("killed", false)), "modifier": 0, "statuses": [], "push": null})
+		result["blocked"] = true
+		state.log_event("岩障撞上 %s 后留在原格。" % occupant.display_name)
+		return result
+	var destination := state.terrain_at(next)
+	if TerrainDB.is_lethal(destination):
+		state.damage_obstacle(cell, int(state.obstacle_durability[cell]), caster.side)
+		state.set_terrain(next, TerrainDB.FRAGILE)
+		result["to"] = next
+		result["filled"] = true
+		result["destroyed"] = true
+		result["terrain_changes"].append({"cell": next, "from": destination, "to": TerrainDB.FRAGILE})
+		state.log_event("岩障填入%s，目标格变为易碎地块。" % TerrainDB.name_of(destination))
+		state._relay_feedback("terrain", "填成易碎格", 0, next, -1)
+		return result
+	if not TerrainDB.can_stand(destination, "rock"):
+		result["blocked"] = true
+		return result
+	var hp := int(state.obstacle_durability[cell])
+	var origin := int(state.obstacle_origin.get(cell, TerrainDB.PLAIN))
+	var expiry := int(state.obstacle_expire_round.get(cell, -1))
+	var natural := state.natural_essence_cells.has(cell)
+	var reward_origin: Vector2i = state.obstacle_reward_origins.get(cell, cell)
+	# 藤蔓被覆盖后清除，恢复它下面的实际地貌，不复活已清除的藤蔓。
+	var underlay := int(state.vine_origin.get(next, TerrainDB.PLAIN)) if destination == TerrainDB.VINES else destination
+	state.obstacle_durability.erase(cell)
+	state.obstacle_origin.erase(cell)
+	state.obstacle_expire_round.erase(cell)
+	state.obstacle_reward_origins.erase(cell)
+	state.natural_essence_cells.erase(cell)
+	state.set_terrain(cell, origin)
+	state.set_terrain(next, TerrainDB.OBSTACLE)
+	state.steam_cells.erase(next)
+	state.burning_sources.erase(next)
+	state.obstacle_durability[next] = hp
+	state.obstacle_origin[next] = underlay
+	if expiry >= 0:
+		state.obstacle_expire_round[next] = expiry
+	if natural:
+		state.natural_essence_cells.append(next)
+		state.obstacle_reward_origins[next] = reward_origin
+	result["moved"] = true
+	result["to"] = next
+	state.log_event("岩障被推至 (%d,%d)，剩余 %d 耐久。" % [next.x, next.y, hp])
+	state._relay_feedback("terrain", "岩障移动", 0, next, -1)
+	return result

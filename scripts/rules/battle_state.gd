@@ -81,6 +81,7 @@ var essence_earned: int = 0
 var essence_applied: int = 0
 var essence_claims: Dictionary = {}
 var natural_essence_cells: Array = []
+var obstacle_reward_origins: Dictionary = {} # 当前岩障格 -> 天然障碍原始资源格
 var capture_aid: bool = false
 var burning_sources: Dictionary = {}
 
@@ -262,6 +263,7 @@ func load_map(map_data: Dictionary) -> void:
 	obstacle_durability = {}
 	obstacle_origin = {}
 	obstacle_expire_round = {}
+	obstacle_reward_origins = {}
 	for cell in map_data.get("obstacle_cells", []):
 		obstacle_durability[cell] = Balance.TREE_DURABILITY if terrain_at(cell) == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
 	natural_essence_cells = obstacle_durability.keys().duplicate()
@@ -299,7 +301,7 @@ func normalize_nest_terrain() -> void:
 		if not GridSpec.is_inside(cell):
 			continue
 		terrain[GridSpec.index(cell)] = TerrainDB.PLAIN
-		for effects_by_cell in [obstacle_durability, obstacle_origin, obstacle_expire_round, burning_cells, burning_sources, steam_cells, vine_origin, vine_expire_round]:
+		for effects_by_cell in [obstacle_durability, obstacle_origin, obstacle_expire_round, burning_cells, burning_sources, steam_cells, vine_origin, vine_expire_round, obstacle_reward_origins]:
 			effects_by_cell.erase(cell)
 		natural_essence_cells.erase(cell)
 
@@ -925,15 +927,21 @@ func _finish_movement_effects(side: String) -> void:
 		unit.haste_ticks = maxi(0, unit.haste_ticks - 1)
 
 
+func claim_obstacle_essence(cell: Vector2i, source_side: String) -> void:
+	if natural_essence_cells.has(cell):
+		natural_essence_cells.erase(cell)
+		var original: Vector2i = obstacle_reward_origins.get(cell, cell)
+		if source_side == "player":
+			earn_essence("terrain:%d:%d" % [original.x, original.y], 1, cell)
+	obstacle_reward_origins.erase(cell)
+
+
 func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "") -> bool:
 	if not obstacle_durability.has(cell):
 		return false
 	var left := int(obstacle_durability[cell]) - amount
 	if left <= 0:
-		if natural_essence_cells.has(cell):
-			natural_essence_cells.erase(cell)
-			if source_side == "player":
-				earn_essence("terrain:%d:%d" % [cell.x, cell.y], 1, cell)
+		claim_obstacle_essence(cell, source_side)
 		var drop_food := node_kind != "" and terrain_at(cell) == TerrainDB.TREE and terrain_rng.randf() < 0.25 and not food_cells.has(cell)
 		obstacle_durability.erase(cell)
 		burning_cells.erase(cell)
@@ -1032,6 +1040,7 @@ func place_temp_obstacle(cell: Vector2i, origin: int, expire_round: int) -> void
 	if is_nest_cell(cell):
 		return
 	natural_essence_cells.erase(cell)
+	obstacle_reward_origins.erase(cell)
 	set_terrain(cell, TerrainDB.OBSTACLE)
 	obstacle_durability[cell] = Balance.OBSTACLE_DURABILITY
 	obstacle_origin[cell] = origin
@@ -1553,6 +1562,7 @@ func _settle_round_rules() -> void:
 			obstacle_expire_round.erase(cell)
 			obstacle_origin.erase(cell)
 			obstacle_durability.erase(cell)
+			obstacle_reward_origins.erase(cell)
 			set_terrain(cell, origin)
 			log_event("临时障碍消失（%d,%d）。" % [cell.x, cell.y])
 	_settle_burning_cells()
@@ -1662,10 +1672,7 @@ func _settle_burning_cells() -> void:
 			occupant.burn_source_side = String(burning_sources.get(cell, ""))
 		burning_cells[cell] = int(burning_cells[cell]) - 1
 		if int(burning_cells[cell]) <= 0:
-			if natural_essence_cells.has(cell):
-				natural_essence_cells.erase(cell)
-				if String(burning_sources.get(cell, "")) == "player":
-					earn_essence("terrain:%d:%d" % [cell.x, cell.y], 1)
+			claim_obstacle_essence(cell, String(burning_sources.get(cell, "")))
 			burning_sources.erase(cell)
 			burning_cells.erase(cell)
 			obstacle_durability.erase(cell)
@@ -1928,7 +1935,7 @@ func _signature() -> String:
 	var obstacle_keys: Array = obstacle_durability.keys().duplicate()
 	obstacle_keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
 	for cell in obstacle_keys:
-		parts.append(str(cell))
+		parts.append("rock:%s:%d:%s:%s:%s" % [str(cell), int(obstacle_durability[cell]), str(obstacle_origin.get(cell, TerrainDB.PLAIN)), str(obstacle_expire_round.get(cell, -1)), str(obstacle_reward_origins.get(cell, cell))])
 	return "|".join(parts)
 
 
@@ -1940,6 +1947,7 @@ func clone() -> BattleState:
 	copy.essence_applied = essence_applied
 	copy.essence_claims = essence_claims.duplicate()
 	copy.natural_essence_cells = natural_essence_cells.duplicate()
+	copy.obstacle_reward_origins = obstacle_reward_origins.duplicate()
 	copy.capture_aid = capture_aid
 	copy.burning_sources = burning_sources.duplicate()
 	copy.food_cells = food_cells.duplicate()

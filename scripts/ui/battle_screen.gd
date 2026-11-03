@@ -1034,6 +1034,7 @@ func _mark_action_on_board(action: Dictionary) -> void:
 			var to_cell: Vector2i = push.get("to", Vector2i(-1, -1))
 			if GridSpec.is_inside(from_cell) and GridSpec.is_inside(to_cell) and from_cell != to_cell:
 				board.arrows.append({"from": from_cell, "to": to_cell, "color": Color(1.0, 0.45, 0.35, 0.9)})
+	_add_obstacle_push_overlay(meta)
 	var self_move = meta.get("self_move")
 	if self_move != null and meta.get("caster_uid", -1) >= 0:
 		var caster := state.unit_by_uid(int(meta["caster_uid"]))
@@ -1233,7 +1234,8 @@ func _preview_overlays(preview: Dictionary) -> void:
 			var to_cell: Vector2i = push.get("to", Vector2i(-1, -1))
 			if GridSpec.is_inside(from_cell) and GridSpec.is_inside(to_cell) and from_cell != to_cell:
 				board.arrows.append({"from": from_cell, "to": to_cell, "color": Color(1.0, 0.45, 0.35)})
-	if String(preview.get("skill_id", "")) == "flame_charge":
+	_add_obstacle_push_overlay(preview)
+	if String(preview.get("skill_id", "")) in ["flame_charge", "rock_push", "push"]:
 		for obstacle in preview.get("obstacles_damaged", []):
 			board.markers.append({"cell": obstacle["cell"], "kind": "damage", "text": str(int(obstacle["damage"]))})
 	var nest_hit = preview.get("nest_damaged")
@@ -1248,6 +1250,14 @@ func _preview_overlays(preview: Dictionary) -> void:
 			"cell": change["cell"], "kind": "text", "text": "变%s" % TerrainDB.name_of(int(change["to"])),
 			"color": Color(0.5, 0.9, 1.0), "size": 12,
 		})
+
+
+func _add_obstacle_push_overlay(meta: Dictionary) -> void:
+	var pushed: Dictionary = meta.get("obstacle_push", {})
+	if pushed.is_empty():
+		return
+	if pushed.get("moved", false) or pushed.get("filled", false):
+		board.arrows.append({"from": pushed["from"], "to": pushed["to"], "color": Color("d3b58b")})
 
 
 func _show_terrain(cell: Vector2i) -> void:

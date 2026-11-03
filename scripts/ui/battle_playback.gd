@@ -183,6 +183,14 @@ func _draw() -> void:
 				draw_polyline(route, color, 3.0)
 	if info["kind"] != "skill":
 		return
+	var pushed: Dictionary = current["meta"].get("obstacle_push", {})
+	if not pushed.is_empty() and (pushed.get("moved", false) or pushed.get("filled", false)):
+		var rock_from := (Vector2(pushed["from"]) + Vector2.ONE * 0.5) * BoardView.TILE
+		var rock_to := (Vector2(pushed["to"]) + Vector2.ONE * 0.5) * BoardView.TILE
+		draw_line(rock_from, rock_to, Color("d3b58b"), 3.0)
+		if elapsed >= 0.4 and elapsed <= 0.7:
+			var rock_pos := rock_from.lerp(rock_to, clampf((elapsed - 0.4) / 0.3, 0.0, 1.0))
+			draw_rect(Rect2(rock_pos - Vector2(16, 16), Vector2(32, 32)), Color("a68f73"))
 	var cells: Array = current["meta"].get("area_cells", []).duplicate()
 	for event_step in current["events"]:
 		var e: Dictionary = event_step["event"]

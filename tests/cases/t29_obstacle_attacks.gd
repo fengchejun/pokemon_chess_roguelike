@@ -27,7 +27,8 @@ func _unit_skills(t: TestContext) -> void:
 		t.eq(int(preview.get("obstacles_damaged", [{}])[0].get("damage", -1)), 1, "%s 预览只扣一点" % pair[1])
 		var result := SkillResolver.apply(state, caster, pair[1], entry, false)
 		t.check(bool(result.get("ok", false)), "%s 实际施放成功" % pair[1])
-		t.eq(int(state.obstacle_durability[cell]), 1, "%s 对岩障只扣一点" % pair[1])
+		var remaining_cell := cell + Vector2i.RIGHT if pair[1] == "rock_push" else cell
+		t.eq(int(state.obstacle_durability[remaining_cell]), 1, "%s 对岩障只扣一点，推击搬至下一格" % pair[1])
 
 
 func _area_skills(t: TestContext) -> void:
