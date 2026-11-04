@@ -135,7 +135,7 @@ func _leaf_wind(t: TestContext) -> void:
 	state.nest["cell"] = Vector2i(3, 2)
 	caster.skills.append("leaf_wind")
 	var entries := state.skill_targets(caster, "leaf_wind")
-	t.check(entries.size() == 1 and _has_unit_entry(entries, 100), "叶之风只可选择两格内敌人")
+	t.check(entries.size() == 2 and _has_unit_entry(entries, 100) and entries.has({"type": "nest", "cell": Vector2i(3, 2)}), "叶之风可选两格内敌人与巢穴，不选择友军与岩障")
 	state.unit_by_uid(100).cell = Vector2i(5, 3)
 	t.check(not state.skill_targets(caster, "leaf_wind").any(func(entry): return _has_unit_entry([entry], 100)), "叶之风不能选择三格外敌人")
 

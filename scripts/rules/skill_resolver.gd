@@ -116,7 +116,11 @@ static func ice_breath_cells(state: BattleState, caster: CombatUnit, dir: Vector
 			if not GridSpec.is_inside(cell):
 				active_lanes[lane] = false
 				continue
-			if TerrainDB.blocks_rays(state.terrain_at(cell)) or (state.is_nest_cell(cell) and state.unit_at(cell) == null):
+			if state.is_nest_cell(cell):
+				cells.append(cell)
+				active_lanes[lane] = false
+				continue
+			if TerrainDB.blocks_rays(state.terrain_at(cell)):
 				active_lanes[lane] = false
 				continue
 			cells.append(cell)
@@ -125,6 +129,8 @@ static func ice_breath_cells(state: BattleState, caster: CombatUnit, dir: Vector
 
 static func ice_breath_has_enemy(state: BattleState, caster: CombatUnit, dir: Vector2i) -> bool:
 	for cell in ice_breath_cells(state, caster, dir):
+		if caster.side == "player" and state.is_nest_cell(cell):
+			return true
 		var target := state.unit_at(cell)
 		if target != null and target.side != caster.side:
 			return true
@@ -202,10 +208,27 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 				continue
 			if state.obstacle_durability.has(cell):
 				entries.append({"type": "cell", "cell": cell})
-			elif state.is_nest_cell(cell) and state.unit_at(cell) == null:
-				entries.append({"type": "nest", "cell": cell})
 			elif skill_id == "rock_break" and unit.has_buff("rock_break") and state.terrain_at(cell) == TerrainDB.FRAGILE:
 				entries.append({"type": "cell", "cell": cell})
+
+	if unit.side == "player" and (int(def.get("damage", 0)) > 0 or skill_id == "burn_out"):
+		for nest in state.all_nests():
+			var cell: Vector2i = nest["cell"]
+			if not state.is_nest_cell(cell):
+				continue
+			var distance := GridSpec.manhattan(unit.cell, cell)
+			if skill_id == "rock_blast":
+				if distance != skill_range or not _orthogonally_aligned(unit.cell, cell) or not _rock_blast_path_clear(state, unit.cell, cell):
+					continue
+			elif skill_id == "water_drop_stone":
+				var proxy := CombatUnit.new()
+				proxy.cell = cell
+				proxy.hp = 1
+				if not _water_drop_reaches(state, unit, proxy):
+					continue
+			elif distance < 1 or distance > skill_range:
+				continue
+			entries.append({"type": "nest", "cell": cell})
 
 
 static func _orthogonally_aligned(from: Vector2i, to: Vector2i) -> bool:
@@ -389,6 +412,8 @@ static func _water_magic_burst_has_enemy(state: BattleState, caster: CombatUnit,
 	var enemy_side := "enemy" if caster.side == "player" else "player"
 	var cells: Array = [center] + GridSpec.neighbors4(center)
 	for cell in cells:
+		if caster.side == "player" and state.is_nest_cell(cell):
+			return true
 		var target := state.unit_at(cell)
 		if target != null and target.side == enemy_side:
 			return true
@@ -484,9 +509,9 @@ static func electric_spark_cells(state: BattleState, caster: CombatUnit, dir: Ve
 			break
 		cells.append(cell)
 		var target := state.unit_at(cell)
-		if target != null and target.side != caster.side:
+		if (target != null and target.side != caster.side) or (caster.side == "player" and state.is_nest_cell(cell)):
 			found_enemy = true
-		if state.is_interaction_cell(cell) or TerrainDB.blocks_move(state.terrain_at(cell)):
+		if state.is_nest_cell(cell) or state.is_interaction_cell(cell) or TerrainDB.blocks_move(state.terrain_at(cell)):
 			break
 	return cells if found_enemy else []
 
@@ -506,6 +531,13 @@ static func _electromagnetic_laser_targets(state: BattleState, caster: CombatUni
 			continue
 		entries.append({"type": "unit", "unit": target.uid, "cell": target.cell, "pierces_obstacle": blocked_by_terrain})
 
+	if caster.side == "player":
+		for nest in state.all_nests():
+			var cell: Vector2i = nest["cell"]
+			var distance := GridSpec.manhattan(caster.cell, cell)
+			if state.is_nest_cell(cell) and _orthogonally_aligned(caster.cell, cell) and distance >= 1 and distance <= max_range and _electric_line_clear(state, caster.cell, cell, true):
+				entries.append({"type": "nest", "cell": cell})
+
 
 static func _electric_line_clear(state: BattleState, from_cell: Vector2i, to_cell: Vector2i, include_terrain_blockers: bool) -> bool:
 	var distance := GridSpec.manhattan(from_cell, to_cell)
@@ -514,7 +546,7 @@ static func _electric_line_clear(state: BattleState, from_cell: Vector2i, to_cel
 	var dir := _axis_dir(from_cell, to_cell)
 	for step in range(1, distance):
 		var cell: Vector2i = from_cell + dir * step
-		if state.unit_at(cell) != null or state.is_interaction_cell(cell):
+		if state.unit_at(cell) != null or state.is_interaction_cell(cell) or state.is_nest_cell(cell):
 			return false
 		if include_terrain_blockers and TerrainDB.blocks_rays(state.terrain_at(cell)):
 			return false
@@ -674,8 +706,8 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		return summary
 	state.emit_feedback(caster, "skill", "%s使用了%s" % [caster.display_name, SkillDB.name_of(skill_id)])
 	state.log_event("%s 施放%s。" % [caster.display_name, SkillDB.name_of(skill_id)])
-	if String(def.get("kind", "")) == "unit" and String(target_entry.get("type", "")) == "nest":
-		_hit_nest(state, caster, target_entry["cell"], summary, int(def.get("damage", 0)))
+	if String(target_entry.get("type", "")) == "nest":
+		_apply_direct_nest(state, caster, skill_id, target_entry["cell"], summary)
 		summary["text"] = "%s命中巢穴。" % SkillDB.name_of(skill_id)
 		_consume_fire_amp_if_used(state, caster, summary)
 		if SkillDB.battle_limit_of(skill_id) > 0:
@@ -993,7 +1025,41 @@ static func _hit_obstacle(state: BattleState, cell: Vector2i, summary: Dictionar
 	state.log_event("(%d,%d) %s" % [cell.x, cell.y, summary["text"]])
 
 
-static func _hit_nest(state: BattleState, caster: CombatUnit, cell: Vector2i, summary: Dictionary, amount: int = 1, guard_base: int = -1) -> bool:
+static func _apply_direct_nest(state: BattleState, caster: CombatUnit, skill_id: String, cell: Vector2i, summary: Dictionary) -> void:
+	var base := SkillDB.damage_of(skill_id)
+	if skill_id == "leaf_wind" and state.terrain_at(caster.cell) in [TerrainDB.GRASS, TerrainDB.VINES]:
+		base = 12
+	if skill_id == "burn_out":
+		base = ceili(caster.max_hp * 0.5)
+	if skill_id == "water_drop_stone":
+		var proxy := CombatUnit.new()
+		proxy.cell = cell
+		proxy.hp = 1
+		for route_cell in water_drop_obstacle_route(state, caster, proxy):
+			_hit_obstacle(state, route_cell, summary, caster.side)
+	var segments := mountain_chain_segment_count(state, caster) if skill_id == "mountain_chain" else 1
+	if skill_id == "mountain_chain":
+		summary["segments_total"] = segments
+		summary["continuous"] = true
+	for segment in range(segments):
+		if not state.is_nest_cell(cell):
+			break
+		(summary.get("_nest_hit_cells", []) as Array).erase(cell)
+		_hit_nest(state, caster, cell, summary, base)
+	summary["area_cells"].append(cell)
+	if skill_id == "rock_blast":
+		_apply_rock_fragments(state, caster, cell, _axis_dir(caster.cell, cell), summary)
+	if skill_id == "burn_out":
+		var lost := mini(caster.hp, base)
+		caster.hp -= lost
+		summary["self_damage"] = lost
+		state.emit_feedback(caster, "damage", "-%d" % lost, lost)
+		if caster.hp <= 0:
+			summary["self_death"] = true
+			state.kill_unit(caster, "燃尽反噬", caster.side, caster.uid)
+
+
+static func _hit_nest(state: BattleState, caster: CombatUnit, cell: Vector2i, summary: Dictionary, amount: int = 1, guard_base: int = -1, base_upgraded: bool = false) -> bool:
 	if amount <= 0 or not state.is_nest_cell(cell) or (summary.get("_nest_hit_cells", []) as Array).has(cell):
 		return false
 	if not summary.has("_nest_hit_cells"):
@@ -1001,7 +1067,7 @@ static func _hit_nest(state: BattleState, caster: CombatUnit, cell: Vector2i, su
 	summary["_nest_hit_cells"].append(cell)
 	var skill_id := String(summary.get("skill_id", ""))
 	var base := guard_base if guard_base >= 0 else amount
-	if skill_id != "fire_burst":
+	if skill_id != "fire_burst" and not base_upgraded:
 		base = upgraded_base_damage(caster, skill_id, base)
 	if base > 0:
 		base += caster.fire_amp_stacks + caster.electric_resonance_bonus
@@ -1017,7 +1083,7 @@ static func _hit_nest(state: BattleState, caster: CombatUnit, cell: Vector2i, su
 	var guards := state.active_nest_guards(cell) if caster.side == "player" else []
 	if not guards.is_empty():
 		for index in range(guards.size()):
-			var hit := _hit_entry(state, caster, skill_id, guards[index], guard_base if guard_base >= 0 else amount, {"guard_share_half": true, "guard_divisor": guards.size(), "guard_rank": index, "base_upgraded": skill_id == "fire_burst"})
+			var hit := _hit_entry(state, caster, skill_id, guards[index], guard_base if guard_base >= 0 else amount, {"guard_share_half": true, "guard_divisor": guards.size(), "guard_rank": index, "base_upgraded": skill_id == "fire_burst" or base_upgraded})
 			hit["guard_intercept"] = true # 兼容预览字段；现在是分伤而非全额拦截。
 			summary["hits"].append(hit)
 		state.log_event("巢穴承担一半伤害，其余由 %d 名主动守军均分；守护本阶段持续。" % guards.size())
@@ -1385,6 +1451,8 @@ static func _apply_flame_rush(state: BattleState, caster: CombatUnit, entry: Dic
 		if maxi(absi(target.cell.x - dest.x), absi(target.cell.y - dest.y)) > 1:
 			continue
 		summary["hits"].append(_hit_entry(state, caster, "flame_rush", target, SkillDB.damage_of("flame_rush")))
+	for cell in affected:
+		_hit_nest(state, caster, cell, summary, SkillDB.damage_of("flame_rush"))
 	summary["area_cells"] = affected
 	summary["text"] = "炎袭跃迁至 (%d,%d)，命中 %d 名敌人。" % [dest.x, dest.y, summary["hits"].size()]
 
@@ -1715,6 +1783,14 @@ static func _apply_rock_blast(state: BattleState, caster: CombatUnit, entry: Dic
 	summary["hits"].append(hit)
 	if target.is_alive():
 		hit["push"] = PushResolver.push(state, target, dir, 1, 0, "岩爆弹", caster.side, caster.uid, "rock_blast")
+	_apply_rock_fragments(state, caster, impact_cell, dir, summary)
+	summary["text"] = "岩爆弹命中 %s：%d 伤害并向两侧分裂。" % [target.display_name, hit["damage"]]
+	if hit["push"] != null and bool(hit["push"].get("death", false)):
+		summary["text"] += "目标被推入致死地形。"
+	state.log_event(summary["text"])
+
+
+static func _apply_rock_fragments(state: BattleState, caster: CombatUnit, impact_cell: Vector2i, dir: Vector2i, summary: Dictionary) -> void:
 	var fragment_damage := int(SkillDB.get_def("rock_blast").get("fragment_damage", 3))
 	var upgrade_info := RunState.upgrade_info("rock_blast_damage")
 	if not upgrade_info.is_empty() and caster.upgrades.has(String(upgrade_info.get("key", ""))):
@@ -1727,6 +1803,9 @@ static func _apply_rock_blast(state: BattleState, caster: CombatUnit, entry: Dic
 			if not GridSpec.is_inside(cell):
 				break
 			summary["area_cells"].append(cell)
+			if state.is_nest_cell(cell):
+				_hit_nest(state, caster, cell, summary, fragment_damage, -1, true)
+				break
 			if TerrainDB.blocks_rays(state.terrain_at(cell)) or state.is_interaction_cell(cell):
 				break
 			var occupant := state.unit_at(cell)
@@ -1737,10 +1816,6 @@ static func _apply_rock_blast(state: BattleState, caster: CombatUnit, entry: Dic
 			fragment["fragment_cell"] = cell
 			summary["hits"].append(fragment)
 			break
-	summary["text"] = "岩爆弹命中 %s：%d 伤害并向两侧分裂。" % [target.display_name, hit["damage"]]
-	if hit["push"] != null and bool(hit["push"].get("death", false)):
-		summary["text"] += "目标被推入致死地形。"
-	state.log_event(summary["text"])
 
 
 static func _apply_water_drop_stone(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
@@ -1826,6 +1901,7 @@ static func _apply_skyfire(state: BattleState, caster: CombatUnit, entry: Dictio
 	for cell in cells:
 		if state.ended:
 			break
+		_hit_nest(state, caster, cell, summary, SkillDB.damage_of("skyfire"))
 		var target := state.unit_at(cell)
 		if target == null:
 			continue
@@ -1842,6 +1918,7 @@ static func _apply_water_magic_burst(state: BattleState, caster: CombatUnit, ent
 	summary["area_cells"] = cells
 	var push_targets: Array = []
 	for cell in cells:
+		_hit_nest(state, caster, cell, summary, 11 if cell == center else 8)
 		var target := state.unit_at(cell)
 		if target == null or target.side == caster.side:
 			continue
@@ -1955,6 +2032,7 @@ static func _apply_ice_breath(state: BattleState, caster: CombatUnit, entry: Dic
 	var area := ice_breath_cells(state, caster, dir)
 	summary["area_cells"] = area.duplicate()
 	for cell in area:
+		_hit_nest(state, caster, cell, summary, SkillDB.damage_of("ice_breath"))
 		var target := state.unit_at(cell)
 		if target == null:
 			continue
@@ -1980,6 +2058,7 @@ static func _apply_directional(state: BattleState, caster: CombatUnit, skill_id:
 		summary["ray_cells"] = spark_cells.duplicate()
 		for cell in spark_cells:
 			summary["area_cells"].append(cell)
+			_hit_nest(state, caster, cell, summary, SkillDB.damage_of("electric_spark"))
 			var target := state.unit_at(cell)
 			if target != null and target.side != caster.side:
 				var had_electric_status: bool = target.shock_ticks > 0 or target.paralyzed_ticks > 0
@@ -1987,7 +2066,7 @@ static func _apply_directional(state: BattleState, caster: CombatUnit, skill_id:
 				if target.is_alive() and had_electric_status and state.apply_burn(target, caster):
 					(hit["statuses"] as Array).append("灼烧")
 				summary["hits"].append(hit)
-			if state.is_interaction_cell(cell) or TerrainDB.blocks_move(state.terrain_at(cell)):
+			if state.is_nest_cell(cell) or state.is_interaction_cell(cell) or TerrainDB.blocks_move(state.terrain_at(cell)):
 				break
 		summary["text"] = "电极火花沿%s方向命中 %d 名敌人%s。" % [
 			GridSpec.DIR_NAMES.get(spark_dir, ""),
@@ -2033,6 +2112,8 @@ static func _apply_windfire_breath(state: BattleState, caster: CombatUnit, entry
 			var push_dir := Vector2i(signi(target.cell.x - caster.cell.x), signi(target.cell.y - caster.cell.y))
 			hit["push"] = PushResolver.push(state, target, push_dir, 1, 0, "风怒炎息", caster.side, caster.uid, "windfire_breath")
 		summary["hits"].append(hit)
+	for cell in cells:
+		_hit_nest(state, caster, cell, summary, SkillDB.damage_of("windfire_breath"))
 	summary["text"] = "风怒炎息席卷前方 %d 格，命中 %d 名敌人。" % [cells.size(), summary["hits"].size()]
 
 
