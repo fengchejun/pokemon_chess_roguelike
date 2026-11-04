@@ -35,8 +35,11 @@ func _learning(t: TestContext) -> void:
 	var record := run_state.record_by_uid(1)
 	MonsterProgression.award_xp(record, 4)
 	t.check(run_state.available_new_skills(1).has("leech_seed"), "Lv2 成长列表含寄生种子")
-	t.check(run_state.learn_monster_skill(1, 2, "leech_seed"), "Lv2 可真正学习寄生种子")
-	t.check((run_state.record_by_uid(1).get("known_skills", []) as Array).has("leech_seed"), "已学技能写入本局怪物记录")
+	var candidates := run_state.monster_level_choices(1, 2)
+	t.eq(candidates.size(), 3, "Lv2 从三招候选中选择一招")
+	var chosen := String(candidates[0])
+	t.check(run_state.learn_monster_skill(1, 2, chosen), "Lv2 可真正学习候选技能")
+	t.check((run_state.record_by_uid(1).get("known_skills", []) as Array).has(chosen), "已学技能写入本局怪物记录")
 
 
 func _parasite(t: TestContext) -> void:

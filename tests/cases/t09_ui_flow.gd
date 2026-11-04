@@ -378,23 +378,37 @@ func _claim_pending_rewards(t: TestContext, app: Control) -> void:
 
 func _claim_pending_monster_levels(t: TestContext, app: Control) -> void:
 	var count := 0
-	while not app.run.pending_monster_levels().is_empty() and count < 12:
+	while not app.run.pending_monster_levels().is_empty() and count < 20:
 		var before: Array = app.run.pending_monster_levels()
 		var entry: Dictionary = before[0]
 		var uid := int(entry["uid"])
 		var level := int(entry["level"])
-		var category: Button = app.current_screen.find_child("MonsterGrowth_enhance_%d_%d" % [uid, level], true, false)
-		if category != null:
-			category.pressed.emit()
-		var choices: Array = app.run.available_monster_upgrades(uid)
-		var id := String(choices[0]) if not choices.is_empty() else ""
-		var skill_id := String(RunState.upgrade_info(id).get("requires_skill", ""))
-		var button: Button = app.current_screen.find_child("MonsterEnhance_%d_%d_%s" % [uid, level, skill_id], true, false)
-		t.check(button != null, "结算页先选类别再选具体招式")
+		if level == 10:
+			var trait_button: Button = app.current_screen.find_child("MonsterTrait_%d_10" % uid, true, false)
+			t.check(trait_button != null, "Lv10 结算页提供特性强化入口")
+			if trait_button == null:
+				break
+			trait_button.pressed.emit()
+			t.check(bool(app.run.owned_record_by_uid(uid).get("trait_upgrade_claimed", false)), "领取特性强化入口")
+			count += 1
+			continue
+		var choices: Array = app.run.monster_level_choices(uid, level)
+		t.eq(choices.size(), 3, "偶数级结算页提供三招候选")
+		var skill_id := String(choices[0]) if not choices.is_empty() else ""
+		var button: Button = app.current_screen.find_child("MonsterLearn_%d_%d_%s" % [uid, level, skill_id], true, false)
+		t.check(button != null, "结算页直接列出三招候选")
 		if button == null:
 			break
 		button.pressed.emit()
+		var equipped: Array = app.run.owned_record_by_uid(uid).get("equipped_skills", [])
+		if app.run.pending_monster_levels().size() == before.size() and equipped.size() >= RunState.MAX_EQUIPPED_SKILLS:
+			var replace_skill := String(equipped[0])
+			var replace_button: Button = app.current_screen.find_child("MonsterReplace_%d_%d_%s_%s" % [uid, level, skill_id, replace_skill], true, false)
+			t.check(replace_button != null, "装备已满时可指定卸下招式")
+			if replace_button == null:
+				break
+			replace_button.pressed.emit()
 		t.eq(app.run.pending_monster_levels().size(), before.size() - 1, "领取一项后只移除当前怪物升级")
-		t.check((app.run.record_by_uid(uid).get("upgrades_taken", []) as Array).has(id), "升级只记录到对应怪物")
+		t.check((app.run.record_by_uid(uid).get("known_skills", []) as Array).has(skill_id), "所选技能只记录到对应怪物")
 		count += 1
 	t.eq(app.run.pending_monster_levels().size(), 0, "本场怪物升级选择全部完成")

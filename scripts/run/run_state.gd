@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 11
+const SAVE_VERSION := 12
 var essence: int = 0
 var trainer_items: Dictionary = {}
 var sold_monster_uids: Array = []
@@ -202,12 +202,14 @@ func apply_supply_recovery() -> Dictionary:
 
 func _make_record(species_id: String, hp: int = -1) -> Dictionary:
 	var species_skills := SpeciesDB.skills_of(species_id)
+	var starting_level := 1 + floor_index() * 2
+	var starting_max_hp := MonsterProgression.max_hp(species_id, starting_level)
 	var record := {
 		"uid": next_uid,
 		"species_id": species_id,
-		"hp": hp if hp > 0 else SpeciesDB.hp_of(species_id),
-		"level": 1,
-		"xp": 0,
+		"hp": mini(hp, starting_max_hp) if hp > 0 else starting_max_hp,
+		"level": starting_level,
+		"xp": MonsterProgression.threshold_for_level(starting_level),
 		"affinity": 0,
 		"known_skills": species_skills.duplicate(),
 		"equipped_skills": species_skills.slice(0, MAX_EQUIPPED_SKILLS),
@@ -215,6 +217,7 @@ func _make_record(species_id: String, hp: int = -1) -> Dictionary:
 		"upgrades_taken": [],
 		"claimed_even_levels": [],
 		"level_choices": {},
+		"trait_upgrade_claimed": false,
 	}
 	next_uid += 1
 	return record
@@ -247,6 +250,23 @@ func battle_seed() -> int:
 
 func floor_index() -> int:
 	return BattleDB.floor_of(battle_index)
+
+
+func level_cap_for_floor(index: int = -1) -> int:
+	var floor := floor_index() if index < 0 else clampi(index, 0, Balance.FLOORS_PER_RUN - 1)
+	return [5, 8, 10][floor]
+
+
+func apply_floor_level_caps() -> Array:
+	var unlocked: Array = []
+	var cap := level_cap_for_floor()
+	for record in carried + storage:
+		var before := int(record.get("level", 1))
+		MonsterProgression.unlock_for_level_cap(record, cap)
+		var after := int(record.get("level", 1))
+		if after > before:
+			unlocked.append({"uid": int(record["uid"]), "from": before, "to": after})
+	return unlocked
 
 
 func battle_in_floor() -> int:
@@ -304,6 +324,7 @@ func enter_region_node(id: String) -> bool:
 	if kind == "battle" or kind == "boss":
 		var slot := 5 if kind == "boss" else maxi(0, int(id.trim_prefix("battle_")) - 1)
 		battle_index = region.floor_index * 6 + slot
+		apply_floor_level_caps()
 	return true
 
 
@@ -672,13 +693,23 @@ func release_storage(uid: int) -> bool:
 
 
 func battle_kill_xp_for(battle: BattleState, uid: int) -> int:
-	var unit := battle.unit_by_uid(uid)
-	if not deployed_uids.has(uid) or unit == null or not unit.is_alive() or record_by_uid(uid).is_empty():
+	if not deployed_uids.has(uid) or record_by_uid(uid).is_empty():
 		return 0
 	var gained := 0
 	for entry in battle.enemy_kills:
-		if String(entry.get("killer_side", "player" if bool(entry.get("by_player", false)) else "")) == "player":
-			gained += Balance.EXP_PER_KILL
+		var killer_side := String(entry.get("killer_side", "player" if bool(entry.get("by_player", false)) else ""))
+		if killer_side == "enemy":
+			continue
+		if bool(entry.get("is_summon", false)):
+			gained += 1
+			continue
+		var enemy_level := int(entry.get("level", 1))
+		var is_boss := bool(entry.get("is_boss", false))
+		var killer_uid := int(entry.get("killer_uid", -1))
+		if killer_uid == uid:
+			gained += MonsterProgression.enemy_xp_reward(enemy_level, is_boss)
+		else:
+			gained += MonsterProgression.enemy_participation_xp(enemy_level, is_boss)
 	return gained
 
 
@@ -729,22 +760,9 @@ func settle_battle(battle: BattleState) -> Dictionary:
 			var id := int(uid)
 			if not record_by_uid(id).is_empty():
 				original[id] = true
-				gains[id] = 0
-		for entry in battle.enemy_kills:
-			if region_mode:
-				continue
-			var killer_side := String(entry.get("killer_side", "player" if bool(entry.get("by_player", false)) else ""))
-			if killer_side == "enemy":
-				continue
-			var killer_uid := int(entry.get("killer_uid", -1))
-			if original.has(killer_uid):
-				gains[killer_uid] = int(gains[killer_uid]) + Balance.EXP_PER_KILL
-			else:
-				for id in original:
-					gains[id] = int(gains[id]) + 1
-		if region_mode:
-			for id in original:
-				gains[id] = battle_kill_xp_for(battle, int(id))
+				gains[id] = 1
+		for id in original:
+			gains[id] = int(gains[id]) + battle_kill_xp_for(battle, int(id))
 		var shared_bonus := battle.captured.size() * Balance.EXP_PER_CAPTURE
 		if bonus_earned:
 			shared_bonus += 1
@@ -759,7 +777,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 				gains[id] = int(gains[id]) + shared_bonus
 		for id in original:
 			var record := record_by_uid(int(id))
-			var growth := MonsterProgression.award_xp(record, int(gains[id]))
+			var growth := MonsterProgression.award_xp(record, int(gains[id]), level_cap_for_floor())
 			growth["uid"] = int(id)
 			growth["name"] = SpeciesDB.name_of(String(record["species_id"]))
 			(outcome["monster_exp"] as Array).append(growth)
@@ -849,6 +867,7 @@ func advance_battle() -> void:
 	preview_deploy_positions.clear()
 	battle_index += 1
 	refresh_theme_offers()
+	apply_floor_level_caps()
 
 
 func run_finished() -> bool:
@@ -908,9 +927,40 @@ func _expected_level(record: Dictionary) -> int:
 
 func _claim_level(record: Dictionary, level: int) -> void:
 	var claimed: Array = record.get("claimed_even_levels", [])
-	claimed.append(level)
+	if not claimed.has(level):
+		claimed.append(level)
 	record["claimed_even_levels"] = claimed
-	record["level_choices"] = {}
+	var choices: Dictionary = record.get("level_choices", {})
+	choices.erase(str(level))
+	record["level_choices"] = choices
+
+
+func _skill_growth_candidates(record: Dictionary, level: int) -> Array:
+	if level not in [2, 4, 6, 8]:
+		return []
+	var choices: Dictionary = record.get("level_choices", {})
+	var key := str(level)
+	var pool := available_new_skills(int(record["uid"]))
+	if choices.has(key) and choices[key] is Array:
+		var cached: Array = choices[key]
+		var valid := true
+		if cached.size() != mini(3, pool.size()):
+			valid = false
+		for candidate in cached:
+			if not pool.has(candidate):
+				valid = false
+				break
+		if valid:
+			return cached.duplicate()
+	pool.sort()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("skill-growth:%d:%d:%d" % [seed, int(record["uid"]), level])
+	var candidates: Array = []
+	while candidates.size() < 3 and not pool.is_empty():
+		candidates.append(pool.pop_at(rng.randi_range(0, pool.size() - 1)))
+	choices[key] = candidates.duplicate()
+	record["level_choices"] = choices
+	return candidates
 
 
 func pending_monster_levels() -> Array:
@@ -929,24 +979,24 @@ func pending_monster_levels() -> Array:
 
 func monster_level_choices(uid: int, level: int) -> Array:
 	var record := owned_record_by_uid(uid)
-	return available_monster_upgrades(uid) if not record.is_empty() and _expected_level(record) == level else []
+	if record.is_empty() or _expected_level(record) != level:
+		return []
+	return _skill_growth_candidates(record, level)
+
+
+func monster_engraving_slots(record: Dictionary) -> int:
+	if record.is_empty():
+		return 0
+	return mini(4, floori(float(record.get("level", 1)) / 2.0))
+
+
+func monster_empty_engraving_slots(record: Dictionary) -> int:
+	return maxi(0, monster_engraving_slots(record) - (record.get("upgrades_taken", []) as Array).size())
 
 
 func take_monster_level_choice(uid: int, level: int, upgrade_id: String) -> bool:
-	var record := owned_record_by_uid(uid)
-	var info := upgrade_info(upgrade_id)
-	if record.is_empty() or info.is_empty():
-		return false
-	if level != _expected_level(record) or not available_monster_upgrades(uid).has(upgrade_id):
-		return false
-	var values: Dictionary = record.get("upgrades", {})
-	values[String(info["key"])] = int(info["value"])
-	record["upgrades"] = values
-	var taken: Array = record.get("upgrades_taken", [])
-	taken.append(upgrade_id)
-	record["upgrades_taken"] = taken
-	_claim_level(record, level)
-	return true
+	## 兼容旧调用：技能强化已迁移到技能商人，升级时不再免费发放。
+	return false
 
 
 func enhance_monster_skill(uid: int, level: int, skill_id: String) -> bool:
@@ -955,10 +1005,14 @@ func enhance_monster_skill(uid: int, level: int, skill_id: String) -> bool:
 
 func learn_monster_skill(uid: int, level: int, skill_id: String, replace_skill_id: String = "") -> bool:
 	var record := owned_record_by_uid(uid)
-	if record.is_empty() or level != _expected_level(record) or not available_new_skills(uid).has(skill_id):
+	if record.is_empty() or level != _expected_level(record) or level not in [2, 4, 6, 8]:
+		return false
+	if not monster_level_choices(uid, level).has(skill_id):
 		return false
 	var known: Array = record.get("known_skills", [])
 	var equipped: Array = record.get("equipped_skills", [])
+	if known.has(skill_id):
+		return false
 	if equipped.size() >= MAX_EQUIPPED_SKILLS:
 		if replace_skill_id == "" or not equipped.has(replace_skill_id):
 			return false
@@ -972,6 +1026,49 @@ func learn_monster_skill(uid: int, level: int, skill_id: String, replace_skill_i
 	record["equipped_skills"] = equipped
 	_claim_level(record, level)
 	return true
+
+
+func claim_monster_trait_upgrade(uid: int, level: int) -> bool:
+	var record := owned_record_by_uid(uid)
+	if record.is_empty() or level != 10 or _expected_level(record) != 10:
+		return false
+	record["trait_upgrade_claimed"] = true
+	_claim_level(record, level)
+	return true
+
+
+func skip_monster_skill_choice(uid: int, level: int) -> bool:
+	var record := owned_record_by_uid(uid)
+	if record.is_empty() or level != _expected_level(record) or level not in [2, 4, 6, 8]:
+		return false
+	if not monster_level_choices(uid, level).is_empty():
+		return false
+	_claim_level(record, level)
+	return true
+
+
+func apply_merchant_skill_upgrade(uid: int, skill_id: String) -> bool:
+	var record := owned_record_by_uid(uid)
+	if record.is_empty() or monster_empty_engraving_slots(record) <= 0:
+		return false
+	var upgrade_id := upgrade_id_for_skill(skill_id)
+	var info := upgrade_info(upgrade_id)
+	if info.is_empty():
+		return false
+	var taken: Array = record.get("upgrades_taken", [])
+	if taken.has(upgrade_id) or not (record.get("known_skills", []) as Array).has(skill_id):
+		return false
+	var values: Dictionary = record.get("upgrades", {})
+	values[String(info["key"])] = int(info["value"])
+	taken.append(upgrade_id)
+	record["upgrades"] = values
+	record["upgrades_taken"] = taken
+	return true
+
+
+func merchant_skill_upgrade_cost(record: Dictionary) -> int:
+	var discount := mini(4, floori(float(record.get("affinity", 0)) / 5.0))
+	return maxi(4, 12 - discount)
 
 
 func equip_monster_skill(uid: int, slot: int, skill_id: String) -> bool:
@@ -1060,7 +1157,7 @@ static func from_dict(data: Dictionary) -> RunState:
 	var version := int(data.get("version", 1))
 	var legacy_growth := version < 2
 	var legacy_upgrade_style := version < 3
-	var old_hp_scale := version <= 6
+	var old_hp_scale := version <= 11
 	run.seed = int(data.get("seed", 0))
 	run.region_mode = bool(data.get("region_mode", false))
 	run.region_data = (data.get("region_data", {}) as Dictionary).duplicate(true)
@@ -1139,15 +1236,17 @@ static func from_dict(data: Dictionary) -> RunState:
 	for group in [run.carried, run.storage, run.pending_captures]:
 		for record in (group as Array):
 			var old_hp := int(record.get("hp", 0))
+			var old_level := int(record.get("level", 1))
 			run._ensure_uid(record)
 			if legacy_growth:
 				record["level"] = 1
 				record["xp"] = 0
 				record["affinity"] = 0
-			MonsterProgression.normalize_record(record)
+			MonsterProgression.normalize_record(record, run.level_cap_for_floor())
 			run._normalize_record_growth(record, legacy_upgrade_style)
+			record["trait_upgrade_claimed"] = bool(record.get("trait_upgrade_claimed", false))
 			var new_max_hp := run.monster_max_hp(record)
-			record["hp"] = _migrate_hp(old_hp, _old_max_hp(String(record.get("species_id", "")), int(record.get("level", 1)), version), new_max_hp) if old_hp_scale else clampi(old_hp, 0, new_max_hp)
+			record["hp"] = _migrate_hp(old_hp, _old_max_hp(String(record.get("species_id", "")), old_level, version), new_max_hp) if old_hp_scale else clampi(old_hp, 0, new_max_hp)
 	if legacy_growth and run.settlement_pending:
 		## 旧结算页中已累计的经验/等级文案不能在迁移后继续展示。
 		run.last_settlement["exp"] = 0
@@ -1164,6 +1263,10 @@ static func _old_max_hp(species_id: String, level: int, version: int) -> int:
 		return maxi(1, roundi(float(current_base) / 5.0) + int((maxi(1, level) - 1) / 2))
 	if version == 5:
 		return maxi(1, current_base * 2 + int((maxi(1, level) - 1) / 2) * 10)
+	if version == 6:
+		return maxi(1, current_base + (maxi(1, level) - 1) * 10)
+	if version <= 11:
+		return maxi(1, current_base + int((maxi(1, level) - 1) / 2) * 10)
 	return maxi(1, current_base + (maxi(1, level) - 1) * 10)
 
 

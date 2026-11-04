@@ -148,7 +148,7 @@ func _nest_experience(t: TestContext) -> void:
 	run.sync_from_battle(state)
 	var outcome := run.settle_battle(state)
 	t.eq(int(outcome.get("nest_exp", -1)), 3 * Balance.EXP_PER_KILL + Balance.EXP_PER_NEST, "结算记录毁巢总经验")
-	t.eq(int(run.record_by_uid(1)["xp"]), 3 * Balance.EXP_PER_KILL + Balance.EXP_PER_NEST, "存活出战怪物获得未诞生与巢穴经验")
+	t.eq(int(run.record_by_uid(1)["xp"]), 1 + 3 * Balance.EXP_PER_KILL + Balance.EXP_PER_NEST, "存活出战怪物获得参战、未诞生与巢穴经验")
 
 
 func _vine_and_root_terrain(t: TestContext) -> void:

@@ -33,10 +33,13 @@ func _ready() -> void:
 	lines.append("本局携带队伍：" if not run.carried.is_empty() else "本局携带队伍：无")
 	for record in run.carried:
 		var level := int(record.get("level", 1))
-		lines.append("- %s：本局 Lv.%d · 经验 %d/%d · 生命 %d/%d · 亲密度 %d" % [
+		var engraving_total := run.monster_engraving_slots(record)
+		var engraving_empty := run.monster_empty_engraving_slots(record)
+		lines.append("- %s：本局 Lv.%d · 经验 %d/%d · 生命 %d/%d · 刻印槽 %d/%d · 亲密度 %d" % [
 			SpeciesDB.name_of(String(record["species_id"])), level,
 			int(record.get("xp", 0)), MonsterProgression.threshold_for_level(level + 1),
-			int(record["hp"]), run.monster_max_hp(record), int(record.get("affinity", 0)),
+			int(record["hp"]), run.monster_max_hp(record),
+			engraving_empty, engraving_total, int(record.get("affinity", 0)),
 		])
 		var upgrade_names: Array = []
 		for upgrade_id in record.get("upgrades_taken", []):
@@ -44,6 +47,8 @@ func _ready() -> void:
 			if not info.is_empty():
 				upgrade_names.append(String(info.get("name", upgrade_id)))
 		lines.append("  本局强化：%s" % ("、".join(upgrade_names) if not upgrade_names.is_empty() else "尚无"))
+		if bool(record.get("trait_upgrade_claimed", false)):
+			lines.append("  特性强化：已领取（具体效果待配置）")
 	lines.append("仓库替补：%d 只" % run.storage.size())
 	if lost:
 		lines.append("训练家倒下：本局失败，请从主菜单开始新局。" if run.run_failed else "全员濒死：没有可出战的宝可梦，本局结束。")

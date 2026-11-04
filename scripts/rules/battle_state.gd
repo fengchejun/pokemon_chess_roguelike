@@ -612,6 +612,9 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 			"by_player": killer_side == "player",
 			"killer_side": killer_side,
 			"killer_uid": killer_uid if killer_side == "player" else -1,
+			"level": unit.enemy_level,
+			"is_boss": unit.is_boss,
+			"is_summon": unit.summon_owner_uid >= 0,
 			"cause": cause,
 		})
 		log_event("野生 %s 被击败（%s）。" % [unit.display_name, cause])
@@ -2017,7 +2020,7 @@ func set_enemy_level_bonus(bonus: int) -> void:
 		unit.enemy_level = target_level
 		unit.combat_level = target_level
 		unit.skills = BattleDB.enemy_skills_for_level(unit.species_id, target_level)
-		unit.max_hp = MonsterProgression.max_hp(unit.species_id, target_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0)
+		unit.max_hp = MonsterProgression.enemy_max_hp(unit.species_id, target_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0)
 		unit.hp = clampi(unit.hp + unit.max_hp - old_max, 1, unit.max_hp)
 		var upgrades := {}
 		for upgrade_id in BattleDB.enemy_upgrade_ids_at_level(run_seed, battle_index, unit.uid, unit.species_id, target_level):
@@ -2048,11 +2051,14 @@ func end_battle(reason: String) -> void:
 func battle_exp() -> int:
 	if end_reason in ["forced_retreat", "boss_timeout"]:
 		return 0
-	var kills := 0
+	var total := captured.size() * Balance.EXP_PER_CAPTURE
 	for entry in enemy_kills:
 		if bool(entry.get("by_player", false)):
-			kills += 1
-	return (kills + captured.size()) * Balance.EXP_PER_KILL
+			if bool(entry.get("is_summon", false)):
+				total += 1
+			else:
+				total += MonsterProgression.enemy_xp_reward(int(entry.get("level", 1)), bool(entry.get("is_boss", false)))
+	return total
 
 
 func forecast() -> Array:

@@ -22,14 +22,46 @@ func _test_thresholds(t: TestContext) -> void:
 	t.eq(earned["level_after"], 3, "一次可跨多级")
 	t.eq(record["hp"], 0, "濒死单位升级不被直接救活")
 	for level in range(1, 11):
-		t.eq(MonsterProgression.max_hp("fire_starter", level), 30 + int((level - 1) / 2) * 10, "小火龙 Lv%d 仅奇数级增加生命" % level)
-	t.eq(MonsterProgression.max_hp_for_record(record), 40, "记录中的三级生命上限为 40")
+		t.eq(MonsterProgression.max_hp("fire_starter", level), 30 + int(MonsterProgression.PLAYER_HP_CURVE[level - 1]), "小火龙 Lv%d 使用平滑生命曲线" % level)
+	t.eq(MonsterProgression.max_hp_for_record(record), 36, "记录中的三级生命上限为 36")
+	t.eq(MonsterProgression.enemy_max_hp("fire_starter", 5), 50, "敌方继续使用独立生命曲线")
+	t.eq(MonsterProgression.enemy_xp_reward(1), 2, "一级敌人提供两点击杀经验")
+	t.eq(MonsterProgression.enemy_xp_reward(5), 4, "五级敌人提供四点击杀经验")
+	t.eq(MonsterProgression.enemy_xp_reward(5, true), 6, "首领击杀额外增加两点经验")
+	t.eq(MonsterProgression.enemy_participation_xp(5), 2, "高等级敌人的参与经验同步提高")
+	for level in range(1, MonsterProgression.MAX_LEVEL):
+		t.check(MonsterProgression.enemy_xp_reward(level + 1) >= MonsterProgression.enemy_xp_reward(level), "击杀经验随敌人等级单调提高")
+		t.check(MonsterProgression.enemy_participation_xp(level + 1) >= MonsterProgression.enemy_participation_xp(level), "参与经验随敌人等级单调提高")
+	var run := RunState.new_run(1901)
+	run.mark_deployed([1, 2])
+	var battle := TestScenario.make_state(["fire_starter", "water_starter"], [
+		["rock_wild1", Vector2i(4, 2)],
+		["water_wild1", Vector2i(5, 3)],
+	])
+	battle.unit_by_uid(100).enemy_level = 5
+	battle.unit_by_uid(101).enemy_level = 5
+	battle.unit_by_uid(101).is_boss = true
+	battle.kill_unit(battle.unit_by_uid(100), "等级梯度验收", "player", 1)
+	battle.kill_unit(battle.unit_by_uid(101), "首领梯度验收", "player", 2)
+	t.eq(run.battle_kill_xp_for(battle, 1), MonsterProgression.enemy_xp_reward(5) + MonsterProgression.enemy_participation_xp(5, true), "击杀与参与链路读取实际敌人等级和首领标记")
+	t.eq(run.battle_kill_xp_for(battle, 2), MonsterProgression.enemy_participation_xp(5) + MonsterProgression.enemy_xp_reward(5, true), "不同击杀者按各自贡献获得等级梯度经验")
+	t.eq(battle.battle_exp(), MonsterProgression.enemy_xp_reward(5) + MonsterProgression.enemy_xp_reward(5, true), "战场经验汇总也按敌人等级与首领标记计算")
+	var living := {"species_id": "fire_starter", "level": 1, "xp": 0, "hp": 30}
+	MonsterProgression.award_xp(living, 4)
+	t.eq(living["level"], 2, "存活单位升到二级")
+	t.eq(living["hp"], 33, "升级增加的生命同步补到当前生命")
 	MonsterProgression.award_xp(record, -5)
 	t.eq(record["xp"], 10, "负经验不会降低等级")
 	MonsterProgression.award_xp(record, 100000)
 	t.eq(record["level"], 10, "局内等级最高十级")
 	t.eq(record["xp"], 108, "累计经验到十级阈值封顶")
 	t.eq(MonsterProgression.award_xp(record, 5)["gained"], 0, "满级后不再增加经验")
+	var capped := {"species_id": "fire_starter", "level": 1, "xp": 0, "hp": 30}
+	MonsterProgression.award_xp(capped, 40, 5)
+	t.eq(capped["level"], 5, "经验超过等级上限时只升到当前楼层上限")
+	t.eq(capped["xp"], 40, "超出楼层上限的经验继续保留")
+	MonsterProgression.unlock_for_level_cap(capped, 8)
+	t.eq(capped["level"], 6, "进入下一层后按保留经验突破")
 	var affinity_gain := MonsterProgression.award_affinity(record, 1)
 	t.eq(affinity_gain["after"], 1, "亲密度从零开始并可加一")
 	t.eq(MonsterProgression.award_affinity(record, -10)["gained"], 0, "负数不会扣除亲密度")

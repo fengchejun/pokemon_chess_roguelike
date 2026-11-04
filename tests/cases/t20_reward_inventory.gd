@@ -95,7 +95,7 @@ func _test_monster_growth_in_battle(t: TestContext) -> void:
 	run_state.settle_battle(battle)
 	t.eq(int(run_state.record_by_uid(1)["hp"]), 2, "出战怪物战后保留剩余生命")
 	var restored := RunState.from_dict(run_state.to_dict())
-	t.eq(int(restored.record_by_uid(1)["xp"]), 10, "本局读档保留本局怪物经验")
+	t.eq(int(restored.record_by_uid(1)["xp"]), 11, "本局读档保留本局怪物经验与非失败参战经验")
 	t.eq(int(restored.record_by_uid(1)["level"]), 3, "本局读档保留本局怪物等级")
 	t.eq(int(restored.record_by_uid(1)["affinity"]), 8, "本局读档保留出战后增长的永久亲密度")
 	t.eq((restored.build_deploy_units([1])[1] as CombatUnit).max_hp, MonsterProgression.max_hp("fire_starter", 3), "读档后的部署仍有本局成长生命上限")

@@ -31,6 +31,27 @@ func run(t: TestContext) -> void:
 			trainer.cell = cell
 			break
 	app.run.essence = 100
+	var upgrade_uid := int(app.run.carried[0]["uid"])
+	MonsterProgression.award_xp(app.run.record_by_uid(upgrade_uid), 4)
+	var upgrade_id := String(app.run.available_monster_upgrades(upgrade_uid)[0])
+	var upgrade_skill := String(RunState.upgrade_info(upgrade_id).get("requires_skill", ""))
+	var upgrade_result: Dictionary = app.purchase_skill_upgrade(state, upgrade_uid, upgrade_skill)
+	t.check(bool(upgrade_result.get("ok", false)), "商人为二级宝可梦出售已学技能强化")
+	t.eq(app.run.essence, 88, "技能强化消耗 12 原质")
+	t.check((app.run.record_by_uid(upgrade_uid).get("upgrades_taken", []) as Array).has(upgrade_id), "强化写入宝可梦记录")
+	t.check(not bool(app.purchase_skill_upgrade(state, upgrade_uid, upgrade_skill).get("ok", false)), "唯一空刻印槽用完后不能重复强化")
+	var second_uid := int(app.run.carried[1]["uid"])
+	MonsterProgression.award_xp(app.run.record_by_uid(second_uid), 4)
+	var second_upgrade := String(app.run.available_monster_upgrades(second_uid)[0])
+	var second_skill := String(RunState.upgrade_info(second_upgrade).get("requires_skill", ""))
+	app.current_screen._show_merchant()
+	var upgrade_button: Button = app.current_screen.find_child("SkillUpgrade_%d_%s" % [second_uid, second_skill], true, false)
+	t.check(upgrade_button != null, "商人界面列出每只宝可梦的合法技能强化")
+	if upgrade_button != null:
+		upgrade_button.pressed.emit()
+	t.eq(app.run.essence, 76, "商人界面点击技能强化正确扣费")
+	t.check((app.run.record_by_uid(second_uid).get("upgrades_taken", []) as Array).has(second_upgrade), "商人界面强化写入对应宝可梦")
+	app.run.essence = 100
 	t.check(not app.merchant_trade(state, "food", "basic", 99)["ok"], "禁止超量出售食物")
 	var first_relic := ""
 	for key in state.merchant["stock"]:

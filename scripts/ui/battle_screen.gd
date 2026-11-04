@@ -231,14 +231,15 @@ func _on_enemy_defeated(entry: Dictionary) -> void:
 	if killer_side == "enemy" or (app.run.region_mode and killer_side != "player"):
 		return
 	var killer_uid := int(entry.get("killer_uid", -1))
-	var original_killer: bool = app.run.deployed_uids.has(killer_uid) and not app.run.record_by_uid(killer_uid).is_empty()
 	for uid in app.run.deployed_uids:
 		var unit := state.unit_by_uid(int(uid))
-		if unit == null or not unit.is_alive() or unit.is_trainer or app.run.record_by_uid(int(uid)).is_empty():
+		if unit == null or unit.is_trainer or app.run.record_by_uid(int(uid)).is_empty():
 			continue
-		var amount := Balance.EXP_PER_KILL
-		if not app.run.region_mode:
-			amount = (Balance.EXP_PER_KILL if int(uid) == killer_uid else 0) if original_killer else 1
+		var amount := 1
+		if not bool(entry.get("is_summon", false)):
+			var level := int(entry.get("level", 1))
+			var is_boss := bool(entry.get("is_boss", false))
+			amount = MonsterProgression.enemy_xp_reward(level, is_boss) if int(uid) == killer_uid else MonsterProgression.enemy_participation_xp(level, is_boss)
 		if amount > 0:
 			state.emit_feedback(unit, "experience", "经验 +%d" % amount, amount)
 
@@ -451,14 +452,17 @@ func _add_battle_xp_bar(unit: CombatUnit) -> void:
 	var level := int(record.get("level", 1))
 	var gained: int = app.run.battle_kill_xp_for(state, unit.uid)
 	var total := mini(MonsterProgression.threshold_for_level(MonsterProgression.MAX_LEVEL), int(record.get("xp", 0)) + gained)
-	var target_level := MonsterProgression.level_for_xp(total)
+	var uncapped_level := MonsterProgression.level_for_xp(total)
+	var target_level := mini(uncapped_level, app.run.level_cap_for_floor())
 	var floor_xp := MonsterProgression.threshold_for_level(level)
 	var next_xp := MonsterProgression.threshold_for_level(level + 1)
 	var caption := "Lv.%d · XP %d/%d · 本场 +%d" % [level, mini(total - floor_xp, next_xp - floor_xp), next_xp - floor_xp, gained]
 	if not unit.is_alive():
-		caption = "濒死 · 本场不获得经验"
+		caption = "濒死 · 仍可结算参与经验，但不会复活"
 	elif level >= MonsterProgression.MAX_LEVEL:
 		caption = "Lv.%d · 已满级" % level
+	elif uncapped_level > target_level:
+		caption += "\n经验已储存；本层等级上限 Lv.%d" % target_level
 	elif target_level > level:
 		caption += "\n战后可升至 Lv.%d" % target_level
 	var label := UIKit.label(caption, 12, UIKit.GOOD if target_level > level else UIKit.TEXT_DIM)
@@ -469,8 +473,8 @@ func _add_battle_xp_bar(unit: CombatUnit) -> void:
 	bar.custom_minimum_size = Vector2(0, 7)
 	bar.show_percentage = false
 	bar.max_value = maxi(1, next_xp - floor_xp)
-	bar.value = bar.max_value if level >= MonsterProgression.MAX_LEVEL else maxi(0, total - floor_xp)
-	bar.tooltip_text = "击杀经验立即记录；等级、属性和升级选择在战后生效。仅存活出战成员结算。"
+	bar.value = clampi(total - floor_xp, 0, bar.max_value) if level < MonsterProgression.MAX_LEVEL else bar.max_value
+	bar.tooltip_text = "击杀与参与经验立即记录；等级、生命和升级选择在战后生效，超出楼层上限的经验会保留。"
 	var fill := StyleBoxFlat.new()
 	fill.bg_color = Color("59b8e8")
 	bar.add_theme_stylebox_override("fill", fill)
@@ -1494,6 +1498,30 @@ func _show_merchant(message: String = "") -> void:
 		button.tooltip_text = RelicDB.description_of(relic) if is_relic else Merchant.ITEMS[id][2]
 		button.pressed.connect(func() -> void: _trade("buy", id))
 		list.add_child(button)
+	list.add_child(UIKit.label("技能强化 · 每次12原质（亲密度可折扣）", 18, UIKit.ACCENT))
+	for record in app.run.carried:
+		var uid := int(record["uid"])
+		var empty_slots: int = app.run.monster_empty_engraving_slots(record)
+		var total_slots: int = app.run.monster_engraving_slots(record)
+		list.add_child(UIKit.wrapped("%s · 空刻印槽 %d/%d" % [
+			SpeciesDB.name_of(String(record["species_id"])), empty_slots, total_slots,
+		], 13, UIKit.TEXT_DIM))
+		if empty_slots <= 0:
+			list.add_child(UIKit.wrapped("没有空刻印槽，无法继续强化。", 12, UIKit.TEXT_DIM))
+			continue
+		var equipped: Array = record.get("equipped_skills", [])
+		for upgrade_id in app.run.available_monster_upgrades(uid):
+			var info := RunState.upgrade_info(String(upgrade_id))
+			var skill_id := String(info.get("requires_skill", ""))
+			var cost: int = app.run.merchant_skill_upgrade_cost(record)
+			var marker := " · 已装备" if equipped.has(skill_id) else " · 未装备"
+			var button := UIKit.small_button("强化 %s%s · %d原质\n%s" % [
+				SkillDB.name_of(skill_id), marker, cost, String(info.get("desc", "")),
+			])
+			button.name = "SkillUpgrade_%d_%s" % [uid, skill_id]
+			button.disabled = app.run.essence < cost
+			button.pressed.connect(_purchase_skill_upgrade.bind(uid, skill_id))
+			list.add_child(button)
 	list.add_child(UIKit.label("出售", 18, UIKit.ACCENT))
 	for kind in app.run.food_inventory:
 		var id := String(kind)
@@ -1548,6 +1576,15 @@ func _trade(operation: String, id: String, quantity: int = 1) -> void:
 	if busy or _playback_active():
 		return
 	var result: Dictionary = app.merchant_trade(state, operation, id, quantity)
+	selected_uid = 0
+	refresh_all()
+	_show_merchant(String(result["reason"]))
+
+
+func _purchase_skill_upgrade(uid: int, skill_id: String) -> void:
+	if busy or _playback_active():
+		return
+	var result: Dictionary = app.purchase_skill_upgrade(state, uid, skill_id)
 	selected_uid = 0
 	refresh_all()
 	_show_merchant(String(result["reason"]))

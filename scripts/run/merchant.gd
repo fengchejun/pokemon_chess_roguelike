@@ -50,6 +50,39 @@ static func price_for(rarity_id: String, level: int) -> int:
 	var base := int(RARITIES.get(rarity_id, RARITIES["common"])[1])
 	return base * (4 + clampi(level, 1, 10)) / 5
 
+
+static func skill_upgrade_cost(run: RunState, record: Dictionary) -> int:
+	return run.merchant_skill_upgrade_cost(record)
+
+
+static func upgrade_skill(run: RunState, state: BattleState, uid: int, skill_id: String) -> Dictionary:
+	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
+	if state.ended or state.phase != BattleState.PHASE_PLAYER or state.node_kind != "event" or state.merchant.is_empty() or trainer == null or not trainer.is_alive() or not state.can_interact_at(state.merchant["cell"]):
+		return {"ok": false, "reason": "训练师需在收集区商人相邻格交易。"}
+	var record := run.record_by_uid(uid)
+	if record.is_empty():
+		return {"ok": false, "reason": "只能强化当前携带的宝可梦。"}
+	if run.monster_empty_engraving_slots(record) <= 0:
+		return {"ok": false, "reason": "该宝可梦没有空刻印槽。"}
+	if not run.available_monster_upgrades(uid).has(RunState.upgrade_id_for_skill(skill_id)):
+		return {"ok": false, "reason": "该技能不可强化或已经强化。"}
+	var cost := skill_upgrade_cost(run, record)
+	if run.essence < cost:
+		return {"ok": false, "reason": "原质不足，需要 %d。" % cost}
+	if not run.apply_merchant_skill_upgrade(uid, skill_id):
+		return {"ok": false, "reason": "技能强化失败。"}
+	run.essence -= cost
+	var battle_unit := state.unit_by_uid(uid)
+	if battle_unit != null:
+		battle_unit.upgrades = (record.get("upgrades", {}) as Dictionary).duplicate()
+	return {
+		"ok": true,
+		"reason": "%s的%s强化完成，消耗 %d 原质。" % [
+			SpeciesDB.name_of(String(record["species_id"])), SkillDB.name_of(skill_id), cost,
+		],
+	}
+
+
 static func ensure_region(region: RegionState, seed_value: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("merchant:%d:%d" % [seed_value, region.floor_index])
