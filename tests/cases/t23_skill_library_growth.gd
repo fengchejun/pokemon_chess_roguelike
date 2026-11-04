@@ -103,11 +103,11 @@ func _test_save_and_equipment(t: TestContext) -> void:
 	var fire := run_state.record_by_uid(1)
 	MonsterProgression.award_xp(fire, MonsterProgression.threshold_for_level(4))
 	t.check(run_state.learn_monster_skill(1, 2, "trial_fire_1"), "先学招领取 Lv2")
-	t.check(run_state.enhance_monster_skill(1, 4, "trial_fire_1"), "再强化领取 Lv4")
-	t.eq((fire.get("claimed_even_levels", []) as Array), [2, 4], "学习与强化都记录各自的等级")
+	t.check(run_state.apply_mentor_upgrade(1, "trial_fire_1"), "导师可强化已学招式，不消耗等级机会")
+	t.eq((fire.get("claimed_even_levels", []) as Array), [2], "学习与强化都记录各自的等级")
 	var saved := RunState.from_dict(run_state.to_dict())
 	var restored := saved.record_by_uid(1)
-	t.eq(restored.get("claimed_even_levels", []), [2, 4], "v3 读档保留学招与强化两个已领取等级")
+	t.eq(restored.get("claimed_even_levels", []), [2], "v3 读档保留学招与强化两个已领取等级")
 	t.eq(restored.get("upgrades_taken", []), ["trial_fire_1_range"], "v3 读档保留占位招式强化")
 	t.eq((restored.get("equipped_skills", []) as Array).size(), 2, "读档保留两招装备及三格上限")
 	t.check(not saved.pending_upgrades(), "v3 读档不会重复发放已领取等级")
@@ -123,7 +123,7 @@ func _test_save_and_equipment(t: TestContext) -> void:
 	var loaded := SaveSystem.load_run(path)
 	t.check(loaded != null, "新招式库可从 JSON 存档读取")
 	if loaded != null:
-		t.eq(loaded.record_by_uid(1).get("claimed_even_levels", []), [2, 4], "JSON 往返仍保留学招和强化等级")
+		t.eq(loaded.record_by_uid(1).get("claimed_even_levels", []), [2], "JSON 往返仍保留学招和强化等级")
 		t.check((loaded.record_by_uid(1).get("equipped_skills", []) as Array).has("trial_fire_1"), "JSON 往返仍装备已学试招")
 	SaveSystem.delete_save(path)
 
@@ -146,7 +146,7 @@ func _test_v2_migration(t: TestContext) -> void:
 	t.eq(int(record["xp"]), 110, "v2 迁移换算到新曲线同等级")
 	t.eq(record["upgrades_taken"], ["fireball_damage"], "v2 仅保留技能专属强化")
 	t.eq(record["claimed_even_levels"], [2], "v2 通用强化占用的 Lv4 与 Lv6 已退还")
-	t.eq(migrated.pending_monster_levels().size(), 2, "v2 退还等级成为两次待选")
+	t.eq(migrated.pending_monster_levels().size(), 1, "旧等级奖励抵扣后Lv5仍可学招")
 	t.eq(record["level_choices"], {}, "v2 旧三选一候选清空")
 	t.eq(int(record["hp"]), migrated.monster_max_hp(record), "移除生命强化后裁剪当前 HP")
 	t.eq(record["known_skills"], SpeciesDB.skills_of("fire_starter"), "旧局招式库由物种基础技能初始化")
@@ -159,7 +159,7 @@ func _test_growth_and_prep_ui(t: TestContext) -> void:
 	t.tree.root.add_child(app)
 	app.run = RunState.new_run(2303)
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
-	MonsterProgression.award_xp(app.run.record_by_uid(1), MonsterProgression.threshold_for_level(6))
+	MonsterProgression.award_xp(app.run.record_by_uid(1), MonsterProgression.threshold_for_level(7))
 	app.run.settlement_pending = true
 	app.pending_settlement = {"battle": null, "outcome": {"reason": "victory", "exp": 0, "monster_exp": []}}
 	app._switch(load("res://scripts/ui/settlement_screen.gd").new())
@@ -172,25 +172,25 @@ func _test_growth_and_prep_ui(t: TestContext) -> void:
 	var first: Button = app.current_screen.find_child("MonsterLearn_1_2_trial_fire_1", true, false)
 	t.check(first != null, "学招页列出第一招占位技能")
 	first.pressed.emit()
-	learn_type = app.current_screen.find_child("MonsterGrowth_learn_1_4", true, false)
+	learn_type = app.current_screen.find_child("MonsterGrowth_learn_1_5", true, false)
 	t.check(learn_type != null, "下一等级仍可选择学习另一招")
 	learn_type.pressed.emit()
-	var second: Button = app.current_screen.find_child("MonsterLearn_1_4_trial_fire_2", true, false)
+	var second: Button = app.current_screen.find_child("MonsterLearn_1_5_trial_fire_2", true, false)
 	t.check(second != null, "学招页列出第二招占位技能")
 	second.pressed.emit()
-	var third_type: Button = app.current_screen.find_child("MonsterGrowth_learn_1_6", true, false)
+	var third_type: Button = app.current_screen.find_child("MonsterGrowth_learn_1_7", true, false)
 	t.check(third_type != null, "Lv6 可继续学习第三招")
 	if third_type == null:
 		app.queue_free()
 		return
 	third_type.pressed.emit()
-	var third: Button = app.current_screen.find_child("MonsterLearn_1_6_flame_jet", true, false)
+	var third: Button = app.current_screen.find_child("MonsterLearn_1_7_flame_jet", true, false)
 	t.check(third != null, "学招页列出未选作开局技能的火系招式")
 	if third == null:
 		app.queue_free()
 		return
 	third.pressed.emit()
-	var replace: Button = app.current_screen.find_child("MonsterReplace_1_6_flame_jet_trial_fire_2", true, false)
+	var replace: Button = app.current_screen.find_child("MonsterReplace_1_7_flame_jet_trial_fire_2", true, false)
 	t.check(replace != null, "三招满栏时出现卸招选择")
 	if replace != null:
 		replace.pressed.emit()

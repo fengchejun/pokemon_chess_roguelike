@@ -46,6 +46,8 @@ func _ready() -> void:
 		var status := "未解锁" if not unlocked else "当前位置" if region.active_node == id else "敌军撤离" if bool(node.get("withdrawn", false)) else "已清空" if bool(node.get("cleared", false)) and region.node_mode(id) == "event" else "已探索" if int(node.get("visits", 0)) > 0 else "待探索"
 		if node.has("merchant") and int(node.get("visits", 0)) > 0:
 			status += " · 商人" if region.node_mode(id) == "event" else " · 商人暂停交易"
+		if unlocked and node.has("mentor"):
+			status += " · 技能导师" if region.node_mode(id) == "event" else " · 导师暂停服务"
 		var button := UIKit.button("%s\n%s" % [region.display_name(String(id)), status], 17)
 		button.name = "Node_" + id
 		button.custom_minimum_size = Vector2(142, 58)
@@ -158,7 +160,7 @@ func _show_team() -> void:
 	content.name = "RegionTeamContent"
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(content)
-	content.add_child(UIKit.label("训练师 · 生命 %d/%d" % [app.run.trainer_hp, SpeciesDB.hp_of("trainer")], 18))
+	content.add_child(UIKit.label("训练师 · Lv.%d · 经验 %d · 生命 %d/%d" % [app.run.trainer_level, app.run.trainer_xp, app.run.trainer_hp, app.run.trainer_max_hp()], 18))
 	for group in [{"title": "随行队伍", "records": app.run.carried}, {"title": "营地留守", "records": app.run.storage}]:
 		content.add_child(UIKit.label("%s（%d）" % [group["title"], group["records"].size()], 18, UIKit.ACCENT))
 		if group["records"].is_empty():

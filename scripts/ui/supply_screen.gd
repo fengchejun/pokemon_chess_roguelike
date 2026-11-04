@@ -111,7 +111,7 @@ func _summary_box(summary: Dictionary) -> Control:
 	if to_hp > from_hp:
 		box.add_child(UIKit.wrapped("补给结果：训练家 %d → %d（+50%% 生命上限）。" % [from_hp, to_hp], 15, UIKit.GOOD))
 	else:
-		box.add_child(UIKit.wrapped("补给结果：训练家状态完好（%d/%d）。" % [to_hp, int(SpeciesDB.get_species("trainer").get("hp", 7))], 15))
+		box.add_child(UIKit.wrapped("补给结果：训练家状态完好（%d/%d）。" % [to_hp, app.run.trainer_max_hp()], 15))
 	return box
 
 

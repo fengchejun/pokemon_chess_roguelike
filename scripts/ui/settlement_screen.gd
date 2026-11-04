@@ -83,9 +83,12 @@ func _summary_box(run: RunState) -> Control:
 	box.add_child(column)
 	var lines: Array = []
 	if String(outcome.get("reason", "")) == "forced_retreat":
-		lines.append("本场经验：0（强制撤退不结算本场经验）")
+		lines.append("本场已入账的击杀、捕获经验保留；失败不追加战后目标经验。")
 	else:
 		lines.append("本场怪物经验合计：+%d（按击败、捕获与战场目标的实际贡献结算）" % int(outcome.get("exp", 0)))
+	if outcome.has("trainer_exp"):
+		var gained: Dictionary = outcome["trainer_exp"]
+		lines.append("训练家：Lv.%d · 累计经验 %d · 本场已保留 +%d" % [int(gained["level"]), int(gained["xp"]), int(gained["gained"])])
 	if bool(outcome.get("growth_migrated", false)):
 		lines.append("旧本局存档已迁移：旧经验、等级与全队强化清零，保留关卡和奖励。")
 	if bool(outcome.get("upgrade_migrated", false)):
@@ -107,7 +110,7 @@ func _summary_box(run: RunState) -> Control:
 		lines.append("待选战后奖励：%d 次" % run.pending_reward_choices)
 	var pending_monster_levels: Array = run.pending_monster_levels()
 	if not pending_monster_levels.is_empty():
-		lines.append("待选怪物升级：%d 次（按怪物与等级顺序逐项处理）" % pending_monster_levels.size())
+		lines.append("待选怪物学招：%d 次（按怪物与等级顺序逐项处理）" % pending_monster_levels.size())
 	var captured_names: Array = outcome.get("captured_names", [])
 	if not captured_names.is_empty():
 		lines.append("本场捕获：" + "、".join(captured_names))
@@ -205,9 +208,9 @@ func _show_monster_level_step(run: RunState, entry: Dictionary, remaining: int) 
 	var level := int(entry.get("level", 1))
 	var record := run.owned_record_by_uid(uid)
 	var monster_name := SpeciesDB.name_of(String(record.get("species_id", ""))) if not record.is_empty() else "怪物 #%d" % uid
-	step_label.text = "%s · Lv.%d 升级选择（剩余 %d 项）" % [monster_name, level, remaining]
-	choice_box.add_child(UIKit.wrapped("二选一：强化一招已学技能，或学习一招尚未掌握的本属性技能。先选类型，再选具体招式；本场结束后生效。", 13))
-	for mode in ["enhance", "learn"]:
+	step_label.text = "%s · Lv.%d 学习机会（剩余 %d 项）" % [monster_name, level, remaining]
+	choice_box.add_child(UIKit.wrapped("2、5、7级各获得一次学习机会；技能强化请寻找收集区的技能导师。", 13))
+	for mode in ["learn"]:
 		var options := run.available_monster_upgrades(uid) if mode == "enhance" else run.available_new_skills(uid)
 		if options.is_empty():
 			continue

@@ -230,7 +230,7 @@ func _migration(t: TestContext) -> void:
 	var restored := RunState.from_dict(data)
 	t.eq(restored.record_by_uid(1)["level"], 3, "旧档等级不倒退")
 	t.eq(restored.record_by_uid(1)["xp"], 28, "旧档同等级升级进度比例换算")
-	t.eq(restored.record_by_uid(1)["hp"], 17, "经验迁移不改生命")
+	t.eq(restored.record_by_uid(1)["hp"], 19, "新血量曲线按旧生命比例迁移")
 	t.eq(restored.record_by_uid(1)["claimed_even_levels"], [2], "已领取成长不重复发放")
 	t.eq(restored.storage[0]["xp"], 400, "仓库满级经验转换为四百")
 	t.eq(restored.pending_captures[0]["xp"], 68, "待收容成员也迁移经验")
@@ -267,7 +267,7 @@ func _ui(t: TestContext) -> void:
 	screen.state.unit_by_uid(102).enemy_level = 5
 	screen.state.kill_unit(screen.state.unit_by_uid(100), "测试经验", "player", 1)
 	screen.state.on_captured(screen.state.unit_by_uid(102), "rock_wild1", 5)
-	t.eq(feedbacks, [4, 6], "击败与捕获经验浮字使用事件奖励")
+	t.eq(feedbacks, [4, 4, 6, 6], "训练家与原出战者都显示对应经验")
 	screen.playback.finish_all()
 	screen._refresh_after_action()
 	var label: Label = screen.find_child("BattleXPText_1", true, false)

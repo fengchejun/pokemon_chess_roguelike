@@ -101,16 +101,16 @@ func _t_monster_experience(t: TestContext) -> void:
 	battle.check_battle_end()
 	run.sync_from_battle(battle)
 	var outcome := run.settle_battle(battle)
-	t.eq(int(outcome["exp"]), 6, "两次无归属击败让原出战三怪各得两点经验")
-	t.eq(int(run.record_by_uid(1)["xp"]), 2, "首位出战怪物获得共享击败经验")
-	t.eq(int(run.record_by_uid(2)["xp"]), 2, "濒死的原出战怪物仍获得共享击败经验")
-	t.eq(int(run.record_by_uid(3)["xp"]), 2, "第三只出战怪物获得相同共享经验")
+	t.eq(int(outcome["exp"]), 8, "两次击败让存活两怪各得四经验")
+	t.eq(int(run.record_by_uid(1)["xp"]), 4, "首位出战怪物获得共享击败经验")
+	t.eq(int(run.record_by_uid(2)["xp"]), 0, "濒死后不再获得后续共享经验")
+	t.eq(int(run.record_by_uid(3)["xp"]), 4, "第三只出战怪物获得相同共享经验")
 	t.eq(int(run.record_by_uid(2)["hp"]), 0, "获得经验不会立即救活濒死怪物")
 	t.eq((outcome["monster_exp"] as Array).size(), 3, "战后报告列出每只出战怪物的经验")
 	for uid in [1, 2, 3]:
 		t.eq(int(run.record_by_uid(uid)["affinity"]), 1, "原出战怪物 %d 均增加亲密度，濒死也计" % uid)
 	run.settle_battle(battle)
-	t.eq(int(run.record_by_uid(2)["xp"]), 2, "重复结算不重复发放怪物经验")
+	t.eq(int(run.record_by_uid(2)["xp"]), 0, "重复结算不重复发放怪物经验")
 	t.eq(int(run.record_by_uid(2)["affinity"]), 1, "重复结算不重复发放亲密度")
 
 
@@ -124,10 +124,10 @@ func _t_attributed_and_shared_kills(t: TestContext) -> void:
 	battle.kill_unit(battle.unit_by_uid(101), "测试共享击败", "player", -1)
 	battle.end_battle("victory")
 	var outcome := run.settle_battle(battle)
-	t.eq(int(run.record_by_uid(1)["xp"]), 3, "归属击败者得两点，另获共享一点")
-	t.eq(int(run.record_by_uid(2)["xp"]), 1, "其他原出战怪物仅获共享一点")
-	t.eq(int(run.record_by_uid(3)["xp"]), 1, "第三只原出战怪物仅获共享一点")
-	t.eq(int(outcome["exp"]), 5, "结算经验汇总以个人实际所得为准")
+	t.eq(int(run.record_by_uid(1)["xp"]), 4, "击杀共享四经验")
+	t.eq(int(run.record_by_uid(2)["xp"]), 4, "其他原出战怪物共享四经验")
+	t.eq(int(run.record_by_uid(3)["xp"]), 4, "第三只原出战怪物共享四经验")
+	t.eq(int(outcome["exp"]), 12, "结算经验汇总以个人实际所得为准")
 	t.eq((outcome["monster_exp"] as Array).size(), 3, "结算明细按原出战实例记录")
 
 
@@ -138,7 +138,7 @@ func _t_capture_nest_and_reward_xp(t: TestContext) -> void:
 	])
 	run.mark_deployed([1, 2, 3])
 	battle.kill_unit(battle.unit_by_uid(2), "测试濒死", "enemy")
-	battle.captured.append({"species_id": "rock_wild1", "hp": 1, "uid": 100, "on_field": false})
+	battle.on_captured(battle.unit_by_uid(100), "rock_wild1", 1)
 	battle.nest["destroyed_by_player"] = true
 	battle.reward["state"] = "carried"
 	battle.reward["owner_uid"] = 1
@@ -164,6 +164,7 @@ func _t_battle_recovery(t: TestContext) -> void:
 	run.carried[2]["hp"] = 1
 	var battle := TestScenario.make_state(["fire_starter"], [])
 	run.mark_deployed([1])
+	battle.trainer().hp = run.trainer_hp
 	var outcome := run.settle_battle(battle)
 	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
 	t.eq(run.trainer_hp, trainer_max, "训练家每次出征回满")
@@ -175,6 +176,7 @@ func _t_battle_recovery(t: TestContext) -> void:
 	run.carried[0]["hp"] = 3
 	var next_battle := TestScenario.make_state(["fire_starter"], [])
 	run.mark_deployed([1])
+	next_battle.unit_by_uid(1).hp = 3
 	var outcome2 := run.settle_battle(next_battle)
 	var fire_max := SpeciesDB.hp_of("fire_starter")
 	t.eq(int(run.carried[0]["hp"]), 3, "出战成员战后保持生命")

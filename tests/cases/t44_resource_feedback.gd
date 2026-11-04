@@ -21,7 +21,7 @@ func run(t: TestContext) -> void:
 	var cell: Vector2i = foes[0].cell
 	battle.kill_unit(foes[0], "收益验证", "player", 1)
 	var xp := events.filter(func(e): return e["kind"] == "experience")
-	t.eq(xp.size(), 2, "共享经验只提示两名存活出战宝可梦")
+	t.eq(xp.size(), 3, "共享经验提示两名存活出战者与训练家")
 	for event in xp:
 		t.eq(event["value"], app.run.battle_kill_xp_for(battle, event["uid"]), "经验数字与本场经验增量一致")
 		t.eq(event["cell"], battle.unit_by_uid(event["uid"]).cell, "经验显示在受益单位旁")

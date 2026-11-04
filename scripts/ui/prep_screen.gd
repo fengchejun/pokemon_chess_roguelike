@@ -21,7 +21,7 @@ func _build_roster() -> Control:
 	var column := UIKit.vbox(8)
 	column.name = "TeamPreparationPanel"
 	column.add_child(UIKit.label("队伍与招式", 18, UIKit.ACCENT))
-	column.add_child(UIKit.wrapped("训练师生命 %d/%d · 最多选择 %d 只出战；濒死成员不可选。" % [app.run.trainer_hp, SpeciesDB.hp_of("trainer"), MAX_DEPLOY], 13))
+	column.add_child(UIKit.wrapped("训练师生命 %d/%d · 最多选择 %d 只出战；濒死成员不可选。" % [app.run.trainer_hp, app.run.trainer_max_hp(), MAX_DEPLOY], 13))
 	team_scroll = UIKit.scroll()
 	column.add_child(team_scroll)
 	team_box = UIKit.vbox(6)

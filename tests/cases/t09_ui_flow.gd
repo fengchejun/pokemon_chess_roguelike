@@ -334,7 +334,7 @@ func run(t: TestContext) -> void:
 	t.eq(app.current_screen.name, "SupplyScreen", "完成两场后进入补给点")
 	t.eq(app.music_director.current_track, "prep", "补给页沿用整备音乐")
 	t.eq(app.run.battle_index, 2, "已进入第三场准备")
-	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
+	var trainer_max: int = app.run.trainer_max_hp()
 	var supply_amount := maxi(1, roundi(float(trainer_max) * Balance.SUPPLY_TRAINER_RECOVERY_RATIO))
 	t.eq(app.run.trainer_hp, 1 + supply_amount, "补给点：训练家恢复 50%% 上限")
 	var leave_supply: Button = app.current_screen.find_child("LeaveSupplyButton", true, false)
@@ -382,18 +382,22 @@ func _claim_pending_monster_levels(t: TestContext, app: Control) -> void:
 		var entry: Dictionary = before[0]
 		var uid := int(entry["uid"])
 		var level := int(entry["level"])
-		var category: Button = app.current_screen.find_child("MonsterGrowth_enhance_%d_%d" % [uid, level], true, false)
+		var category: Button = app.current_screen.find_child("MonsterGrowth_learn_%d_%d" % [uid, level], true, false)
 		if category != null:
 			category.pressed.emit()
-		var choices: Array = app.run.available_monster_upgrades(uid)
+		var choices: Array = app.run.available_new_skills(uid)
 		var id := String(choices[0]) if not choices.is_empty() else ""
-		var skill_id := String(RunState.upgrade_info(id).get("requires_skill", ""))
-		var button: Button = app.current_screen.find_child("MonsterEnhance_%d_%d_%s" % [uid, level, skill_id], true, false)
+		var skill_id := id
+		var button: Button = app.current_screen.find_child("MonsterLearn_%d_%d_%s" % [uid, level, skill_id], true, false)
 		t.check(button != null, "结算页先选类别再选具体招式")
 		if button == null:
 			break
 		button.pressed.emit()
+		var equipped: Array = app.run.record_by_uid(uid)["equipped_skills"]
+		if equipped.size() == 3 and not app.run.record_by_uid(uid)["known_skills"].has(skill_id):
+			var replace: Button = app.current_screen.find_child("MonsterReplace_%d_%d_%s_%s" % [uid, level, skill_id, equipped[0]], true, false)
+			if replace != null: replace.pressed.emit()
 		t.eq(app.run.pending_monster_levels().size(), before.size() - 1, "领取一项后只移除当前怪物升级")
-		t.check((app.run.record_by_uid(uid).get("upgrades_taken", []) as Array).has(id), "升级只记录到对应怪物")
+		t.check((app.run.record_by_uid(uid).get("known_skills", []) as Array).has(id), "升级只记录到对应怪物")
 		count += 1
 	t.eq(app.run.pending_monster_levels().size(), 0, "本场怪物升级选择全部完成")

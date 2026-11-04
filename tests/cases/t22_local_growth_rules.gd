@@ -54,19 +54,13 @@ func _test_all_species_choice_depth(t: TestContext) -> void:
 		var run_state := RunState.new_run(2200 + index, [{"id": index, "species_id": species_id, "affinity": 0}])
 		var record := run_state.record_by_uid(1)
 		MonsterProgression.award_xp(record, MonsterProgression.threshold_for_level(10))
-		for level in [2, 4, 6, 8, 10]:
-			var enhancements := run_state.available_monster_upgrades(1)
+		for level in [2, 5, 7]:
 			var learnable := run_state.available_new_skills(1)
-			t.check(not enhancements.is_empty() or not learnable.is_empty(), "%s Lv%d 至少有一种合法成长" % [species_id, level])
-			var chosen := false
-			if not enhancements.is_empty():
-				chosen = run_state.take_monster_level_choice(1, level, String(enhancements[0]))
-			elif not learnable.is_empty():
-				var equipped: Array = record.get("equipped_skills", [])
-				var replace_id := String(equipped[0]) if equipped.size() >= RunState.MAX_EQUIPPED_SKILLS else ""
-				chosen = run_state.learn_monster_skill(1, level, String(learnable[0]), replace_id)
-			t.check(chosen, "%s Lv%d 可领取独立成长" % [species_id, level])
-		t.check(run_state.pending_monster_levels().is_empty(), "%s 五次成长已处理完毕" % species_id)
+			t.check(not learnable.is_empty(), "%s Lv%d 有合法学招" % [species_id, level])
+			var equipped: Array = record["equipped_skills"]
+			var replace_id := String(equipped[0]) if equipped.size() >= 3 else ""
+			t.check(run_state.learn_monster_skill(1, level, String(learnable[0]), replace_id), "%s Lv%d可学习" % [species_id, level])
+		t.check(run_state.pending_monster_levels().is_empty(), "%s 三次学招已处理" % species_id)
 
 
 func _test_new_skill_upgrades(t: TestContext) -> void:

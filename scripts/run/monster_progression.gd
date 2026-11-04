@@ -5,7 +5,7 @@ extends RefCounted
 ## 我方实例按本局等级成长；敌方配置也使用同一生命曲线。
 const XP_THRESHOLDS := [0, 6, 18, 38, 68, 110, 166, 238, 328, 400]
 const MAX_LEVEL := 10
-const HP_PER_ODD_LEVEL := 10
+const LEARN_LEVELS := [2, 5, 7]
 
 
 static func threshold_for_level(level: int) -> int:
@@ -51,7 +51,8 @@ static func normalize_record(record: Dictionary) -> void:
 
 
 static func max_hp(species_id: String, level: int) -> int:
-	return SpeciesDB.hp_of(species_id) + int((clampi(level, 1, MAX_LEVEL) - 1) / 2) * HP_PER_ODD_LEVEL
+	var steps := clampi(level, 1, MAX_LEVEL) - 1
+	return SpeciesDB.hp_of(species_id) + steps * (steps + 5)
 
 
 static func max_hp_for_record(record: Dictionary) -> int:

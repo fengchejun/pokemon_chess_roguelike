@@ -76,6 +76,7 @@ var storm_last_round: int = 0
 var boss_retreat_used: bool = false
 var _boss_effect_depth: int = 0
 var boss_portal_cell: Vector2i = Vector2i(-1, -1)
+var mentor: Dictionary = {}
 var merchant: Dictionary = {}
 var essence_earned: int = 0
 var essence_applied: int = 0
@@ -126,6 +127,9 @@ var spawn_rng := RandomNumberGenerator.new()
 var capture_rng := RandomNumberGenerator.new()
 var terrain_rng := RandomNumberGenerator.new()
 
+var experience_recipients: Array = []
+var experience_events: Dictionary = {}
+var experience_gains: Dictionary = {}
 var _pending_actions: Array = []
 var _pending_index: int = 0
 var _forecast_cache: Array = []
@@ -154,6 +158,7 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 		unit.cell = map_data.get("deploy_positions", {}).get(unit.uid, deploy_cells[slot])
 		unit.reg_index = units.size()
 		units.append(unit)
+		experience_recipients.append(unit.uid)
 		_watch_feedback(unit)
 		slot += 1
 	var enemy_index := 0
@@ -291,6 +296,8 @@ func load_map(map_data: Dictionary) -> void:
 		terrain[GridSpec.index(cell)] = TerrainDB.OBSTACLE
 		obstacle_durability[cell] = 1
 		natural_essence_cells.erase(cell)
+	if GridSpec.is_inside(map_data.get("mentor_cell", Vector2i(-1, -1))):
+		mentor = {"cell": map_data["mentor_cell"], "services": 0}
 	fruits = []
 
 
@@ -531,11 +538,11 @@ func is_blocking_ray(cell: Vector2i) -> bool:
 
 
 func is_interaction_cell(cell: Vector2i) -> bool:
-	return (GridSpec.is_inside(boss_portal_cell) and cell == boss_portal_cell) or (node_kind == "event" and not merchant.is_empty() and cell == merchant["cell"])
+	return (GridSpec.is_inside(boss_portal_cell) and cell == boss_portal_cell) or (not mentor.is_empty() and cell == mentor["cell"]) or (node_kind == "event" and not merchant.is_empty() and cell == merchant["cell"])
 
 func can_interact_at(cell: Vector2i) -> bool:
 	var actor := trainer()
-	return not ended and phase == PHASE_PLAYER and is_interaction_cell(cell) and actor != null and actor.is_alive() and GridSpec.manhattan(actor.cell, cell) == 1
+	return not ended and phase == PHASE_PLAYER and is_interaction_cell(cell) and (mentor.is_empty() or cell != mentor["cell"] or node_kind == "event") and actor != null and actor.is_alive() and GridSpec.manhattan(actor.cell, cell) == 1
 
 
 func move_cost_for(unit: CombatUnit, cell: Vector2i) -> int:
@@ -734,9 +741,35 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 			"killer_uid": killer_uid if killer_side == "player" else -1,
 			"cause": cause,
 		})
+		if killer_side == "player":
+			award_battle_experience("kill:%d" % unit.uid, Balance.xp_for_event(enemy_kills.back()))
 		log_event("野生 %s 被击败（%s）。" % [unit.display_name, cause])
 		if feedback_enabled:
 			enemy_defeated.emit(enemy_kills.back().duplicate())
+
+
+func award_battle_experience(event_id: String, amount: int, include_fainted: bool = false) -> void:
+	if experience_events.has(event_id):
+		return
+	experience_events[event_id] = {}
+	for uid in experience_recipients:
+		var unit := unit_by_uid(int(uid))
+		if unit == null or unit.side != "player" or unit.summon_owner_uid >= 0 or (not include_fainted and not unit.is_alive()):
+			continue
+		var old_xp := unit.combat_xp
+		var old_level := unit.combat_level
+		unit.combat_xp = mini(MonsterProgression.threshold_for_level(10), unit.combat_xp + maxi(0, amount))
+		unit.combat_level = MonsterProgression.level_for_xp(unit.combat_xp)
+		var added := MonsterProgression.max_hp(unit.species_id, unit.combat_level) - MonsterProgression.max_hp(unit.species_id, old_level)
+		unit.max_hp += added
+		if unit.is_alive():
+			unit.hp += added
+		experience_events[event_id][uid] = unit.combat_xp - old_xp
+		experience_gains[uid] = int(experience_gains.get(uid, 0)) + unit.combat_xp - old_xp
+		if unit.combat_xp > old_xp:
+			emit_feedback(unit, "experience", "经验 +%d" % (unit.combat_xp - old_xp), unit.combat_xp - old_xp)
+		if unit.combat_level > old_level:
+			emit_feedback(unit, "buff", "升至Lv.%d · 生命+%d" % [unit.combat_level, added])
 
 
 func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
@@ -751,6 +784,7 @@ func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
 	var field_join := bool(capture_options.get("capture_field_join", false))
 	var was_boss := unit.is_boss
 	captured.append({"species_id": species_id, "hp": keep_hp, "uid": unit.uid, "on_field": field_join, "was_boss": was_boss, "enemy_level": unit.enemy_level, "xp_reward": Balance.xp_for_enemy_level(unit.enemy_level)})
+	award_battle_experience("capture:%d" % unit.uid, Balance.xp_for_event(captured.back()))
 	if feedback_enabled:
 		enemy_captured.emit(captured.back().duplicate())
 	if unit.inspired:
@@ -2022,6 +2056,7 @@ func _signature() -> String:
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
 		parts.append("summon_power:%d:%d" % [unit.uid, unit.summon_power_bonus])
 		parts.append("vine_source:%d:%s:%d" % [unit.uid, str(unit.vine_sources), unit.vine_ticks])
+	parts.append("xp:%s:%s:%s" % [str(experience_events), str(experience_gains), str(units.map(func(u): return [u.uid, u.combat_xp, u.combat_level]))])
 	parts.append("treasure:%s:%s" % [str(all_rewards()), str(chests)])
 	parts.append("storm:%d:%s" % [storm_last_round, str(storm_strikes)])
 	parts.append("boss_phase:%s" % str(boss_retreat_used))
@@ -2037,7 +2072,11 @@ func _signature() -> String:
 
 func clone() -> BattleState:
 	var copy := BattleState.new()
+	copy.experience_recipients = experience_recipients.duplicate()
+	copy.experience_events = experience_events.duplicate()
+	copy.experience_gains = experience_gains.duplicate()
 	copy.node_kind = node_kind
+	copy.mentor = mentor.duplicate(true)
 	copy.merchant = merchant.duplicate(true)
 	copy.essence_earned = essence_earned
 	copy.essence_applied = essence_applied

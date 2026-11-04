@@ -22,8 +22,8 @@ func _test_thresholds(t: TestContext) -> void:
 	t.eq(earned["level_after"], 3, "一次可跨多级")
 	t.eq(record["hp"], 0, "濒死单位升级不被直接救活")
 	for level in range(1, 11):
-		t.eq(MonsterProgression.max_hp("fire_starter", level), 30 + int((level - 1) / 2) * 10, "小火龙 Lv%d 仅奇数级增加生命" % level)
-	t.eq(MonsterProgression.max_hp_for_record(record), 40, "记录中的三级生命上限为 40")
+		t.eq(MonsterProgression.max_hp("fire_starter", level), [30, 36, 44, 54, 66, 80, 96, 114, 134, 156][level - 1], "小火龙 Lv%d 生命增量逐级提高" % level)
+	t.eq(MonsterProgression.max_hp_for_record(record), 44, "记录中的三级生命上限为44")
 	MonsterProgression.award_xp(record, -5)
 	t.eq(record["xp"], 18, "负经验不会降低等级")
 	MonsterProgression.award_xp(record, 100000)

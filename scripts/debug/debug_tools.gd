@@ -58,7 +58,7 @@ static func add_xp(run: RunState, uid: int, amount: int) -> Dictionary:
 		return {"ok": false, "message": "未找到目标怪物。"}
 	var growth := MonsterProgression.award_xp(record, amount)
 	run.debug_tainted = true
-	return {"ok": true, "message": "%s：+%d XP，现为 Lv.%d（%d XP）；偶数级选择在战后结算领取。" % [
+	return {"ok": true, "message": "%s：+%d XP，现为 Lv.%d（%d XP）；2、5、7级学习机会在战后结算领取。" % [
 		SpeciesDB.name_of(String(record["species_id"])), int(growth["gained"]), int(growth["level_after"]), int(growth["xp_after"]),
 	]}
 

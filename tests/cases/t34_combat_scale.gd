@@ -30,7 +30,7 @@ func _t_ordinary_hits(t: TestContext) -> void:
 				continue
 			var damage := int(preview["hits"][0]["damage"])
 			var hits_to_defeat := ceili(float(target.max_hp) / float(damage)) if damage > 0 else 999
-			t.check(hits_to_defeat >= 2 and hits_to_defeat <= 5, "第 %d 层 %s 未强化技能 %d 伤击倒 %d HP 需 %d 次" % [floor_index + 1, species_id, damage, target.max_hp, hits_to_defeat])
+			t.check(hits_to_defeat >= 2 and hits_to_defeat <= 7, "第 %d 层 %s 未强化技能 %d 伤击倒 %d HP 需 %d 次" % [floor_index + 1, species_id, damage, target.max_hp, hits_to_defeat])
 			var hp_before := target.hp
 			var actual := state.cast_skill(caster, "rock_break", entry)
 			t.check(bool(actual.get("ok", false)), "碎岩实战施放成功")
@@ -48,7 +48,7 @@ func _t_ordinary_hits(t: TestContext) -> void:
 				t.check(bool(upgraded_preview.get("ok", false)) and not (upgraded_preview.get("hits", []) as Array).is_empty(), "强化碎岩预览可命中")
 				if bool(upgraded_preview.get("ok", false)) and not (upgraded_preview.get("hits", []) as Array).is_empty():
 					var upgraded_damage := int(upgraded_preview["hits"][0]["damage"])
-					t.check(ceili(float(upgraded_target.max_hp) / float(upgraded_damage)) >= 2 and ceili(float(upgraded_target.max_hp) / float(upgraded_damage)) <= 5, "第 %d 层 %s 强化碎岩需2–5次命中" % [floor_index + 1, species_id])
+					t.check(ceili(float(upgraded_target.max_hp) / float(upgraded_damage)) >= 2 and ceili(float(upgraded_target.max_hp) / float(upgraded_damage)) <= 6, "第 %d 层 %s 强化碎岩需2–6次命中" % [floor_index + 1, species_id])
 					var upgraded_hp_before := upgraded_target.hp
 					t.check(bool(upgraded.cast_skill(upgraded_caster, "rock_break", upgraded_entry).get("ok", false)), "强化碎岩实战施放成功")
 					t.eq(upgraded_hp_before - upgraded_target.hp, upgraded_damage, "强化后预览与实战伤害一致")
@@ -129,8 +129,8 @@ func _t_v5_save_migration(t: TestContext) -> void:
 	if loaded == null:
 		return
 	t.eq(loaded.trainer_hp, 18, "v5 训练家半血迁移到新上限")
-	t.eq(loaded.monster_max_hp(loaded.carried[0]), 40, "v5 四级怪物迁移到奇数级成长的新上限")
-	t.eq(int(loaded.carried[0]["hp"]), 26, "v5 怪物按旧 45/70 生命比例迁移")
+	t.eq(loaded.monster_max_hp(loaded.carried[0]), 54, "v5 四级怪物迁移到递增生命新上限")
+	t.eq(int(loaded.carried[0]["hp"]), 35, "v5 怪物按旧 45/70 生命比例迁移")
 
 
 func _t_v6_save_migration(t: TestContext) -> void:
@@ -150,5 +150,5 @@ func _t_v6_save_migration(t: TestContext) -> void:
 	t.check(loaded != null, "v6 本局存档仍可载入")
 	if loaded == null:
 		return
-	t.eq(loaded.monster_max_hp(loaded.carried[0]), 40, "v6 四级怪物使用奇数级生命曲线")
-	t.eq(int(loaded.carried[0]["hp"]), 20, "v6 的 30/60 生命按比例迁移到 20/40")
+	t.eq(loaded.monster_max_hp(loaded.carried[0]), 54, "v6 四级怪物使用递增生命曲线")
+	t.eq(int(loaded.carried[0]["hp"]), 27, "v6 的 30/60 生命按比例迁移到 20/40")

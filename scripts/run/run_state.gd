@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 12
+const SAVE_VERSION := 13
 var essence: int = 0
 var trainer_items: Dictionary = {}
 var sold_monster_uids: Array = []
@@ -113,6 +113,8 @@ var in_battle: bool = false
 var battle_snapshot: Dictionary = {}
 var run_failed: bool = false # 训练家倒下后整局终止；旧存档默认未失败。
 var debug_tainted: bool = false # 使用 F7 修改过本局；仍可存档，但不进入永久收藏统计。
+var trainer_xp: int = 0
+var trainer_level: int = 1
 var trainer_hp: int = 35
 var carried: Array = []
 var storage: Array = []
@@ -187,7 +189,7 @@ func supply_due() -> bool:
 
 func apply_supply_recovery() -> Dictionary:
 	## 补给点：训练家恢复 50% 生命上限（四舍五入，至少 1 点）。
-	var trainer_max := int(SpeciesDB.get_species("trainer").get("hp", 7))
+	var trainer_max := trainer_max_hp()
 	var before := trainer_hp
 	if recovered_supply_battles.has(battle_index):
 		return {"trainer_from": before, "trainer_to": before}
@@ -280,6 +282,7 @@ func get_region():
 		region_data = Region.create_floor(floor_index(), current_theme()).to_dict()
 	var region = Region.from_dict(region_data)
 	Merchant.ensure_region(region, seed)
+	SkillMentor.ensure_region(region, seed)
 	region_data = region.to_dict()
 	return region
 
@@ -325,7 +328,7 @@ func rest_at_region_camp() -> bool:
 
 
 func needs_camp_rest() -> bool:
-	if trainer_hp < SpeciesDB.hp_of("trainer"):
+	if trainer_hp < trainer_max_hp():
 		return true
 	for record in carried:
 		if int(record["hp"]) < monster_max_hp(record):
@@ -365,10 +368,10 @@ func rest_with_food(selection: Dictionary) -> Dictionary:
 	if int(food_inventory.get(kind, 0)) < cost:
 		return {"ok": false, "reason": "%s不足 %d 份。" % [definition["name"], cost]}
 	var results: Array = []
-	results.append("训练家 HP %d → %d" % [trainer_hp, SpeciesDB.hp_of("trainer")])
+	results.append("训练家 HP %d → %d" % [trainer_hp, trainer_max_hp()])
 	food_inventory[kind] = int(food_inventory[kind]) - cost
 	food = total_food()
-	trainer_hp = SpeciesDB.hp_of("trainer")
+	trainer_hp = trainer_max_hp()
 	for record in carried:
 		var before := int(record["hp"])
 		var healed := ceili(monster_max_hp(record) / 2.0) if before <= 0 else monster_max_hp(record)
@@ -515,9 +518,16 @@ static func recovery_amount(max_hp: int) -> int:
 	return maxi(1, roundi(float(max_hp) * Balance.BENCH_RECOVERY_RATIO))
 
 
+func trainer_max_hp() -> int:
+	return MonsterProgression.max_hp("trainer", trainer_level)
+
+
 func build_deploy_units(deploy_uids: Array) -> Array:
 	var units: Array = []
 	var trainer := CombatUnit.make("trainer", "player", Balance.TRAINER_UID)
+	trainer.max_hp = trainer_max_hp()
+	trainer.combat_level = trainer_level
+	trainer.combat_xp = trainer_xp
 	trainer.hp = trainer_hp
 	units.append(trainer)
 	for uid in deploy_uids:
@@ -527,6 +537,7 @@ func build_deploy_units(deploy_uids: Array) -> Array:
 		var unit := CombatUnit.make(String(record["species_id"]), "player", int(record["uid"]))
 		unit.upgrades = (record.get("upgrades", {}) as Dictionary).duplicate()
 		unit.skills = (record.get("equipped_skills", SpeciesDB.skills_of(String(record["species_id"]))) as Array).duplicate()
+		unit.combat_xp = int(record.get("xp", 0))
 		unit.max_hp = monster_max_hp(record)
 		unit.combat_level = clampi(int(record.get("level", 1)), 1, MonsterProgression.MAX_LEVEL)
 		unit.hp = mini(int(record["hp"]), unit.max_hp)
@@ -555,11 +566,15 @@ func sync_from_battle(battle: BattleState) -> void:
 		if unit.summon_owner_uid >= 0:
 			continue
 		if unit.is_trainer:
+			trainer_xp = maxi(trainer_xp, unit.combat_xp)
+			trainer_level = MonsterProgression.level_for_xp(trainer_xp)
 			trainer_hp = unit.hp
 			continue
 		var record := record_by_uid(unit.uid)
 		if record.is_empty():
 			continue
+		record["xp"] = maxi(int(record.get("xp", 0)), unit.combat_xp)
+		record["level"] = MonsterProgression.level_for_xp(record["xp"])
 		if unit.is_alive():
 			record["hp"] = unit.hp
 		else:
@@ -669,33 +684,33 @@ func release_storage(uid: int) -> bool:
 
 
 func battle_kill_xp_for(battle: BattleState, uid: int) -> int:
-	var unit := battle.unit_by_uid(uid)
-	if not deployed_uids.has(uid) or unit == null or not unit.is_alive() or record_by_uid(uid).is_empty():
-		return 0
-	var gained := 0
-	for entry in battle.enemy_kills:
-		if String(entry.get("killer_side", "player" if bool(entry.get("by_player", false)) else "")) == "player":
-			gained += Balance.xp_for_event(entry)
-	return gained
+	return battle_event_xp_for(battle, uid, "kill:")
 
 func battle_capture_xp_for(battle: BattleState, uid: int) -> int:
+	return battle_event_xp_for(battle, uid, "capture:")
+
+func battle_event_xp_for(battle: BattleState, uid: int, prefix: String) -> int:
+	var total := 0
+	for key in battle.experience_events:
+		if String(key).begins_with(prefix) and battle.experience_events[key] is Dictionary:
+			total += int(battle.experience_events[key].get(uid, 0))
+	return total
+
+func unit_by_record_fainted(battle: BattleState, uid: int) -> bool:
 	var unit := battle.unit_by_uid(uid)
-	if not deployed_uids.has(uid) or unit == null or not unit.is_alive() or record_by_uid(uid).is_empty():
-		return 0
-	var gained := 0
-	for entry in battle.captured:
-		gained += Balance.xp_for_event(entry)
-	return gained
+	return unit == null or not unit.is_alive()
 
 
 func settle_battle(battle: BattleState) -> Dictionary:
 	## 结算口径：胜利 / 强制撤退（失败） / 野生逃离。
 	if battle.reward.has("run_settled_outcome"):
 		return (battle.reward["run_settled_outcome"] as Dictionary).duplicate(true)
+	sync_from_battle(battle)
 	var outcome := {
 		"reason": battle.end_reason,
 		"exp": 0,
 		"monster_exp": [],
+		"trainer_exp": {"gained": int(battle.experience_gains.get(Balance.TRAINER_UID, 0)), "level": trainer_level, "xp": trainer_xp},
 		"monster_affinity": [],
 		"kills": battle.enemy_kills.size(),
 		"captures": battle.captured.size(),
@@ -737,24 +752,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 			if not record_by_uid(id).is_empty():
 				original[id] = true
 				gains[id] = 0
-		for entry in battle.enemy_kills:
-			if region_mode:
-				continue
-			var killer_side := String(entry.get("killer_side", "player" if bool(entry.get("by_player", false)) else ""))
-			if killer_side == "enemy":
-				continue
-			var killer_uid := int(entry.get("killer_uid", -1))
-			if original.has(killer_uid):
-				gains[killer_uid] = int(gains[killer_uid]) + Balance.xp_for_event(entry)
-			else:
-				for id in original:
-					gains[id] = int(gains[id]) + 1
-		if region_mode:
-			for id in original:
-				gains[id] = battle_kill_xp_for(battle, int(id))
 		var shared_bonus := 0
-		for capture in battle.captured:
-			shared_bonus += Balance.xp_for_event(capture)
 		if bonus_earned:
 			shared_bonus += bonus_count
 		for current in battle.all_nests():
@@ -767,6 +765,8 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		for id in original:
 			var record := record_by_uid(int(id))
 			var growth := MonsterProgression.award_xp(record, int(gains[id]))
+			growth["gained"] = int(growth["gained"]) + int(battle.experience_gains.get(id, 0))
+			record["hp"] = 0 if unit_by_record_fainted(battle, int(id)) else mini(int(record["hp"]) + MonsterProgression.max_hp(String(record["species_id"]), int(growth["level_after"])) - MonsterProgression.max_hp(String(record["species_id"]), int(growth["level_before"])), monster_max_hp(record))
 			growth["uid"] = int(id)
 			growth["name"] = SpeciesDB.name_of(String(record["species_id"]))
 			(outcome["monster_exp"] as Array).append(growth)
@@ -905,7 +905,7 @@ func available_new_skills(uid: int) -> Array:
 
 
 func _expected_level(record: Dictionary) -> int:
-	for level in [2, 4, 6, 8, 10]:
+	for level in MonsterProgression.LEARN_LEVELS:
 		if int(record.get("level", 1)) < level:
 			break
 		if not (record.get("claimed_even_levels", []) as Array).has(level):
@@ -925,7 +925,9 @@ func pending_monster_levels() -> Array:
 	var records: Array = carried.duplicate() + storage.duplicate()
 	records.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["uid"]) < int(b["uid"]))
 	for record in records:
-		for level in [2, 4, 6, 8, 10]:
+		if available_new_skills(int(record["uid"])).is_empty():
+			continue
+		for level in MonsterProgression.LEARN_LEVELS:
 			if int(record.get("level", 1)) < level:
 				break
 			if (record.get("claimed_even_levels", []) as Array).has(level):
@@ -934,25 +936,22 @@ func pending_monster_levels() -> Array:
 	return pending
 
 
-func monster_level_choices(uid: int, level: int) -> Array:
-	var record := owned_record_by_uid(uid)
-	return available_monster_upgrades(uid) if not record.is_empty() and _expected_level(record) == level else []
+func monster_level_choices(_uid: int, _level: int) -> Array:
+	return [] # 等级奖励只提供学习机会。
 
 
-func take_monster_level_choice(uid: int, level: int, upgrade_id: String) -> bool:
-	var record := owned_record_by_uid(uid)
-	var info := upgrade_info(upgrade_id)
-	if record.is_empty() or info.is_empty():
+func take_monster_level_choice(_uid: int, _level: int, _upgrade_id: String) -> bool:
+	return false
+
+
+func apply_mentor_upgrade(uid: int, skill_id: String) -> bool:
+	var id := upgrade_id_for_skill(skill_id)
+	if record_by_uid(uid).is_empty() or not available_monster_upgrades(uid).has(id):
 		return false
-	if level != _expected_level(record) or not available_monster_upgrades(uid).has(upgrade_id):
-		return false
-	var values: Dictionary = record.get("upgrades", {})
-	values[String(info["key"])] = int(info["value"])
-	record["upgrades"] = values
-	var taken: Array = record.get("upgrades_taken", [])
-	taken.append(upgrade_id)
-	record["upgrades_taken"] = taken
-	_claim_level(record, level)
+	var record := record_by_uid(uid)
+	var info := upgrade_info(id)
+	record["upgrades"][info["key"]] = info["value"]
+	record["upgrades_taken"].append(id)
 	return true
 
 
@@ -1025,7 +1024,7 @@ func to_dict() -> Dictionary:
 		"battle_snapshot": battle_snapshot.duplicate(true),
 		"run_failed": run_failed,
 		"debug_tainted": debug_tainted,
-		"trainer_hp": trainer_hp,
+		"trainer_hp": trainer_hp, "trainer_xp": trainer_xp, "trainer_level": trainer_level,
 		"carried": carried.duplicate(true),
 		"storage": storage.duplicate(true),
 		"pending_captures": pending_captures.duplicate(true),
@@ -1085,7 +1084,9 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.battle_snapshot = (data.get("battle_snapshot", {}) as Dictionary).duplicate(true)
 	run.run_failed = bool(data.get("run_failed", false))
 	run.debug_tainted = bool(data.get("debug_tainted", false))
-	run.trainer_hp = clampi(_migrate_hp(int(data.get("trainer_hp", 6)), _old_max_hp("trainer", 1, version), SpeciesDB.hp_of("trainer")) if old_hp_scale else int(data.get("trainer_hp", SpeciesDB.hp_of("trainer"))), 0 if run.run_failed else 1, SpeciesDB.hp_of("trainer"))
+	run.trainer_xp = clampi(int(data.get("trainer_xp", 0)), 0, 400)
+	run.trainer_level = MonsterProgression.level_for_xp(run.trainer_xp)
+	run.trainer_hp = clampi(_migrate_hp(int(data.get("trainer_hp", 6)), _old_max_hp("trainer", 1, version), SpeciesDB.hp_of("trainer")) if old_hp_scale else int(data.get("trainer_hp", SpeciesDB.hp_of("trainer"))), 0, run.trainer_max_hp())
 	run.carried = (data.get("carried", []) as Array).duplicate(true)
 	run.storage = (data.get("storage", []) as Array).duplicate(true)
 	run.pending_captures = (data.get("pending_captures", []) as Array).duplicate(true)
@@ -1155,8 +1156,11 @@ static func from_dict(data: Dictionary) -> RunState:
 				MonsterProgression.migrate_legacy_xp(record)
 			MonsterProgression.normalize_record(record)
 			run._normalize_record_growth(record, legacy_upgrade_style)
+			if version < 13:
+				var claimed_count := mini(3, (record.get("claimed_even_levels", []) as Array).size())
+				record["claimed_even_levels"] = MonsterProgression.LEARN_LEVELS.slice(0, claimed_count)
 			var new_max_hp := run.monster_max_hp(record)
-			record["hp"] = _migrate_hp(old_hp, _old_max_hp(String(record.get("species_id", "")), int(record.get("level", 1)), version), new_max_hp) if old_hp_scale else clampi(old_hp, 0, new_max_hp)
+			record["hp"] = _migrate_hp(old_hp, _old_max_hp(String(record.get("species_id", "")), int(record.get("level", 1)), version), new_max_hp) if old_hp_scale or version < 13 else clampi(old_hp, 0, new_max_hp)
 	if legacy_growth and run.settlement_pending:
 		## 旧结算页中已累计的经验/等级文案不能在迁移后继续展示。
 		run.last_settlement["exp"] = 0
@@ -1168,7 +1172,54 @@ static func from_dict(data: Dictionary) -> RunState:
 		run.battle_snapshot = migrate_snapshot(run.battle_snapshot)
 		migrate_region_snapshots(run.region_data)
 		migrate_region_snapshots(run.pending_region_entry_backup)
+	if version < 13:
+		run.battle_snapshot = run.migrate_progression_snapshot(run.battle_snapshot, run.in_battle)
+		for region in [run.region_data, run.pending_region_entry_backup]:
+			for node in (region.get("nodes", {}) as Dictionary).values():
+				node["snapshot"] = run.migrate_progression_snapshot(node.get("snapshot", {}))
 	return run
+
+
+func migrate_progression_snapshot(snapshot: Dictionary, active: bool = false) -> Dictionary:
+	if snapshot.is_empty():
+		return snapshot
+	var state := BattleSnapshot.load_state(snapshot)
+	if state == null:
+		return snapshot
+	state.experience_recipients.clear()
+	for unit in state.units:
+		var old_max: int = unit.max_hp
+		var level: int = unit.combat_level
+		var old_base := SpeciesDB.hp_of(unit.species_id) + int((maxi(1, level) - 1) / 2) * 10
+		unit.max_hp += MonsterProgression.max_hp(unit.species_id, level) - old_base
+		unit.hp = _migrate_hp(unit.hp, old_max, unit.max_hp)
+		if unit.side == "player" and unit.summon_owner_uid < 0:
+			var record := owned_record_by_uid(unit.uid)
+			if unit.is_trainer:
+				unit.combat_xp = 0
+				unit.combat_level = 1
+				state.experience_recipients.append(unit.uid)
+			elif not record.is_empty():
+				unit.combat_xp = int(record["xp"])
+				state.experience_recipients.append(unit.uid)
+	if active and not state.ended:
+		for event in state.enemy_kills:
+			if event.get("killer_side", "player" if event.get("by_player", false) else "") == "player":
+				state.award_battle_experience("kill:%d" % int(event.get("uid", -1)), Balance.xp_for_event(event), true)
+		for event in state.captured:
+			state.award_battle_experience("capture:%d" % int(event.get("uid", -1)), Balance.xp_for_event(event), true)
+		for uid in state.experience_recipients:
+			var unit := state.unit_by_uid(uid)
+			if unit.is_trainer:
+				trainer_xp = unit.combat_xp
+				trainer_level = unit.combat_level
+				trainer_hp = unit.hp
+			else:
+				var record := owned_record_by_uid(uid)
+				record["xp"] = unit.combat_xp
+				record["level"] = unit.combat_level
+				record["hp"] = unit.hp
+	return BattleSnapshot.save_state(state)
 
 
 static func _old_max_hp(species_id: String, level: int, version: int) -> int:
@@ -1177,6 +1228,8 @@ static func _old_max_hp(species_id: String, level: int, version: int) -> int:
 		return maxi(1, roundi(float(current_base) / 5.0) + int((maxi(1, level) - 1) / 2))
 	if version == 5:
 		return maxi(1, current_base * 2 + int((maxi(1, level) - 1) / 2) * 10)
+	if version >= 7:
+		return current_base + int((maxi(1, level) - 1) / 2) * 10
 	return maxi(1, current_base + (maxi(1, level) - 1) * 10)
 
 
@@ -1230,7 +1283,7 @@ func _normalize_record_growth(record: Dictionary, legacy_upgrade_style: bool) ->
 				kept_taken.append(id)
 		for level_value in old_claimed:
 			var level := int(level_value)
-			if [2, 4, 6, 8, 10].has(level) and level <= int(record.get("level", 1)) and not kept_claimed.has(level):
+			if [2, 4, 5, 6, 7, 8, 10].has(level) and level <= int(record.get("level", 1)) and not kept_claimed.has(level):
 				kept_claimed.append(level)
 	if not legacy_upgrade_style:
 		var retired_count := 0

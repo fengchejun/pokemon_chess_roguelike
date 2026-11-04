@@ -287,6 +287,27 @@ func show_camp() -> void:
 	_switch(CampScreen.new())
 
 
+func mentor_train(state: BattleState, uid: int, skill_id: String, save_path: String = SaveSystem.DEFAULT_PATH) -> Dictionary:
+	run.sync_from_battle(state)
+	var prior := run.to_dict()
+	var before := BattleSnapshot.save_state(state)
+	var result := SkillMentor.train(run, state, uid, skill_id)
+	if not result["ok"]:
+		return result
+	var region = run.get_region()
+	region.nodes[region.active_node]["mentor"] = state.mentor.duplicate(true)
+	region.nodes[region.active_node]["mentor"]["cell"] = [state.mentor["cell"].x, state.mentor["cell"].y]
+	run.region_data = region.to_dict()
+	run.battle_snapshot = BattleSnapshot.save_state(state)
+	if autosave_enabled and not SaveSystem.save_run(run, save_path):
+		run = RunState.from_dict(prior)
+		var restored := BattleSnapshot.load_state(before)
+		state.units = restored.units
+		state.mentor = restored.mentor
+		return {"ok": false, "reason": "存档写入失败，强化已撤回。"}
+	return result
+
+
 func leave_camp() -> void:
 	var region = run.get_region()
 	region.at_camp_scene = false
@@ -365,6 +386,15 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 	if run.region_mode:
 		var current = run.get_region()
 		var node: Dictionary = current.nodes[current.active_node]
+		if node.has("mentor"):
+			state.mentor = node["mentor"].duplicate(true)
+			var point: Array = state.mentor["cell"]
+			state.mentor["cell"] = Vector2i(int(point[0]), int(point[1]))
+			if not GridSpec.is_inside(state.mentor["cell"]):
+				state.mentor["cell"] = final_map.get("mentor_cell", SkillMentor.choose_cell(state, final_map.get("deploy_positions", {})))
+			node["mentor"] = state.mentor.duplicate(true)
+			node["mentor"]["cell"] = [state.mentor["cell"].x, state.mentor["cell"].y]
+			run.region_data = current.to_dict()
 		if node.has("merchant"):
 			if state.merchant.is_empty():
 				state.merchant = node["merchant"].duplicate(true)

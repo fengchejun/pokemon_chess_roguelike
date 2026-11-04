@@ -225,39 +225,20 @@ func _wait_playback() -> void:
 		await get_tree().process_frame
 
 
-func _on_enemy_defeated(entry: Dictionary) -> void:
-	if app == null or app.run == null:
-		return
-	var killer_side := String(entry.get("killer_side", ""))
-	if killer_side == "enemy" or (app.run.region_mode and killer_side != "player"):
-		return
-	var killer_uid := int(entry.get("killer_uid", -1))
-	var original_killer: bool = app.run.deployed_uids.has(killer_uid) and not app.run.record_by_uid(killer_uid).is_empty()
-	for uid in app.run.deployed_uids:
-		var unit := state.unit_by_uid(int(uid))
-		if unit == null or not unit.is_alive() or unit.is_trainer or app.run.record_by_uid(int(uid)).is_empty():
-			continue
-		var amount := Balance.xp_for_event(entry)
-		if not app.run.region_mode:
-			amount = (Balance.xp_for_event(entry) if int(uid) == killer_uid else 0) if original_killer else 1
-		if amount > 0:
-			state.emit_feedback(unit, "experience", "经验 +%d" % amount, amount)
+func _on_enemy_defeated(_entry: Dictionary) -> void:
+	if app != null and app.run != null:
+		app.run.sync_from_battle(state)
 
+func _on_enemy_captured(_entry: Dictionary) -> void:
+	if app != null and app.run != null:
+		app.run.sync_from_battle(state)
 
-func _on_enemy_captured(entry: Dictionary) -> void:
-	if app == null or app.run == null:
-		return
-	for uid in app.run.deployed_uids:
-		var unit := state.unit_by_uid(int(uid))
-		if unit != null and unit.is_alive() and not unit.is_trainer and not app.run.record_by_uid(int(uid)).is_empty():
-			var amount := Balance.xp_for_event(entry)
-			state.emit_feedback(unit, "experience", "经验 +%d" % amount, amount)
 
 func _process(_delta: float) -> void:
 	if battle_notice != null:
 		battle_notice.playback_speed = app.battle_playback_speed
 	if speech_layer != null:
-		speech_layer.set_suppressed(battle_notice != null and battle_notice.active())
+		speech_layer.set_suppressed(modal_layer != null or (battle_notice != null and battle_notice.active()))
 	if feedback_layer != null:
 		feedback_layer.playback_speed = app.battle_playback_speed
 		feedback_layer.paused = modal_layer != null
@@ -438,7 +419,7 @@ func _update_team_list() -> void:
 		var uid: int = unit.uid
 		entry.pressed.connect(func() -> void: select_unit(uid))
 		team_list.add_child(entry)
-		if not unit.is_trainer and unit.summon_owner_uid < 0 and app != null and app.run != null and app.run.region_mode:
+		if unit.summon_owner_uid < 0 and app != null and app.run != null:
 			_add_battle_xp_bar(unit)
 	call_deferred("_fit_team_panel")
 
@@ -452,22 +433,19 @@ func _fit_team_panel() -> void:
 
 func _add_battle_xp_bar(unit: CombatUnit) -> void:
 	var state := _display_state()
-	var record: Dictionary = app.run.record_by_uid(unit.uid)
-	if record.is_empty() or not app.run.deployed_uids.has(unit.uid):
+	if unit.summon_owner_uid >= 0 or not state.experience_recipients.has(unit.uid):
 		return
-	var level := int(record.get("level", 1))
-	var gained: int = app.run.battle_kill_xp_for(state, unit.uid) + app.run.battle_capture_xp_for(state, unit.uid)
-	var total := mini(MonsterProgression.threshold_for_level(MonsterProgression.MAX_LEVEL), int(record.get("xp", 0)) + gained)
-	var target_level := MonsterProgression.level_for_xp(total)
+	var level := unit.combat_level
+	var gained := int(state.experience_gains.get(unit.uid, 0))
+	var total := unit.combat_xp
+	var target_level := level
 	var floor_xp := MonsterProgression.threshold_for_level(level)
 	var next_xp := MonsterProgression.threshold_for_level(level + 1)
-	var caption := "Lv.%d · XP %d/%d · 本场 +%d" % [level, mini(total - floor_xp, next_xp - floor_xp), next_xp - floor_xp, gained]
+	var caption := "Lv.%d · XP %d/%d · 本场 +%d" % [level, total - floor_xp, next_xp - floor_xp, gained]
 	if not unit.is_alive():
-		caption = "濒死 · 本场不获得经验"
+		caption = "濒死 · Lv.%d · 已保留经验 %d" % [level, total]
 	elif level >= MonsterProgression.MAX_LEVEL:
 		caption = "Lv.%d · 已满级" % level
-	elif target_level > level:
-		caption += "\n战后可升至 Lv.%d" % target_level
 	var label := UIKit.label(caption, 12, UIKit.GOOD if target_level > level else UIKit.TEXT_DIM)
 	label.name = "BattleXPText_%d" % unit.uid
 	team_list.add_child(label)
@@ -477,7 +455,7 @@ func _add_battle_xp_bar(unit: CombatUnit) -> void:
 	bar.show_percentage = false
 	bar.max_value = maxi(1, next_xp - floor_xp)
 	bar.value = bar.max_value if level >= MonsterProgression.MAX_LEVEL else maxi(0, total - floor_xp)
-	bar.tooltip_text = "击败与捕获经验立即记录；等级、属性和升级选择在战后生效。仅存活出战成员结算，巢穴与奖励点经验另在战后追加。"
+	bar.tooltip_text = "击败与捕获经验即时入账，等级和生命立即成长；濒死保留此前经验，之后不再获得。2、5、7级的学招在战后选择。"
 	var fill := StyleBoxFlat.new()
 	fill.bg_color = Color("59b8e8")
 	bar.add_theme_stylebox_override("fill", fill)
@@ -813,6 +791,11 @@ func _rebuild_skill_buttons() -> void:
 			merchant_action.name = "MerchantInteractButton"
 			merchant_action.pressed.connect(_interact_with_merchant)
 			skill_box.add_child(merchant_action)
+		if not state.mentor.is_empty() and state.can_interact_at(state.mentor["cell"]):
+			var training := UIKit.small_button("向技能导师学习强化")
+			training.name = "MentorInteractButton"
+			training.pressed.connect(_show_mentor)
+			skill_box.add_child(training)
 		if state.can_interact_at(state.boss_portal_cell):
 			var portal_action := UIKit.small_button("进入传送门")
 			portal_action.name = "PortalInteractButton"
@@ -1065,7 +1048,12 @@ func _on_board_clicked(cell: Vector2i) -> void:
 		_use_trainer_item(item_aim, target.uid if target != null else -1)
 		return
 	if aim_skill == "" and not capture_mode and state.is_interaction_cell(cell):
-		if cell == state.boss_portal_cell:
+		if not state.mentor.is_empty() and cell == state.mentor["cell"]:
+			if state.can_interact_at(cell):
+				_show_mentor()
+			else:
+				hint_label.text = "导师暂停服务，清场后恢复。" if state.node_kind != "event" else "训练家需走到导师相邻格。"
+		elif cell == state.boss_portal_cell:
 			_request_portal()
 		else:
 			selected_uid = 0
@@ -1414,6 +1402,38 @@ func _use_trainer_item(id: String, uid: int = -1) -> void:
 		_clear_aim()
 		app.sync_and_save(state)
 		refresh_all()
+
+
+func _show_mentor(message: String = "") -> void:
+	if state.mentor.is_empty() or not state.can_interact_at(state.mentor["cell"]):
+		return
+	var price := SkillMentor.cost(state.mentor)
+	_show_modal("技能导师 · 本次%d原质" % price, message)
+	var content = modal_layer.get_child(0).get_child(0)
+	var scroll = content.get_child(1)
+	for child in scroll.get_children():
+		scroll.remove_child(child)
+		child.queue_free()
+	var list := UIKit.vbox(7)
+	scroll.add_child(list)
+	list.add_child(UIKit.wrapped(message if message != "" else "选择携带队伍的已学招式，每招每局强化一次。成功后下次费用增加8原质。", 14))
+	var count := 0
+	for record in app.run.carried:
+		var uid := int(record["uid"])
+		for upgrade_id in app.run.available_monster_upgrades(uid):
+			var info := RunState.upgrade_info(upgrade_id)
+			var skill := String(info["requires_skill"])
+			var button := UIKit.button("%s · %s\n%s · %d原质" % [SpeciesDB.name_of(record["species_id"]), SkillDB.name_of(skill), info["desc"], price], 14)
+			button.name = "MentorTrain_%d_%s" % [uid, skill]
+			button.disabled = app.run.essence < price
+			button.pressed.connect(func() -> void:
+				var result: Dictionary = app.mentor_train(state, uid, skill)
+				_refresh_after_action()
+				_show_mentor(result["reason"]))
+			list.add_child(button)
+			count += 1
+	if count == 0:
+		list.add_child(UIKit.label("携带队伍没有可强化的已学招式。", 14))
 
 
 func _show_merchant(message: String = "") -> void:
