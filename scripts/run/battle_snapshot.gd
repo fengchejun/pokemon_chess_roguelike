@@ -73,6 +73,7 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		var unit := CombatUnit.new()
 		for key in member:
 			unit.set(key, decode(member[key]))
+		unit.element = Elements.canonical(unit.element)
 		var had_retired_skill := unit.skills.has("wind_gust")
 		unit.skills = unit.skills.filter(func(id): return not SkillDB.get_def(String(id)).is_empty())
 		if had_retired_skill and unit.skills.is_empty():

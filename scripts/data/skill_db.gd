@@ -1,7 +1,7 @@
 class_name SkillDB
 extends RefCounted
 
-## 七系目标技能与旧版兼容技能。kind 决定瞄准方式：
+## 五属性技能与旧版兼容技能；冰技能按水、风技能按电结算。kind 决定瞄准方式：
 ##  ray       行列射线（被第一个单位或障碍截断）
 ##  charge    闪焰冲锋：正交1至2格选方向，逐格前进并在撞击时停下
 ##  unit      单体选中
@@ -285,7 +285,7 @@ static func get_def(skill_id: String) -> Dictionary:
 
 
 static func placeholder_ids_for(element: String) -> Array:
-	if not Elements.LIST.has(element) and not ["ice", "wind"].has(element):
+	if not Elements.LIST.has(element):
 		return []
 	return ["trial_%s_1" % element, "trial_%s_2" % element]
 
@@ -294,8 +294,8 @@ static func learnable_ids_for(element: String) -> Array:
 	var ids := placeholder_ids_for(element)
 	match element:
 		"fire": ids.append_array(["fire_amplify", "flame_rush", "windfire_breath", "furnace_fist", "skyfire", "combustion", "burn_out"])
-		"water": ids.append_array(["surf", "water_magic_burst", "ice_breath", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard", "trial_ice_1", "trial_ice_2"])
-		"electric": ids.append_array(["tailwind", "double_cast", "magnet_pull", "glare", "electromagnetic_laser", "electric_resonance", "electric_spark", "trial_wind_1", "trial_wind_2"])
+		"water": ids.append_array(["surf", "water_magic_burst", "ice_breath", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard"])
+		"electric": ids.append_array(["tailwind", "double_cast", "magnet_pull", "glare", "electromagnetic_laser", "electric_resonance", "electric_spark"])
 		"grass": ids.append_array(["leech_seed", "tree_man", "first_aid", "rooted_grass", "leaf_wind", "antidote"])
 		"rock": ids.append_array(["rock_slide", "earth_shake", "mountain_chain", "mountain_form", "rock_blast", "water_drop_stone"])
 	return ids

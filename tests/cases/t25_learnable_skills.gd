@@ -24,7 +24,7 @@ func _learning(t: TestContext) -> void:
 		var choices := SkillDB.learnable_ids_for(element)
 		for skill_id in expectations[element]:
 			t.check(choices.has(skill_id), "%s 可在升级时学习 %s" % [element, skill_id])
-	for element in ["fire", "water", "grass", "electric", "rock", "ice", "wind"]:
+	for element in Elements.LIST:
 		for skill_id in SkillDB.learnable_ids_for(element):
 			t.check(RunState.upgrade_id_for_skill(String(skill_id)) != "", "%s 学会后有专属强化" % skill_id)
 	var starter := TestScenario.make_state(["fire_starter", "water_starter", "grass_starter"], [["ice_wild1", Vector2i(6, 6)]])

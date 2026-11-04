@@ -4,7 +4,7 @@ var app = null
 var help_box: PanelContainer = null
 
 const HELP_TEXT := "流程：编成（出战名单 6 只、每场勾选 1 至 3 只作战）→ 地图预览与可选改造 → 战斗 → 战后结算 → 下一场。\n" \
-	+ "属性克制暂时关闭：七种元素仍影响技能、状态与地形反应，直接伤害不按属性增减。\n" \
+	+ "五属性克制环：火克草、草克岩、岩克电、电克水、水克火；冰技能按水属性、风技能按电属性结算。\n" \
 	+ "地形：浅水在双方行动阶段交接时赋予浸湿；草丛、藤蔓和树木可被点燃；水面蒸汽禁止站在其中的单位施法。易碎地面可塌陷；深水与深坑可造成坠落。\n" \
 	+ "行动：每只宝可梦每回合 1 次移动 + 1 次技能；训练家每回合 1 次捕获。第 %d 回合结束后野生逃离。\n" \
 	+ "消耗品：战后取得三选一卡，可留在本局背包；每场在地图预览页最多使用一张，点击即消耗。地貌卡刷新地图并使对应地形比旧图更多，改造工具提供两次手动改造。\n" \
@@ -29,7 +29,7 @@ func _ready() -> void:
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
 	margin.add_child(column)
 	column.add_child(UIKit.title("宝可梦战棋肉鸽", 44))
-	var subtitle := UIKit.label("濒死与基地休养 · 七属性 · 两种环境卡模式", 18, UIKit.TEXT_DIM)
+	var subtitle := UIKit.label("濒死与基地休养 · 五属性 · 两种环境卡模式", 18, UIKit.TEXT_DIM)
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(subtitle)
 	var spacer := Control.new()

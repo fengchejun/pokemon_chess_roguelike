@@ -12,12 +12,17 @@ func run(t: TestContext) -> void:
 
 
 func _test_placeholder_effect(t: TestContext) -> void:
-	for element in ["fire", "water", "grass", "electric", "rock", "ice", "wind"]:
+	for element in Elements.LIST:
 		var ids := SkillDB.placeholder_ids_for(element)
 		t.eq(ids.size(), 2, "%s 有两招占位技能" % element)
-		var expected_element: String = "water" if element == "ice" else "electric" if element == "wind" else element
-		t.check(ids[0] != ids[1] and SkillDB.element_of(ids[0]) == expected_element, "%s 旧 ID 保留且归入当前属性" % element)
+		t.check(ids[0] != ids[1] and SkillDB.element_of(ids[0]) == element, "%s 占位技能使用当前五属性" % element)
 		t.eq(SkillDB.get_def(ids[0]).get("range", 0), 2, "%s 占位招式基础射程 2" % element)
+	t.check(SkillDB.placeholder_ids_for("ice").is_empty(), "冰不再作为独立占位属性")
+	t.check(SkillDB.placeholder_ids_for("wind").is_empty(), "风不再作为独立占位属性")
+	t.eq(SkillDB.element_of("trial_ice_1"), "water", "旧冰试招 ID 归入水属性")
+	t.eq(SkillDB.element_of("trial_wind_1"), "electric", "旧风试招 ID 归入电属性")
+	t.check(not SkillDB.learnable_ids_for("water").has("trial_ice_1"), "旧冰试招不进入水系普通学习池")
+	t.check(not SkillDB.learnable_ids_for("electric").has("trial_wind_1"), "旧风试招不进入电系普通学习池")
 	var battle := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(3, 3)]])
 	var caster := battle.unit_by_uid(1)
 	caster.cell = Vector2i(1, 3)

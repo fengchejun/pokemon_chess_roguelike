@@ -1,6 +1,6 @@
 extends RefCounted
 
-## 验收扫描：合并后七系技能数据完整性。
+## 验收扫描：五属性技能数据完整性。
 
 
 func run(t: TestContext) -> void:
