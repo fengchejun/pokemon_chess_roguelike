@@ -20,12 +20,12 @@ func _definition_and_learning(t: TestContext) -> void:
 		t.check(not SkillDB.get_def(skill_id).is_empty(), "%s 有技能定义" % skill_id)
 		t.check(SkillDB.ROCK_SKILL_POOL.has(skill_id), "%s 进入岩系技能池" % skill_id)
 		t.eq(SkillDB.element_of(skill_id), "rock", "%s 为岩系技能" % skill_id)
-	for skill_id in ["mountain_chain", "guard_rock", "rock_blast", "water_drop_stone"]:
+	for skill_id in ["imprint", "mountain_chain", "guard_rock", "rock_blast", "water_drop_stone"]:
 		t.check(SkillDB.learnable_ids_for("rock").has(skill_id), "%s 进入岩系普通学习池" % skill_id)
 		t.check(not SpeciesDB.skills_of("rock_starter").has(skill_id), "%s 不自动加入初始技能表" % skill_id)
-	t.check(SkillDB.is_special("imprint"), "拓印是特殊技能")
-	t.check(not SkillDB.learnable_ids_for("rock").has("imprint"), "拓印不能通过普通学习池获得")
-	t.check(not SkillDB.is_copyable("imprint"), "特殊技能不能被拓印复制")
+	t.check(not SkillDB.is_special("imprint"), "拓印是岩系普通技能")
+	t.check(not SkillDB.special_ids_for("rock").has("imprint"), "拓印不出现在岩系特殊技能列表")
+	t.check(not SkillDB.is_copyable("imprint"), "拓印不能被另一拓印复制，避免递归")
 	t.check(SkillDB.is_special("mountain_form"), "山岳形态归为特殊技能")
 	t.check(SkillDB.special_ids_for("rock").has("mountain_form"), "山岳形态出现在岩系特殊技能列表")
 	t.check(not SkillDB.learnable_ids_for("rock").has("mountain_form"), "山岳形态不能通过普通学习池获得")
@@ -359,15 +359,24 @@ func _imprint(t: TestContext) -> void:
 	upgraded_caster.upgrades["imprint_upgraded"] = 1
 	t.check(_has_unit(upgraded.skill_targets(upgraded_caster, "imprint"), upgraded_source.uid), "拓印精通后可以复制已强化技能")
 
+	var recursive := TestScenario.make_state(["rock_starter"], [["fire_wild1", Vector2i(4, 3)]])
+	var recursive_caster := recursive.unit_by_uid(1)
+	var recursive_source := recursive.unit_by_uid(100)
+	recursive_caster.cell = Vector2i(1, 3)
+	recursive_caster.skills.append("imprint")
+	recursive_source.last_skill_id = "imprint"
+	recursive_source.last_skill_from = Vector2i(4, 3)
+	recursive_source.last_skill_target = {"type": "unit", "unit": 1, "cell": Vector2i(1, 3)}
+	t.check(recursive.skill_targets(recursive_caster, "imprint").is_empty(), "拓印不能复制另一拓印")
 	var special := TestScenario.make_state(["rock_starter"], [["fire_wild1", Vector2i(4, 3)]])
 	var special_caster := special.unit_by_uid(1)
 	var special_source := special.unit_by_uid(100)
 	special_caster.cell = Vector2i(1, 3)
 	special_caster.skills.append("imprint")
-	special_source.last_skill_id = "imprint"
+	special_source.last_skill_id = "mirror_water_moon"
 	special_source.last_skill_from = Vector2i(4, 3)
-	special_source.last_skill_target = {"type": "unit", "unit": 1, "cell": Vector2i(1, 3)}
-	t.check(special.skill_targets(special_caster, "imprint").is_empty(), "拓印不能复制特殊技能")
+	special_source.last_skill_target = {"type": "cell", "cell": Vector2i(4, 3)}
+	t.check(special.skill_targets(special_caster, "imprint").is_empty(), "拓印不能复制其他特殊技能")
 
 	var blocked := TestScenario.make_state(["rock_starter"], [["fire_wild1", Vector2i(4, 3)]], TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(2, 3), TerrainDB.OBSTACLE]]))
 	var blocked_caster := blocked.unit_by_uid(1)

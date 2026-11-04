@@ -206,8 +206,8 @@ const DEFS := {
 		"range": 5,
 		"damage": 0,
 		"ranged": false,
-		"category": "special",
-		"desc": "复制曼哈顿 5 格内一名单位最近使用的普通技能，按复制技能的规则即时打出；拓印不会保留复制招式。基础拓印不能复制已强化技能，任何拓印都不能复制特殊技能。",
+		"uncopyable": true,
+		"desc": "岩系普通技能。复制曼哈顿 5 格内一名单位最近使用的普通技能，按复制技能的规则即时打出；拓印不会保留复制招式。基础拓印不能复制已强化技能，拓印精通解除该限制；任何拓印都不能复制特殊技能或另一拓印。",
 	},
 	"mountain_chain": {
 		"name": "山脉连袭",
@@ -314,7 +314,7 @@ static func learnable_ids_for(element: String) -> Array:
 		"water": ids.append_array(["surf", "water_magic_burst", "ice_breath", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard"])
 		"electric": ids.append_array(["tailwind", "double_cast", "magnet_pull", "glare", "electromagnetic_laser", "electric_resonance", "electric_spark"])
 		"grass": ids.append_array(["leech_seed", "tree_man", "first_aid", "rooted_grass", "leaf_wind", "antidote"])
-		"rock": ids.append_array(["rock_slide", "earth_shake", "mountain_chain", "guard_rock", "rock_blast", "water_drop_stone"])
+		"rock": ids.append_array(["rock_slide", "earth_shake", "mountain_chain", "guard_rock", "rock_blast", "water_drop_stone", "imprint"])
 	return ids
 
 
@@ -329,7 +329,7 @@ static func is_special(skill_id: String) -> bool:
 
 static func is_copyable(skill_id: String) -> bool:
 	var def := get_def(skill_id)
-	return not def.is_empty() and not is_special(skill_id)
+	return not def.is_empty() and not is_special(skill_id) and not bool(def.get("uncopyable", false))
 
 
 static func has_tag(skill_id: String, tag: String) -> bool:
