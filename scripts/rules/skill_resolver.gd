@@ -22,10 +22,7 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 		return entries
 	match String(def.get("kind", "")):
 		"ray":
-			if skill_id == "ice_breath":
-				_ice_breath_targets(state, unit, entries)
-			else:
-				_ray_targets(state, unit, skill_id, def, entries)
+			_ray_targets(state, unit, skill_id, def, entries)
 		"charge":
 			for dir in GridSpec.DIRS4:
 				for distance in [1, 2]:
@@ -50,6 +47,8 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 				if skill_id == "tsunami" and tsunami_cells(unit.cell, dir).is_empty():
 					continue
 				if skill_id == "earth_shake" and front_area_cells(unit.cell, dir, 3).is_empty():
+					continue
+				if skill_id == "ice_breath" and not ice_breath_has_enemy(state, unit, dir):
 					continue
 				if skill_id == "windfire_breath" and half_circle_cells(unit.cell, dir).is_empty():
 					continue
@@ -101,20 +100,31 @@ static func _ray_targets(state: BattleState, unit: CombatUnit, skill_id: String,
 				break
 
 
-static func _ice_breath_targets(state: BattleState, unit: CombatUnit, entries: Array) -> void:
-	for dir in GridSpec.DIRS4:
-		for distance in range(1, 7):
-			var cell: Vector2i = unit.cell + dir * distance
-			if not GridSpec.is_inside(cell):
-				break
-			if state.terrain_at(cell) == TerrainDB.OBSTACLE or state.terrain_at(cell) == TerrainDB.TREE or (state.is_nest_cell(cell) and state.unit_at(cell) == null):
-				break
-			var target := state.unit_at(cell)
-			if target == null:
+static func ice_breath_cells(state: BattleState, caster: CombatUnit, dir: Vector2i) -> Array:
+	var cells: Array = []
+	var perpendicular := Vector2i(dir.y, dir.x)
+	var active_lanes := {0: true, 1: true}
+	for depth in range(1, 4):
+		for offset in [0, 1]:
+			if not bool(active_lanes.get(offset, false)):
 				continue
-			if target.side != unit.side:
-				entries.append({"type": "cell", "cell": cell})
-			break
+			var cell: Vector2i = caster.cell + dir * depth + perpendicular * offset
+			if not GridSpec.is_inside(cell):
+				active_lanes[offset] = false
+				continue
+			if TerrainDB.blocks_rays(state.terrain_at(cell)) or (state.is_nest_cell(cell) and state.unit_at(cell) == null):
+				active_lanes[offset] = false
+				continue
+			cells.append(cell)
+	return cells
+
+
+static func ice_breath_has_enemy(state: BattleState, caster: CombatUnit, dir: Vector2i) -> bool:
+	for cell in ice_breath_cells(state, caster, dir):
+		var target := state.unit_at(cell)
+		if target != null and target.side != caster.side:
+			return true
+	return false
 
 
 static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
@@ -663,8 +673,6 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		"ray":
 			if skill_id == "fire_burst":
 				_apply_fire_burst(state, caster, target_entry, summary)
-			elif skill_id == "ice_breath":
-				_apply_ice_breath(state, caster, target_entry, summary)
 			elif skill_id == "flame_jet" or skill_id == "freeze_ray":
 				_apply_line(state, caster, skill_id, target_entry, summary)
 			elif skill_id == "fire_seed":
@@ -741,6 +749,8 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 				_apply_volt_step(state, caster, target_entry, summary)
 		"direction":
 			match skill_id:
+				"ice_breath":
+					_apply_ice_breath(state, caster, target_entry, summary)
 				"flame_jet", "wild_vines", "frozen_ground", "windfire_breath", "electric_spark":
 					_apply_directional(state, caster, skill_id, target_entry, summary)
 				"rock_create":
@@ -1868,19 +1878,15 @@ static func _apply_line(state: BattleState, caster: CombatUnit, skill_id: String
 
 
 static func _apply_ice_breath(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
-	var dir := _axis_dir(caster.cell, entry["cell"])
-	for step in range(1, 7):
-		var cell: Vector2i = caster.cell + dir * step
-		if not GridSpec.is_inside(cell):
-			break
-		summary["ray_cells"].append(cell)
-		if state.terrain_at(cell) == TerrainDB.OBSTACLE or state.terrain_at(cell) == TerrainDB.TREE or (state.is_nest_cell(cell) and state.unit_at(cell) == null):
-			break
+	var dir: Vector2i = entry["dir"]
+	var area := ice_breath_cells(state, caster, dir)
+	summary["area_cells"] = area.duplicate()
+	for cell in area:
 		var target := state.unit_at(cell)
 		if target == null:
 			continue
 		if target.side == caster.side:
-			break
+			continue
 		var had_wet := target.slow_ticks > 0
 		var hit := _hit_entry(state, caster, "ice_breath", target, SkillDB.damage_of("ice_breath"))
 		if target.is_alive() and had_wet and SkillDB.has_tag("ice_breath", "freeze_combo"):
@@ -1888,10 +1894,7 @@ static func _apply_ice_breath(state: BattleState, caster: CombatUnit, entry: Dic
 			state.apply_freeze(target)
 			(hit["statuses"] as Array).append("冰冻")
 		summary["hits"].append(hit)
-		summary["text"] = "冰之息命中 %s：%d 伤害%s。" % [target.display_name, int(hit["damage"]), "，解除浸湿并施加冰冻" if had_wet and target.is_alive() else ""]
-		break
-	if summary["text"] == "":
-		summary["text"] = "冰之息未命中。"
+	summary["text"] = "冰之息覆盖 %d 格，命中 %d 名敌人。" % [area.size(), summary["hits"].size()]
 
 
 static func _apply_directional(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary, summary: Dictionary) -> void:

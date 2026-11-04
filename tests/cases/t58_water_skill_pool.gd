@@ -49,29 +49,53 @@ func _water_magic_burst(t: TestContext) -> void:
 
 
 func _ice_breath(t: TestContext) -> void:
-	var state := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(4, 3)]])
+	var state := TestScenario.make_state(["water_starter"], [
+		["rock_wild1", Vector2i(3, 3)],
+		["rock_wild1", Vector2i(4, 3)],
+		["rock_wild1", Vector2i(3, 4)],
+		["rock_wild1", Vector2i(4, 4)],
+		["rock_wild1", Vector2i(5, 3)],
+	])
 	var caster := state.unit_by_uid(1)
-	var target := state.unit_by_uid(100)
-	caster.cell = Vector2i(0, 3)
+	var wet_front := state.unit_by_uid(100)
+	var dry_behind := state.unit_by_uid(101)
+	var wet_side := state.unit_by_uid(102)
+	var dry_side := state.unit_by_uid(103)
+	var outside := state.unit_by_uid(104)
+	caster.cell = Vector2i(1, 3)
 	caster.skills.append("ice_breath")
-	state.apply_slow(target)
-	var hp_before := target.hp
-	var result := state.cast_skill(caster, "ice_breath", {"type": "cell", "cell": target.cell})
-	t.check(bool(result.get("ok", false)), "冰之息可攻击正交六格内目标")
-	t.eq(target.hp, hp_before - 8, "冰之息造成八点基础直伤")
-	t.eq(target.slow_ticks, 0, "冰之息清除目标浸湿")
-	t.check(target.frozen, "冰之息对浸湿目标施加冰冻")
-	t.eq(target.frozen_ticks, Balance.FREEZE_TICKS, "冰之息冰冻持续两回合")
-	var dry := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(4, 3)]])
-	var dry_caster := dry.unit_by_uid(1)
-	var dry_target := dry.unit_by_uid(100)
-	dry_caster.cell = Vector2i(0, 3)
-	dry_caster.skills.append("ice_breath")
-	dry.cast_skill(dry_caster, "ice_breath", {"type": "cell", "cell": dry_target.cell})
-	t.check(not dry_target.frozen, "未浸湿目标不会因冰之息冰冻")
+	state.apply_slow(wet_front)
+	state.apply_slow(wet_side)
+	var hp_before := [wet_front.hp, dry_behind.hp, wet_side.hp, dry_side.hp, outside.hp]
+	var area := SkillResolver.ice_breath_cells(state, caster, Vector2i.RIGHT)
+	t.eq(area.size(), 6, "冰之息覆盖前方 3×2 六格")
+	for cell in [Vector2i(2, 3), Vector2i(2, 4), Vector2i(3, 3), Vector2i(3, 4), Vector2i(4, 3), Vector2i(4, 4)]:
+		t.check(area.has(cell), "冰之息范围包含 %s" % str(cell))
+	var result := state.cast_skill(caster, "ice_breath", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(2, 3)})
+	t.check(bool(result.get("ok", false)), "冰之息可朝正交方向施放")
+	t.eq((result.get("area_cells", []) as Array).size(), 6, "冰之息结算完整三乘二范围")
+	t.eq(wet_front.hp, int(hp_before[0]) - 8, "冰之息命中前排浸湿目标")
+	t.eq(dry_behind.hp, int(hp_before[1]) - 8, "冰之息继续命中同列后排敌人")
+	t.eq(wet_side.hp, int(hp_before[2]) - 8, "冰之息命中第二列浸湿目标")
+	t.eq(dry_side.hp, int(hp_before[3]) - 8, "冰之息命中第二列后排敌人")
+	t.eq(outside.hp, int(hp_before[4]), "冰之息不命中四格外目标")
+	t.eq(wet_front.slow_ticks, 0, "冰之息清除前排目标浸湿")
+	t.check(wet_front.frozen, "前排浸湿目标获得冰冻")
+	t.eq(wet_front.frozen_ticks, Balance.FREEZE_TICKS, "冰之息冰冻持续一回合")
+	t.check(wet_side.frozen, "另一列浸湿目标也获得冰冻")
+	t.check(not dry_behind.frozen and not dry_side.frozen, "未浸湿目标不会因冰之息冰冻")
 	var blocked_terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(2, 3), TerrainDB.OBSTACLE]])
-	var blocked := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(4, 3)]], blocked_terrain)
+	var blocked := TestScenario.make_state(["water_starter"], [
+		["rock_wild1", Vector2i(3, 3)],
+		["rock_wild1", Vector2i(3, 4)],
+	], blocked_terrain)
 	var blocked_caster := blocked.unit_by_uid(1)
-	blocked_caster.cell = Vector2i(0, 3)
+	blocked_caster.cell = Vector2i(1, 3)
 	blocked_caster.skills.append("ice_breath")
-	t.check(not blocked.skill_targets(blocked_caster, "ice_breath").any(func(entry): return entry.get("cell") == Vector2i(4, 3)), "障碍会截断冰之息射线")
+	var blocked_lane := SkillResolver.ice_breath_cells(blocked, blocked_caster, Vector2i.RIGHT)
+	t.check(not blocked_lane.has(Vector2i(2, 3)), "障碍格不会被冰之息覆盖")
+	t.check(blocked_lane.has(Vector2i(3, 4)), "障碍只阻断对应列，另一列继续延伸")
+	var blocked_result := blocked.cast_skill(blocked_caster, "ice_breath", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(2, 3)})
+	t.check(bool(blocked_result.get("ok", false)), "另一列有敌人时冰之息仍可施放")
+	t.eq(blocked.unit_by_uid(100).hp, SpeciesDB.hp_of("rock_wild1"), "障碍后的敌人不受伤")
+	t.eq(blocked.unit_by_uid(101).hp, SpeciesDB.hp_of("rock_wild1") - 8, "未阻挡列敌人正常受伤")
