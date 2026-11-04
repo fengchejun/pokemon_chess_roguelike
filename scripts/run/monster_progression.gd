@@ -26,12 +26,12 @@ static func level_for_xp(xp: int) -> int:
 
 
 static func enemy_xp_reward(level: int, is_boss: bool = false) -> int:
-	var reward := 1 + ceili(float(clampi(level, 1, MAX_LEVEL)) / 2.0)
+	var reward := 1 + ceili(float(maxi(1, level)) / 2.0)
 	return reward + (2 if is_boss else 0)
 
 
-static func enemy_participation_xp(level: int, is_boss: bool = false) -> int:
-	return maxi(1, floori(float(enemy_xp_reward(level, is_boss)) / 2.0))
+static func enemy_participation_xp(level: int) -> int:
+	return maxi(1, floori(float(enemy_xp_reward(level)) / 2.0))
 
 
 static func normalize_record(record: Dictionary, level_cap: int = MAX_LEVEL) -> void:

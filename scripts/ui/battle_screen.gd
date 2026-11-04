@@ -239,7 +239,7 @@ func _on_enemy_defeated(entry: Dictionary) -> void:
 		if not bool(entry.get("is_summon", false)):
 			var level := int(entry.get("level", 1))
 			var is_boss := bool(entry.get("is_boss", false))
-			amount = MonsterProgression.enemy_xp_reward(level, is_boss) if int(uid) == killer_uid else MonsterProgression.enemy_participation_xp(level, is_boss)
+			amount = MonsterProgression.enemy_xp_reward(level, is_boss) if int(uid) == killer_uid else MonsterProgression.enemy_participation_xp(level)
 		if amount > 0:
 			state.emit_feedback(unit, "experience", "经验 +%d" % amount, amount)
 

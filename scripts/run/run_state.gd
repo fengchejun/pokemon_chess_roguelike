@@ -709,7 +709,7 @@ func battle_kill_xp_for(battle: BattleState, uid: int) -> int:
 		if killer_uid == uid:
 			gained += MonsterProgression.enemy_xp_reward(enemy_level, is_boss)
 		else:
-			gained += MonsterProgression.enemy_participation_xp(enemy_level, is_boss)
+			gained += MonsterProgression.enemy_participation_xp(enemy_level)
 	return gained
 
 

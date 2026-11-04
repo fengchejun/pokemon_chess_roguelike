@@ -29,6 +29,7 @@ func _test_thresholds(t: TestContext) -> void:
 	t.eq(MonsterProgression.enemy_xp_reward(5), 4, "五级敌人提供四点击杀经验")
 	t.eq(MonsterProgression.enemy_xp_reward(5, true), 6, "首领击杀额外增加两点经验")
 	t.eq(MonsterProgression.enemy_participation_xp(5), 2, "高等级敌人的参与经验同步提高")
+	t.check(MonsterProgression.enemy_xp_reward(11) > MonsterProgression.enemy_xp_reward(10), "入侵造成的高等级敌人继续提高击杀经验")
 	for level in range(1, MonsterProgression.MAX_LEVEL):
 		t.check(MonsterProgression.enemy_xp_reward(level + 1) >= MonsterProgression.enemy_xp_reward(level), "击杀经验随敌人等级单调提高")
 		t.check(MonsterProgression.enemy_participation_xp(level + 1) >= MonsterProgression.enemy_participation_xp(level), "参与经验随敌人等级单调提高")
@@ -43,7 +44,7 @@ func _test_thresholds(t: TestContext) -> void:
 	battle.unit_by_uid(101).is_boss = true
 	battle.kill_unit(battle.unit_by_uid(100), "等级梯度验收", "player", 1)
 	battle.kill_unit(battle.unit_by_uid(101), "首领梯度验收", "player", 2)
-	t.eq(run.battle_kill_xp_for(battle, 1), MonsterProgression.enemy_xp_reward(5) + MonsterProgression.enemy_participation_xp(5, true), "击杀与参与链路读取实际敌人等级和首领标记")
+	t.eq(run.battle_kill_xp_for(battle, 1), MonsterProgression.enemy_xp_reward(5) + MonsterProgression.enemy_participation_xp(5), "首领击杀者获得完整经验，并在另一场按普通参与规则结算")
 	t.eq(run.battle_kill_xp_for(battle, 2), MonsterProgression.enemy_participation_xp(5) + MonsterProgression.enemy_xp_reward(5, true), "不同击杀者按各自贡献获得等级梯度经验")
 	t.eq(battle.battle_exp(), MonsterProgression.enemy_xp_reward(5) + MonsterProgression.enemy_xp_reward(5, true), "战场经验汇总也按敌人等级与首领标记计算")
 	var living := {"species_id": "fire_starter", "level": 1, "xp": 0, "hp": 30}
