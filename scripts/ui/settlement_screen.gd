@@ -192,11 +192,7 @@ func _show_next_step() -> void:
 			hover_style.bg_color = UIKit.PANEL_LIGHT.lightened(0.18)
 			button.add_theme_stylebox_override("hover", hover_style)
 			button.name = "RewardChoice_%s" % id.replace(":", "_")
-			button.pressed.connect(func() -> void:
-				if app.run.choose_reward(id):
-					app.autosave()
-					_show_next_step()
-			)
+			button.pressed.connect(_choose_settlement_reward.bind(id))
 			choice_box.add_child(button)
 		continue_button.disabled = true
 		return
@@ -210,65 +206,42 @@ func _show_monster_level_step(run: RunState, entry: Dictionary, remaining: int) 
 	var level := int(entry.get("level", 1))
 	var record := run.owned_record_by_uid(uid)
 	var monster_name := SpeciesDB.name_of(String(record.get("species_id", ""))) if not record.is_empty() else "怪物 #%d" % uid
-	step_label.text = "%s · Lv.%d 学习机会（剩余 %d 项）" % [monster_name, level, remaining]
-	choice_box.add_child(UIKit.wrapped("2、5、7级各获得一次学习机会；技能强化请寻找收集区的技能导师。", 13))
-	for mode in ["learn"]:
-		var options := run.available_monster_upgrades(uid) if mode == "enhance" else run.available_new_skills(uid)
-		if options.is_empty():
-			continue
-		var label := "强化已学技能（%d 招可选）" if mode == "enhance" else "学习新技能（%d 招可选）"
-		var button := UIKit.button(label % options.size(), 16)
-		button.name = "MonsterGrowth_%s_%d_%d" % [mode, uid, level]
-		button.pressed.connect(func() -> void: _show_growth_options(run, uid, level, mode))
+	step_label.text = "%s · Lv.%d 升级选择（剩余 %d 项）" % [monster_name, level, remaining]
+	if level == 10:
+		choice_box.add_child(UIKit.wrapped("Lv10 特性强化入口。当前版本暂不增加生命值以外的实际效果，领取后记录本次特性强化。", 13))
+		var trait_button := UIKit.button("领取特性强化入口", 16)
+		trait_button.name = "MonsterTrait_%d_10" % uid
+		trait_button.pressed.connect(func() -> void:
+			if not processing and run.claim_monster_trait_upgrade(uid, 10):
+				processing = true
+				app.autosave()
+				_show_next_step()
+		)
+		choice_box.add_child(trait_button)
+		continue_button.disabled = true
+		return
+	var slots := run.monster_engraving_slots(record)
+	choice_box.add_child(UIKit.wrapped("已自动获得刻印槽，当前共 %d 个。请从以下三招中选择一招学习；选择后进入招式库，装备位仍为 3 个。" % slots, 13))
+	var candidates := run.monster_level_choices(uid, level)
+	if candidates.is_empty():
+		var skip := UIKit.small_button("没有可学习技能，领取本等级")
+		skip.name = "MonsterLearnSkip_%d_%d" % [uid, level]
+		skip.pressed.connect(func() -> void:
+			if not processing and run.skip_monster_skill_choice(uid, level):
+				processing = true
+				app.autosave()
+				_show_next_step()
+		)
+		choice_box.add_child(skip)
+		continue_button.disabled = true
+		return
+	for candidate in candidates:
+		var skill_id := String(candidate)
+		var button := UIKit.button("%s\n%s" % [SkillDB.name_of(skill_id), SkillDB.get_def(skill_id).get("desc", "")], 14)
+		button.name = "MonsterLearn_%d_%d_%s" % [uid, level, skill_id]
+		button.pressed.connect(_choose_monster_skill.bind(run, uid, level, skill_id))
+		_fit_growth_button(button)
 		choice_box.add_child(button)
-	continue_button.disabled = true
-
-
-func _show_growth_options(run: RunState, uid: int, level: int, mode: String) -> void:
-	UIKit.clear_children(choice_box)
-	step_label.text = "%s · Lv.%d：%s" % [SpeciesDB.name_of(String(run.owned_record_by_uid(uid).get("species_id", ""))), level, "强化技能" if mode == "enhance" else "学习技能"]
-	var back := UIKit.small_button("返回类型选择")
-	back.name = "MonsterGrowthBack"
-	back.pressed.connect(func() -> void:
-		UIKit.clear_children(choice_box)
-		_show_monster_level_step(run, {"uid": uid, "level": level}, run.pending_monster_levels().size())
-	)
-	choice_box.add_child(back)
-	if mode == "enhance":
-		var record := run.owned_record_by_uid(uid)
-		var equipped: Array = record.get("equipped_skills", [])
-		for upgrade_id in run.available_monster_upgrades(uid):
-			var id := String(upgrade_id)
-			var info := RunState.upgrade_info(id)
-			var skill_id := String(info.get("requires_skill", ""))
-			var marker := "（已装备）" if equipped.has(skill_id) else "（未装备，换装后生效）"
-			var button := UIKit.button("%s%s\n%s" % [SkillDB.name_of(skill_id), marker, info.get("desc", "")], 14)
-			button.name = "MonsterEnhance_%d_%d_%s" % [uid, level, skill_id]
-			button.pressed.connect(func() -> void:
-				if not processing and run.enhance_monster_skill(uid, level, skill_id):
-					processing = true
-					app.autosave()
-					_show_next_step()
-			)
-			_fit_growth_button(button)
-			choice_box.add_child(button)
-	else:
-		choice_box.add_child(UIKit.wrapped("未学的物种基础招式也可在此选择；试招Ⅰ／Ⅱ效果相同，仅作临时占位。每只怪物最多装备三招。", 13, UIKit.TEXT_DIM))
-		for candidate in run.available_new_skills(uid):
-			var skill_id := String(candidate)
-			var button := UIKit.button("%s\n%s" % [SkillDB.name_of(skill_id), SkillDB.get_def(skill_id).get("desc", "")], 14)
-			button.name = "MonsterLearn_%d_%d_%s" % [uid, level, skill_id]
-			button.pressed.connect(func() -> void:
-				var equipped: Array = run.owned_record_by_uid(uid).get("equipped_skills", [])
-				if equipped.size() >= RunState.MAX_EQUIPPED_SKILLS:
-					_show_growth_replace(run, uid, level, skill_id)
-				elif not processing and run.learn_monster_skill(uid, level, skill_id):
-					processing = true
-					app.autosave()
-					_show_next_step()
-			)
-			_fit_growth_button(button)
-			choice_box.add_child(button)
 	continue_button.disabled = true
 
 
@@ -284,20 +257,38 @@ func _show_growth_replace(run: RunState, uid: int, level: int, new_skill_id: Str
 	step_label.text = "三招已满：选择卸下的一招"
 	choice_box.add_child(UIKit.wrapped("卸下的招式留在本局招式库，已取得的强化也会保留；下场战斗前可在整备页换回。", 13))
 	var back := UIKit.small_button("返回学招选择")
-	back.pressed.connect(func() -> void: _show_growth_options(run, uid, level, "learn"))
+	back.pressed.connect(func() -> void: _show_monster_level_step(run, {"uid": uid, "level": level}, run.pending_monster_levels().size()))
 	choice_box.add_child(back)
 	for equipped_id in run.owned_record_by_uid(uid).get("equipped_skills", []):
 		var old_id := String(equipped_id)
 		var button := UIKit.button("卸下 %s → 装备 %s" % [SkillDB.name_of(old_id), SkillDB.name_of(new_skill_id)], 14)
 		button.name = "MonsterReplace_%d_%d_%s_%s" % [uid, level, new_skill_id, old_id]
-		button.pressed.connect(func() -> void:
-			if not processing and run.learn_monster_skill(uid, level, new_skill_id, old_id):
-				processing = true
-				app.autosave()
-				_show_next_step()
-		)
+		button.pressed.connect(_replace_monster_skill.bind(run, uid, level, new_skill_id, old_id))
 		choice_box.add_child(button)
 	continue_button.disabled = true
+
+
+func _choose_settlement_reward(reward_id: String) -> void:
+	if app.run.choose_reward(reward_id):
+		app.autosave()
+		_show_next_step()
+
+
+func _choose_monster_skill(run: RunState, uid: int, level: int, skill_id: String) -> void:
+	var equipped: Array = run.owned_record_by_uid(uid).get("equipped_skills", [])
+	if equipped.size() >= RunState.MAX_EQUIPPED_SKILLS:
+		_show_growth_replace(run, uid, level, skill_id)
+	elif not processing and run.learn_monster_skill(uid, level, skill_id):
+		processing = true
+		app.autosave()
+		_show_next_step()
+
+
+func _replace_monster_skill(run: RunState, uid: int, level: int, new_skill_id: String, old_skill_id: String) -> void:
+	if not processing and run.learn_monster_skill(uid, level, new_skill_id, old_skill_id):
+		processing = true
+		app.autosave()
+		_show_next_step()
 
 
 func _show_capture_step(run: RunState) -> void:

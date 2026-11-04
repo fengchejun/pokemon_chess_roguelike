@@ -13,10 +13,10 @@ func run(t: TestContext) -> void:
 
 func _test_thresholds(t: TestContext) -> void:
 	t.eq(MonsterProgression.threshold_for_level(2), 6, "二级阈值是六点累计经验")
-	t.eq(MonsterProgression.threshold_for_level(3), 18, "三级阈值是十八点累计经验")
-	t.eq(MonsterProgression.threshold_for_level(4), 38, "四级阈值按递增步长配置")
-	t.eq(MonsterProgression.threshold_for_level(10), 400, "十级阈值为400")
-	t.eq(MonsterProgression.threshold_for_level(11), 400, "超过十级的阈值不继续增长")
+	t.eq(MonsterProgression.threshold_for_level(3), 16, "三级阈值是十八点累计经验")
+	t.eq(MonsterProgression.threshold_for_level(4), 30, "四级阈值按递增步长配置")
+	t.eq(MonsterProgression.threshold_for_level(10), 198, "十级阈值为198")
+	t.eq(MonsterProgression.threshold_for_level(11), 198, "超过十级的阈值不继续增长")
 	var record := {"species_id": "fire_starter", "hp": 0}
 	var earned := MonsterProgression.award_xp(record, MonsterProgression.threshold_for_level(3))
 	t.eq(earned["level_after"], 3, "一次可跨多级")
@@ -25,11 +25,14 @@ func _test_thresholds(t: TestContext) -> void:
 		t.eq(MonsterProgression.max_hp("fire_starter", level), [30, 36, 44, 54, 66, 80, 96, 114, 134, 156][level - 1], "小火龙 Lv%d 生命增量逐级提高" % level)
 	t.eq(MonsterProgression.max_hp_for_record(record), 44, "记录中的三级生命上限为44")
 	MonsterProgression.award_xp(record, -5)
-	t.eq(record["xp"], 18, "负经验不会降低等级")
+	t.eq(record["xp"], 16, "负经验不会降低等级")
 	MonsterProgression.award_xp(record, 100000)
 	t.eq(record["level"], 10, "局内等级最高十级")
-	t.eq(record["xp"], 400, "累计经验到十级阈值封顶")
+	t.eq(record["xp"], 198, "累计经验到十级阈值封顶")
 	t.eq(MonsterProgression.award_xp(record, 5)["gained"], 0, "满级后不再增加经验")
+	var uncapped := {"species_id": "fire_starter", "level": 1, "xp": 0, "hp": 30}
+	MonsterProgression.award_xp(uncapped, 126, 5)
+	t.eq(uncapped["level"], 8, "旧楼层上限参数不再限制升级")
 	var affinity_gain := MonsterProgression.award_affinity(record, 1)
 	t.eq(affinity_gain["after"], 1, "亲密度从零开始并可加一")
 	t.eq(MonsterProgression.award_affinity(record, -10)["gained"], 0, "负数不会扣除亲密度")

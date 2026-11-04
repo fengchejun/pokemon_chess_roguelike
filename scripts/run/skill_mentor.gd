@@ -24,18 +24,5 @@ static func choose_cell(state: BattleState, positions: Dictionary = {}) -> Vecto
 static func cost(data: Dictionary) -> int:
 	return 12 + 8 * int(data.get("services", 0))
 
-static func train(run: RunState, state: BattleState, uid: int, skill_id: String) -> Dictionary:
-	if state.ended or state.node_kind != "event" or state.mentor.is_empty() or not state.can_interact_at(state.mentor["cell"]):
-		return {"ok": false, "reason": "训练家需在收集区与技能导师相邻。"}
-	var price := cost(state.mentor)
-	if run.record_by_uid(uid).is_empty() or not run.available_monster_upgrades(uid).has(RunState.upgrade_id_for_skill(skill_id)):
-		return {"ok": false, "reason": "请选择携带队伍中尚未强化的已学招式。"}
-	if run.essence < price:
-		return {"ok": false, "reason": "原质不足，需要%d。" % price}
-	run.apply_mentor_upgrade(uid, skill_id)
-	run.essence -= price
-	state.mentor["services"] = int(state.mentor.get("services", 0)) + 1
-	var unit := state.unit_by_uid(uid)
-	if unit != null:
-		unit.upgrades = run.record_by_uid(uid)["upgrades"].duplicate()
-	return {"ok": true, "reason": "%s 已强化，消耗%d原质。" % [SkillDB.name_of(skill_id), price]}
+static func train(_run: RunState, _state: BattleState, _uid: int, _skill_id: String) -> Dictionary:
+	return {"ok": false, "reason": "技能强化已迁移至商人，请使用空刻印槽强化。"}

@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 17
+const SAVE_VERSION := 18
 var essence: int = 0
 var trainer_items: Dictionary = {}
 var sold_monster_uids: Array = []
@@ -40,10 +40,17 @@ const MONSTER_UPGRADES := {
 	"drain_range": {"name": "蔓延吸取", "desc": "吸取基础直伤 +3，射程由 2 格增至 3 格。", "key": "drain_range", "value": 1, "damage_bonus": 3, "requires_skill": "drain"},
 	"herbal_heal_amount": {"name": "丰茂药草", "desc": "我方药草治疗每个目标回复 13 点生命。", "key": "herbal_heal_amount", "value": 5, "requires_skill": "herbal_heal"},
 	"ice_shard_damage": {"name": "尖锐冰锥", "desc": "冰锥基础直伤 +5。", "key": "ice_shard_damage", "value": 5, "damage_bonus": 5, "requires_skill": "ice_shard"},
+	"water_magic_burst_damage": {"name": "爆水", "desc": "水魔爆十字范围与中心额外伤害不变，中心基础直伤 +4、外侧基础直伤 +4。", "key": "water_magic_burst_damage", "value": 4, "damage_bonus": 4, "requires_skill": "water_magic_burst"},
+	"ice_breath_damage": {"name": "冻息", "desc": "冰之息基础直伤 +4。", "key": "ice_breath_damage", "value": 4, "damage_bonus": 4, "requires_skill": "ice_breath"},
 	"ice_ground_reach": {"name": "冰面延展", "desc": "我方冰封大地向前延展至第 4 排。", "key": "ice_ground_reach", "value": 1, "requires_skill": "frozen_ground"},
 	"electric_arc_damage": {"name": "高压传导", "desc": "放电基础直伤 +3；水域传导每两格减2，最低4。", "key": "electric_arc_damage", "value": 3, "damage_bonus": 3, "requires_skill": "electric_arc"},
 	"tailwind_reach": {"name": "扩域磁场", "desc": "磁场加速半径从 2 格扩大至 3 格，覆盖自身周围 7×7 区域。", "key": "tailwind_reach", "value": 1, "requires_skill": "tailwind"},
-	"flame_charge_damage": {"name": "冲锋余焰", "desc": "闪焰冲锋撞击基础直伤 +3，破障能力 +1。", "key": "flame_charge_damage", "value": 1, "damage_bonus": 3, "requires_skill": "flame_charge"},
+	"magnet_pull_reach": {"name": "强磁牵引", "desc": "磁吸的可见目标范围由四正交 5 格扩大至 6 格。", "key": "magnet_pull_reach", "value": 1, "requires_skill": "magnet_pull"},
+	"glare_radius": {"name": "眩目扩散", "desc": "眩光范围由自身周围 3×3 扩大至 5×5。", "key": "glare_radius", "value": 1, "requires_skill": "glare"},
+	"electromagnetic_laser_damage": {"name": "高能镭射", "desc": "电磁镭射基础直伤 +5。", "key": "electromagnetic_laser_damage", "value": 5, "damage_bonus": 5, "requires_skill": "electromagnetic_laser"},
+	"electric_resonance_power": {"name": "共振增幅", "desc": "电共鸣每层感电蓄伤由 3 提高至 5，每层麻痹由 5 提高至 8。", "key": "electric_resonance_power", "value": 2, "requires_skill": "electric_resonance"},
+	"electric_spark_damage": {"name": "爆裂电花", "desc": "电极火花基础直伤 +5。", "key": "electric_spark_damage", "value": 5, "damage_bonus": 5, "requires_skill": "electric_spark"},
+	"flame_charge_damage": {"name": "冲锋余焰", "desc": "闪焰冲锋撞击基础直伤 +5，破障能力 +1。", "key": "flame_charge_damage", "value": 1, "damage_bonus": 5, "requires_skill": "flame_charge"},
 	"wild_vines_reach": {"name": "藤蔓延展", "desc": "疯狂藤蔓向前延长至第 3 格。", "key": "wild_vines_reach", "value": 1, "requires_skill": "wild_vines"},
 	"lightning_first_shock": {"name": "首击蓄电", "desc": "打雷基础直伤 +5，第一个落点额外施加一层感电。", "key": "lightning_first_shock", "value": 1, "damage_bonus": 5, "requires_skill": "lightning"},
 	"rock_break_range": {"name": "长距碎岩", "desc": "碎岩基础直伤 +3，射程由 2 格增至 3 格。", "key": "rock_break_range", "value": 1, "damage_bonus": 3, "requires_skill": "rock_break"},
@@ -56,7 +63,24 @@ const MONSTER_UPGRADES := {
 	"earth_shake_damage": {"name": "震源", "desc": "撼地基础直伤 +5，地形塌陷规则不变。", "key": "earth_shake_damage", "value": 1, "damage_bonus": 5, "requires_skill": "earth_shake"},
 	"leech_seed_tick_bonus": {"name": "深根", "desc": "寄生每轮伤害与施法者回复上限各 +2。", "key": "leech_seed_tick_bonus", "value": 2, "requires_skill": "leech_seed"},
 	"tree_man_hp_bonus": {"name": "坚根守卫", "desc": "大树守卫召唤树人最大生命 +10。", "key": "tree_man_hp_bonus", "value": 10, "requires_skill": "tree_man"},
+	"first_aid_healing": {"name": "急救包扎", "desc": "急救回复量由 8 提升至 13。", "key": "first_aid_healing", "value": 5, "requires_skill": "first_aid"},
+	"rooted_grass_radius": {"name": "盘根错节", "desc": "落地生根范围由 3×3 扩大至 5×5。", "key": "rooted_grass_radius", "value": 1, "requires_skill": "rooted_grass"},
+	"leaf_wind_damage": {"name": "劲风", "desc": "叶之风基础直伤 +4，草丛或藤蔓上的 12 点形态同步提高。", "key": "leaf_wind_damage", "value": 4, "damage_bonus": 4, "requires_skill": "leaf_wind"},
+	"antidote_healing": {"name": "浓缩解药", "desc": "解药回复量由 3 提升至 8。", "key": "antidote_healing", "value": 5, "requires_skill": "antidote"},
 	"ice_glide_duration": {"name": "长滑", "desc": "溜冰的地形移动效果延长 1 回合。", "key": "ice_glide_duration", "value": 1, "requires_skill": "ice_glide"},
+	"mirror_water_moon_duration": {"name": "镜水长明", "desc": "镜花水月的持续效果延长 1 回合。", "key": "mirror_water_moon_duration", "value": 1, "requires_skill": "mirror_water_moon"},
+	"flame_rush_damage": {"name": "烈焰掠袭", "desc": "炎袭落点范围的基础直伤 +5。", "key": "flame_rush_damage", "value": 5, "damage_bonus": 5, "requires_skill": "flame_rush"},
+	"windfire_breath_damage": {"name": "风火怒号", "desc": "风怒炎息的基础直伤 +5。", "key": "windfire_breath_damage", "value": 5, "damage_bonus": 5, "requires_skill": "windfire_breath"},
+	"furnace_fist_training": {"name": "炎炉精修", "desc": "炎炉拳基础直伤 +5，命中回复量 +3。", "key": "furnace_fist_healing", "value": 3, "damage_bonus": 5, "requires_skill": "furnace_fist"},
+	"skyfire_damage": {"name": "焚天", "desc": "天火基础直伤 +4。", "key": "skyfire_damage", "value": 4, "damage_bonus": 4, "requires_skill": "skyfire"},
+	"combustion_damage": {"name": "爆焰", "desc": "爆燃基础直伤 +4，灼烧目标仍按双倍基础值结算。", "key": "combustion_damage", "value": 4, "damage_bonus": 4, "requires_skill": "combustion"},
+	"burn_out_damage": {"name": "焚魂", "desc": "燃尽造成的基础直伤 +5，自身生命代价不变。", "key": "burn_out_damage", "value": 5, "damage_bonus": 5, "requires_skill": "burn_out"},
+	"imprint_mastery": {"name": "拓印精通", "desc": "拓印可以复制已经强化的普通技能。", "key": "imprint_upgraded", "value": 1, "requires_skill": "imprint"},
+	"mountain_chain_segments": {"name": "群山回响", "desc": "山脉连袭基础段数由 2 增至 3；周围岩障追加段数不变。", "key": "mountain_chain_segments", "value": 1, "requires_skill": "mountain_chain"},
+	"mountain_form_radius": {"name": "磐岳延展", "desc": "山岳形态吸收范围由 3×3 扩大至 5×5。", "key": "mountain_form_radius", "value": 1, "requires_skill": "mountain_form"},
+	"guard_rock_reinforcement": {"name": "磐岩加固", "desc": "守岩护盾值由 10 提升至 15，破盾伤害仍为 4。", "key": "guard_rock_shield_bonus", "value": 5, "requires_skill": "guard_rock"},
+	"rock_blast_damage": {"name": "裂岩增爆", "desc": "岩爆弹主弹基础直伤 +5，两侧分裂弹各 +2。", "key": "rock_blast_damage", "value": 5, "damage_bonus": 5, "fragment_bonus": 2, "requires_skill": "rock_blast"},
+	"water_drop_stone_damage": {"name": "水势穿石", "desc": "水滴石穿主伤害 +4，浸湿追加伤害由 3 提高至 5。", "key": "water_drop_stone_damage", "value": 4, "damage_bonus": 4, "wet_bonus": 2, "requires_skill": "water_drop_stone"},
 }
 
 
@@ -201,12 +225,14 @@ func apply_supply_recovery() -> Dictionary:
 
 func _make_record(species_id: String, hp: int = -1) -> Dictionary:
 	var species_skills := SpeciesDB.skills_of(species_id)
+	var starting_level := 1 + floor_index() * 2
+	var starting_max_hp := MonsterProgression.max_hp(species_id, starting_level)
 	var record := {
 		"uid": next_uid,
 		"species_id": species_id,
-		"hp": hp if hp > 0 else SpeciesDB.hp_of(species_id),
-		"level": 1,
-		"xp": 0,
+		"hp": mini(hp, starting_max_hp) if hp > 0 else starting_max_hp,
+		"level": starting_level,
+		"xp": MonsterProgression.threshold_for_level(starting_level),
 		"affinity": 0,
 		"known_skills": species_skills.duplicate(),
 		"equipped_skills": species_skills.slice(0, MAX_EQUIPPED_SKILLS),
@@ -214,6 +240,7 @@ func _make_record(species_id: String, hp: int = -1) -> Dictionary:
 		"upgrades_taken": [],
 		"claimed_even_levels": [],
 		"level_choices": {},
+		"trait_upgrade_claimed": false,
 	}
 	next_uid += 1
 	return record
@@ -246,6 +273,27 @@ func battle_seed() -> int:
 
 func floor_index() -> int:
 	return BattleDB.floor_of(battle_index)
+
+
+func level_cap_for_floor(_index: int = -1) -> int:
+	# Compatibility API: floor-specific level caps have been removed.
+	return MonsterProgression.MAX_LEVEL
+
+
+func apply_floor_level_caps() -> Array:
+	var unlocked: Array = []
+	var cap := level_cap_for_floor()
+	var old_trainer_level := trainer_level
+	trainer_level = maxi(trainer_level, mini(cap, MonsterProgression.level_for_xp(trainer_xp)))
+	if trainer_hp > 0:
+		trainer_hp += MonsterProgression.max_hp("trainer", trainer_level) - MonsterProgression.max_hp("trainer", old_trainer_level)
+	for record in carried + storage:
+		var before := int(record.get("level", 1))
+		MonsterProgression.unlock_for_level_cap(record, cap)
+		var after := int(record.get("level", 1))
+		if after > before:
+			unlocked.append({"uid": int(record["uid"]), "from": before, "to": after})
+	return unlocked
 
 
 func battle_in_floor() -> int:
@@ -282,7 +330,9 @@ func get_region():
 		region_data = Region.create_floor(floor_index(), current_theme()).to_dict()
 	var region = Region.from_dict(region_data)
 	Merchant.ensure_region(region, seed)
-	SkillMentor.ensure_region(region, seed)
+	# Skill upgrades now belong exclusively to the merchant.
+	for node in region.nodes.values():
+		node.erase("mentor")
 	region_data = region.to_dict()
 	return region
 
@@ -304,6 +354,7 @@ func enter_region_node(id: String) -> bool:
 	if kind == "battle" or kind == "boss":
 		var slot := 5 if kind == "boss" else maxi(0, int(id.trim_prefix("battle_")) - 1)
 		battle_index = region.floor_index * 6 + slot
+		apply_floor_level_caps()
 	return true
 
 
@@ -382,6 +433,7 @@ func rest_with_food(selection: Dictionary) -> Dictionary:
 
 func battle_config() -> Dictionary:
 	var cfg := BattleDB.config_for(battle_index, seed, current_theme())
+	cfg["experience_level_cap"] = level_cap_for_floor()
 	if region_mode and not region_data.is_empty():
 		var region = get_region()
 		cfg = cfg.duplicate(true)
@@ -575,15 +627,15 @@ func sync_from_battle(battle: BattleState) -> void:
 		if unit.summon_owner_uid >= 0:
 			continue
 		if unit.is_trainer:
-			trainer_xp = maxi(trainer_xp, unit.combat_xp)
-			trainer_level = MonsterProgression.level_for_xp(trainer_xp)
+			trainer_xp = unit.combat_xp
+			trainer_level = unit.combat_level
 			trainer_hp = unit.hp
 			continue
 		var record := record_by_uid(unit.uid)
 		if record.is_empty():
 			continue
-		record["xp"] = maxi(int(record.get("xp", 0)), unit.combat_xp)
-		record["level"] = MonsterProgression.level_for_xp(record["xp"])
+		record["xp"] = unit.combat_xp
+		record["level"] = unit.combat_level
 		if unit.is_alive():
 			record["hp"] = unit.hp
 		else:
@@ -714,6 +766,8 @@ func settle_battle(battle: BattleState) -> Dictionary:
 	## 结算口径：胜利 / 强制撤退（失败） / 野生逃离。
 	if battle.reward.has("run_settled_outcome"):
 		return (battle.reward["run_settled_outcome"] as Dictionary).duplicate(true)
+	if not battle.end_reason in ["forced_retreat", "boss_timeout"] and not (region_mode and battle.node_kind == "event"):
+		battle.award_battle_experience("participation", 1, true)
 	sync_from_battle(battle)
 	var outcome := {
 		"reason": battle.end_reason,
@@ -724,6 +778,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		"monster_affinity": [],
 		"kills": battle.enemy_kills.size(),
 		"captures": battle.captured.size(),
+		"nest_exp": 0,
 		"boss_blood": 0,
 		"captured_names": [],
 		"deaths": battle.deaths.duplicate(true),
@@ -767,16 +822,18 @@ func settle_battle(battle: BattleState) -> Dictionary:
 			shared_bonus += bonus_count
 		for current in battle.all_nests():
 			if bool(current.get("destroyed_by_player", false)):
-				shared_bonus += 3
+				var nest_bonus := Balance.EXP_PER_NEST
+				shared_bonus += nest_bonus
+				outcome["nest_exp"] = int(outcome["nest_exp"]) + nest_bonus
 		for id in original:
 			var unit := battle.unit_by_uid(int(id))
 			if unit != null and unit.is_alive():
 				gains[id] = int(gains[id]) + shared_bonus
 		for id in original:
 			var record := record_by_uid(int(id))
-			var growth := MonsterProgression.award_xp(record, int(gains[id]))
+			var growth := MonsterProgression.award_xp(record, int(gains[id]), level_cap_for_floor())
 			growth["gained"] = int(growth["gained"]) + int(battle.experience_gains.get(id, 0))
-			record["hp"] = 0 if unit_by_record_fainted(battle, int(id)) else mini(int(record["hp"]) + MonsterProgression.max_hp(String(record["species_id"]), int(growth["level_after"])) - MonsterProgression.max_hp(String(record["species_id"]), int(growth["level_before"])), monster_max_hp(record))
+			record["hp"] = 0 if unit_by_record_fainted(battle, int(id)) else mini(int(record["hp"]), monster_max_hp(record))
 			growth["uid"] = int(id)
 			growth["name"] = SpeciesDB.name_of(String(record["species_id"]))
 			(outcome["monster_exp"] as Array).append(growth)
@@ -866,6 +923,7 @@ func advance_battle() -> void:
 	preview_deploy_positions.clear()
 	battle_index += 1
 	refresh_theme_offers()
+	apply_floor_level_caps()
 
 
 func run_finished() -> bool:
@@ -906,16 +964,16 @@ func available_new_skills(uid: int) -> Array:
 	var known: Array = record.get("known_skills", SpeciesDB.skills_of(String(record["species_id"])))
 	var pool: Array = []
 	for skill_id in SpeciesDB.skills_of(String(record["species_id"])):
-		if not known.has(skill_id):
+		if not known.has(skill_id) and not SkillDB.is_special(String(skill_id)):
 			pool.append(skill_id)
 	for skill_id in SkillDB.learnable_ids_for(SpeciesDB.element_of(String(record["species_id"]))):
-		if not known.has(skill_id) and not pool.has(skill_id):
+		if not known.has(skill_id) and not pool.has(skill_id) and not SkillDB.is_special(String(skill_id)):
 			pool.append(skill_id)
 	return pool
 
 
 func _expected_level(record: Dictionary) -> int:
-	for level in MonsterProgression.LEARN_LEVELS:
+	for level in [2, 4, 6, 8, 10]:
 		if int(record.get("level", 1)) < level:
 			break
 		if not (record.get("claimed_even_levels", []) as Array).has(level):
@@ -925,9 +983,40 @@ func _expected_level(record: Dictionary) -> int:
 
 func _claim_level(record: Dictionary, level: int) -> void:
 	var claimed: Array = record.get("claimed_even_levels", [])
-	claimed.append(level)
+	if not claimed.has(level):
+		claimed.append(level)
 	record["claimed_even_levels"] = claimed
-	record["level_choices"] = {}
+	var choices: Dictionary = record.get("level_choices", {})
+	choices.erase(str(level))
+	record["level_choices"] = choices
+
+
+func _skill_growth_candidates(record: Dictionary, level: int) -> Array:
+	if level not in [2, 4, 6, 8]:
+		return []
+	var choices: Dictionary = record.get("level_choices", {})
+	var key := str(level)
+	var pool := available_new_skills(int(record["uid"]))
+	if choices.has(key) and choices[key] is Array:
+		var cached: Array = choices[key]
+		var valid := true
+		if cached.size() != mini(3, pool.size()):
+			valid = false
+		for candidate in cached:
+			if not pool.has(candidate):
+				valid = false
+				break
+		if valid:
+			return cached.duplicate()
+	pool.sort()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("skill-growth:%d:%d:%d" % [seed, int(record["uid"]), level])
+	var candidates: Array = []
+	while candidates.size() < 3 and not pool.is_empty():
+		candidates.append(pool.pop_at(rng.randi_range(0, pool.size() - 1)))
+	choices[key] = candidates.duplicate()
+	record["level_choices"] = choices
+	return candidates
 
 
 func pending_monster_levels() -> Array:
@@ -935,9 +1024,7 @@ func pending_monster_levels() -> Array:
 	var records: Array = carried.duplicate() + storage.duplicate()
 	records.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["uid"]) < int(b["uid"]))
 	for record in records:
-		if available_new_skills(int(record["uid"])).is_empty():
-			continue
-		for level in MonsterProgression.LEARN_LEVELS:
+		for level in [2, 4, 6, 8, 10]:
 			if int(record.get("level", 1)) < level:
 				break
 			if (record.get("claimed_even_levels", []) as Array).has(level):
@@ -946,23 +1033,26 @@ func pending_monster_levels() -> Array:
 	return pending
 
 
-func monster_level_choices(_uid: int, _level: int) -> Array:
-	return [] # 等级奖励只提供学习机会。
+func monster_level_choices(uid: int, level: int) -> Array:
+	var record := owned_record_by_uid(uid)
+	if record.is_empty() or _expected_level(record) != level:
+		return []
+	return _skill_growth_candidates(record, level)
 
 
-func take_monster_level_choice(_uid: int, _level: int, _upgrade_id: String) -> bool:
+func monster_engraving_slots(record: Dictionary) -> int:
+	if record.is_empty():
+		return 0
+	return mini(4, floori(float(record.get("level", 1)) / 2.0))
+
+
+func monster_empty_engraving_slots(record: Dictionary) -> int:
+	return maxi(0, monster_engraving_slots(record) - (record.get("upgrades_taken", []) as Array).size())
+
+
+func take_monster_level_choice(uid: int, level: int, upgrade_id: String) -> bool:
+	## 兼容旧调用：技能强化已迁移到技能商人，升级时不再免费发放。
 	return false
-
-
-func apply_mentor_upgrade(uid: int, skill_id: String) -> bool:
-	var id := upgrade_id_for_skill(skill_id)
-	if record_by_uid(uid).is_empty() or not available_monster_upgrades(uid).has(id):
-		return false
-	var record := record_by_uid(uid)
-	var info := upgrade_info(id)
-	record["upgrades"][info["key"]] = info["value"]
-	record["upgrades_taken"].append(id)
-	return true
 
 
 func enhance_monster_skill(uid: int, level: int, skill_id: String) -> bool:
@@ -971,10 +1061,14 @@ func enhance_monster_skill(uid: int, level: int, skill_id: String) -> bool:
 
 func learn_monster_skill(uid: int, level: int, skill_id: String, replace_skill_id: String = "") -> bool:
 	var record := owned_record_by_uid(uid)
-	if record.is_empty() or level != _expected_level(record) or not available_new_skills(uid).has(skill_id):
+	if record.is_empty() or level != _expected_level(record) or level not in [2, 4, 6, 8]:
+		return false
+	if not monster_level_choices(uid, level).has(skill_id):
 		return false
 	var known: Array = record.get("known_skills", [])
 	var equipped: Array = record.get("equipped_skills", [])
+	if known.has(skill_id):
+		return false
 	if equipped.size() >= MAX_EQUIPPED_SKILLS:
 		if replace_skill_id == "" or not equipped.has(replace_skill_id):
 			return false
@@ -988,6 +1082,49 @@ func learn_monster_skill(uid: int, level: int, skill_id: String, replace_skill_i
 	record["equipped_skills"] = equipped
 	_claim_level(record, level)
 	return true
+
+
+func claim_monster_trait_upgrade(uid: int, level: int) -> bool:
+	var record := owned_record_by_uid(uid)
+	if record.is_empty() or level != 10 or _expected_level(record) != 10:
+		return false
+	record["trait_upgrade_claimed"] = true
+	_claim_level(record, level)
+	return true
+
+
+func skip_monster_skill_choice(uid: int, level: int) -> bool:
+	var record := owned_record_by_uid(uid)
+	if record.is_empty() or level != _expected_level(record) or level not in [2, 4, 6, 8]:
+		return false
+	if not monster_level_choices(uid, level).is_empty():
+		return false
+	_claim_level(record, level)
+	return true
+
+
+func apply_merchant_skill_upgrade(uid: int, skill_id: String) -> bool:
+	var record := owned_record_by_uid(uid)
+	if record.is_empty() or monster_empty_engraving_slots(record) <= 0:
+		return false
+	var upgrade_id := upgrade_id_for_skill(skill_id)
+	var info := upgrade_info(upgrade_id)
+	if info.is_empty():
+		return false
+	var taken: Array = record.get("upgrades_taken", [])
+	if taken.has(upgrade_id) or not (record.get("known_skills", []) as Array).has(skill_id):
+		return false
+	var values: Dictionary = record.get("upgrades", {})
+	values[String(info["key"])] = int(info["value"])
+	taken.append(upgrade_id)
+	record["upgrades"] = values
+	record["upgrades_taken"] = taken
+	return true
+
+
+func merchant_skill_upgrade_cost(record: Dictionary) -> int:
+	var discount := mini(4, floori(float(record.get("affinity", 0)) / 5.0))
+	return maxi(4, 12 - discount)
 
 
 func equip_monster_skill(uid: int, slot: int, skill_id: String) -> bool:
@@ -1019,6 +1156,7 @@ func pending_upgrades() -> bool:
 func to_dict() -> Dictionary:
 	return {
 		"version": SAVE_VERSION,
+		"progression_schema": "hybrid_instant_v1",
 		"essence": essence, "trainer_items": trainer_items.duplicate(), "sold_monster_uids": sold_monster_uids.duplicate(),
 		"seed": seed,
 		"region_mode": region_mode,
@@ -1074,9 +1212,10 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.trainer_items = (data.get("trainer_items", {}) as Dictionary).duplicate()
 	run.sold_monster_uids = (data.get("sold_monster_uids", []) as Array).map(func(uid): return int(uid))
 	var version := int(data.get("version", 1))
+	var mainline_curve := not data.has("progression_schema") and version >= 12 and data.has("trainer_xp")
 	var legacy_growth := version < 2
 	var legacy_upgrade_style := version < 3
-	var old_hp_scale := version <= 6
+	var old_hp_scale := version <= 11
 	run.seed = int(data.get("seed", 0))
 	run.region_mode = bool(data.get("region_mode", false))
 	run.region_data = (data.get("region_data", {}) as Dictionary).duplicate(true)
@@ -1157,20 +1296,21 @@ static func from_dict(data: Dictionary) -> RunState:
 	for group in [run.carried, run.storage, run.pending_captures]:
 		for record in (group as Array):
 			var old_hp := int(record.get("hp", 0))
+			var old_level := int(record.get("level", 1))
 			run._ensure_uid(record)
 			if legacy_growth:
 				record["level"] = 1
 				record["xp"] = 0
 				record["affinity"] = 0
-			if version < 12 and not legacy_growth:
-				MonsterProgression.migrate_legacy_xp(record)
-			MonsterProgression.normalize_record(record)
+			if version < SAVE_VERSION and not data.has("progression_schema") and not legacy_growth:
+				MonsterProgression.migrate_mainline_xp(record, mainline_curve)
+			MonsterProgression.normalize_record(record, run.level_cap_for_floor())
 			run._normalize_record_growth(record, legacy_upgrade_style)
-			if version < 13:
-				var claimed_count := mini(3, (record.get("claimed_even_levels", []) as Array).size())
+			if mainline_curve or version < 12:
+				var claimed_count := mini(4, (record.get("claimed_even_levels", []) as Array).size())
 				record["claimed_even_levels"] = MonsterProgression.LEARN_LEVELS.slice(0, claimed_count)
 			var new_max_hp := run.monster_max_hp(record)
-			record["hp"] = _migrate_hp(old_hp, _old_max_hp(String(record.get("species_id", "")), int(record.get("level", 1)), version), new_max_hp) if old_hp_scale or version < 13 else clampi(old_hp, 0, new_max_hp)
+			record["hp"] = _migrate_hp(old_hp, _old_max_hp(String(record.get("species_id", "")), old_level, version), new_max_hp) if old_hp_scale or (version < 18 and not mainline_curve and not data.has("progression_schema")) else clampi(old_hp, 0, new_max_hp)
 	if legacy_growth and run.settlement_pending:
 		## 旧结算页中已累计的经验/等级文案不能在迁移后继续展示。
 		run.last_settlement["exp"] = 0
@@ -1182,42 +1322,60 @@ static func from_dict(data: Dictionary) -> RunState:
 		run.battle_snapshot = migrate_snapshot(run.battle_snapshot)
 		migrate_region_snapshots(run.region_data)
 		migrate_region_snapshots(run.pending_region_entry_backup)
-	if version < 13:
-		run.battle_snapshot = run.migrate_progression_snapshot(run.battle_snapshot, run.in_battle)
+	if version < SAVE_VERSION and not data.has("progression_schema"):
+		run.battle_snapshot = run.migrate_progression_snapshot(run.battle_snapshot, run.in_battle, mainline_curve, version)
 		for region in [run.region_data, run.pending_region_entry_backup]:
 			for node in (region.get("nodes", {}) as Dictionary).values():
-				node["snapshot"] = run.migrate_progression_snapshot(node.get("snapshot", {}))
+				node["snapshot"] = run.migrate_progression_snapshot(node.get("snapshot", {}), false, mainline_curve, version)
 	return run
 
 
-func migrate_progression_snapshot(snapshot: Dictionary, active: bool = false) -> Dictionary:
+func migrate_progression_snapshot(snapshot: Dictionary, active: bool = false, mainline: bool = false, version: int = 12) -> Dictionary:
 	if snapshot.is_empty():
 		return snapshot
 	var state := BattleSnapshot.load_state(snapshot)
 	if state == null:
 		return snapshot
-	state.experience_recipients.clear()
+	state.experience_level_cap = 10
+	if version < 13 and not mainline:
+		state.experience_recipients.clear()
 	for unit in state.units:
 		var old_max: int = unit.max_hp
 		var level: int = unit.combat_level
-		var old_base := SpeciesDB.hp_of(unit.species_id) + int((maxi(1, level) - 1) / 2) * 10
-		unit.max_hp += MonsterProgression.max_hp(unit.species_id, level) - old_base
-		unit.hp = _migrate_hp(unit.hp, old_max, unit.max_hp)
+		var converted := {"xp": unit.combat_xp, "level": level}
+		MonsterProgression.migrate_mainline_xp(converted, mainline)
+		unit.combat_xp = int(converted["xp"])
+		unit.combat_level = int(converted["level"])
+		if unit.side == "player" and unit.summon_owner_uid < 0:
+			var growth_record := owned_record_by_uid(unit.uid)
+			if unit.is_trainer:
+				unit.combat_xp = trainer_xp
+				unit.combat_level = trainer_level
+			elif not growth_record.is_empty():
+				unit.combat_xp = int(growth_record["xp"])
+				unit.combat_level = int(growth_record["level"])
+		if not mainline or version < 13:
+			var old_base := SpeciesDB.hp_of(unit.species_id) + int((maxi(1, level) - 1) / 2) * 10 if version == 12 else _old_max_hp(unit.species_id, level, version)
+			if version == 12 and unit.side == "player" and not unit.is_trainer:
+				old_base = SpeciesDB.hp_of(unit.species_id) + int([0, 3, 6, 10, 14, 18, 23, 28, 34, 40][clampi(level, 1, 10) - 1])
+			unit.max_hp += MonsterProgression.max_hp(unit.species_id, unit.combat_level) - old_base
+			unit.hp = _migrate_hp(unit.hp, old_max, unit.max_hp)
 		if unit.side == "player" and unit.summon_owner_uid < 0:
 			var record := owned_record_by_uid(unit.uid)
 			if unit.is_trainer:
-				unit.combat_xp = 0
-				unit.combat_level = 1
-				state.experience_recipients.append(unit.uid)
+				unit.combat_xp = trainer_xp
+				unit.combat_level = trainer_level
 			elif not record.is_empty():
 				unit.combat_xp = int(record["xp"])
+				unit.combat_level = int(record["level"])
+			if (unit.is_trainer or not record.is_empty()) and not state.experience_recipients.has(unit.uid):
 				state.experience_recipients.append(unit.uid)
-	if active and not state.ended:
+	if active and not state.ended and version < 13 and not mainline:
 		for event in state.enemy_kills:
 			if event.get("killer_side", "player" if event.get("by_player", false) else "") == "player":
-				state.award_battle_experience("kill:%d" % int(event.get("uid", -1)), Balance.xp_for_event(event), true)
+				state.award_kill_experience(event, true)
 		for event in state.captured:
-			state.award_battle_experience("capture:%d" % int(event.get("uid", -1)), Balance.xp_for_event(event), true)
+			state.award_battle_experience("capture:%d" % int(event.get("uid", -1)), Balance.EXP_PER_CAPTURE, true)
 		for uid in state.experience_recipients:
 			var unit := state.unit_by_uid(uid)
 			if unit.is_trainer:
@@ -1238,6 +1396,8 @@ static func _old_max_hp(species_id: String, level: int, version: int) -> int:
 		return maxi(1, roundi(float(current_base) / 5.0) + int((maxi(1, level) - 1) / 2))
 	if version == 5:
 		return maxi(1, current_base * 2 + int((maxi(1, level) - 1) / 2) * 10)
+	if version == 12:
+		return current_base + int([0, 3, 6, 10, 14, 18, 23, 28, 34, 40][clampi(level, 1, 10) - 1])
 	if version >= 7:
 		return current_base + int((maxi(1, level) - 1) / 2) * 10
 	return maxi(1, current_base + (maxi(1, level) - 1) * 10)
@@ -1254,8 +1414,11 @@ func _normalize_record_growth(record: Dictionary, legacy_upgrade_style: bool) ->
 	var base_skills: Array = SpeciesDB.skills_of(species_id).duplicate()
 	var known: Array = []
 	var source_skills: Array = base_skills if legacy_upgrade_style or not record.has("known_skills") else record.get("known_skills", [])
+	var explicitly_known: Array = record.get("known_skills", [])
 	for skill_id in source_skills:
 		var id := String(skill_id)
+		if SkillDB.is_special(id) and not explicitly_known.has(id):
+			continue
 		if not known.has(id) and not SkillDB.get_def(id).is_empty() and SkillDB.element_of(id) == SpeciesDB.element_of(species_id):
 			known.append(id)
 	if known.is_empty() and not base_skills.is_empty():
@@ -1310,4 +1473,4 @@ func _normalize_record_growth(record: Dictionary, legacy_upgrade_style: bool) ->
 	record["upgrades"] = values
 	record["upgrades_taken"] = kept_taken
 	record["claimed_even_levels"] = kept_claimed
-	record["level_choices"] = {}
+	record["level_choices"] = {} if legacy_upgrade_style else (record.get("level_choices", {}) as Dictionary).duplicate(true)

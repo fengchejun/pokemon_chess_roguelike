@@ -88,6 +88,9 @@ func _test_monster_growth_in_battle(t: TestContext) -> void:
 	t.eq(int(fire["level"]), 3, "本局获得经验后升到三级")
 	t.eq((run_state.build_deploy_units([1])[1] as CombatUnit).max_hp, MonsterProgression.max_hp("fire_starter", 3), "本局奇数级生命成长进入部署单位")
 	var battle := TestScenario.make_state(["fire_starter"], [])
+	battle.unit_by_uid(1).combat_xp = int(fire["xp"])
+	battle.unit_by_uid(1).combat_level = int(fire["level"])
+	battle.unit_by_uid(1).max_hp = run_state.monster_max_hp(fire)
 	run_state.mark_deployed([1])
 	battle.unit_by_uid(1).hp = 2
 	battle.end_battle("victory")
@@ -95,7 +98,7 @@ func _test_monster_growth_in_battle(t: TestContext) -> void:
 	run_state.settle_battle(battle)
 	t.eq(int(run_state.record_by_uid(1)["hp"]), 2, "出战怪物战后保留剩余生命")
 	var restored := RunState.from_dict(run_state.to_dict())
-	t.eq(int(restored.record_by_uid(1)["xp"]), 18, "本局读档保留本局怪物经验")
+	t.eq(int(restored.record_by_uid(1)["xp"]), MonsterProgression.threshold_for_level(3) + 1, "本局读档保留本局怪物经验")
 	t.eq(int(restored.record_by_uid(1)["level"]), 3, "本局读档保留本局怪物等级")
 	t.eq(int(restored.record_by_uid(1)["affinity"]), 8, "本局读档保留出战后增长的永久亲密度")
 	t.eq((restored.build_deploy_units([1])[1] as CombatUnit).max_hp, MonsterProgression.max_hp("fire_starter", 3), "读档后的部署仍有本局成长生命上限")

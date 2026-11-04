@@ -122,7 +122,7 @@ func _spawn_and_xp(t: TestContext) -> void:
 	restored.nest["alive"] = false
 	restored.end_battle("victory")
 	run.settle_battle(restored)
-	t.eq(run.record_by_uid(1)["xp"], 0, "战后也不补发后期增援击杀经验")
+	t.eq(run.record_by_uid(1)["xp"], 1, "战后仅有参战经验，后期增援不给击杀经验")
 
 func _save(t: TestContext) -> void:
 	var state := _state()

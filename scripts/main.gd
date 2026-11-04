@@ -258,6 +258,27 @@ func merchant_trade(state: BattleState, operation: String, id: String, quantity:
 	return result
 
 
+func purchase_skill_upgrade(state: BattleState, uid: int, skill_id: String, save_path: String = SaveSystem.DEFAULT_PATH) -> Dictionary:
+	run.sync_from_battle(state)
+	var previous := run.to_dict()
+	var battle_before := BattleSnapshot.save_state(state)
+	var result := Merchant.upgrade_skill(run, state, uid, skill_id)
+	if not bool(result["ok"]):
+		return result
+	run.battle_snapshot = BattleSnapshot.save_state(state)
+	if autosave_enabled and not SaveSystem.save_run(run, save_path):
+		run = RunState.from_dict(previous)
+		var restored := BattleSnapshot.load_state(battle_before)
+		state.units = restored.units
+		state.relic_stacks = restored.relic_stacks
+		return {"ok": false, "reason": "存档写入失败，技能强化已撤回。"}
+	if collection != null:
+		collection.absorb_run(run)
+		if autosave_enabled:
+			collection.save()
+	return result
+
+
 func show_prep() -> void:
 	if run != null and run.needs_theme_choice():
 		show_floor_theme()

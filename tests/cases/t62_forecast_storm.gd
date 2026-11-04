@@ -74,7 +74,7 @@ func _damage(t: TestContext) -> void:
 	frozen.round = 9
 	frozen.storm_strikes = [{"cell": shielded.cell, "due_round": 9}]
 	frozen._settle_storm()
-	t.eq(shielded.hp, shield_hp, "冰冻沿用现有的一次免伤")
+	t.eq(shielded.hp, shield_hp - ceili(shielded.max_hp * 0.5), "冰冻承受天雷伤害后解除")
 	t.check(not shielded.frozen, "冰冻抵挡后解除")
 	var fatal := _state()
 	fatal.trainer().hp = 17

@@ -26,7 +26,7 @@ func _test_push_kill_attribution(t: TestContext) -> void:
 	var run_state := RunState.new_run(2201, [{"id": 7, "species_id": "rock_starter", "affinity": 0}])
 	run_state.mark_deployed([1])
 	run_state.settle_battle(battle)
-	t.eq(int(run_state.record_by_uid(1)["xp"]), Balance.EXP_PER_KILL, "真实推杀给岩怪两点击杀经验")
+	t.eq(int(run_state.record_by_uid(1)["xp"]), 3, "真实推杀获得两点击杀经验与一点参战经验")
 
 
 func _test_local_guards(t: TestContext) -> void:
@@ -54,13 +54,17 @@ func _test_all_species_choice_depth(t: TestContext) -> void:
 		var run_state := RunState.new_run(2200 + index, [{"id": index, "species_id": species_id, "affinity": 0}])
 		var record := run_state.record_by_uid(1)
 		MonsterProgression.award_xp(record, MonsterProgression.threshold_for_level(10))
-		for level in [2, 5, 7]:
-			var learnable := run_state.available_new_skills(1)
-			t.check(not learnable.is_empty(), "%s Lv%d 有合法学招" % [species_id, level])
-			var equipped: Array = record["equipped_skills"]
-			var replace_id := String(equipped[0]) if equipped.size() >= 3 else ""
-			t.check(run_state.learn_monster_skill(1, level, String(learnable[0]), replace_id), "%s Lv%d可学习" % [species_id, level])
-		t.check(run_state.pending_monster_levels().is_empty(), "%s 三次学招已处理" % species_id)
+		for level in [2, 4, 6, 8]:
+			var candidates := run_state.monster_level_choices(1, level)
+			t.eq(candidates.size(), 3, "%s Lv%d 提供三招候选" % [species_id, level])
+			t.check(not candidates.is_empty(), "%s Lv%d 至少有一招可学" % [species_id, level])
+			if not candidates.is_empty():
+				var equipped: Array = record.get("equipped_skills", [])
+				var replace_id := String(equipped[0]) if equipped.size() >= RunState.MAX_EQUIPPED_SKILLS else ""
+				t.check(run_state.learn_monster_skill(1, level, String(candidates[0]), replace_id), "%s Lv%d 可在三招中领取一招" % [species_id, level])
+		t.check(run_state.claim_monster_trait_upgrade(1, 10), "%s Lv10 可领取特性强化入口" % species_id)
+		t.eq(run_state.monster_engraving_slots(record), 4, "%s Lv10 拥有四个刻印槽" % species_id)
+		t.check(run_state.pending_monster_levels().is_empty(), "%s 五次成长已处理完毕" % species_id)
 
 
 func _test_new_skill_upgrades(t: TestContext) -> void:
@@ -124,7 +128,7 @@ func _test_choice_save_roundtrip(t: TestContext) -> void:
 	var loaded := SaveSystem.load_run(path)
 	t.check(loaded != null, "本局待选强化可以从存档恢复")
 	if loaded != null:
-		t.eq(loaded.monster_level_choices(1, 2), before, "JSON 读档后候选保持不变")
+		t.eq(loaded.monster_level_choices(1, 2), before, "JSON 读档后三招候选保持不变")
 		if not before.is_empty():
-			t.check(loaded.take_monster_level_choice(1, 2, String(before[0])), "读档后仍可领取该怪物强化")
+			t.check(loaded.learn_monster_skill(1, 2, String(before[0])), "读档后仍可从三招中选择学习")
 	SaveSystem.delete_save(path)

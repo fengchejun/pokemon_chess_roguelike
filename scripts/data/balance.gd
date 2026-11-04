@@ -41,10 +41,23 @@ const NEST_DURABILITY := NEST_BASE_HP # 兼容旧入口；当前语义为第一�
 static func nest_max_hp(battle_index: int) -> int:
 	return NEST_BASE_HP + clampi(battle_index / 6, 0, 2) * NEST_HP_PER_FLOOR
 
-const BURN_DAMAGE := 4
 const BURN_TICKS := 2
 const STATUS_MAX_STACKS := 4
 const PARASITE_TICKS := 2
+const BURN_MAX_HP_RATIO := 0.10
+const FREEZE_TICKS := 1
+const PARALYSIS_TICKS := 2
+const LIGHTNING_SHOCK_TICKS := 2
+const ELECTRIC_RESONANCE_SHOCK_BONUS := 3
+const ELECTRIC_RESONANCE_PARALYSIS_BONUS := 5
+const SHIELD_TICKS := 2
+const GUARD_ROCK_SHIELD := 10
+const GUARD_ROCK_BREAK_DAMAGE := 4
+
+static func burn_damage_for(max_hp: int) -> int:
+	return maxi(1, ceili(float(maxi(1, max_hp)) * BURN_MAX_HP_RATIO))
+const MIRROR_WATER_MOON_ROUNDS := 3
+const MIRROR_WATER_DAMAGE_BONUS := 5
 
 # 战斗数值刻度：Lv1 普通敌人 20–30 HP，常规技能约 10–13 直伤。
 # 敌人通常成群行动，单次技能伤害按此比例结算，避免放大数字后集火过猛。
@@ -71,9 +84,10 @@ static func skill_damage_for_side(base: int, side: String) -> int:
 
 const EXP_PER_KILL := 2
 const EXP_PER_CAPTURE := 2
+const EXP_PER_NEST := 3
 
 static func xp_for_enemy_level(level: int) -> int:
-	return maxi(1, level) + 1
+	return MonsterProgression.enemy_xp_reward(level)
 
 static func xp_for_event(entry: Dictionary) -> int:
 	return maxi(0, int(entry.get("xp_reward", EXP_PER_KILL)))

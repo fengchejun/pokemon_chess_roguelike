@@ -46,8 +46,8 @@ func _recording(t: TestContext) -> void:
 	frozen.feedback.connect(func(e): seen.append(e.duplicate(true)))
 	frozen.unit_by_uid(100).frozen = true
 	PushResolver.push(frozen, frozen.unit_by_uid(100), Vector2i.RIGHT, 1, 0, "冰冻碰撞", "player", 1)
-	t.eq(frozen.unit_by_uid(100).hp, 100, "冰冻碰撞仍免伤")
-	t.check(seen.any(func(e): return e["kind"] == "collision_damage" and e["text"] == "碰撞免伤"), "冰冻免伤仍明确提示碰撞")
+	t.eq(frozen.unit_by_uid(100).hp, 95, "冰冻碰撞正常受伤")
+	t.check(seen.any(func(e): return e["kind"] == "collision_damage" and e["text"] == "碰撞 -5"), "冰冻解除仍明确提示碰撞")
 
 func _edges_and_rocks(t: TestContext) -> void:
 	var state := _state()

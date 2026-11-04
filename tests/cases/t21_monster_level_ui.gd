@@ -38,14 +38,14 @@ func _test_collection_prep_and_run_end(t: TestContext) -> void:
 	fire["upgrades"] = {"fireball_damage": 1}
 	app.show_prep()
 	var prep_text := _all_label_text(app.current_screen)
-	t.check(prep_text.contains("本局 Lv.3") and prep_text.contains("经验 18/38"), "整备页显示怪物本局等级与经验")
-	t.check(prep_text.contains("亲密度 7（永久"), "整备页区分永久亲密度")
+	t.check(prep_text.contains("本局 Lv.3") and prep_text.contains("经验 16/30"), "整备页显示怪物本局等级与经验")
+	t.check(prep_text.contains("亲密度 7（强化折扣）"), "整备页说明亲密度用于商人强化折扣")
 	t.check(prep_text.contains("本局强化：炽烈火球"), "整备页显示该怪物的已选本局升级")
 	app.show_run_end()
 	var summary: Label = app.current_screen.find_child("RunEndSummary", true, false)
 	t.check(summary != null, "结局页存在成长摘要")
 	if summary != null:
-		t.check(summary.text.contains("小火龙：本局 Lv.3 · 经验 18/38"), "结局页显示怪物本局等级经验")
+		t.check(summary.text.contains("小火龙：本局 Lv.3 · 经验 16/30"), "结局页显示怪物本局等级经验")
 		t.check(summary.text.contains("亲密度 7"), "结局页显示永久亲密度")
 		t.check(summary.text.contains("本局强化：炽烈火球"), "结局页列出怪物已选升级")
 	app.queue_free()
@@ -53,14 +53,14 @@ func _test_collection_prep_and_run_end(t: TestContext) -> void:
 
 func _test_ordered_settlement_choices(t: TestContext) -> void:
 	var run_state := RunState.new_run(20261019)
-	MonsterProgression.award_xp(run_state.record_by_uid(1), MonsterProgression.threshold_for_level(5))
+	MonsterProgression.award_xp(run_state.record_by_uid(1), MonsterProgression.threshold_for_level(4))
 	MonsterProgression.award_xp(run_state.record_by_uid(2), MonsterProgression.threshold_for_level(2))
 	run_state.pending_reward_choices = 1
 	run_state.settlement_pending = true
 	var pending: Array = run_state.pending_monster_levels()
 	t.eq(pending.size(), 3, "跨级怪物和另一只怪物共有三项待选偶数级强化")
 	t.eq([int(pending[0]["uid"]), int(pending[0]["level"])], [1, 2], "先处理较小 UID 的较低偶数级")
-	t.eq([int(pending[1]["uid"]), int(pending[1]["level"])], [1, 5], "同一怪物按等级升序继续")
+	t.eq([int(pending[1]["uid"]), int(pending[1]["level"])], [1, 4], "同一怪物按等级升序继续")
 	t.eq([int(pending[2]["uid"]), int(pending[2]["level"])], [2, 2], "之后处理下一只怪物")
 	var restored := RunState.from_dict(run_state.to_dict())
 	t.eq(restored.pending_monster_levels().size(), pending.size(), "读档保留待处理升级顺序")
@@ -73,30 +73,20 @@ func _test_ordered_settlement_choices(t: TestContext) -> void:
 	app._switch(load("res://scripts/ui/settlement_screen.gd").new())
 	var continue_button: Button = app.current_screen.find_child("ContinueButton", true, false)
 	t.check(continue_button != null and continue_button.disabled, "有怪物待选强化时不能继续")
-	for expected in [[1, 2], [1, 5], [2, 2]]:
+	for expected in [[1, 2], [1, 4], [2, 2]]:
 		var entry: Dictionary = app.run.pending_monster_levels()[0]
 		t.eq([int(entry["uid"]), int(entry["level"])], expected, "战后界面按 UID 与等级顺序显示当前强化")
-		var category: Button = app.current_screen.find_child("MonsterGrowth_enhance_%d_%d" % [int(entry["uid"]), int(entry["level"])], true, false)
-		var learning := category == null
-		if learning:
-			category = app.current_screen.find_child("MonsterGrowth_learn_%d_%d" % [int(entry["uid"]), int(entry["level"])], true, false)
-		t.check(category != null, "当前怪物有可用的强化或学习类别")
-		if category == null:
-			break
-		category.pressed.emit()
-		var id := String(app.run.available_new_skills(int(entry["uid"]))[0]) if learning else String(app.run.available_monster_upgrades(int(entry["uid"]))[0])
-		var skill_id := id if learning else String(RunState.upgrade_info(id)["requires_skill"])
-		var button_name := "MonsterLearn_%d_%d_%s" if learning else "MonsterEnhance_%d_%d_%s"
-		var button: Button = app.current_screen.find_child(button_name % [int(entry["uid"]), int(entry["level"]), skill_id], true, false)
-		t.check(button != null, "当前怪物的具体招式按钮存在")
+		var uid := int(entry["uid"])
+		var level := int(entry["level"])
+		var candidates: Array = app.run.monster_level_choices(uid, level)
+		t.eq(candidates.size(), 3, "当前怪物提供三招候选")
+		var skill_id := String(candidates[0]) if not candidates.is_empty() else ""
+		var button: Button = app.current_screen.find_child("MonsterLearn_%d_%d_%s" % [uid, level, skill_id], true, false)
+		t.check(button != null, "当前怪物的具体技能按钮存在")
 		if button == null:
 			break
 		button.pressed.emit()
-		var equipped: Array = app.run.record_by_uid(int(entry["uid"]))["equipped_skills"]
-		if not app.run.record_by_uid(int(entry["uid"]))["known_skills"].has(skill_id) and equipped.size() == 3:
-			var replace: Button = app.current_screen.find_child("MonsterReplace_%d_%d_%s_%s" % [entry["uid"], entry["level"], skill_id, equipped[0]], true, false)
-			if replace != null: replace.pressed.emit()
-		t.check((app.run.record_by_uid(int(entry["uid"])).get("known_skills", []) as Array).has(id) if learning else (app.run.record_by_uid(int(entry["uid"])).get("upgrades_taken", []) as Array).has(id), "选择记录到对应怪物")
+		t.check((app.run.record_by_uid(uid).get("known_skills", []) as Array).has(skill_id), "选择记录到对应怪物")
 	t.eq(app.run.pending_monster_levels().size(), 0, "全部怪物强化已逐项处理")
 	t.eq(app.run.pending_reward_choices, 1, "怪物升级完成后才进入战后卡牌选择")
 	var reward_id := String(app.run.reward_choices()[0])
@@ -125,17 +115,13 @@ func _test_stored_monster_upgrade_after_replacement(t: TestContext) -> void:
 	app._switch(load("res://scripts/ui/settlement_screen.gd").new())
 	var step: Label = app.current_screen.step_label
 	t.check(step.text.contains("小火龙") and step.text.contains("Lv.2"), "仓库中的原出战怪仍显示正确升级对象")
-	var category: Button = app.current_screen.find_child("MonsterGrowth_learn_1_2", true, false)
-	t.check(category != null, "仓库怪物可见强化类别")
-	if category != null:
-		category.pressed.emit()
-	var choice_id := String(run_state.available_new_skills(1)[0])
-	var skill_id := choice_id
+	var choices := run_state.monster_level_choices(1, 2)
+	var skill_id := String(choices[0]) if not choices.is_empty() else ""
 	var button: Button = app.current_screen.find_child("MonsterLearn_1_2_%s" % skill_id, true, false)
-	t.check(button != null, "仓库怪物仍可看到待领强化")
+	t.check(button != null, "仓库怪物仍可看到待领三招候选")
 	if button != null:
 		button.pressed.emit()
-		t.check((run_state.owned_record_by_uid(1).get("known_skills", []) as Array).has(choice_id), "领取结果写入仓库中的同一只怪物")
+		t.check((run_state.owned_record_by_uid(1).get("known_skills", []) as Array).has(skill_id), "学招结果写入仓库中的同一只怪物")
 		t.eq(run_state.pending_monster_levels().size(), 0, "仓库怪物领取后不再阻塞结算")
 	app.queue_free()
 

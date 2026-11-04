@@ -90,6 +90,7 @@ func _eighteen_battle_route(t: TestContext) -> void:
 		state.end_battle("victory")
 		app.finish_battle(state)
 		t.eq(app.current_screen.name, "SettlementScreen", "第 %d 战进入结算" % (index + 1))
+		_claim_monster_levels(app.run)
 		while app.run.pending_reward_choices > 0:
 			var choices: Array = app.run.reward_choices()
 			t.check(not choices.is_empty(), "第 %d 战有可领取的消耗卡" % (index + 1))
@@ -153,7 +154,7 @@ func _enemy_levels_and_boss(t: TestContext) -> void:
 		for enemy_index in (cfg["enemies"] as Array).size():
 			var unit := state.unit_by_uid(100 + enemy_index)
 			t.eq(unit.enemy_level, 1 + floor_index * 2 + (1 if unit.is_boss else 0), "普通敌人 Lv1/3/5，首领高一级")
-			t.eq(unit.max_hp, MonsterProgression.max_hp(unit.species_id, unit.enemy_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0), "等级与首领生命叠加正确")
+			t.eq(unit.max_hp, MonsterProgression.enemy_max_hp(unit.species_id, unit.enemy_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0), "敌方等级与首领生命叠加正确")
 			t.eq(unit.skills, BattleDB.enemy_skills_for_level(unit.species_id, unit.enemy_level), "实际技能与等级相符")
 			t.eq(unit.upgrades, BattleDB.enemy_upgrade_values(seed_value, index, enemy_index, unit.species_id, unit.is_boss), "技能强化与关卡配置一致")
 			t.eq(unit.upgrades.size(), 1 if floor_index == 2 and unit.is_boss else 0, "当前十八战仅第三层首领达到强化等级")
@@ -189,6 +190,24 @@ func _enemy_levels_and_boss(t: TestContext) -> void:
 		t.check(ally.inspired and state.inspiration_triggered, "捕获首领不撤销已触发的敌方鼓舞")
 		state.on_captured(ally, ally.species_id, 1)
 		t.check(not ally.inspired, "被捕获的鼓舞友军转阵营时移除加成")
+
+
+func _claim_monster_levels(run: RunState) -> void:
+	while not run.pending_monster_levels().is_empty():
+		var entry: Dictionary = run.pending_monster_levels()[0]
+		var uid := int(entry["uid"])
+		var level := int(entry["level"])
+		if level == 10:
+			run.claim_monster_trait_upgrade(uid, level)
+			continue
+		var choices := run.monster_level_choices(uid, level)
+		if choices.is_empty():
+			run.skip_monster_skill_choice(uid, level)
+			continue
+		var equipped: Array = run.owned_record_by_uid(uid).get("equipped_skills", [])
+		var replacement := String(equipped[0]) if equipped.size() >= RunState.MAX_EQUIPPED_SKILLS else ""
+		if not run.learn_monster_skill(uid, level, String(choices[0]), replacement):
+			break
 
 
 func _blood_and_save(t: TestContext) -> void:

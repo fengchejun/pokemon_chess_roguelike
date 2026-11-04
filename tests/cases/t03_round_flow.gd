@@ -30,11 +30,12 @@ func _t_burn(t: TestContext) -> void:
 	var wild := state.unit_by_uid(100)
 	state.apply_burn(wild, fire)
 	t.eq(wild.burn_ticks, 2, "灼烧初始 2 回合")
-	state._finish_status_effects("enemy")
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - Balance.BURN_DAMAGE, "第一次结算灼烧伤害")
+	var burn_damage := Balance.burn_damage_for(wild.max_hp)
+	state.settle_round()
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - burn_damage, "第一次结算灼烧伤害")
 	t.eq(wild.burn_ticks, 1, "灼烧剩余 1 回合")
-	state._finish_status_effects("enemy")
-	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - Balance.BURN_DAMAGE * 2, "第二次结算灼烧伤害")
+	state.settle_round()
+	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1") - burn_damage * 2, "第二次结算灼烧伤害")
 	t.eq(wild.burn_ticks, 0, "灼烧结束")
 	# 火系免疫
 	var state2 := TestScenario.make_state([], [["fire_wild1", Vector2i(4, 3)]])
@@ -43,6 +44,8 @@ func _t_burn(t: TestContext) -> void:
 	fire2.cell = Vector2i(0, 3)
 	state2.apply_burn(state2.unit_by_uid(100), fire2)
 	t.eq(state2.unit_by_uid(100).burn_ticks, 0, "火系免疫灼烧")
+
+
 
 
 func _t_burn_cleared_by_water(t: TestContext) -> void:
@@ -56,9 +59,11 @@ func _t_burn_cleared_by_water(t: TestContext) -> void:
 	var wild := state.unit_by_uid(100)
 	state.apply_burn(wild, fire)
 	wild.cell = Vector2i(2, 3)
-	state._finish_status_effects("enemy")
+	state.settle_round()
 	t.eq(wild.burn_ticks, 0, "进入水面解除灼烧")
 	t.eq(wild.hp, SpeciesDB.hp_of("grass_wild1"), "解除后不再受到灼烧伤害")
+
+
 
 
 func _t_root_and_slow(t: TestContext) -> void:
@@ -75,10 +80,12 @@ func _t_root_and_slow(t: TestContext) -> void:
 	state.apply_slow(wild)
 	t.eq(wild.slow_ticks, 2, "减速已挂载")
 	t.eq(wild.effective_move(), wild.move_points - 1, "减速使移动上限 −1")
-	state._finish_status_effects("enemy")
+	state.settle_round()
 	t.eq(wild.slow_ticks, 1, "缓慢衰减")
-	state._finish_status_effects("enemy")
+	state.settle_round()
 	t.eq(wild.slow_ticks, 0, "1 回合后解除")
+
+
 
 
 func _t_wet_phase_boundaries(t: TestContext) -> void:
@@ -148,38 +155,54 @@ func _t_vines_next_move(t: TestContext) -> void:
 	var fire := state.unit_by_uid(1)
 	fire.cell = Vector2i(1, 3)
 	t.check(state.move_unit(fire, Vector2i(2, 3)), "后来踩进藤蔓格")
-	t.eq(fire.vine_ticks, 2, "已用掉本轮移动，束缚保留到下次机会")
+	t.eq(fire.imprison_ticks, 3, "已用掉本轮移动，禁锢覆盖接下来两次机会")
 	t.check(state.undo_last_move(), "踏入藤蔓的移动可撤回")
-	t.eq(fire.vine_ticks, 0, "撤回恢复束缚状态")
+	t.eq(fire.imprison_ticks, 0, "撤回恢复禁锢状态")
 	t.check(state.move_unit(fire, Vector2i(2, 3)), "再次走入藤蔓")
 	state.begin_enemy_phase()
-	t.eq(fire.vine_ticks, 1, "我方阶段结束后仍束缚下一次移动")
+	t.eq(fire.imprison_ticks, 2, "第一个我方阶段结束后仍剩两回合")
 	state.end_enemy_phase()
 	t.eq(fire.can_move_now(), false, "下一轮我方不能移动，但仍可施法")
 	t.eq(fire.can_act_skill(), true, "藤蔓不禁止技能")
 	state.begin_enemy_phase()
-	t.eq(fire.vine_ticks, 0, "被束缚的一次行动结束后解除，不会因仍在藤蔓上永久定身")
+	t.eq(fire.imprison_ticks, 1, "第二个我方阶段结束后仍剩一回合")
+	state.end_enemy_phase()
+	state.begin_enemy_phase()
+	t.eq(fire.imprison_ticks, 0, "连续两个移动阶段结束后禁锢解除")
+	t.eq(fire.vine_reapply_round, state.round + 2, "禁锢结束后安排隔一回合再次触发")
+	state.end_enemy_phase()
+	t.eq(fire.imprison_ticks, 0, "间隔回合开始时尚未再次禁锢")
+	t.check(fire.can_move_now(), "间隔回合内可以正常移动")
+	state.begin_enemy_phase()
+	state.end_enemy_phase()
+	t.eq(fire.imprison_ticks, 2, "间隔一个完整回合后再次获得两回合禁锢")
+	t.check(not fire.can_move_now(), "再次禁锢会阻止下一次普通移动")
 	var create := TestScenario.make_state(["grass_starter"], [["rock_wild1", Vector2i(3, 3)]])
 	var grass := create.unit_by_uid(1)
 	grass.cell = Vector2i(2, 3)
 	create.set_terrain(Vector2i(3, 3), TerrainDB.VINES)
-	t.eq(create.unit_by_uid(100).vine_ticks, 1, "藤蔓在尚未行动的敌人脚下生成，阻止本次敌方移动")
+	t.eq(create.unit_by_uid(100).imprison_ticks, 2, "藤蔓在尚未行动的敌人脚下生成，阻止两次敌方移动")
 	create.begin_enemy_phase()
 	t.eq(create.unit_by_uid(100).can_move_now(), false, "敌方阶段开始时束缚仍有效")
 	create.end_enemy_phase()
-	t.eq(create.unit_by_uid(100).vine_ticks, 0, "敌人行动阶段结束后束缚解除")
+	t.eq(create.unit_by_uid(100).imprison_ticks, 1, "第一个敌人行动阶段结束后仍剩一回合")
+	create.begin_enemy_phase()
+	create.end_enemy_phase()
+	t.eq(create.unit_by_uid(100).imprison_ticks, 0, "第二个敌人行动阶段结束后禁锢解除")
 	var pushed := TestScenario.make_state([], [["rock_wild1", Vector2i(3, 3)]], terrain)
 	var pushed_enemy := pushed.unit_by_uid(100)
 	pushed.set_terrain(Vector2i(4, 3), TerrainDB.VINES)
 	PushResolver.push(pushed, pushed_enemy, Vector2i.RIGHT, 1, 0, "测试推击", "player")
 	t.eq(pushed_enemy.cell, Vector2i(4, 3), "强制位移能进入藤蔓")
-	t.eq(pushed_enemy.vine_ticks, 1, "被推到藤蔓上的敌人本次移动受阻")
+	t.eq(pushed_enemy.imprison_ticks, 2, "被推到藤蔓上的敌人失去两次移动机会")
 	var flying := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]], terrain)
 	var flyer := flying.unit_by_uid(1)
 	flyer.cell = Vector2i(2, 3)
 	flyer.battle_buffs["flight"] = true
 	flying.apply_vine_on_landing(flyer)
-	t.eq(flyer.vine_ticks, 0, "飞行单位不受藤蔓格束缚")
+	t.eq(flyer.imprison_ticks, 0, "飞行单位不受藤蔓格禁锢")
+
+
 
 
 func _t_burning_vines_release(t: TestContext) -> void:
@@ -193,11 +216,11 @@ func _t_burning_vines_release(t: TestContext) -> void:
 	state.begin_enemy_phase()
 	PushResolver.push(state, fire, Vector2i.RIGHT, 1, 0, "测试推击", "enemy")
 	t.eq(fire.cell, cell, "我方阶段后被推入即将烧尽的藤蔓")
-	t.eq(fire.vine_ticks, 1, "敌方阶段踩入藤蔓会束缚下次移动")
+	t.eq(fire.imprison_ticks, 2, "敌方阶段踩入藤蔓会束缚下次移动")
 	state.end_enemy_phase()
 	t.eq(state.terrain_at(cell), TerrainDB.PLAIN, "完整回合结算后藤蔓烧尽")
-	t.eq(fire.vine_ticks, 0, "藤蔓烧尽时立即解除脚下束缚")
-	t.check(fire.can_move_now(), "藤蔓烧尽后的下一轮可正常移动")
+	t.eq(fire.imprison_ticks, 2, "藤蔓烧尽不提前解除已经施加的禁锢")
+	t.check(not fire.can_move_now(), "已经施加的禁锢仍按持续时间限制普通移动")
 
 
 func _t_haste_next_move(t: TestContext) -> void:

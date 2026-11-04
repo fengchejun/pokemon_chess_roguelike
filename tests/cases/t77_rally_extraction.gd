@@ -48,7 +48,7 @@ func run(t: TestContext) -> void:
 	t.check(state.unit_by_uid(2).hp > 0, "已集合宝可梦不受额外惩罚")
 	t.eq(state.reward["state"], "map", "撤离濒死者的奖励留在原地")
 	var outcome := run.settle_battle(state)
-	t.eq(run.record_by_uid(1)["xp"], 3, "未集合者此前经验保留")
+	t.eq(run.record_by_uid(1)["xp"], 4, "未集合者此前经验及参战经验保留")
 	t.eq(run.record_by_uid(1)["hp"], 0, "濒死代价跨结算保留")
 	t.eq(outcome["escape_penalties"].size(), 1, "结算摘要记录紧急撤离成员")
 	t.eq(outcome["pending_reward_choices"], 0, "失去奖励不兑换选择")

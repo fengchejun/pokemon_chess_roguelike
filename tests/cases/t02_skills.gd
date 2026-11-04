@@ -287,5 +287,15 @@ func _t_attr_modifier(t: TestContext) -> void:
 	t.eq(SpeciesDB.element_of("wind_starter"), "electric", "风物种归电系")
 	t.eq(SkillDB.element_of("ice_shard"), "water", "冰技能归水系")
 	t.eq(SkillDB.element_of("tailwind"), "electric", "风技能归电系")
+	t.eq(Elements.canonical("ice"), "water", "旧冰属性统一映射为水")
+	t.eq(Elements.canonical("wind"), "electric", "旧风属性统一映射为电")
+	t.eq(Elements.name_of("ice"), "水", "旧冰属性显示为水")
+	t.eq(Elements.name_of("wind"), "电", "旧风属性显示为电")
+	var legacy_state := TestScenario.make_state(["fire_starter", "water_starter"], [])
+	legacy_state.unit_by_uid(1).element = "ice"
+	legacy_state.unit_by_uid(2).element = "wind"
+	var migrated_state := BattleSnapshot.load_state(BattleSnapshot.save_state(legacy_state))
+	t.eq(migrated_state.unit_by_uid(1).element, "water", "旧冰单位快照迁移为水属性")
+	t.eq(migrated_state.unit_by_uid(2).element, "electric", "旧风单位快照迁移为电属性")
 	t.eq(Elements.direct_damage(20, "fire", "grass"), 25, "克制直伤乘 1.25")
 	t.eq(Elements.direct_damage(20, "fire", "water"), 15, "被克直伤乘 0.75")

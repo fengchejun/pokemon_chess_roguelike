@@ -65,9 +65,12 @@ func _team_row(record: Dictionary) -> Control:
 	info.add_child(title_line)
 	title_line.add_child(UIKit.label(SpeciesDB.name_of(species_id), 17))
 	title_line.add_child(UIKit.element_chip(SpeciesDB.element_of(species_id)))
-	info.add_child(UIKit.wrapped("本局 Lv.%d · 经验 %d/%d · 生命 %d/%d · 基础移动 %d · 亲密度 %d（永久，暂无效果）" % [
+	var engraving_total: int = app.run.monster_engraving_slots(record)
+	var engraving_empty: int = app.run.monster_empty_engraving_slots(record)
+	info.add_child(UIKit.wrapped("本局 Lv.%d · 经验 %d/%d · 生命 %d/%d · 基础移动 %d · 刻印槽 %d/%d · 亲密度 %d（强化折扣）" % [
 		int(record.get("level", 1)), int(record.get("xp", 0)), MonsterProgression.threshold_for_level(int(record.get("level", 1)) + 1),
-		int(record["hp"]), app.run.monster_max_hp(record), SpeciesDB.move_of(species_id), int(record.get("affinity", 0)),
+		int(record["hp"]), app.run.monster_max_hp(record), SpeciesDB.move_of(species_id),
+		engraving_empty, engraving_total, int(record.get("affinity", 0)),
 	], 13, UIKit.TEXT_DIM))
 	if int(record["hp"]) <= 0:
 			title_line.add_child(UIKit.label("濒死（营地休息恢复半血）" if app.run.region_mode else "濒死（留守一场后恢复到 5 HP）", 13, UIKit.BAD))
@@ -77,13 +80,15 @@ func _team_row(record: Dictionary) -> Control:
 		if not info_entry.is_empty():
 			upgrade_names.append(String(info_entry.get("name", upgrade_id)))
 	info.add_child(UIKit.wrapped("本局强化：%s" % ("、".join(upgrade_names) if not upgrade_names.is_empty() else "尚无"), 12, UIKit.TEXT_DIM))
+	if bool(record.get("trait_upgrade_claimed", false)):
+		info.add_child(UIKit.wrapped("Lv10 特性强化：已领取（具体效果待配置）", 12, UIKit.TEXT_DIM))
 	var known: Array = record.get("known_skills", SpeciesDB.skills_of(species_id))
 	var equipped: Array = record.get("equipped_skills", SpeciesDB.skills_of(species_id))
 	var library_names: Array = []
 	for skill_id in known:
 		var id := String(skill_id)
 		var enhanced := (record.get("upgrades_taken", []) as Array).has(RunState.upgrade_id_for_skill(id))
-		library_names.append("%s%s%s" % [SkillDB.name_of(id), "★" if enhanced else "", "（占位）" if SkillDB.is_placeholder(id) else ""])
+		library_names.append("%s%s%s%s" % [SkillDB.name_of(id), "★" if enhanced else "", "（占位）" if SkillDB.is_placeholder(id) else "", "（特殊）" if SkillDB.is_special(id) else ""])
 	info.add_child(UIKit.wrapped("本局招式库：" + "、".join(library_names), 12, UIKit.TEXT_DIM))
 	for slot in range(RunState.MAX_EQUIPPED_SKILLS):
 		var selector := OptionButton.new()
@@ -101,16 +106,19 @@ func _team_row(record: Dictionary) -> Control:
 			if slot < equipped.size() and String(equipped[slot]) == id:
 				selected_index = selector.item_count - 1
 		selector.select(selected_index)
-		selector.item_selected.connect(func(index: int) -> void:
-			var id := String(selector.get_item_metadata(index))
-			if app.run.equip_monster_skill(int(record["uid"]), slot, id):
-				app.autosave()
-				show_prep_after_mode_change()
-		)
+		selector.item_selected.connect(_on_skill_slot_selected.bind(record, slot, selector))
 		info.add_child(selector)
 	if Elements.MATCHUPS_ENABLED:
 		info.add_child(UIKit.wrapped(Elements.counter_hint(SpeciesDB.element_of(species_id)), 12))
 	return row
+
+
+func _on_skill_slot_selected(index: int, record: Dictionary, slot: int, selector: OptionButton) -> void:
+	var skill_id := String(selector.get_item_metadata(index))
+	var changed: bool = app.run.equip_monster_skill(int(record["uid"]), slot, skill_id)
+	if changed:
+		app.autosave()
+		show_prep_after_mode_change()
 
 
 func _on_toggle(uid: int, pressed: bool) -> void:

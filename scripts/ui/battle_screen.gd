@@ -588,36 +588,47 @@ func _update_unit_card() -> void:
 	if unit.side == "enemy" and unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND:
 		statuses.append("第%d轮增援：击杀不提供经验" % unit.spawn_round)
 	if unit.burn_ticks > 0:
-		statuses.append("灼烧 %d 层（本方回合末伤害，减 1 层）" % unit.burn_ticks)
+		statuses.append("灼烧 %d 回合（每回合损失 %d HP）" % [unit.burn_ticks, Balance.burn_damage_for(unit.max_hp)])
 	if unit.parasite_source_uid >= 0:
 		var parasite_source := state.unit_by_uid(unit.parasite_source_uid)
 		var parasite_bonus := int(parasite_source.upgrades.get("leech_seed_tick_bonus", 0)) if parasite_source != null and parasite_source.side == unit.parasite_source_side else 0
-		statuses.append("寄生 %d 层" % unit.parasite_ticks)
-		statuses.append("寄生：本方回合末失去 %d HP；其他伤害或层数耗尽解除" % (Balance.PARASITE_DAMAGE + parasite_bonus))
+		statuses.append("寄生：整轮结束失去 %d HP；受到其他实际伤害解除" % (Balance.PARASITE_DAMAGE + parasite_bonus))
 	if unit.fire_amp_stacks > 0:
 		statuses.append("火焰增幅 +%d：下一次造成技能直伤时消耗" % unit.fire_amp_stacks)
+	if unit.electric_resonance_bonus > 0:
+		statuses.append("电共鸣蓄伤 +%d：下一次造成实际技能伤害时消耗" % unit.electric_resonance_bonus)
+	if unit.mountain_form_ticks > 0:
+		statuses.append("山岳形态 %d 回合：3×3 内友军与自身伤害减免三分之一后转移给施法者" % unit.mountain_form_ticks)
+	if unit.shield_hp > 0:
+		statuses.append("护盾 %d：优先抵挡伤害，破坏时冲击四邻格敌人；剩余 %d 回合" % [unit.shield_hp, unit.shield_ticks])
 	if unit.ice_glide_until_round > 0 and unit.ice_glide_until_round >= state.round:
 		statuses.append("溜冰：至第 %d 回合，沿连通冰面移动不消耗普通移动机会" % unit.ice_glide_until_round)
 	if unit.surf_until_round > 0 and unit.surf_until_round >= state.round:
 		statuses.append("冲浪：至第 %d 回合，沿连通水域移动不消耗普通移动机会" % unit.surf_until_round)
+	if unit.mirror_until_round > 0 and unit.mirror_until_round >= state.round:
+		statuses.append("镜花水月：至第 %d 回合，可免费跃迁至任意水格，水系技能直伤 +%d，可免疫一次伤害" % [unit.mirror_until_round, Balance.MIRROR_WATER_DAMAGE_BONUS])
 	if unit.root_pending:
 		statuses.append("定身待生效")
 	if unit.move_cancelled:
 		statuses.append("本回合被定身")
+	if unit.imprison_ticks > 0:
+		statuses.append("禁锢 %d 回合：不能普通移动，但仍可施法或进行其他行动" % unit.imprison_ticks)
+	if unit.vine_reapply_round > 0:
+		statuses.append("藤蔓禁锢将在第 %d 回合再次触发" % unit.vine_reapply_round)
 	if unit.slow_ticks > 0:
 		statuses.append("浸湿 %d 层（移动 -1）" % unit.slow_ticks)
 	if unit.shock_ticks > 0:
 		statuses.append("感电 %d 层" % unit.shock_ticks)
 	if unit.paralyzed_ticks > 0:
-		statuses.append("麻痹 1 层（本方回合末解除）")
+		statuses.append("麻痹 %d 回合（每轮开始时衰减）" % unit.paralyzed_ticks)
 	if unit.frozen:
-		statuses.append("冰冻 1 层（本方回合末解除）")
+		statuses.append("冰冻 %d 回合（无法行动；受到伤害时解除）" % unit.frozen_ticks)
 	if unit.channel_lock_round > state.round:
 		statuses.append("吟唱中：第 %d 回合本方阶段结算，届时不能行动" % unit.channel_lock_round)
 	elif unit.channel_lock_round == state.round:
 		statuses.append("吟唱代价：本阶段不能行动")
 	if unit.vine_ticks > 0:
-		statuses.append("藤蔓束缚（仅限制移动）%d 层" % unit.vine_ticks)
+		statuses.append("禁锢（旧存档藤蔓字段兼容）")
 	if unit.inspired:
 		statuses.append("首领鼓舞：移动 +1，当前生命与生命上限各 +5（本场）")
 	if unit.is_boss:
@@ -635,6 +646,11 @@ func _update_unit_card() -> void:
 	if statuses.is_empty():
 		statuses.append("无")
 	lines.append("状态：" + "、".join(statuses))
+	if unit.last_skill_id != "":
+		lines.append("最后使用：%s%s" % [
+			SkillDB.name_of(unit.last_skill_id),
+			"（已强化）" if unit.last_skill_upgraded else "",
+		])
 	var slide := state.ice_slide_outcome(unit)
 	if not slide.is_empty():
 		var direction_name := String(GridSpec.DIR_NAMES.get(slide["direction"], "未知"))
@@ -651,7 +667,7 @@ func _update_unit_card() -> void:
 		lines.append("本回合技能：%s" % ("可用" if skill_reason == "" else "不可用（%s）" % skill_reason))
 	if unit.side == "enemy":
 		var low_hp_rules := bool(state.capture_options.get("capture_low_hp", false))
-		lines.append("捕获概率：%d%%（训练家在周围八格可尝试%s）" % [
+		lines.append("捕获概率：%d%%（训练家在周围两格可尝试%s）" % [
 			mini(100, CaptureSystem.chance_percent(unit, low_hp_rules, state.debug_capture_percent) + (20 if state.capture_aid else 0)), "，目标需不高于半血" if low_hp_rules else "",
 		])
 	if unit.reward_carrier:
@@ -680,11 +696,13 @@ func _move_status(unit: CombatUnit) -> String:
 	if unit.paralyzed_ticks > 0:
 		return "无法移动（麻痹）"
 	if unit.vine_ticks > 0:
-		return "无法移动（藤蔓束缚）"
+		return "无法移动（禁锢）"
 	if unit.move_cancelled:
 		return "无法移动（本回合被定身或施法锁定）"
 	if state.terrain_travel_mode(unit) >= 0:
 		return "可用（地形移动免费）"
+	if state.mirror_water_travel_active(unit):
+		return "可用（镜花水月水格移动免费）"
 	if unit.moved:
 		return "已用"
 	if unit.effective_move() <= 0:
@@ -749,7 +767,7 @@ func _rebuild_skill_buttons() -> void:
 		for skill_id in unit.skills:
 			var id := String(skill_id)
 			var def := SkillDB.get_def(id)
-			var button_text := "%s（%s）" % [def.get("name", id), _skill_tag(id, unit)]
+			var button_text := "%s%s（%s）" % [def.get("name", id), "·特殊" if SkillDB.is_special(id) else "", _skill_tag(id, unit)]
 			var phase_reason := _skill_phase_block_reason(unit, id)
 			if phase_reason != "":
 				button_text += "·" + phase_reason
@@ -899,6 +917,8 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	var parts: Array = []
 	var base_damage := int(def.get("damage", 0))
 	base_damage = SkillResolver.upgraded_base_damage(unit, skill_id, base_damage)
+	if String(def.get("element", "")) == "water" and state.mirror_water_travel_active(unit):
+		base_damage += Balance.MIRROR_WATER_DAMAGE_BONUS
 	var damage := Balance.skill_damage_for_side(base_damage, unit.side)
 	if skill_id == "flame_jet":
 		parts.append("伤害 %d · 邻格 %d" % [damage, Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, int(def.get("damage", 0)) + int(def.get("adjacent_bonus", 0))), unit.side)])
@@ -910,10 +930,44 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("吸火 ≤2 格 · 每格 +%d" % int(unit.upgrades.get("fire_amplify_power", Balance.SKILL_DAMAGE_UPGRADE)))
 	elif skill_id == "ice_glide" or skill_id == "surf":
 		parts.append("地形免费移动 %d 回合" % (3 + int(unit.upgrades.get("ice_glide_duration", 0)) if skill_id == "ice_glide" else 3 + int(unit.upgrades.get("surf_duration", 0))))
+	elif skill_id == "mirror_water_moon":
+		parts.append("%d 回合 · 水伤 +%d · 受击免疫" % [Balance.MIRROR_WATER_MOON_ROUNDS + int(unit.upgrades.get("mirror_water_moon_duration", 0)), Balance.MIRROR_WATER_DAMAGE_BONUS])
+	elif skill_id == "flame_rush":
+		parts.append("伤害 %d · 跃迁燃烧格" % damage)
+	elif skill_id == "windfire_breath":
+		parts.append("前方 8 格 · 伤害 %d · 击退 1 格" % damage)
+	elif skill_id == "furnace_fist":
+		var furnace_heal := 5 + int(unit.upgrades.get("furnace_fist_healing", 0))
+		parts.append("伤害 %d · 回复 %d/%d" % [damage, furnace_heal, furnace_heal + 5])
+	elif skill_id == "skyfire":
+		parts.append("十字 5 格 · 伤害 %d · 灼烧" % damage)
+	elif skill_id == "combustion":
+		parts.append("伤害 %d · 灼烧 %d" % [damage, Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, 16), unit.side)])
+	elif skill_id == "burn_out":
+		var sacrifice_damage := ceili(float(unit.max_hp) * 0.5)
+		sacrifice_damage = SkillResolver.upgraded_base_damage(unit, skill_id, sacrifice_damage)
+		parts.append("单体伤害 %d · 射程 5 · 自损 %d" % [Balance.skill_damage_for_side(sacrifice_damage, unit.side), ceili(float(unit.max_hp) * 0.5)])
+	elif skill_id == "wild_vines":
+		parts.append("前方 %d 格 · 生成藤蔓 · 进入禁锢" % SkillResolver.wild_vines_reach(unit))
+	elif skill_id == "water_magic_burst":
+		var center_damage := Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, 11), unit.side)
+		parts.append("十字 5 格 · 伤害 %d · 中心 %d · 击退" % [damage, center_damage])
+	elif skill_id == "ice_breath":
+		parts.append("前方 3 格宽 × 2 格深 · 伤害 %d · 浸湿转冰冻" % damage)
 	elif skill_id == "tree_man":
 		parts.append("即时召唤 · 上限 1")
 	elif skill_id == "herbal_heal":
 		parts.append("吟唱治疗 %d · 固定曼哈顿 2 格" % (Balance.HERBAL_HEAL + int(unit.upgrades.get("herbal_heal_amount", 0))))
+	elif skill_id == "first_aid":
+		parts.append("回复 %d" % SkillResolver.first_aid_healing(unit))
+	elif skill_id == "rooted_grass":
+		var rooted_width := 3 + 2 * int(unit.upgrades.get("rooted_grass_radius", 0))
+		parts.append("%d×%d 草丛 · 含自身" % [rooted_width, rooted_width])
+	elif skill_id == "leaf_wind":
+		var strong_damage := Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, 12), unit.side)
+		parts.append("伤害 %d · 草丛/藤蔓 %d" % [damage, strong_damage])
+	elif skill_id == "antidote":
+		parts.append("解除异常（冰冻除外） · 回复 %d" % SkillResolver.antidote_healing(unit))
 	elif skill_id == "tailwind":
 		var width := 5 + 2 * int(unit.upgrades.get("tailwind_reach", 0))
 		parts.append("自身周围 %d×%d · 移动力 +2" % [width, width])
@@ -923,6 +977,44 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("伤害 %d · 传导每两格−2，最低4" % damage)
 	elif skill_id in ["rain_call", "rain_dance"]:
 		parts.append("13格菱形" if int(unit.upgrades.get("rain_radius_bonus", 0)) > 0 else "3×3九格")
+	elif skill_id == "magnet_pull":
+		parts.append("射程 %d · 拉近 1 格/带电 2 格" % SkillResolver.magnet_pull_range(unit))
+	elif skill_id == "glare":
+		var glare_width := 3 + 2 * int(unit.upgrades.get("glare_radius", 0))
+		parts.append("%d×%d · 敌人感电 1 层" % [glare_width, glare_width])
+	elif skill_id == "electromagnetic_laser":
+		parts.append("伤害 %d · 射程 4 · 带电目标可穿障" % damage)
+	elif skill_id == "electric_resonance":
+		parts.append("感电 +%d · 麻痹 +%d" % [SkillResolver.resonance_shock_bonus(unit), SkillResolver.resonance_paralysis_bonus(unit)])
+	elif skill_id == "electric_spark":
+		parts.append("直线 3 格 · 伤害 %d · 带电灼烧" % damage)
+	elif skill_id == "imprint":
+		parts.append("复制最后普通技能 · 不保留")
+	elif skill_id == "mountain_chain":
+		parts.append("基础 %d 段 · 周围岩石加段 · 每段 %d" % [2 + int(unit.upgrades.get("mountain_chain_segments", 0)), damage])
+	elif skill_id == "mountain_form":
+		parts.append("%d×%d 减伤三分之一 · 转移给自身 · 1 回合" % [
+			3 + 2 * int(unit.upgrades.get("mountain_form_radius", 0)),
+			3 + 2 * int(unit.upgrades.get("mountain_form_radius", 0)),
+		])
+	elif skill_id == "guard_rock":
+		parts.append("护盾 %d · 持续 %d 回合 · 破盾四邻 %d 伤害" % [
+			SkillResolver.guard_rock_shield_amount(unit),
+			Balance.SHIELD_TICKS,
+			Balance.GUARD_ROCK_BREAK_DAMAGE,
+		])
+	elif skill_id == "rock_blast":
+		parts.append("伤害 %d · 击退 1 格 · 两侧分裂 %d 伤害" % [
+			damage,
+			3 + (2 if int(unit.upgrades.get("rock_blast_damage", 0)) > 0 else 0),
+		])
+	elif skill_id == "water_drop_stone":
+		parts.append("伤害 %d · 浸湿追加 %d · 岩石延伸" % [
+			damage,
+			3 + (2 if int(unit.upgrades.get("water_drop_stone_damage", 0)) > 0 else 0),
+		])
+	elif skill_id == "fire_burst" and int(unit.upgrades.get("fireball_damage", 0)) > 0:
+		parts.append("伤害 %d · 中心 %d" % [damage, Balance.skill_damage_for_side(base_damage + int(unit.upgrades["fireball_damage"]), unit.side)])
 	elif skill_id == "double_cast" and int(unit.upgrades.get("double_cast_range", 0)) > 0:
 		parts.append("相邻双目标")
 	elif damage > 0:
@@ -932,6 +1024,8 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("射线 %d-%d" % [int(def.get("min_range", 1)), int(def.get("max_range", 8)) + SkillResolver._range_bonus(state, unit, skill_id) + (int(unit.upgrades.get("freeze_ray_range", 0)) if skill_id == "freeze_ray" else 0)])
 	elif skill_id == "lightning":
 		parts.append("全场锁定 · 蓄力")
+	elif skill_id == "flame_rush":
+		parts.append("全图燃烧格落点")
 	elif kind == "unit":
 		var actual_range := int(def.get("range", 1))
 		if SkillDB.is_placeholder(skill_id):
@@ -939,6 +1033,8 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		elif skill_id == "rock_break":
 			actual_range += int(unit.upgrades.get(skill_id + "_range", 0))
 		parts.append("射程 %d" % actual_range)
+	elif bool(def.get("global_range", false)):
+		parts.append("全图落点")
 	elif kind == "cell":
 		parts.append("落点 %d%s" % [int(def.get("range", 3)), " · 蓄力" if bool(def.get("channel", false)) else ""])
 	elif kind == "charge":
@@ -1001,9 +1097,13 @@ func _action_detail(action: Dictionary) -> String:
 			text += "（%s）" % ("克制 ×1.25" if int(hit["modifier"]) > 0 else "抵抗 ×0.75")
 		if bool(hit.get("killed", false)):
 			text += "（致死）"
+		if bool(hit.get("mirror_immune", false)):
+			text += "（镜花水月免疫）"
 		if hit.get("push") != null and bool(hit["push"].get("death", false)):
 			text += "（推入致死地形）"
 		parts.append(text)
+	if int(meta.get("self_damage", 0)) > 0:
+		parts.append("自身损失 %d" % int(meta["self_damage"]))
 	if meta.get("self_death", false):
 		parts.append("自毁")
 	return "；".join(parts)
@@ -1247,6 +1347,12 @@ func _preview_overlays(preview: Dictionary) -> void:
 		var unit := state.unit_by_uid(selected_uid)
 		if unit != null:
 			board.arrows.append({"from": unit.cell, "to": preview["self_move"], "color": Color(1.0, 0.8, 0.3)})
+	var pull = preview.get("pull")
+	if pull != null:
+		var pull_from: Vector2i = pull.get("from", Vector2i(-1, -1))
+		var pull_to: Vector2i = pull.get("to", Vector2i(-1, -1))
+		if GridSpec.is_inside(pull_from) and GridSpec.is_inside(pull_to) and pull_from != pull_to:
+			board.arrows.append({"from": pull_from, "to": pull_to, "color": Color(0.55, 0.9, 1.0)})
 	for change in preview.get("terrain_changes", []):
 		board.markers.append({
 			"cell": change["cell"], "kind": "text", "text": "变%s" % TerrainDB.name_of(int(change["to"])),
@@ -1469,6 +1575,30 @@ func _show_merchant(message: String = "") -> void:
 		button.tooltip_text = RelicDB.description_of(relic) if is_relic else Merchant.ITEMS[id][2]
 		button.pressed.connect(func() -> void: _trade("buy", id))
 		list.add_child(button)
+	list.add_child(UIKit.label("技能强化 · 每次12原质（亲密度可折扣）", 18, UIKit.ACCENT))
+	for record in app.run.carried:
+		var uid := int(record["uid"])
+		var empty_slots: int = app.run.monster_empty_engraving_slots(record)
+		var total_slots: int = app.run.monster_engraving_slots(record)
+		list.add_child(UIKit.wrapped("%s · 空刻印槽 %d/%d" % [
+			SpeciesDB.name_of(String(record["species_id"])), empty_slots, total_slots,
+		], 13, UIKit.TEXT_DIM))
+		if empty_slots <= 0:
+			list.add_child(UIKit.wrapped("没有空刻印槽，无法继续强化。", 12, UIKit.TEXT_DIM))
+			continue
+		var equipped: Array = record.get("equipped_skills", [])
+		for upgrade_id in app.run.available_monster_upgrades(uid):
+			var info := RunState.upgrade_info(String(upgrade_id))
+			var skill_id := String(info.get("requires_skill", ""))
+			var cost: int = app.run.merchant_skill_upgrade_cost(record)
+			var marker := " · 已装备" if equipped.has(skill_id) else " · 未装备"
+			var button := UIKit.small_button("强化 %s%s · %d原质\n%s" % [
+				SkillDB.name_of(skill_id), marker, cost, String(info.get("desc", "")),
+			])
+			button.name = "SkillUpgrade_%d_%s" % [uid, skill_id]
+			button.disabled = app.run.essence < cost
+			button.pressed.connect(_purchase_skill_upgrade.bind(uid, skill_id))
+			list.add_child(button)
 	list.add_child(UIKit.label("出售", 18, UIKit.ACCENT))
 	for kind in app.run.food_inventory:
 		var id := String(kind)
@@ -1523,6 +1653,15 @@ func _trade(operation: String, id: String, quantity: int = 1) -> void:
 	if busy or _playback_active():
 		return
 	var result: Dictionary = app.merchant_trade(state, operation, id, quantity)
+	selected_uid = 0
+	refresh_all()
+	_show_merchant(String(result["reason"]))
+
+
+func _purchase_skill_upgrade(uid: int, skill_id: String) -> void:
+	if busy or _playback_active():
+		return
+	var result: Dictionary = app.purchase_skill_upgrade(state, uid, skill_id)
 	selected_uid = 0
 	refresh_all()
 	_show_merchant(String(result["reason"]))
@@ -1600,8 +1739,32 @@ func _on_skill_pressed(skill_id: String) -> void:
 			board.attack_cells.append(cell)
 		if skill_id == "tailwind" or skill_id == "herbal_heal":
 			board.area_cells = SkillResolver.support_area(unit.cell, 2 + int(unit.upgrades.get("tailwind_reach", 0)) if skill_id == "tailwind" else 2, skill_id == "tailwind")
+		if skill_id == "rooted_grass":
+			board.area_cells = SkillResolver.rooted_grass_area(unit)
+		if skill_id == "glare":
+			board.area_cells = SkillResolver.glare_area(unit)
+		if skill_id == "electric_resonance":
+			board.area_cells = SkillResolver.resonance_area(unit)
+		if skill_id == "magnet_pull":
+			for direction in GridSpec.DIRS4:
+				for distance in range(1, SkillResolver.magnet_pull_range(unit) + 1):
+					var reach: Vector2i = unit.cell + direction * distance
+					if GridSpec.is_inside(reach):
+						board.area_cells.append(reach)
 		if skill_id == "earth_shake":
 			for affected in SkillResolver.front_area_cells(unit.cell, entry["dir"], 3):
+				if not board.area_cells.has(affected):
+					board.area_cells.append(affected)
+		if skill_id == "windfire_breath":
+			for affected in SkillResolver.half_circle_cells(unit.cell, entry["dir"]):
+				if not board.area_cells.has(affected):
+					board.area_cells.append(affected)
+		if skill_id == "wild_vines":
+			for affected in SkillResolver.wild_vines_cells(state, unit, entry["dir"]):
+				if not board.area_cells.has(affected):
+					board.area_cells.append(affected)
+		if skill_id == "electric_spark":
+			for affected in SkillResolver.electric_spark_cells(state, unit, entry["dir"]):
 				if not board.area_cells.has(affected):
 					board.area_cells.append(affected)
 	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
@@ -1624,7 +1787,7 @@ func _on_capture_pressed() -> void:
 	board.clear_overlays()
 	for enemy in _capture_targets(trainer):
 		board.attack_cells.append(enemy.cell)
-	hint_label.text = "捕获：点击周围八格内的合法目标。"
+	hint_label.text = "捕获：点击周围两格内的合法目标。"
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_position_action_panel()
 	board.queue_redraw()
@@ -1796,7 +1959,7 @@ func do_capture(target_uid: int) -> bool:
 		return false
 	var result := state.capture_attempt(trainer, target)
 	if not bool(result.get("ok", false)):
-		hint_label.text = "无法捕获：目标须在周围八格，本回合尚未尝试，且满足当前生命规则。"
+		hint_label.text = "无法捕获：目标须在周围两格，本回合尚未尝试，且满足当前生命规则。"
 		hint_label.add_theme_color_override("font_color", UIKit.BAD)
 		return false
 	capture_mode = false

@@ -162,7 +162,7 @@ static func configure_enemy(unit: CombatUnit, run_seed: int, battle_index: int, 
 	unit.enemy_level = 1 + floor_of(battle_index) * 2 + (1 if make_boss else 0)
 	unit.combat_level = unit.enemy_level
 	unit.skills = enemy_skills_for_level(unit.species_id, unit.enemy_level)
-	unit.max_hp = MonsterProgression.max_hp(unit.species_id, unit.enemy_level)
+	unit.max_hp = MonsterProgression.enemy_max_hp(unit.species_id, unit.enemy_level)
 	unit.hp = unit.max_hp
 	unit.upgrades = enemy_upgrade_values(run_seed, battle_index, spawn_index, unit.species_id, make_boss)
 	if make_boss:

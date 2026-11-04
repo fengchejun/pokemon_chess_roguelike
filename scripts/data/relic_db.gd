@@ -12,7 +12,7 @@ const DEFINITIONS := {
 	"rushing_tide": ["激流", "水系技能对水格敌人直伤每级 +5。"],
 	"green_pulse": ["绿脉", "站在草丛或藤蔓上的我方单位技能直伤每级 +4。"],
 	"root_rest": ["根息", "我方阶段开始时，草丛或藤蔓上的友军每级恢复 2 HP。"],
-	"root_bind": ["缠根", "对受藤蔓束缚或待定身敌人的技能直伤每级 +5。"],
+	"root_bind": ["缠根", "对受禁锢或待定身敌人的技能直伤每级 +5。"],
 	"rock_pulse": ["岩脉", "紧邻障碍的我方单位技能直伤每级 +4。"],
 	"rock_armor": ["岩甲", "紧邻障碍的我方单位受到敌方技能直伤每级 −2。"],
 	"wall_crash": ["冲壁", "我方推击敌人时碰撞伤害每级 +4。"],
@@ -75,7 +75,7 @@ static func damage_bonus(state, source: CombatUnit, target: CombatUnit, opts: Di
 		bonus += 5 * rank(stacks, "frost_wet")
 	if on_grass_or_vines(state, source):
 		bonus += 4 * rank(stacks, "green_pulse")
-	if target.vine_ticks > 0 or target.root_pending:
+	if target.imprison_ticks > 0 or target.root_pending:
 		bonus += 5 * rank(stacks, "root_bind")
 	if state.adjacent_to_obstacle(source):
 		bonus += 4 * rank(stacks, "rock_pulse")

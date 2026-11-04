@@ -24,7 +24,7 @@ func _learning(t: TestContext) -> void:
 		var choices := SkillDB.learnable_ids_for(element)
 		for skill_id in expectations[element]:
 			t.check(choices.has(skill_id), "%s 可在升级时学习 %s" % [element, skill_id])
-	for element in ["fire", "water", "grass", "electric", "rock", "ice", "wind"]:
+	for element in Elements.LIST:
 		for skill_id in SkillDB.learnable_ids_for(element):
 			t.check(RunState.upgrade_id_for_skill(String(skill_id)) != "", "%s 学会后有专属强化" % skill_id)
 	var starter := TestScenario.make_state(["fire_starter", "water_starter", "grass_starter"], [["ice_wild1", Vector2i(6, 6)]])
@@ -35,8 +35,11 @@ func _learning(t: TestContext) -> void:
 	var record := run_state.record_by_uid(1)
 	MonsterProgression.award_xp(record, MonsterProgression.threshold_for_level(2))
 	t.check(run_state.available_new_skills(1).has("leech_seed"), "Lv2 成长列表含寄生种子")
-	t.check(run_state.learn_monster_skill(1, 2, "leech_seed"), "Lv2 可真正学习寄生种子")
-	t.check((run_state.record_by_uid(1).get("known_skills", []) as Array).has("leech_seed"), "已学技能写入本局怪物记录")
+	var candidates := run_state.monster_level_choices(1, 2)
+	t.eq(candidates.size(), 3, "Lv2 从三招候选中选择一招")
+	var chosen := String(candidates[0])
+	t.check(run_state.learn_monster_skill(1, 2, chosen), "Lv2 可真正学习候选技能")
+	t.check((run_state.record_by_uid(1).get("known_skills", []) as Array).has(chosen), "已学技能写入本局怪物记录")
 
 
 func _parasite(t: TestContext) -> void:
@@ -50,13 +53,13 @@ func _parasite(t: TestContext) -> void:
 	t.check(bool(result.get("ok", false)), "相邻敌人可寄生")
 	t.eq(target.parasite_source_uid, caster.uid, "寄生记录来源")
 	var old_hp := target.hp
-	state._finish_status_effects("enemy")
+	state.settle_round()
 	t.eq(target.hp, old_hp - Balance.PARASITE_DAMAGE, "整轮结算寄生扣除配置的生命")
 	t.eq(caster.hp, caster.max_hp - 20 + Balance.PARASITE_HEAL, "仍存活的施法者回复生命")
 	state.damage_unit(caster, target, 1, {"element": "grass", "cause": "其他技能"})
 	t.eq(target.parasite_source_uid, -1, "受到其他实际伤害后寄生解除")
 	old_hp = target.hp
-	state._finish_status_effects("enemy")
+	state.settle_round()
 	t.eq(target.hp, old_hp, "解除后不再寄生扣血")
 	var guarded := TestScenario.make_state(["grass_starter"], [["rock_wild1", Vector2i(3, 2)]])
 	guarded.unit_by_uid(1).cell = Vector2i(2, 2)
@@ -75,7 +78,7 @@ func _parasite(t: TestContext) -> void:
 	deeper.cast_skill(deep_caster, "leech_seed", {"type": "unit", "unit": deep_target.uid, "cell": deep_target.cell})
 	var deep_hp := deep_target.hp
 	var caster_hp := deep_caster.hp
-	deeper._finish_status_effects("enemy")
+	deeper.settle_round()
 	t.eq(deep_hp - deep_target.hp, 6, "强化寄生每轮伤害为六点")
 	t.eq(deep_caster.hp - caster_hp, 6, "强化寄生同时提高回复上限")
 

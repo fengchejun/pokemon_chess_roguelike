@@ -7,6 +7,11 @@ const MATCHUPS_ENABLED := true
 
 const LIST := ["fire", "water", "grass", "rock", "electric"]
 
+const LEGACY_ALIASES := {
+	"ice": "water",
+	"wind": "electric",
+}
+
 const NAMES := {
 	"fire": "火",
 	"water": "水",
@@ -44,6 +49,8 @@ const BEATS := {
 static func modifier(attacker: String, defender: String) -> int:
 	if not MATCHUPS_ENABLED:
 		return 0
+	attacker = canonical(attacker)
+	defender = canonical(defender)
 	if attacker == "" or defender == "" or not BEATS.has(attacker) or not BEATS.has(defender):
 		return 0
 	if BEATS[attacker].has(defender):
@@ -63,12 +70,17 @@ static func direct_damage(base: int, attacker: String, defender: String) -> int:
 
 
 static func name_of(element: String) -> String:
-	return NAMES.get(element, "无")
+	return NAMES.get(canonical(element), "无")
+
+
+static func canonical(element: String) -> String:
+	return String(LEGACY_ALIASES.get(element, element))
 
 
 static func counter_hint(element: String) -> String:
 	if not MATCHUPS_ENABLED:
 		return ""
+	element = canonical(element)
 	if not BEATS.has(element):
 		return "无属性克制"
 	var prey_names: PackedStringArray = []
@@ -82,11 +94,11 @@ static func counter_hint(element: String) -> String:
 
 
 static func color_of(element: String) -> Color:
-	return COLORS.get(element, COLORS[""])
+	return COLORS.get(canonical(element), COLORS[""])
 
 
 static func order_index(element: String) -> int:
-	var index := LIST.find(element)
+	var index := LIST.find(canonical(element))
 	return index if index >= 0 else 99
 
 

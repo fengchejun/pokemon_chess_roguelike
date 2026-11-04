@@ -489,7 +489,7 @@ func _preview_units(run: RunState) -> Array:
 			unit.enemy_level += bonus
 			unit.combat_level = unit.enemy_level
 			unit.skills = BattleDB.enemy_skills_for_level(unit.species_id, unit.enemy_level)
-			unit.max_hp = MonsterProgression.max_hp(unit.species_id, unit.enemy_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0)
+			unit.max_hp = MonsterProgression.enemy_max_hp(unit.species_id, unit.enemy_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0)
 			unit.hp = unit.max_hp
 		unit.set_corrupted(bool(cfg.get("corrupted", false)))
 		unit.reward_carrier = unit.uid == int(map.get("carrier_uid", -1)) and not unit.is_boss

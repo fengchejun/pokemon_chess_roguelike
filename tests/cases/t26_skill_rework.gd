@@ -22,7 +22,7 @@ func _rock(t: TestContext) -> void:
 	var hit := frozen.cast_skill(caster, "rock_break", {"type": "unit", "unit": target.uid, "cell": target.cell})
 	t.check(bool(hit.get("ok", false)), "碎岩曼哈顿两格可命中")
 	t.eq(target.hp, 120 - (SkillDB.damage_of("rock_break") + Balance.SKILL_DAMAGE_UPGRADE * 2 - Balance.DIRECT_GUARD_REDUCTION) * 3, "冰冻碎岩在增伤与直伤减免后乘三")
-	t.check(not target.frozen and target.paralyzed_ticks > 0, "碎岩解除冰冻但仍保留本轮行动限制")
+	t.check(not target.frozen and target.paralyzed_ticks == 0, "碎岩解除冰冻且不会额外附加麻痹")
 	var obstacle := TestScenario.make_state(["rock_starter"], [["fire_wild1", Vector2i(7, 6)]],
 		TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(3, 2), TerrainDB.OBSTACLE]]))
 	obstacle.unit_by_uid(1).cell = Vector2i(1, 2)

@@ -75,7 +75,7 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 			unit.set(key, decode(member[key]))
 		if not member.has("parasite_ticks") and unit.parasite_source_uid >= 0:
 			unit.parasite_ticks = Balance.PARASITE_TICKS
-		unit.paralyzed_ticks = mini(1, unit.paralyzed_ticks)
+		unit.element = Elements.canonical(unit.element)
 		var had_retired_skill := unit.skills.has("wind_gust")
 		unit.skills = unit.skills.filter(func(id): return not SkillDB.get_def(String(id)).is_empty())
 		if had_retired_skill and unit.skills.is_empty():
@@ -84,6 +84,14 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		unit.upgrades.erase("volt_replace_flex")
 		if int(snapshot.get("version", 1)) < 3:
 			RunState.rebase_upgrade_values(unit.upgrades)
+		if unit.imprison_ticks <= 0 and unit.vine_ticks > 0:
+			unit.imprison_ticks = unit.vine_ticks
+		unit.vine_ticks = 0
+		unit.vine_sources.clear()
+		if unit.frozen and unit.frozen_ticks <= 0:
+			unit.frozen_ticks = Balance.FREEZE_TICKS
+		elif unit.frozen_ticks > 0:
+			unit.frozen = true
 		state.units.append(unit)
 	if not snapshot["fields"].has("extra_rewards") and state.reward.get("state") in ["map", "guarding"]:
 		state.reward["state"] = "absent"
@@ -102,7 +110,9 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 			var maximum := Balance.nest_max_hp(state.battle_index)
 			current["hp"] = clampi(roundi(int(current.get("hp", 0)) * maximum / 3.0), 0, maximum)
 			current["max_hp"] = maximum
+	state.mentor.clear()
 	state.nest["exits"] = [] # Old exits no longer affect movement, targeting or spawning.
+	state.enforce_player_nest_landing_rule()
 	var rng: Dictionary = snapshot["rng"]
 	state.spawn_rng.seed = int(rng["spawn_seed"])
 	state.spawn_rng.state = int(rng["spawn_state"])

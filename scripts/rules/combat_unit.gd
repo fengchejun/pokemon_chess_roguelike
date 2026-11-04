@@ -55,6 +55,16 @@ var move_cancelled: bool = false:
 		move_cancelled = value
 		if was_active and not move_cancelled and not root_pending:
 			feedback_changed.emit("clear", "定身解除", 0, cell)
+var imprison_ticks: int = 0:
+	set(value):
+		var was_active := imprison_ticks > 0
+		var active := value > 0
+		var announce := active != was_active
+		imprison_ticks = value
+		if announce:
+			feedback_changed.emit("status" if active else "clear", "禁锢" + ("解除" if not active else ""), int(value), cell)
+var vine_reapply_round: int = 0
+var vine_reapply_cell: Vector2i = Vector2i(-1, -1)
 var slow_ticks: int = 0:
 	set(value):
 		var was_active := slow_ticks > 0
@@ -95,8 +105,13 @@ var frozen: bool = false:
 		var active := value
 		var announce := active != was_active
 		frozen = value
+		if active and frozen_ticks <= 0:
+			frozen_ticks = Balance.FREEZE_TICKS
+		elif not active:
+			frozen_ticks = 0
 		if announce:
 			feedback_changed.emit("status" if active else "clear", "冰冻" + ("解除" if not active else ""), int(value), cell)
+var frozen_ticks: int = 0
 var vine_ticks: int = 0:
 	set(value):
 		var was_active := vine_ticks > 0
@@ -104,7 +119,7 @@ var vine_ticks: int = 0:
 		var announce := active != was_active
 		vine_ticks = value
 		if announce:
-			feedback_changed.emit("status" if active else "clear", "藤蔓束缚" + ("解除" if not active else ""), int(value), cell)
+			feedback_changed.emit("status" if active else "clear", "禁锢" + ("解除" if not active else ""), int(value), cell)
 var vine_sources: Dictionary = {} # 束缚来源格 -> 剩余行动阶段；地块消失时按来源清除。
 var haste_ticks: int = 0:
 	set(value):
@@ -153,6 +168,14 @@ var surf_until_round: int = 0:
 		surf_until_round = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "冲浪" + ("解除" if not active else ""), int(value), cell)
+var mirror_until_round: int = 0:
+	set(value):
+		var was_active := mirror_until_round > 0
+		var active := value > 0
+		var announce := active != was_active
+		mirror_until_round = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "镜花水月" + ("解除" if not active else ""), int(value), cell)
 var fire_amp_stacks: int = 0:
 	set(value):
 		var was_active := fire_amp_stacks > 0
@@ -161,6 +184,38 @@ var fire_amp_stacks: int = 0:
 		fire_amp_stacks = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "火焰增幅" + ("解除" if not active else ""), int(value), cell)
+var electric_resonance_bonus: int = 0:
+	set(value):
+		var was_active := electric_resonance_bonus > 0
+		var active := value > 0
+		var announce := active != was_active or (value > electric_resonance_bonus and value > 0)
+		electric_resonance_bonus = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "电共鸣蓄伤" + ("解除" if not active else ""), int(value), cell)
+var mountain_form_ticks: int = 0:
+	set(value):
+		var was_active := mountain_form_ticks > 0
+		var active := value > 0
+		var announce := active != was_active
+		mountain_form_ticks = value
+		if announce:
+			feedback_changed.emit("buff" if active else "clear", "山岳形态" + ("解除" if not active else ""), int(value), cell)
+var shield_hp: int = 0:
+	set(value):
+		var was_active := shield_hp > 0
+		var active := value > 0
+		var announce := active != was_active or (active and value > shield_hp)
+		shield_hp = maxi(0, value)
+		if announce:
+			feedback_changed.emit("shield" if active else "clear", "护盾" + ("解除" if not active else ""), int(value), cell)
+var shield_ticks: int = 0
+var shield_source_uid: int = -1
+
+# 最近一次成功施放，供「拓印」读取。
+var last_skill_id: String = ""
+var last_skill_from: Vector2i = Vector2i(-1, -1)
+var last_skill_target: Dictionary = {}
+var last_skill_upgraded: bool = false
 
 # 其他
 var combat_xp: int = 0
@@ -183,6 +238,8 @@ func hp_ratio() -> float:
 
 
 func effective_move() -> int:
+	if frozen or imprison_ticks > 0:
+		return 0
 	var value := move_points
 	if inspired:
 		value += 1
@@ -209,7 +266,7 @@ func can_use_in_battle(skill_id: String) -> bool:
 
 
 func can_move_now(free_terrain: bool = false) -> bool:
-	return is_alive() and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and vine_ticks <= 0 and not move_cancelled and (free_terrain or (not moved and effective_move() > 0))
+	return is_alive() and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and vine_ticks <= 0 and imprison_ticks <= 0 and not move_cancelled and (free_terrain or (not moved and effective_move() > 0))
 
 
 func dup() -> CombatUnit:
@@ -241,6 +298,9 @@ func dup() -> CombatUnit:
 	copy.capture_used = capture_used
 	copy.root_pending = root_pending
 	copy.move_cancelled = move_cancelled
+	copy.imprison_ticks = imprison_ticks
+	copy.vine_reapply_round = vine_reapply_round
+	copy.vine_reapply_cell = vine_reapply_cell
 	copy.slow_ticks = slow_ticks
 	copy.burn_ticks = burn_ticks
 	copy.burn_source_uid = burn_source_uid
@@ -248,6 +308,7 @@ func dup() -> CombatUnit:
 	copy.shock_ticks = shock_ticks
 	copy.paralyzed_ticks = paralyzed_ticks
 	copy.frozen = frozen
+	copy.frozen_ticks = frozen_ticks
 	copy.vine_ticks = vine_ticks
 	copy.vine_sources = vine_sources.duplicate()
 	copy.haste_ticks = haste_ticks
@@ -262,7 +323,17 @@ func dup() -> CombatUnit:
 	copy.parasite_source_side = parasite_source_side
 	copy.ice_glide_until_round = ice_glide_until_round
 	copy.surf_until_round = surf_until_round
+	copy.mirror_until_round = mirror_until_round
 	copy.fire_amp_stacks = fire_amp_stacks
+	copy.electric_resonance_bonus = electric_resonance_bonus
+	copy.mountain_form_ticks = mountain_form_ticks
+	copy.shield_hp = shield_hp
+	copy.shield_ticks = shield_ticks
+	copy.shield_source_uid = shield_source_uid
+	copy.last_skill_id = last_skill_id
+	copy.last_skill_from = last_skill_from
+	copy.last_skill_target = last_skill_target.duplicate(true)
+	copy.last_skill_upgraded = last_skill_upgraded
 	copy.fresh_spawn = fresh_spawn
 	copy.corrupted = corrupted
 	copy.corruption_hp_bonus = corruption_hp_bonus

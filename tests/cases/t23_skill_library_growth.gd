@@ -12,12 +12,17 @@ func run(t: TestContext) -> void:
 
 
 func _test_placeholder_effect(t: TestContext) -> void:
-	for element in ["fire", "water", "grass", "electric", "rock", "ice", "wind"]:
+	for element in Elements.LIST:
 		var ids := SkillDB.placeholder_ids_for(element)
 		t.eq(ids.size(), 2, "%s 有两招占位技能" % element)
-		var expected_element: String = "water" if element == "ice" else "electric" if element == "wind" else element
-		t.check(ids[0] != ids[1] and SkillDB.element_of(ids[0]) == expected_element, "%s 旧 ID 保留且归入当前属性" % element)
+		t.check(ids[0] != ids[1] and SkillDB.element_of(ids[0]) == element, "%s 占位技能使用当前五属性" % element)
 		t.eq(SkillDB.get_def(ids[0]).get("range", 0), 2, "%s 占位招式基础射程 2" % element)
+	t.check(SkillDB.placeholder_ids_for("ice").is_empty(), "冰不再作为独立占位属性")
+	t.check(SkillDB.placeholder_ids_for("wind").is_empty(), "风不再作为独立占位属性")
+	t.eq(SkillDB.element_of("trial_ice_1"), "water", "旧冰试招 ID 归入水属性")
+	t.eq(SkillDB.element_of("trial_wind_1"), "electric", "旧风试招 ID 归入电属性")
+	t.check(not SkillDB.learnable_ids_for("water").has("trial_ice_1"), "旧冰试招不进入水系普通学习池")
+	t.check(not SkillDB.learnable_ids_for("electric").has("trial_wind_1"), "旧风试招不进入电系普通学习池")
 	var battle := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(3, 3)]])
 	var caster := battle.unit_by_uid(1)
 	caster.cell = Vector2i(1, 3)
@@ -39,7 +44,7 @@ func _test_placeholder_effect(t: TestContext) -> void:
 	ranged_caster.upgrades["trial_fire_1_range"] = 1
 	t.check(not ranged.skill_targets(ranged_caster, "trial_fire_1").is_empty(), "强化后试招射程增加至三格")
 	var upgraded_preview := ranged.preview_skill(ranged_caster, "trial_fire_1", {"type": "unit", "unit": 100, "cell": Vector2i(4, 3)})
-	t.eq(int(upgraded_preview["hits"][0]["damage"]), 13, "强化后试招预览直伤为13")
+	t.eq(int(upgraded_preview["hits"][0]["damage"]), 13, "强化后试招预览直伤为 20")
 	var upgraded_hp := ranged.unit_by_uid(100).hp
 	t.check(bool(ranged.cast_skill(ranged_caster, "trial_fire_1", {"type": "unit", "unit": 100, "cell": Vector2i(4, 3)}).get("ok", false)), "强化试招实战可施放")
 	t.eq(upgraded_hp - ranged.unit_by_uid(100).hp, 13, "强化后试招实战直伤与预览一致")
@@ -53,7 +58,7 @@ func _test_missing_skill_upgrades(t: TestContext) -> void:
 	var crossed := charge.unit_by_uid(100)
 	var charge_hp := crossed.hp
 	SkillResolver.apply(charge, fire, "flame_charge", {"type": "cell", "cell": Vector2i(3, 3)}, false)
-	t.eq(crossed.hp, charge_hp - SkillDB.damage_of("flame_charge") - 3, "冲锋强化仅增加三点直伤")
+	t.eq(crossed.hp, charge_hp - SkillDB.damage_of("flame_charge") - 5, "冲锋强化增加五点直伤")
 	var vines := TestScenario.make_state(["grass_starter"], [["rock_wild1", Vector2i(7, 7)]])
 	var grass := vines.unit_by_uid(1)
 	grass.cell = Vector2i(1, 3)
@@ -101,38 +106,42 @@ func _test_missing_skill_upgrades(t: TestContext) -> void:
 func _test_save_and_equipment(t: TestContext) -> void:
 	var run_state := RunState.new_run(2301)
 	var fire := run_state.record_by_uid(1)
-	MonsterProgression.award_xp(fire, MonsterProgression.threshold_for_level(4))
-	t.check(run_state.learn_monster_skill(1, 2, "trial_fire_1"), "先学招领取 Lv2")
-	t.check(run_state.apply_mentor_upgrade(1, "trial_fire_1"), "导师可强化已学招式，不消耗等级机会")
-	t.eq((fire.get("claimed_even_levels", []) as Array), [2], "学习与强化都记录各自的等级")
+	MonsterProgression.award_xp(fire, MonsterProgression.threshold_for_level(5))
+	var level_two_skill := String(run_state.monster_level_choices(1, 2)[0])
+	t.check(run_state.learn_monster_skill(1, 2, level_two_skill), "Lv2 从三招候选中领取一招")
+	var level_four_skill := String(run_state.monster_level_choices(1, 4)[0])
+	t.check(run_state.learn_monster_skill(1, 4, level_four_skill), "Lv4 再领取一次三选一")
+	t.check(run_state.apply_merchant_skill_upgrade(1, level_two_skill), "技能强化消耗独立刻印槽")
+	t.eq((fire.get("claimed_even_levels", []) as Array), [2, 4], "两次学招各自记录已领取等级")
 	var saved := RunState.from_dict(run_state.to_dict())
 	var restored := saved.record_by_uid(1)
-	t.eq(restored.get("claimed_even_levels", []), [2], "v3 读档保留学招与强化两个已领取等级")
-	t.eq(restored.get("upgrades_taken", []), ["trial_fire_1_range"], "v3 读档保留占位招式强化")
-	t.eq((restored.get("equipped_skills", []) as Array).size(), 2, "读档保留两招装备及三格上限")
-	t.check(not saved.pending_upgrades(), "v3 读档不会重复发放已领取等级")
+	t.eq(restored.get("claimed_even_levels", []), [2, 4], "读档保留两次学招等级")
+	t.eq(restored.get("upgrades_taken", []), [RunState.upgrade_id_for_skill(level_two_skill)], "读档保留商人技能强化")
+	t.eq((restored.get("equipped_skills", []) as Array).size(), 3, "读档保留两招学习和三格装备上限")
+	t.check(not saved.pending_upgrades(), "读档不会重复发放已领取等级")
 	t.check(saved.equip_monster_skill(1, 1, ""), "整备换装可以卸下已学招式")
-	t.check((restored.get("known_skills", []) as Array).has("trial_fire_1"), "卸下后依然已学")
+	t.check((restored.get("known_skills", []) as Array).has(level_two_skill), "卸下后依然已学")
 	var deployed: Array = saved.build_deploy_units([1])
-	t.check(not (deployed[1] as CombatUnit).skills.has("trial_fire_1"), "下场战斗仅使用装备招式")
-	t.check(saved.equip_monster_skill(1, 1, "trial_fire_1"), "整备换装可重新装备保留的试招")
+	t.check(not (deployed[1] as CombatUnit).skills.has(level_two_skill), "下场战斗仅使用装备招式")
+	t.check(saved.equip_monster_skill(1, 1, level_two_skill), "整备换装可重新装备保留的招式")
 	deployed = saved.build_deploy_units([1])
-	t.eq(int((deployed[1] as CombatUnit).upgrades.get("trial_fire_1_range", 0)), 1, "重新装备后强化继续生效")
+	var upgrade_id := RunState.upgrade_id_for_skill(level_two_skill)
+	var upgrade_key := String(RunState.upgrade_info(upgrade_id).get("key", ""))
+	t.eq(int((deployed[1] as CombatUnit).upgrades.get(upgrade_key, 0)), int(RunState.upgrade_info(upgrade_id).get("value", 0)), "重新装备后商人强化继续生效")
 	var path := "res://.test_skill_library_save.json"
 	t.check(SaveSystem.save_run(saved, path), "新招式库可写入 JSON 存档")
 	var loaded := SaveSystem.load_run(path)
 	t.check(loaded != null, "新招式库可从 JSON 存档读取")
 	if loaded != null:
-		t.eq(loaded.record_by_uid(1).get("claimed_even_levels", []), [2], "JSON 往返仍保留学招和强化等级")
-		t.check((loaded.record_by_uid(1).get("equipped_skills", []) as Array).has("trial_fire_1"), "JSON 往返仍装备已学试招")
+		t.eq(loaded.record_by_uid(1).get("claimed_even_levels", []), [2, 4], "JSON 往返仍保留两次学招等级")
+		t.check((loaded.record_by_uid(1).get("equipped_skills", []) as Array).has(level_two_skill), "JSON 往返仍装备已学招式")
 	SaveSystem.delete_save(path)
 
 
 func _test_v2_migration(t: TestContext) -> void:
 	var old := RunState.new_run(2302)
 	var fire := old.record_by_uid(1)
-	fire["level"] = 6
-	fire["xp"] = 40
+	MonsterProgression.award_xp(fire, MonsterProgression.threshold_for_level(6))
 	fire["upgrades_taken"] = ["fireball_damage", "direct_guard", "max_hp_plus"]
 	fire["claimed_even_levels"] = [2, 4, 6]
 	fire["upgrades"] = {"fireball_damage": 1, "direct_guard": 1, "max_hp_plus": 2}
@@ -143,11 +152,15 @@ func _test_v2_migration(t: TestContext) -> void:
 	var migrated := RunState.from_dict(data)
 	var record := migrated.record_by_uid(1)
 	t.eq(int(record["level"]), 6, "v2 迁移保留局内等级")
-	t.eq(int(record["xp"]), 110, "v2 迁移换算到新曲线同等级")
+	t.eq(int(record["xp"]), 70, "v2 迁移保留经验")
 	t.eq(record["upgrades_taken"], ["fireball_damage"], "v2 仅保留技能专属强化")
 	t.eq(record["claimed_even_levels"], [2], "v2 通用强化占用的 Lv4 与 Lv6 已退还")
-	t.eq(migrated.pending_monster_levels().size(), 1, "旧等级奖励抵扣后Lv5仍可学招")
-	t.eq(record["level_choices"], {}, "v2 旧三选一候选清空")
+	t.eq(migrated.pending_monster_levels().size(), 2, "v2 退还等级成为两次待选")
+	t.eq(record["level_choices"], {}, "v2 旧三选一候选不会原样保留")
+	var candidates := migrated.monster_level_choices(1, 4)
+	t.eq(candidates.size(), 3, "v2 退还的首个待选等级重新生成三招候选")
+	for skill_id in candidates:
+		t.check(migrated.available_new_skills(1).has(String(skill_id)), "迁移候选来自当前普通可学池")
 	t.eq(int(record["hp"]), migrated.monster_max_hp(record), "移除生命强化后裁剪当前 HP")
 	t.eq(record["known_skills"], SpeciesDB.skills_of("fire_starter"), "旧局招式库由物种基础技能初始化")
 	t.eq((record["equipped_skills"] as Array).size(), 3, "旧局基础技能正常装备")
@@ -159,50 +172,48 @@ func _test_growth_and_prep_ui(t: TestContext) -> void:
 	t.tree.root.add_child(app)
 	app.run = RunState.new_run(2303)
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
-	MonsterProgression.award_xp(app.run.record_by_uid(1), MonsterProgression.threshold_for_level(7))
+	MonsterProgression.award_xp(app.run.record_by_uid(1), MonsterProgression.threshold_for_level(6))
 	app.run.settlement_pending = true
 	app.pending_settlement = {"battle": null, "outcome": {"reason": "victory", "exp": 0, "monster_exp": []}}
 	app._switch(load("res://scripts/ui/settlement_screen.gd").new())
-	var learn_type: Button = app.current_screen.find_child("MonsterGrowth_learn_1_2", true, false)
-	t.check(learn_type != null, "升级页提供学习类别")
-	if learn_type == null:
-		app.queue_free()
-		return
-	learn_type.pressed.emit()
-	var first: Button = app.current_screen.find_child("MonsterLearn_1_2_trial_fire_1", true, false)
-	t.check(first != null, "学招页列出第一招占位技能")
+	var first_skill := String(app.run.monster_level_choices(1, 2)[0])
+	var first: Button = app.current_screen.find_child("MonsterLearn_1_2_%s" % first_skill, true, false)
+	t.check(first != null, "Lv2 升级页直接列出三招候选")
 	first.pressed.emit()
-	learn_type = app.current_screen.find_child("MonsterGrowth_learn_1_5", true, false)
-	t.check(learn_type != null, "下一等级仍可选择学习另一招")
-	learn_type.pressed.emit()
-	var second: Button = app.current_screen.find_child("MonsterLearn_1_5_trial_fire_2", true, false)
-	t.check(second != null, "学招页列出第二招占位技能")
+	var second_skill := String(app.run.monster_level_choices(1, 4)[0])
+	var second: Button = app.current_screen.find_child("MonsterLearn_1_4_%s" % second_skill, true, false)
+	t.check(second != null, "Lv4 升级页继续提供三招候选")
 	second.pressed.emit()
-	var third_type: Button = app.current_screen.find_child("MonsterGrowth_learn_1_7", true, false)
-	t.check(third_type != null, "Lv6 可继续学习第三招")
-	if third_type == null:
-		app.queue_free()
-		return
-	third_type.pressed.emit()
-	var third: Button = app.current_screen.find_child("MonsterLearn_1_7_flame_jet", true, false)
-	t.check(third != null, "学招页列出未选作开局技能的火系招式")
+	var fire_record: Dictionary = app.run.record_by_uid(1)
+	var replaced_skill := String((fire_record.get("equipped_skills", []) as Array)[2])
+	var third_skill := String(app.run.monster_level_choices(1, 6)[0])
+	var third: Button = app.current_screen.find_child("MonsterLearn_1_6_%s" % third_skill, true, false)
+	t.check(third != null, "Lv6 可继续从三招候选中学习")
 	if third == null:
 		app.queue_free()
 		return
 	third.pressed.emit()
-	var replace: Button = app.current_screen.find_child("MonsterReplace_1_7_flame_jet_trial_fire_2", true, false)
+	var replace: Button = app.current_screen.find_child("MonsterReplace_1_6_%s_%s" % [third_skill, replaced_skill], true, false)
 	t.check(replace != null, "三招满栏时出现卸招选择")
 	if replace != null:
 		replace.pressed.emit()
-	t.eq(app.run.record_by_uid(1).get("equipped_skills", []), ["fire_burst", "trial_fire_1", "flame_jet"], "UI 满栏换装仅替换指定装备位")
+	t.check((app.run.record_by_uid(1).get("known_skills", []) as Array).has(third_skill), "UI 满栏学习后新招进入招式库")
+	t.check((app.run.record_by_uid(1).get("known_skills", []) as Array).has(replaced_skill), "被替换的招式仍留在招式库")
+	t.check(not (app.run.record_by_uid(1).get("equipped_skills", []) as Array).has(replaced_skill), "满栏替换后旧招不再装备（新 %s，旧 %s，当前 %s）" % [third_skill, replaced_skill, app.run.record_by_uid(1).get("equipped_skills", [])])
 	app.show_prep()
-	var selector: OptionButton = app.current_screen.find_child("SkillSlot_1_1", true, false)
+	var selector: OptionButton = app.current_screen.find_child("SkillSlot_1_0", true, false)
 	t.check(selector != null, "整备页显示三个技能装备位")
 	if selector != null:
+		var old_slot_one := String(app.run.record_by_uid(1).get("equipped_skills", [])[0])
+		var selected_index := -1
 		for index in range(selector.item_count):
-			if String(selector.get_item_metadata(index)) == "trial_fire_2":
-				selector.item_selected.emit(index)
+			if String(selector.get_item_metadata(index)) == replaced_skill:
+				selected_index = index
 				break
-	t.check((app.run.record_by_uid(1).get("equipped_skills", []) as Array).has("trial_fire_2"), "整备页可换回招式库里的卸下技能")
-	t.check(not (app.run.record_by_uid(1).get("equipped_skills", []) as Array).has("trial_fire_1"), "换装后原招式留在库中但不装备")
+		t.check(selected_index >= 0, "整备页列表包含已卸下的招式")
+		if selected_index >= 0:
+			selector.select(selected_index)
+			selector.item_selected.emit(selected_index)
+		t.check((app.run.record_by_uid(1).get("equipped_skills", []) as Array).has(replaced_skill), "整备页可换回招式库里的卸下技能")
+		t.check(not (app.run.record_by_uid(1).get("equipped_skills", []) as Array).has(old_slot_one), "换装后原装备招式留在库中但不装备（原装备 %s，换入 %s，当前 %s）" % [old_slot_one, replaced_skill, app.run.record_by_uid(1).get("equipped_skills", [])])
 	app.queue_free()

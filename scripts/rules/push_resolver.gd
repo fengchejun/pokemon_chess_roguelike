@@ -37,12 +37,18 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 			state.emit_collision(target, target.cell, next, -1, summary["from"], "edge")
 			break
 		if state.is_interaction_cell(next) or state.is_nest_cell(next):
+			summary["blocked"] = true
 			_summarize_collision(state, summary, target, null, next, collision_bonus, source_side, source_uid, other_relic_bonus)
 			break
 		var terrain: int = state.terrain_at(next)
 		var occupant: CombatUnit = state.unit_at(next)
 		if occupant != null:
 			_summarize_collision(state, summary, target, occupant, next, collision_bonus, source_side, source_uid, other_relic_bonus)
+			break
+		if target.side == "player" and state.is_nest_cell(next):
+			summary["blocked"] = true
+			summary["collisions"].append({"kind": "nest", "cell": next})
+			state.log_event("%s 被巢穴边界挡住，不能被推上巢穴格。" % target.display_name)
 			break
 		if not target.has_buff("flight") and TerrainDB.is_lethal(terrain) and (terrain != TerrainDB.DEEP or target.element != "water"):
 			target.last_move_direction = direction
@@ -61,7 +67,7 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 		summary["moved"] = true
 		summary["to"] = next
 	if summary["moved"] and target.is_alive():
-		state.apply_vine_on_landing(target)
+		state.apply_vine_on_landing(target, false)
 	return summary
 
 

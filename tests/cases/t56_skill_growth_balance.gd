@@ -146,7 +146,7 @@ func _rain(t: TestContext) -> void:
 	t.eq(SkillResolver.rain_cells(caster, center).size(), 9, "基础造雨保持九格")
 
 func _upgrades(t: TestContext) -> void:
-	for info in [["rock_push", 3], ["rock_create", 3], ["flame_jet", 3], ["drain", 3], ["flame_charge", 3], ["rock_break", 3], ["trial_fire_1", 3], ["ice_shard", 5], ["tsunami", 5], ["rock_slide", 5], ["lightning", 5], ["earth_shake", 5]]:
+	for info in [["rock_push", 3], ["rock_create", 3], ["flame_jet", 3], ["drain", 3], ["flame_charge", 5], ["rock_break", 3], ["trial_fire_1", 3], ["ice_shard", 5], ["tsunami", 5], ["rock_slide", 5], ["lightning", 5], ["earth_shake", 5]]:
 		var skill := String(info[0])
 		var caster := CombatUnit.make("fire_starter", "player", 1)
 		var upgrade := RunState.upgrade_info(RunState.upgrade_id_for_skill(skill))
@@ -158,7 +158,7 @@ func _upgrades(t: TestContext) -> void:
 	t.eq(result["hits"][0]["damage"], 16, "冰锥强化不双算")
 
 func _xp(t: TestContext) -> void:
-	var thresholds := [0, 6, 18, 38, 68, 110, 166, 238, 328, 400]
+	var thresholds := [0, 6, 16, 30, 48, 70, 96, 126, 160, 198]
 	for level in range(1, 11):
 		t.eq(MonsterProgression.threshold_for_level(level), thresholds[level - 1], "完整经验阈值表")
 		if level > 1:
@@ -173,19 +173,19 @@ func _xp(t: TestContext) -> void:
 		state.on_captured(state.unit_by_uid(101), "rock_wild1", 5)
 		t.eq(state.enemy_kills.size(), 1, "击杀事件只记录一次")
 		t.eq(state.captured.size(), 1, "捕获事件只记录一次")
-		t.eq(state.enemy_kills[0]["xp_reward"], level + 1, "击杀奖励随敌方等级变化")
+		t.eq(state.enemy_kills[0]["xp_reward"], MonsterProgression.enemy_xp_reward(level), "击杀奖励随敌方等级变化")
 		t.eq(state.captured[0]["enemy_level"], level, "捕获在重置敌方等级前记录")
-		t.eq(state.battle_exp(), 2 * (level + 1), "经验统计读取事件值")
+		t.eq(state.battle_exp(), MonsterProgression.enemy_xp_reward(level) + 2, "经验统计读取事件值")
 		var run := RunState.new_run(56)
 		run.region_mode = true
 		run.mark_deployed([1])
 		state.node_kind = "battle"
 		state.end_battle("escape")
-		t.eq(run.battle_kill_xp_for(state, 1), level + 1, "即时经验与事件奖励一致")
+		t.eq(run.battle_kill_xp_for(state, 1), MonsterProgression.enemy_xp_reward(level), "即时经验与事件奖励一致")
 		run.settle_battle(state)
-		t.eq(run.record_by_uid(1)["xp"], 2 * (level + 1), "战后击杀与捕获经验均正确")
+		t.eq(run.record_by_uid(1)["xp"], MonsterProgression.enemy_xp_reward(level) + 3, "战后击杀与捕获经验均正确")
 		run.settle_battle(state)
-		t.eq(run.record_by_uid(1)["xp"], 2 * (level + 1), "重复结算不重复发奖")
+		t.eq(run.record_by_uid(1)["xp"], MonsterProgression.enemy_xp_reward(level) + 3, "重复结算不重复发奖")
 	var legacy := {"by_player": true}
 	t.eq(Balance.xp_for_event(legacy), 2, "旧事件缺少经验字段按两点处理")
 	var record := {"species_id": "fire_starter"}
@@ -194,8 +194,8 @@ func _xp(t: TestContext) -> void:
 		var gain := 30 * Balance.xp_for_enemy_level(1 + 2 * floor_index) + 15
 		cumulative += gain
 		MonsterProgression.award_xp(record, gain)
-		t.eq(cumulative, [75, 210, 405][floor_index], "三层经验预算样本")
-		t.eq(record["level"], [5, 7, 10][floor_index], "三层主力等级预算")
+		t.eq(cumulative, [75, 180, 315][floor_index], "三层经验预算样本")
+		t.eq(record["level"], [6, 9, 10][floor_index], "三层主力等级预算")
 
 func _migration(t: TestContext) -> void:
 	var run := RunState.new_run(56)
@@ -227,13 +227,14 @@ func _migration(t: TestContext) -> void:
 	run.pending_region_entry_backup = run.region_data.duplicate(true)
 	var data := run.to_dict()
 	data["version"] = 11
+	data.erase("progression_schema")
 	var restored := RunState.from_dict(data)
 	t.eq(restored.record_by_uid(1)["level"], 3, "旧档等级不倒退")
-	t.eq(restored.record_by_uid(1)["xp"], 28, "旧档同等级升级进度比例换算")
+	t.eq(restored.record_by_uid(1)["xp"], 23, "旧档同等级升级进度比例换算")
 	t.eq(restored.record_by_uid(1)["hp"], 19, "新血量曲线按旧生命比例迁移")
 	t.eq(restored.record_by_uid(1)["claimed_even_levels"], [2], "已领取成长不重复发放")
-	t.eq(restored.storage[0]["xp"], 400, "仓库满级经验转换为四百")
-	t.eq(restored.pending_captures[0]["xp"], 68, "待收容成员也迁移经验")
+	t.eq(restored.storage[0]["xp"], 198, "仓库满级经验转换为四百")
+	t.eq(restored.pending_captures[0]["xp"], 48, "待收容成员也迁移经验")
 	for entry in [restored.battle_snapshot, restored.region_data["nodes"]["battle_1"]["snapshot"], restored.pending_region_entry_backup["nodes"]["battle_1"]["snapshot"]]:
 		var battle := BattleSnapshot.load_state(entry)
 		t.eq(battle.unit_by_uid(1).upgrades["electric_arc_damage"], 3, "当前与节点快照强化数值同步")
@@ -242,7 +243,7 @@ func _migration(t: TestContext) -> void:
 		t.eq(battle.round, 4, "迁移保留战斗进度")
 		t.eq(Balance.xp_for_event(battle.enemy_kills[0]), 2, "旧未结算战斗事件奖励保持两点")
 	var again := RunState.from_dict(restored.to_dict())
-	t.eq(again.record_by_uid(1)["xp"], 28, "迁移后重读不重复换算")
+	t.eq(again.record_by_uid(1)["xp"], 23, "迁移后重读不重复换算")
 
 func _ui(t: TestContext) -> void:
 	var app = load("res://scripts/main.gd").new()
@@ -267,9 +268,9 @@ func _ui(t: TestContext) -> void:
 	screen.state.unit_by_uid(102).enemy_level = 5
 	screen.state.kill_unit(screen.state.unit_by_uid(100), "测试经验", "player", 1)
 	screen.state.on_captured(screen.state.unit_by_uid(102), "rock_wild1", 5)
-	t.eq(feedbacks, [4, 4, 6, 6], "训练家与原出战者都显示对应经验")
+	t.eq(feedbacks, [1, 3, 2, 2], "训练家与原出战者都显示对应经验")
 	screen.playback.finish_all()
 	screen._refresh_after_action()
 	var label: Label = screen.find_child("BattleXPText_1", true, false)
-	t.check(label != null and label.text.contains("本场 +10"), "经验条包含击败与捕获奖励")
+	t.check(label != null and label.text.contains("本场 +5"), "经验条包含击败与捕获奖励")
 	app.queue_free()

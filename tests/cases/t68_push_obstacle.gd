@@ -99,7 +99,7 @@ func _collision(t: TestContext) -> void:
 	frozen.unit_by_uid(100).frozen = true
 	var hp := frozen.unit_by_uid(100).hp
 	_hit(frozen)
-	t.eq(frozen.unit_by_uid(100).hp, hp, "冰冻沿用一次免伤")
+	t.eq(frozen.unit_by_uid(100).hp, hp - Balance.COLLISION_DAMAGE, "冰冻承受碰撞伤害后解除")
 	t.check(not frozen.unit_by_uid(100).frozen, "碰撞解除冰冻")
 	var lethal := _state()
 	lethal.unit_by_uid(100).cell = DST

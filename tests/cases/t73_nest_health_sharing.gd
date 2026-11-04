@@ -5,6 +5,7 @@ func run(t: TestContext) -> void:
 	_growth(t)
 	_sharing(t)
 	_modifiers(t)
+	_merged_status_sharing(t)
 	_migration(t)
 	_ui(t)
 	t.finish()
@@ -167,3 +168,25 @@ func _ui(t: TestContext) -> void:
 	t.check(screen.objective_label.text.contains("2 名分担伤害"), "界面显示守军人数而非拦截次数")
 	t.eq(screen.board.nest["max_hp"], 50, "棋盘保留巢穴生命上限")
 	app.free()
+
+func _merged_status_sharing(t: TestContext) -> void:
+	var state := _state()
+	state.debug_skill_damage_bonus["player"] = 1
+	var shielded := state.unit_by_uid(100)
+	var mirrored := state.unit_by_uid(101)
+	mirrored.cell = Vector2i(5, 3)
+	state.apply_guard_rock_shield(shielded, 10, shielded.uid)
+	mirrored.mirror_until_round = state.round + 2
+	_guard(state)
+	var preview := state.preview_skill(state.unit_by_uid(1), "rock_break", {"type": "nest", "cell": state.nest["cell"]})
+	var actual := _attack(state)
+	t.eq(actual["hits"], preview["hits"], "分伤与护盾、镜影组合的预览实战一致")
+	t.eq(state.nest["hp"], 24, "护盾和镜影不免除巢穴自身的一半伤害")
+	t.eq(shielded.shield_hp, 7, "三点分摊先扣守军护盾")
+	t.eq(mirrored.hp, 100, "守军镜影免疫其两点分摊")
+	shielded.mountain_form_ticks = 2
+	_attack(state)
+	t.eq(state.nest["hp"], 18, "山岳转移也不免除巢穴自身伤害")
+	t.eq(shielded.shield_hp, 4, "下一次先结算守军自身分摊护盾")
+	t.eq(shielded.hp, 98, "另一守军的两点分摊按山岳减免后转移")
+	t.eq(mirrored.hp, 100, "镜影消耗后改由山岳形态转移伤害")

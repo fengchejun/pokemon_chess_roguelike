@@ -403,8 +403,16 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int, cast
 		elif actor_after.hp > actor_before.hp:
 			total += _heal_score(actor_before, actor_after, before)
 		if actor_after != null and actor_after.is_alive():
+			var actor_cleansed := _debuff_score(actor_before) - _debuff_score(actor_after)
+			if actor_cleansed > 0:
+				total += actor_cleansed
 			if actor_after.fire_amp_stacks > actor_before.fire_amp_stacks:
 				total += actor_after.fire_amp_stacks - actor_before.fire_amp_stacks
+			if actor_after.electric_resonance_bonus > actor_before.electric_resonance_bonus:
+				total += actor_after.electric_resonance_bonus - actor_before.electric_resonance_bonus
+			if actor_after.mountain_form_ticks > actor_before.mountain_form_ticks:
+				total += 18
+			total += _shield_score(actor_before, actor_after)
 			if actor_after.ice_glide_until_round > actor_before.ice_glide_until_round and before.terrain_at(actor_after.cell) == TerrainDB.ICE:
 				total += 13
 			if actor_after.surf_until_round > actor_before.surf_until_round and TerrainDB.is_water_body(before.terrain_at(actor_after.cell)):
@@ -424,6 +432,11 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int, cast
 			total += _haste_value(before, unit, later)
 		if later != null and later.extra_casts > unit.extra_casts and int(cast_counts.get(unit.uid, 0)) < 2 and _bonus_cast_available(before, actor_before, unit):
 			total += 23
+		if later != null:
+			var ally_cleansed := _debuff_score(unit) - _debuff_score(later)
+			if ally_cleansed > 0:
+				total += ally_cleansed
+			total += _shield_score(unit, later)
 	total += _terrain_setup_score(before, after)
 	return {"total": total, "kills": kills}
 
@@ -444,6 +457,13 @@ static func _haste_value(state: BattleState, before: CombatUnit, after: CombatUn
 	if new_reach <= old_reach:
 		return 0
 	return 12 + (18 if before.effective_move() < distance and after.effective_move() >= distance else 0)
+static func _shield_score(before: CombatUnit, after: CombatUnit) -> int:
+	if before == null or after == null:
+		return 0
+	var score := maxi(0, after.shield_hp - before.shield_hp) * 2
+	if after.shield_hp > 0 and after.shield_ticks > before.shield_ticks:
+		score += 4
+	return score
 
 
 static func _bonus_cast_available(state: BattleState, actor: CombatUnit, target: CombatUnit) -> bool:
@@ -465,6 +485,31 @@ static func _heal_score(before_unit: CombatUnit, after_unit: CombatUnit, state: 
 		for threat in state.alive_units("player"):
 			if GridSpec.manhattan(before_unit.cell, threat.cell) <= 3:
 				return score + 14
+	return score
+
+
+static func _debuff_score(unit: CombatUnit) -> int:
+	if unit == null:
+		return 0
+	var score := 0
+	if unit.root_pending or unit.move_cancelled:
+		score += 14
+	if unit.parasite_source_uid >= 0:
+		score += 25
+	if unit.slow_ticks > 0:
+		score += 10
+	if unit.burn_ticks > 0:
+		score += 9
+	if unit.shock_ticks > 0:
+		score += 8
+	if unit.paralyzed_ticks > 0:
+		score += 30
+	if unit.imprison_ticks > 0:
+		score += 20
+	if unit.vine_ticks > 0:
+		score += 16
+	if unit.vine_reapply_round > 0:
+		score += 6
 	return score
 
 
@@ -490,6 +535,10 @@ static func _terrain_setup_score(before: BattleState, after: BattleState) -> int
 				TerrainDB.OBSTACLE:
 					if distance <= 2:
 						score += 5
+				TerrainDB.GRASS:
+					for ally in before.alive_units("enemy"):
+						if ally.cell == cell and ally.skills.has("leaf_wind"):
+							score += 6
 	# 未来地形收益不应盖过直接击杀或大面积伤害。
 	return mini(score, 24)
 
