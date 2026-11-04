@@ -71,8 +71,6 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 			elif skill_id == "rooted_grass":
 				if not rooted_grass_cells(state, unit).is_empty():
 					entries.append({"type": "cell", "cell": unit.cell})
-			elif skill_id == "burn_out" and state.alive_units("enemy" if unit.side == "player" else "player").is_empty():
-				return entries
 			elif skill_id != "lightning" or not state.alive_units("enemy" if unit.side == "player" else "player").is_empty() or (unit.side == "player" and state.has_live_nests()):
 				entries.append({"type": "cell", "cell": unit.cell})
 	return entries
@@ -697,6 +695,8 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 						_apply_furnace_fist(state, caster, target_entry, summary)
 					"combustion":
 						_apply_combustion(state, caster, target_entry, summary)
+					"burn_out":
+						_apply_burn_out(state, caster, target_entry, summary)
 					"leech_seed":
 						_apply_leech_seed(state, caster, target_entry, summary)
 					"push", "rock_push":
@@ -754,7 +754,6 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 				"fire_amplify": _apply_fire_amplify(state, caster, summary)
 				"ice_glide", "surf": _apply_terrain_travel(state, caster, skill_id, summary)
 				"mirror_water_moon": _apply_mirror_water_moon(state, caster, summary)
-				"burn_out": _apply_burn_out(state, caster, summary)
 				"rooted_grass": _apply_rooted_grass(state, caster, summary)
 				"mountain_form": _apply_mountain_form(state, caster, summary)
 				_: _apply_heal(state, caster, target_entry, summary)
@@ -1195,15 +1194,16 @@ static func _apply_mirror_water_moon(state: BattleState, caster: CombatUnit, sum
 	state.log_event(summary["text"])
 
 
-static func _apply_burn_out(state: BattleState, caster: CombatUnit, summary: Dictionary) -> void:
+static func _apply_burn_out(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var target := state.unit_by_uid(int(entry.get("unit", -1)))
+	if target == null:
+		return
 	var sacrifice_damage := ceili(float(caster.max_hp) * 0.5)
-	for target in state.alive_units("enemy" if caster.side == "player" else "player"):
-		if state.ended:
-			break
-		var hit := _hit_entry(state, caster, "burn_out", target, sacrifice_damage)
-		if target.is_alive() and state.apply_burn(target, caster):
-			(hit["statuses"] as Array).append("灼烧")
-		summary["hits"].append(hit)
+	var hit := _hit_entry(state, caster, "burn_out", target, sacrifice_damage)
+	if target.is_alive() and state.apply_burn(target, caster):
+		(hit["statuses"] as Array).append("灼烧")
+	summary["hits"].append(hit)
+	summary["area_cells"].append(target.cell)
 	var hp_lost := mini(caster.hp, sacrifice_damage)
 	caster.hp -= hp_lost
 	summary["self_damage"] = hp_lost
@@ -1213,7 +1213,10 @@ static func _apply_burn_out(state: BattleState, caster: CombatUnit, summary: Dic
 		caster.hp = 0
 		summary["self_death"] = true
 		state.kill_unit(caster, "燃尽反噬", caster.side, caster.uid)
-	summary["text"] = "燃尽命中 %d 名敌人；%s损失 %d HP%s。" % [summary["hits"].size(), caster.display_name, hp_lost, "并倒下" if bool(summary["self_death"]) else ""]
+	summary["text"] = "燃尽命中 %s：%d 伤害；%s损失 %d HP%s。" % [
+		target.display_name, hit["damage"], caster.display_name, hp_lost,
+		"并倒下" if bool(summary["self_death"]) else "",
+	]
 
 
 static func _apply_flame_charge(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:

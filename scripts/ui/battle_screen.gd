@@ -926,7 +926,7 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	elif skill_id == "burn_out":
 		var sacrifice_damage := ceili(float(unit.max_hp) * 0.5)
 		sacrifice_damage = SkillResolver.upgraded_base_damage(unit, skill_id, sacrifice_damage)
-		parts.append("全场伤害 %d · 自损 %d" % [Balance.skill_damage_for_side(sacrifice_damage, unit.side), ceili(float(unit.max_hp) * 0.5)])
+		parts.append("单体伤害 %d · 射程 5 · 自损 %d" % [Balance.skill_damage_for_side(sacrifice_damage, unit.side), ceili(float(unit.max_hp) * 0.5)])
 	elif skill_id == "wild_vines":
 		parts.append("前方 %d 格 · 生成藤蔓 · 进入禁锢" % SkillResolver.wild_vines_reach(unit))
 	elif skill_id == "water_magic_burst":

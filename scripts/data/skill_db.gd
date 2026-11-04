@@ -112,10 +112,11 @@ const DEFS := {
 	"burn_out": {
 		"name": "燃尽",
 		"element": "fire",
-		"kind": "self",
+		"kind": "unit",
+		"range": 5,
 		"damage": 0,
-		"ranged": false,
-		"desc": "对全场敌人造成施法者最大生命一半的基础直伤并尝试附加灼烧；随后损失施法者最大生命一半的当前 HP，可能因此倒下。",
+		"ranged": true,
+		"desc": "对曼哈顿 5 格内一名敌人造成施法者最大生命一半的基础直伤并尝试附加灼烧；随后损失施法者最大生命一半的当前 HP，可能因此倒下。",
 	},
 	"water_flow": {
 		"name": "水炮",

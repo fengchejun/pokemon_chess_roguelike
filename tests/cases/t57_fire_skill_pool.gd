@@ -143,22 +143,32 @@ func _combustion(t: TestContext) -> void:
 
 
 func _burn_out(t: TestContext) -> void:
-	var state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(7, 6)]])
+	var state := TestScenario.make_state(["fire_starter"], [
+		["rock_wild1", Vector2i(5, 3)],
+		["rock_wild1", Vector2i(7, 3)],
+	])
 	var caster := state.unit_by_uid(1)
 	var target := state.unit_by_uid(100)
+	var far_target := state.unit_by_uid(101)
 	caster.cell = Vector2i(0, 3)
 	caster.skills.append("burn_out")
+	var entries := state.skill_targets(caster, "burn_out")
+	t.check(entries.any(func(entry): return int(entry.get("unit", -1)) == target.uid), "燃尽可选择曼哈顿五格内敌人")
+	t.check(not entries.any(func(entry): return int(entry.get("unit", -1)) == far_target.uid), "燃尽不能选择曼哈顿五格外敌人")
 	var target_hp := target.hp
-	var result := state.cast_skill(caster, "burn_out", {"type": "cell", "cell": caster.cell})
-	t.check(bool(result.get("ok", false)), "燃尽对全场敌人结算")
-	t.eq(target.hp, target_hp - 15, "燃尽造成施法者最大生命一半的基础直伤")
+	var far_hp := far_target.hp
+	var result := state.cast_skill(caster, "burn_out", {"type": "unit", "unit": target.uid, "cell": target.cell})
+	t.check(bool(result.get("ok", false)), "燃尽对五格内单体敌人结算")
+	t.eq(target.hp, target_hp - 15, "燃尽对目标造成施法者最大生命一半的基础直伤")
+	t.eq(far_target.hp, far_hp, "五格外敌人不受燃尽影响")
 	t.eq(caster.hp, 15, "燃尽损失施法者最大生命一半的当前生命")
-	t.check(target.burn_ticks > 0, "燃尽为存活敌人附加灼烧")
-	var lethal := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(7, 6)]])
+	t.check(target.burn_ticks > 0, "燃尽为存活目标附加灼烧")
+	t.eq(far_target.burn_ticks, 0, "燃尽不会为非目标附加灼烧")
+	var lethal := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(5, 3)]])
 	lethal.unit_by_uid(1).cell = Vector2i(0, 3)
 	lethal.unit_by_uid(1).hp = 15
 	lethal.unit_by_uid(1).skills.append("burn_out")
 	var lethal_caster := lethal.unit_by_uid(1)
-	lethal.cast_skill(lethal_caster, "burn_out", {"type": "cell", "cell": lethal_caster.cell})
+	lethal.cast_skill(lethal_caster, "burn_out", {"type": "unit", "unit": 100, "cell": Vector2i(5, 3)})
 	t.eq(lethal_caster.hp, 0, "生命不足一半时燃尽可以令施法者倒下")
 	t.check(not lethal_caster.is_alive(), "燃尽的自损会触发倒下")
