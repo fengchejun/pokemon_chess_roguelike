@@ -1,11 +1,12 @@
 extends RefCounted
 
-## 八邻格捕获；低血量保证与原地转阵营分别由设置控制。
+## 两格方形邻域捕获；低血量保证与原地转阵营分别由设置控制。
 
 
 func run(t: TestContext) -> void:
 	t.begin("捕获（概率制）")
 	_t_chance_curve(t)
+	_t_curve_exceptions(t)
 	_t_range(t)
 	_t_flow(t)
 	_t_low_hp_option(t)
@@ -16,15 +17,15 @@ func run(t: TestContext) -> void:
 func _t_chance_curve(t: TestContext) -> void:
 	var wild := CombatUnit.make("rock_wild1", "enemy", 100)
 	wild.hp = wild.max_hp
-	t.eq(CaptureSystem.chance_percent(wild), 30, "满血：基础 30%")
+	t.eq(CaptureSystem.chance_percent(wild), 1, "满血：基础 1%")
 	var full_chance := CaptureSystem.capture_chance(wild)
 	wild.hp = 3
 	var half_chance := CaptureSystem.capture_chance(wild)
 	wild.hp = 1
 	var low_chance := CaptureSystem.capture_chance(wild)
-	t.check(half_chance > full_chance, "半血成功率高于满血")
-	t.check(low_chance > half_chance, "残血成功率高于半血")
-	t.check(CaptureSystem.chance_percent(wild) >= 70, "残血成功率明显更高（%d%%）" % CaptureSystem.chance_percent(wild))
+	t.check(half_chance > full_chance, "失血后成功率高于满血")
+	t.check(low_chance > half_chance, "残血成功率高于低血量")
+	t.check(CaptureSystem.chance_percent(wild) > 50, "残血成功率明显更高（%d%%）" % CaptureSystem.chance_percent(wild))
 	t.check(full_chance >= Balance.CAPTURE_CHANCE_MIN and low_chance <= Balance.CAPTURE_CHANCE_MAX, "概率夹在上下限内")
 
 
@@ -38,7 +39,11 @@ func _t_range(t: TestContext) -> void:
 	wild.cell = Vector2i(2, 4)
 	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "斜角相邻可尝试")
 	wild.cell = Vector2i(3, 3)
-	t.eq(CaptureSystem.can_attempt(state, trainer, wild), false, "直线两格不可尝试")
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "直线两格可尝试")
+	wild.cell = Vector2i(3, 5)
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "斜角两格可尝试")
+	wild.cell = Vector2i(4, 3)
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), false, "直线三格不可尝试")
 
 
 func _t_flow(t: TestContext) -> void:
@@ -141,3 +146,24 @@ func _t_field_join_option(t: TestContext) -> void:
 	var old_run := RunState.from_dict(old_data)
 	t.eq(bool(old_run.options.get("capture_low_hp", true)), false, "旧存档新增低血量开关默认关闭")
 	t.eq(bool(old_run.options.get("capture_field_join", true)), false, "旧存档新增原地转阵营开关默认关闭")
+
+func _t_curve_exceptions(t: TestContext) -> void:
+	var state := TestScenario.make_state([], [["rock_wild1", Vector2i(3, 3)]])
+	var trainer := state.trainer()
+	trainer.cell = Vector2i(1, 3)
+	var wild := state.unit_by_uid(100)
+	wild.max_hp = 100
+	wild.hp = 50
+	t.check(is_equal_approx(CaptureSystem.capture_chance(wild), 0.305), "半血概率线性插值为30.5%")
+	t.check(is_equal_approx(CaptureSystem.capture_chance(wild, true), 0.305), "未达必成条件时低血量选项也沿用协作者曲线")
+	t.eq(CaptureSystem.chance_percent(wild, false, 100), 100, "调试覆盖可突破常规60%上限")
+	state.capture_aid = true
+	var result := state.capture_attempt(trainer, wild, 0.5)
+	t.check(result.get("success", false), "捕获辅助在30.5%基础上加20个百分点")
+	t.check(is_equal_approx(float(result.get("chance", 0.0)), 0.505), "最终结算概率与辅助规则一致")
+	t.check(not state.capture_aid, "有效尝试消耗捕获辅助")
+	var sheltered := TestScenario.make_state([], [["rock_wild1", Vector2i(2, 3)]])
+	var boss := sheltered.unit_by_uid(100)
+	boss.sheltered = true
+	t.eq(CaptureSystem.capture_chance(boss), 0.0, "巢内庇护单位不可捕获")
+	t.check(not CaptureSystem.can_attempt(sheltered, sheltered.trainer(), boss), "扩大范围不绕过巢内庇护")
