@@ -84,7 +84,7 @@ func run(t: TestContext) -> void:
 	state.obstacle_durability[Vector2i(3, 3)] = 3
 	SkillResolver.apply(state, caster, "rock_push", {"type": "unit", "unit": target.uid, "cell": target.cell}, false)
 	screen.playback.advance(0.51)
-	var damage_steps: Array = screen.playback.steps.filter(func(s): return s["event"]["kind"] == "damage" and s["event"]["uid"] == target.uid)
+	var damage_steps: Array = screen.playback.steps.filter(func(s): return s["event"]["kind"] in ["damage", "collision_damage"] and s["event"]["uid"] == target.uid)
 	t.eq(damage_steps.size(), 2, "普通命中与碰撞分别记录")
 	t.check(damage_steps[1]["time"] > damage_steps[0]["time"], "同格碰撞晚于首次命中展示")
 	t.check(screen.playback.visual.unit_by_uid(target.uid).hp > target.hp, "首次命中不提前显示碰撞后的最终血量")

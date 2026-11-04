@@ -1,7 +1,7 @@
 class_name EnemyAI
 extends RefCounted
 
-## 确定性敌方 AI：固定行动顺序（火、水、草、电、岩、增援），
+## 确定性敌方 AI：有即时收益的辅助先行，直接击杀优先，其他动作按登记顺序，
 ## 先移动后技能；威胁预告与实际执行使用同一份计划。
 
 const PRIORITY_TRAINER := 150
@@ -12,9 +12,11 @@ static func plan(state: BattleState) -> Array:
 	var work := state.clone()
 	var actions: Array = []
 	var cast_counts: Dictionary = {}
-	for uid in _action_order(work):
-		if work.ended:
-			break
+	var pending := _action_order(work)
+	while not pending.is_empty() and not work.ended:
+		var opening := _next_action(work, pending, cast_counts)
+		var uid := int(opening.get("uid", pending[0]))
+		pending.erase(uid)
 		# 同一单位最多两次施法；第二次必须来自友军已给予的额外机会。
 		for cast_index in range(2):
 			var unit := work.unit_by_uid(uid)
@@ -22,7 +24,7 @@ static func plan(state: BattleState) -> Array:
 				break
 			if cast_index > 0 and (not unit.skill_used or unit.extra_casts <= 0 or not unit.can_act_skill()):
 				break
-			var action := _decide(work, unit)
+			var action := opening if cast_index == 0 else _decide(work, unit, cast_counts)
 			var has_effect: bool = not (action["move_path"] as Array).is_empty() or not (action["skill"] as Dictionary).is_empty() or action.has("guard")
 			if not has_effect or (cast_index > 0 and (action["skill"] as Dictionary).is_empty()):
 				break
@@ -31,20 +33,47 @@ static func plan(state: BattleState) -> Array:
 			if not (action["skill"] as Dictionary).is_empty():
 				cast_counts[uid] = int(cast_counts.get(uid, 0)) + 1
 			work.check_battle_end()
-	# 后行动的电力引擎也能让先前已蓄力的友军兑现额外施法。
+	# 后续获得的额外施法也可由已行动友军兑现，仍遵守每单位两次的规划上限。
 	for uid in _action_order(work):
 		if work.ended or int(cast_counts.get(uid, 0)) >= 2:
 			continue
 		var unit := work.unit_by_uid(uid)
 		if unit == null or not unit.skill_used or unit.extra_casts <= 0 or not unit.can_act_skill():
 			continue
-		var action := _decide(work, unit)
+		var action := _decide(work, unit, cast_counts)
 		if (action["skill"] as Dictionary).is_empty():
 			continue
 		_execute_on(work, action)
 		actions.append(action)
+		cast_counts[uid] = int(cast_counts.get(uid, 0)) + 1
 		work.check_battle_end()
 	return actions
+
+
+static func _next_action(state: BattleState, pending: Array, cast_counts: Dictionary) -> Dictionary:
+	var first := state.unit_by_uid(int(pending[0]))
+	if first == null or not first.is_on_board():
+		return {"uid": pending[0], "move_path": [], "skill": {}}
+	var ordinary := _decide(state, first, cast_counts)
+	if int(ordinary.get("lethal", 0)) > 0:
+		return ordinary
+	var best := ordinary if _is_support_action(ordinary) else {}
+	for uid in pending:
+		if int(uid) == first.uid:
+			continue
+		var unit := state.unit_by_uid(int(uid))
+		if unit == null or not unit.can_act_skill() or not (unit.skills.has("tailwind") or unit.skills.has("double_cast")):
+			continue
+		var candidate := _decide(state, unit, cast_counts)
+		if int(candidate.get("lethal", 0)) > 0:
+			return candidate
+		if _is_support_action(candidate) and int(candidate.get("score", 0)) > 0 and _better(candidate, best, (candidate.get("move_path", []) as Array).size()):
+			best = candidate
+	return best if not best.is_empty() else ordinary
+
+
+static func _is_support_action(action: Dictionary) -> bool:
+	return String(action.get("skill", {}).get("id", "")) in ["tailwind", "double_cast"]
 
 
 static func _action_order(state: BattleState) -> Array:
@@ -59,7 +88,7 @@ static func _action_order(state: BattleState) -> Array:
 	return order
 
 
-static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
+static func _decide(work: BattleState, unit: CombatUnit, cast_counts: Dictionary = {}) -> Dictionary:
 	var best: Dictionary = {}
 	var repair_best: Dictionary = {}
 	var positions: Array = [unit.cell]
@@ -93,6 +122,10 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 			for skill_id in unit.skills:
 				var entries := _dedupe_entries(base, base_unit, skill_id)
 				for entry in entries:
+					if skill_id == "double_cast":
+						var ids: Array = entry.get("units", [entry.get("unit", -1)])
+						if not ids.any(func(uid): return int(cast_counts.get(uid, 0)) < 2):
+							continue
 					var sim := base.clone()
 					var sim_unit := sim.unit_by_uid(unit.uid)
 					if sim_unit == null:
@@ -102,7 +135,7 @@ static func _decide(work: BattleState, unit: CombatUnit) -> Dictionary:
 						continue
 					if _harms_own_nest(base, sim):
 						continue
-					var score := _score(base, sim, unit.uid)
+					var score := _score(base, sim, unit.uid, cast_counts)
 					var channel_score := _channel_score(base, base_unit, skill_id, entry)
 					var route_score := _route_opening_score(base, sim, unit.uid)
 					var skill_score := int(score["total"]) + channel_score + route_score + (30 if skill_id == "tree_man" else 0)
@@ -324,7 +357,7 @@ static func _pending_hazard(state: BattleState, cell: Vector2i, source_side: Str
 	return 0
 
 
-static func _score(before: BattleState, after: BattleState, actor_uid: int) -> Dictionary:
+static func _score(before: BattleState, after: BattleState, actor_uid: int, cast_counts: Dictionary = {}) -> Dictionary:
 	if after.ended and after.end_reason == "forced_retreat":
 		# 训练家被击倒后直接结束本局，单纯比较前后 HP 会漏判胜利。
 		return {"total": 100000, "kills": 1}
@@ -388,25 +421,40 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 			total += _heal_score(unit, later, before)
 		if later != null and later.haste_ticks > unit.haste_ticks:
 			# 已行动的友军本阶段无法利用加速；未来移动机会仍有少量价值。
-			total += 12 if not unit.moved and unit.effective_move() > 0 else 3
-		if later != null and later.extra_casts > unit.extra_casts and _bonus_cast_available(before, actor_before, unit):
+			total += _haste_value(before, unit, later)
+		if later != null and later.extra_casts > unit.extra_casts and int(cast_counts.get(unit.uid, 0)) < 2 and _bonus_cast_available(before, actor_before, unit):
 			total += 23
 	total += _terrain_setup_score(before, after)
 	return {"total": total, "kills": kills}
 
 
+static func _haste_value(state: BattleState, before: CombatUnit, after: CombatUnit) -> int:
+	if not state.can_move_unit_now(before) or before.guard_nest.x >= 0:
+		return 0
+	var distance := 1 << 30
+	for target in state.alive_units("player"):
+		for cell in GridSpec.neighbors4(target.cell):
+			if state.unit_at(cell) != null and cell != before.cell:
+				continue
+			distance = mini(distance, PathFinder.path_distance(state, before.cell, cell, before.element, before.has_buff("flight")))
+	if distance <= 0 or distance >= (1 << 29):
+		return 0
+	var old_reach := mini(distance, before.effective_move())
+	var new_reach := mini(distance, after.effective_move())
+	if new_reach <= old_reach:
+		return 0
+	return 12 + (18 if before.effective_move() < distance and after.effective_move() >= distance else 0)
+
+
 static func _bonus_cast_available(state: BattleState, actor: CombatUnit, target: CombatUnit) -> bool:
-	if actor == null or target.extra_casts > 0:
-		return false
-	var already_channeled := target.skill_used and target.channel_lock_round == state.round + 1
-	if target.reg_index <= actor.reg_index and not already_channeled:
-		return false
-	if target.skill_used and not already_channeled:
+	if actor == null or target.extra_casts > 0 or target.guard_nest.x >= 0:
 		return false
 	if target.fresh_spawn or target.frozen or target.paralyzed_ticks > 0 or target.channel_lock_round == state.round:
 		return false
-	for skill_id in target.skills:
-		if not _dedupe_entries(state, target, String(skill_id)).is_empty():
+	var available := target.dup()
+	available.extra_casts += 1
+	for skill_id in available.skills:
+		if not _dedupe_entries(state, available, String(skill_id)).is_empty():
 			return true
 	return false
 

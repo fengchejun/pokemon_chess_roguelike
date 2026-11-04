@@ -11,6 +11,7 @@ var steps: Array = []
 var next_step := 0
 var applied_final := false
 var final_time := 0.5
+var collision_cues: Array = []
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -87,6 +88,8 @@ func _start() -> void:
 	next_step = 0
 	applied_final = false
 	steps = []
+	collision_cues = []
+	screen.board.presentation_offsets.clear()
 	visual = current["before"]
 	var info: Dictionary = current["info"]
 	var kind := String(info["kind"])
@@ -105,10 +108,15 @@ func _start() -> void:
 		var earlier := previous.unit_by_uid(uid)
 		var later: CombatUnit = step["after"].unit_by_uid(uid)
 		var moved := earlier != null and later != null and earlier.cell != later.cell
-		var repeated_damage: bool = event["kind"] == "damage" and damaged.has(uid)
-		if moved or repeated_damage:
+		var repeated_damage: bool = event["kind"] in ["damage", "collision_damage"] and damaged.has(uid)
+		if event["kind"] == "collision":
+			shift += 0.24
+			collision_cues.append({"time": impact + shift, "event": event.duplicate(true)})
+		elif event["kind"] == "collision_damage" and not collision_cues.is_empty():
+			shift = maxf(shift, float(collision_cues.back()["time"]) - impact + 0.04)
+		elif moved or repeated_damage:
 			shift += 0.12
-		if event["kind"] == "damage":
+		if event["kind"] in ["damage", "collision_damage"]:
 			damaged[uid] = true
 		steps.append({"time": impact + shift, "event": event, "after": step["after"]})
 		previous = step["after"]
@@ -147,9 +155,12 @@ func advance(delta: float) -> void:
 		visual = current["after"]
 		screen._render_playback(visual)
 		applied_final = true
+	_update_collision_motion()
 	queue_redraw()
 	if elapsed >= duration:
 		current = {}
+		screen.board.presentation_offsets.clear()
+		screen.board.queue_redraw()
 		screen.skill_banner.dismiss()
 		queue_redraw()
 		if queue.is_empty() and frames.is_empty():
@@ -165,6 +176,7 @@ func finish_all() -> void:
 func _draw() -> void:
 	if current.is_empty():
 		return
+	_draw_collisions()
 	_draw_departures()
 	var info: Dictionary = current["info"]
 	var before: BattleState = current["before"]
@@ -209,6 +221,8 @@ func _draw() -> void:
 	var support := String(def.get("kind", "")) in ["self", "teleport"] or skill in ["herbal_heal", "double_cast", "leech_seed", "rain_call", "rain_dance", "tree_man", "tailwind", "wild_vines", "frozen_ground"]
 	var flight := clampf((elapsed - 0.2) / 0.3, 0.0, 1.0)
 	for cell in cells:
+		if _collision_cell_active(cell):
+			continue
 		var target := (Vector2(cell) + Vector2.ONE * 0.5) * BoardView.TILE
 		if declaration:
 			draw_rect(Rect2(target - Vector2.ONE * 25, Vector2.ONE * 50), Color(color, 0.15 + progress * 0.1), false, 2.0)
@@ -247,6 +261,60 @@ func _draw() -> void:
 			var fade := clampf((duration - elapsed) / 0.5, 0.0, 1.0)
 			draw_arc(target, 12.0 + (1.0 - fade) * 20.0, 0, TAU, 24, Color(color, fade), 2.0)
 			draw_rect(Rect2(target - Vector2.ONE * 25, Vector2.ONE * 50), Color(color, fade * (0.12 + absf(sin(elapsed * 30.0)) * 0.16)))
+
+func _collision_cell_active(cell: Vector2i) -> bool:
+	for cue in collision_cues:
+		var event: Dictionary = cue["event"]
+		if elapsed >= float(cue["time"]) - 0.22 and cell in [event["cell"], event["start_cell"], event["blocker_cell"]]:
+			return true
+	return false
+
+func _update_collision_motion() -> void:
+	screen.board.presentation_offsets.clear()
+	for cue in collision_cues:
+		var age := elapsed - float(cue["time"])
+		if age < -0.22 or age > 0.36:
+			continue
+		var event: Dictionary = cue["event"]
+		var origin := (Vector2(event["cell"]) + Vector2.ONE * 0.5) * BoardView.TILE
+		var start := (Vector2(event["start_cell"]) + Vector2.ONE * 0.5) * BoardView.TILE
+		var direction := (Vector2(event["blocker_cell"]) - Vector2(event["cell"])).normalized()
+		var desired := start.lerp(origin, smoothstep(0.0, 1.0, (age + 0.22) / 0.22)) if age < 0 else origin + direction * sin(clampf(age / 0.30, 0.0, 1.0) * PI) * 11.0
+		var mover := visual.unit_by_uid(int(event["uid"]))
+		if mover != null and mover.is_alive():
+			var logical := (Vector2(mover.cell) + Vector2.ONE * 0.5) * BoardView.TILE
+			screen.board.presentation_offsets[mover.uid] = desired - logical
+		var blocker := visual.unit_by_uid(int(event.get("blocker_uid", -1)))
+		if blocker != null and blocker.is_alive() and age >= 0:
+			screen.board.presentation_offsets[blocker.uid] = direction * sin(age * 55.0) * 5.0 * (1.0 - age / 0.36)
+	screen.board.queue_redraw()
+
+func _draw_collisions() -> void:
+	for cue in collision_cues:
+		var age := elapsed - float(cue["time"])
+		if age < -0.08 or age > 0.40:
+			continue
+		var event: Dictionary = cue["event"]
+		var origin := (Vector2(event["cell"]) + Vector2.ONE * 0.5) * BoardView.TILE
+		var destination := (Vector2(event["blocker_cell"]) + Vector2.ONE * 0.5) * BoardView.TILE
+		var center := origin.lerp(destination, 0.5).clamp(Vector2(12, 12), Vector2(GridSpec.W, GridSpec.H) * BoardView.TILE - Vector2(12, 12))
+		var fade := clampf(1.0 - maxf(0.0, age) / 0.40, 0.0, 1.0)
+		var color := Color(1.0, 0.66, 0.22, fade)
+		var spikes := PackedVector2Array()
+		for index in range(16):
+			var angle := index * TAU / 16.0
+			spikes.append(center + Vector2(cos(angle), sin(angle)) * (19.0 if index % 2 == 0 else 8.0) * (1.0 + maxf(0.0, age)))
+		draw_colored_polygon(spikes, color)
+		draw_arc(center, 22.0 + maxf(0.0, age) * 35.0, 0, TAU, 24, color, 2.0)
+		if GridSpec.is_inside(event["blocker_cell"]):
+			draw_rect(Rect2(Vector2(event["blocker_cell"]) * BoardView.TILE + Vector2(5, 5), Vector2.ONE * (BoardView.TILE - 10)), color, false, 3.0)
+		var caption := "受阻" if event.get("object_kind") == "edge" else "碰撞"
+		var caption_origin := (center + Vector2(-22, 22)).clamp(Vector2.ZERO, Vector2(GridSpec.W, GridSpec.H) * BoardView.TILE - Vector2(44, 22))
+		draw_rect(Rect2(caption_origin, Vector2(44, 22)), Color(0.15, 0.10, 0.04, fade))
+		draw_string(UIKit.font(), caption_origin + Vector2(5, 17), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, color)
+		if event.get("object_kind") == "rock":
+			var rocking := origin + (destination - origin).normalized() * sin(clampf(maxf(age, 0.0) / 0.30, 0.0, 1.0) * PI) * 11.0
+			draw_rect(Rect2(rocking - Vector2(14, 14), Vector2(28, 28)), Color(0.68, 0.56, 0.40, fade))
 
 func _draw_departures() -> void:
 	for step in steps:

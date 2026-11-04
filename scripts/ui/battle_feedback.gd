@@ -5,7 +5,7 @@ var playback_speed := 1.0
 var paused := false
 var entries: Array = []
 var slots: Dictionary = {}
-const COLORS := {"effective": Color("ffd26d"), "resisted": Color("a4b9dc"), "experience": Color("80c9ff"), "essence": Color("ffdd75"), "damage": Color("ff6868"), "heal": Color("72ed9a"), "zero": Color("bbc4d0"), "status": Color("ffc45d"), "clear": Color("9fd9ed"), "buff": Color("89e6b0"), "death": Color("ff995e"), "action": Color("c8bcff")}
+const COLORS := {"effective": Color("ffd26d"), "resisted": Color("a4b9dc"), "experience": Color("80c9ff"), "essence": Color("ffdd75"), "damage": Color("ff6868"), "collision": Color("ffbd57"), "collision_damage": Color("ffd07c"), "heal": Color("72ed9a"), "zero": Color("bbc4d0"), "status": Color("ffc45d"), "clear": Color("9fd9ed"), "buff": Color("89e6b0"), "death": Color("ff995e"), "action": Color("c8bcff")}
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE

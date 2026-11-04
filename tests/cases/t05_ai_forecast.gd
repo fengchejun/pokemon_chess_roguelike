@@ -142,9 +142,8 @@ func _t_double_cast(t: TestContext) -> void:
 	late_support.unit_by_uid(100).skills = SpeciesDB.skills_of("rock_wild1").duplicate()
 	late_support.unit_by_uid(101).skills = SpeciesDB.skills_of("wind_wild1").duplicate()
 	var late_plan := EnemyAI.plan(late_support)
-	for action in late_plan:
-		if int(action["uid"]) == 101:
-			t.check(String(action["skill"].get("id", "")) != "double_cast", "已行动友军无法再兑现额外施法，不选择加速2")
+	t.check(late_plan.any(func(action): return int(action["uid"]) == 101 and action.get("skill", {}).get("id") == "double_cast"), "登记较晚的引擎也能提前辅助")
+	t.eq(late_plan.filter(func(action): return int(action["uid"]) == 100 and not action.get("skill", {}).is_empty()).size(), 2, "登记较早的友军能兑现额外施法")
 
 	var finished := TestScenario.make_state([], [
 		["wind_wild1", Vector2i(5, 3)], ["rock_wild1", Vector2i(4, 3)],

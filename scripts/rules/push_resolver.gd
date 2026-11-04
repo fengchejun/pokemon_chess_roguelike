@@ -34,6 +34,7 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 		var next: Vector2i = target.cell + direction
 		if not GridSpec.is_inside(next):
 			summary["collisions"].append({"kind": "edge", "cell": next})
+			state.emit_collision(target, target.cell, next, -1, summary["from"], "edge")
 			break
 		if state.is_interaction_cell(next) or state.is_nest_cell(next):
 			_summarize_collision(state, summary, target, null, next, collision_bonus, source_side, source_uid, other_relic_bonus)
@@ -74,6 +75,7 @@ static func _summarize_collision(state, summary: Dictionary, target: CombatUnit,
 		"other_damage": other_damage if occupant != null else 0,
 	}
 	summary["collisions"].append(entry)
+	state.emit_collision(target, target.cell, cell, occupant.uid if occupant != null else -1, summary["from"])
 	var blocker_name := "巢穴" if state.is_nest_cell(cell) else "设施" if state.is_interaction_cell(cell) else "障碍"
 	if occupant != null:
 		blocker_name = occupant.display_name
@@ -105,6 +107,7 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 			amount += int(state.effects.get("push_collision", 0))
 			if occupant.side == "enemy":
 				amount += 4 * RelicDB.rank(state.relic_stacks, "wall_crash")
+		state.emit_collision(null, cell, next, occupant.uid, cell, "rock")
 		var hit := state.damage_unit(null, occupant, amount, {"no_element": true, "collision": true, "cause": "岩障碰撞", "killer_side": caster.side, "killer_uid": caster.uid})
 		result["hits"].append({"uid": occupant.uid, "name": occupant.display_name, "cell": next, "damage": int(hit.get("amount", 0)), "killed": bool(hit.get("killed", false)), "modifier": 0, "statuses": [], "push": null})
 		result["blocked"] = true

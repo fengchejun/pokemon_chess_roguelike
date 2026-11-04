@@ -41,6 +41,7 @@ var markers: Array = []
 var arrows: Array = []
 var badges: Array = []
 
+var presentation_offsets: Dictionary = {} # 只用于展示位移与回弹，不改变单位格子。
 var selected_uid: int = -1
 var hover_cell := Vector2i(-1, -1)
 
@@ -399,7 +400,7 @@ func _draw_star(cell: Vector2i) -> void:
 
 
 func _draw_unit(font: Font, unit: CombatUnit) -> void:
-	var center := cell_center(unit.cell)
+	var center := cell_center(unit.cell) + Vector2(presentation_offsets.get(unit.uid, Vector2.ZERO))
 	var radius := 26.0
 	var fill := Elements.color_of(unit.element)
 	if unit.is_trainer:

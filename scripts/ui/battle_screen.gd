@@ -185,6 +185,8 @@ func _on_feedback(event: Dictionary) -> void:
 
 
 func _show_feedback(event: Dictionary) -> void:
+	if event["kind"] == "collision":
+		return # 接触字样由播放层放在撞击点；只为伤害显示单位飘字，避免重叠。
 	if event["kind"] == "speech":
 		speech_layer.push(event)
 	elif event["kind"] == "skill":

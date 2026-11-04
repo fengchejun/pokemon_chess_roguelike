@@ -23,6 +23,12 @@ func _relay_feedback(kind: String, text: String, value: int, cell: Vector2i, uid
 		return
 	feedback.emit({"kind": kind, "uid": uid, "cell": cell, "text": text, "value": value})
 
+func emit_collision(mover: CombatUnit, cell: Vector2i, blocker: Vector2i, blocker_uid: int = -1, start: Vector2i = Vector2i(-1, -1), kind: String = "unit") -> void:
+	if not feedback_enabled:
+		return
+	feedback.emit({"kind": "collision", "uid": mover.uid if mover != null else -1, "cell": cell, "text": "边界受阻" if kind == "edge" else "碰撞", "value": 0, "blocker_cell": blocker, "blocker_uid": blocker_uid, "start_cell": start if start.x >= 0 else cell, "object_kind": kind})
+
+
 func emit_feedback(unit: CombatUnit, kind: String, text: String, value: int = 0) -> void:
 	if feedback_enabled and unit != null:
 		_relay_feedback(kind, text, value, unit.cell, unit.uid)
@@ -864,6 +870,8 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		target.paralyzed_ticks = maxi(target.paralyzed_ticks, 1)
 		log_event("%s 的冰冻被攻击解除，本轮仍无法行动。" % target.display_name)
 		if not break_frozen:
+			if bool(opts.get("collision", false)):
+				emit_feedback(target, "collision_damage", "碰撞免伤", 0)
 			return {"amount": 0, "killed": false}
 	var was_burning := target.burn_ticks > 0
 	var matchup_modifier := 0 if bool(opts.get("no_element", false)) else Elements.modifier(String(opts.get("element", "")), target.element)
@@ -884,7 +892,10 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var cause: String = opts.get("cause", "伤害")
 	var previous_hp := target.hp
 	target.hp -= amount
-	emit_feedback(target, "damage" if amount > 0 else "zero", "-%d" % amount if amount > 0 else "未受伤", amount)
+	if bool(opts.get("collision", false)):
+		emit_feedback(target, "collision_damage", "碰撞 -%d" % amount if amount > 0 else "碰撞未受伤", amount)
+	else:
+		emit_feedback(target, "damage" if amount > 0 else "zero", "-%d" % amount if amount > 0 else "未受伤", amount)
 	if amount > 0 and source != null and bool(opts.get("skill_direct", false)) and not bool(opts.get("no_element", false)) and matchup_modifier != 0:
 		emit_feedback(target, "effective" if matchup_modifier > 0 else "resisted", "效果拔群（克制）" if matchup_modifier > 0 else "效果不佳（抵抗）", matchup_modifier)
 	if target.uid == boss_uid and target.side == "enemy" and amount > 0 and previous_hp * 2 > target.max_hp and target.hp > 0 and target.hp * 2 <= target.max_hp:
