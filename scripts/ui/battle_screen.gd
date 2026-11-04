@@ -586,6 +586,8 @@ func _update_unit_card() -> void:
 		statuses.append("电共鸣蓄伤 +%d：下一次造成实际技能伤害时消耗" % unit.electric_resonance_bonus)
 	if unit.mountain_form_ticks > 0:
 		statuses.append("山岳形态 %d 回合：3×3 内友军与自身伤害减免三分之一后转移给施法者" % unit.mountain_form_ticks)
+	if unit.shield_hp > 0:
+		statuses.append("护盾 %d：优先抵挡伤害，破坏时冲击四邻格敌人；剩余 %d 回合" % [unit.shield_hp, unit.shield_ticks])
 	if unit.ice_glide_until_round > 0 and unit.ice_glide_until_round >= state.round:
 		statuses.append("溜冰：至第 %d 回合，沿连通冰面移动不消耗普通移动机会" % unit.ice_glide_until_round)
 	if unit.surf_until_round > 0 and unit.surf_until_round >= state.round:
@@ -970,6 +972,12 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("%d×%d 减伤三分之一 · 转移给自身 · 1 回合" % [
 			3 + 2 * int(unit.upgrades.get("mountain_form_radius", 0)),
 			3 + 2 * int(unit.upgrades.get("mountain_form_radius", 0)),
+		])
+	elif skill_id == "guard_rock":
+		parts.append("护盾 %d · 持续 %d 回合 · 破盾四邻 %d 伤害" % [
+			SkillResolver.guard_rock_shield_amount(unit),
+			Balance.SHIELD_TICKS,
+			Balance.GUARD_ROCK_BREAK_DAMAGE,
 		])
 	elif skill_id == "rock_blast":
 		parts.append("伤害 %d · 击退 1 格 · 两侧分裂 %d 伤害" % [

@@ -167,8 +167,8 @@ func _electric_resonance(t: TestContext) -> void:
 	var result := state.cast_skill(caster, "electric_resonance", {"type": "cell", "cell": caster.cell})
 	t.check(bool(result.get("ok", false)), "电共鸣成功施放")
 	t.eq(caster.electric_resonance_bonus, 8, "一层感电与一层麻痹共蓄积八点伤害")
-	t.eq(ally.shock_ticks, 1, "友军感电被消耗一层")
-	t.eq(enemy.paralyzed_ticks, 1, "敌人麻痹被消耗一层")
+	t.eq(ally.shock_ticks, 2, "友军感电不会被电共鸣消除")
+	t.eq(enemy.paralyzed_ticks, 2, "敌人麻痹不会被电共鸣消除")
 	t.eq(BattleSnapshot.load_state(BattleSnapshot.save_state(state)).unit_by_uid(1).electric_resonance_bonus, 8, "电共鸣蓄伤随战场存档保存")
 	caster.skill_used = false
 	caster.moved = false

@@ -129,7 +129,7 @@ static func ice_breath_has_enemy(state: BattleState, caster: CombatUnit, dir: Ve
 
 static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
 	var skill_range := int(def.get("range", 1))
-	var allows_self := skill_id in ["first_aid", "antidote"]
+	var allows_self := skill_id in ["first_aid", "antidote", "guard_rock"]
 	if SkillDB.is_placeholder(skill_id):
 		skill_range += int(unit.upgrades.get(skill_id + "_range", 0))
 	if unit.side == "player" and skill_id == "drain":
@@ -168,7 +168,7 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 				continue
 		elif distance > skill_range:
 			continue
-		if skill_id in ["herbal_heal", "double_cast", "first_aid", "antidote"]:
+		if skill_id in ["herbal_heal", "double_cast", "first_aid", "antidote", "guard_rock"]:
 			if other.side != unit.side:
 				continue
 			if skill_id == "double_cast" and other.channel_lock_round == state.round:
@@ -715,6 +715,8 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 						_apply_imprint(state, caster, target_entry, summary, preview)
 					"mountain_chain":
 						_apply_mountain_chain(state, caster, target_entry, summary)
+					"guard_rock":
+						_apply_guard_rock(state, caster, target_entry, summary)
 					"rock_blast":
 						_apply_rock_blast(state, caster, target_entry, summary)
 					"water_drop_stone":
@@ -1017,6 +1019,9 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 		"statuses": relic_statuses,
 		"relic_healed": int(result.get("relic_healed", 0)),
 		"mirror_immune": bool(result.get("mirror_immune", false)),
+		"shield_absorbed": int(result.get("shield_absorbed", 0)),
+		"shield_broken": bool(result.get("shield_broken", false)),
+		"shield_burst_hits": result.get("shield_burst_hits", []),
 		"push": null,
 	}
 
@@ -1599,6 +1604,32 @@ static func mountain_form_area(caster: CombatUnit) -> Array:
 	return support_area(caster.cell, 1 + int(caster.upgrades.get("mountain_form_radius", 0)), true)
 
 
+static func guard_rock_shield_amount(caster: CombatUnit) -> int:
+	return Balance.GUARD_ROCK_SHIELD + int(caster.upgrades.get("guard_rock_shield_bonus", 0))
+
+
+static func _apply_guard_rock(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var target := state.unit_by_uid(int(entry.get("unit", -1)))
+	if target == null or target.side != caster.side:
+		return
+	var refreshed := target.shield_hp > 0
+	var amount := guard_rock_shield_amount(caster)
+	state.apply_guard_rock_shield(target, amount, caster.uid)
+	summary["shield"] = {
+		"uid": target.uid,
+		"amount": target.shield_hp,
+		"ticks": target.shield_ticks,
+		"refreshed": refreshed,
+	}
+	summary["area_cells"].append(target.cell)
+	summary["text"] = "守岩为 %s 施加 %d 点护盾，持续 %d 回合。" % [
+		target.display_name,
+		target.shield_hp,
+		target.shield_ticks,
+	]
+	state.log_event(summary["text"])
+
+
 static func _apply_mountain_chain(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var target := state.unit_by_uid(int(entry["unit"]))
 	if target == null:
@@ -2043,16 +2074,14 @@ static func _apply_electric_resonance(state: BattleState, caster: CombatUnit, su
 	var paralysis_layers := 0
 	for target in resonance_candidates(state, caster):
 		if target.shock_ticks > 0:
-			target.shock_ticks = maxi(0, target.shock_ticks - 1)
 			gained += resonance_shock_bonus(caster)
 			shock_layers += 1
 		if target.paralyzed_ticks > 0:
-			target.paralyzed_ticks = maxi(0, target.paralyzed_ticks - 1)
 			gained += resonance_paralysis_bonus(caster)
 			paralysis_layers += 1
 	caster.electric_resonance_bonus += gained
 	summary["resonance_gain"] = gained
-	summary["text"] = "电共鸣消耗 %d 层感电、%d 层麻痹，为下一次技能蓄伤 +%d。" % [shock_layers, paralysis_layers, gained]
+	summary["text"] = "电共鸣借助 %d 层感电、%d 层麻痹，为下一次技能蓄伤 +%d；状态不会消除。" % [shock_layers, paralysis_layers, gained]
 	state.log_event(summary["text"])
 
 

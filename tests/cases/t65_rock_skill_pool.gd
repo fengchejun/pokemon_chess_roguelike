@@ -7,6 +7,7 @@ func run(t: TestContext) -> void:
 	_attack_obstacle_rule(t)
 	_mountain_chain(t)
 	_mountain_form(t)
+	_guard_rock(t)
 	_rock_blast(t)
 	_water_drop_stone(t)
 	_imprint(t)
@@ -14,21 +15,27 @@ func run(t: TestContext) -> void:
 
 
 func _definition_and_learning(t: TestContext) -> void:
-	var expected := ["imprint", "mountain_chain", "mountain_form", "rock_blast", "water_drop_stone"]
+	var expected := ["imprint", "mountain_chain", "mountain_form", "guard_rock", "rock_blast", "water_drop_stone"]
 	for skill_id in expected:
 		t.check(not SkillDB.get_def(skill_id).is_empty(), "%s 有技能定义" % skill_id)
 		t.check(SkillDB.ROCK_SKILL_POOL.has(skill_id), "%s 进入岩系技能池" % skill_id)
 		t.eq(SkillDB.element_of(skill_id), "rock", "%s 为岩系技能" % skill_id)
-	for skill_id in ["mountain_chain", "mountain_form", "rock_blast", "water_drop_stone"]:
+	for skill_id in ["mountain_chain", "guard_rock", "rock_blast", "water_drop_stone"]:
 		t.check(SkillDB.learnable_ids_for("rock").has(skill_id), "%s 进入岩系普通学习池" % skill_id)
 		t.check(not SpeciesDB.skills_of("rock_starter").has(skill_id), "%s 不自动加入初始技能表" % skill_id)
 	t.check(SkillDB.is_special("imprint"), "拓印是特殊技能")
 	t.check(not SkillDB.learnable_ids_for("rock").has("imprint"), "拓印不能通过普通学习池获得")
 	t.check(not SkillDB.is_copyable("imprint"), "特殊技能不能被拓印复制")
+	t.check(SkillDB.is_special("mountain_form"), "山岳形态归为特殊技能")
+	t.check(SkillDB.special_ids_for("rock").has("mountain_form"), "山岳形态出现在岩系特殊技能列表")
+	t.check(not SkillDB.learnable_ids_for("rock").has("mountain_form"), "山岳形态不能通过普通学习池获得")
+	t.check(not SkillDB.is_copyable("mountain_form"), "山岳形态不能被拓印复制")
+	t.check(not SkillDB.is_special("guard_rock"), "守岩是普通技能")
 	t.check(SkillDB.has_tag("mountain_chain", "continuous"), "山脉连袭标记为连续伤害")
 	t.eq(RunState.upgrade_id_for_skill("imprint"), "imprint_mastery", "拓印拥有专属强化")
 	t.eq(RunState.upgrade_id_for_skill("mountain_chain"), "mountain_chain_segments", "山脉连袭拥有专属强化")
 	t.eq(RunState.upgrade_id_for_skill("mountain_form"), "mountain_form_radius", "山岳形态拥有专属强化")
+	t.eq(RunState.upgrade_id_for_skill("guard_rock"), "guard_rock_reinforcement", "守岩拥有专属强化")
 	t.eq(RunState.upgrade_id_for_skill("rock_blast"), "rock_blast_damage", "岩爆弹拥有专属强化")
 	t.eq(RunState.upgrade_id_for_skill("water_drop_stone"), "water_drop_stone_damage", "水滴石穿拥有专属强化")
 
@@ -145,6 +152,85 @@ func _mountain_form(t: TestContext) -> void:
 	var ally_hp := upgraded_ally.hp
 	upgraded.damage_unit(upgraded_enemy, upgraded_ally, 9, {"no_element": true, "cause": "测试"})
 	t.eq(upgraded_ally.hp, ally_hp, "强化范围可吸收五乘五内友军伤害")
+
+
+func _guard_rock(t: TestContext) -> void:
+	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(3, 5), TerrainDB.OBSTACLE]])
+	var state := TestScenario.make_state(["rock_starter", "water_starter"], [
+		["rock_wild1", Vector2i(3, 2)],
+		["rock_wild1", Vector2i(4, 3)],
+		["rock_wild1", Vector2i(3, 4)],
+		["rock_wild1", Vector2i(2, 3)],
+		["rock_wild1", Vector2i(4, 2)],
+	], terrain)
+	var caster := state.unit_by_uid(1)
+	var ally := state.unit_by_uid(2)
+	caster.cell = Vector2i(1, 3)
+	ally.cell = Vector2i(3, 3)
+	caster.skills.append("guard_rock")
+	t.check(_has_unit(state.skill_targets(caster, "guard_rock"), caster.uid), "守岩可选择自己")
+	t.check(_has_unit(state.skill_targets(caster, "guard_rock"), ally.uid), "守岩可选择曼哈顿三格内友军")
+	t.check(not _has_unit(state.skill_targets(caster, "guard_rock"), 100), "守岩不能选择敌人")
+	ally.cell = Vector2i(1, 7)
+	t.check(not _has_unit(state.skill_targets(caster, "guard_rock"), ally.uid), "守岩不能选择曼哈顿四格友军")
+	ally.cell = Vector2i(3, 3)
+
+	var result := state.cast_skill(caster, "guard_rock", {"type": "unit", "unit": ally.uid, "cell": ally.cell})
+	t.check(bool(result.get("ok", false)), "守岩成功施放")
+	t.eq(ally.shield_hp, Balance.GUARD_ROCK_SHIELD, "守岩施加十点护盾")
+	t.eq(ally.shield_ticks, Balance.SHIELD_TICKS, "护盾持续两回合")
+	t.eq(ally.shield_source_uid, caster.uid, "护盾记录施法者")
+	var snapshot := BattleSnapshot.load_state(BattleSnapshot.save_state(state))
+	t.eq(snapshot.unit_by_uid(ally.uid).shield_hp, 10, "护盾耐久随战场快照保存")
+	t.eq(snapshot.unit_by_uid(ally.uid).shield_ticks, 2, "护盾回合数随战场快照保存")
+
+	var ally_hp := ally.hp
+	var enemy_hp_before := {}
+	for uid in [100, 101, 102, 103, 104]:
+		enemy_hp_before[uid] = state.unit_by_uid(uid).hp
+	var obstacle_hp := int(state.obstacle_durability.get(Vector2i(3, 5), 0))
+	var partial := state.damage_unit(state.unit_by_uid(100), ally, 4, {"no_element": true, "cause": "测试"})
+	t.eq(ally.hp, ally_hp, "护盾完整抵挡四点伤害")
+	t.eq(ally.shield_hp, 6, "护盾耐久扣除四点")
+	t.eq(int(partial.get("shield_absorbed", 0)), 4, "伤害结果记录护盾吸收量")
+	t.check(not bool(partial.get("shield_broken", true)), "护盾未耗尽时不会触发破盾冲击")
+
+	var broken := state.damage_unit(state.unit_by_uid(100), ally, 8, {"no_element": true, "cause": "测试"})
+	t.check(bool(broken.get("shield_broken", false)), "护盾耗尽后被破坏")
+	t.eq(int(broken.get("shield_absorbed", 0)), 6, "破盾前吸收剩余六点伤害")
+	t.eq(int(broken.get("amount", 0)), 2, "超过护盾的两点伤害作用于生命")
+	t.eq(ally.hp, ally_hp - 2, "超出护盾的两点伤害继续作用于生命")
+	t.eq(ally.shield_hp, 0, "破坏后的护盾耐久归零")
+	t.eq(ally.shield_ticks, 0, "破坏后的护盾不再计时")
+	t.eq((broken.get("shield_burst_hits", []) as Array).size(), 4, "破盾冲击命中四邻格四名敌人")
+	for uid in [100, 101, 102, 103]:
+		t.eq(state.unit_by_uid(uid).hp, int(enemy_hp_before[uid]) - 4, "破盾对四邻格敌人造成四点伤害")
+	t.eq(state.unit_by_uid(104).hp, int(enemy_hp_before[104]), "破盾不影响斜角敌人")
+	t.eq(int(state.obstacle_durability.get(Vector2i(3, 5), 0)), obstacle_hp, "破盾冲击不伤害障碍")
+
+	var refreshed := TestScenario.make_state(["rock_starter", "water_starter"], [["rock_wild1", Vector2i(7, 7)]])
+	var refresh_caster := refreshed.unit_by_uid(1)
+	var refresh_ally := refreshed.unit_by_uid(2)
+	refresh_caster.cell = Vector2i(1, 3)
+	refresh_ally.cell = Vector2i(2, 3)
+	refreshed.apply_guard_rock_shield(refresh_ally, 10, refresh_caster.uid)
+	refreshed.apply_guard_rock_shield(refresh_ally, 10, refresh_caster.uid)
+	t.eq(refresh_ally.shield_hp, 10, "重复施放不会叠加护盾耐久")
+	t.eq(refresh_ally.shield_ticks, 2, "重复施放刷新护盾回合")
+	refreshed.settle_round()
+	t.eq(refresh_ally.shield_ticks, 1, "第一次整轮结束后护盾剩余一回合")
+	refreshed.settle_round()
+	t.eq(refresh_ally.shield_hp, 0, "两回合后未被破坏的护盾消失")
+
+	var upgraded := TestScenario.make_state(["rock_starter", "water_starter"], [["rock_wild1", Vector2i(7, 7)]])
+	var upgraded_caster := upgraded.unit_by_uid(1)
+	var upgraded_ally := upgraded.unit_by_uid(2)
+	upgraded_caster.cell = Vector2i(1, 3)
+	upgraded_ally.cell = Vector2i(2, 3)
+	upgraded_caster.skills.append("guard_rock")
+	upgraded_caster.upgrades["guard_rock_shield_bonus"] = 5
+	upgraded.cast_skill(upgraded_caster, "guard_rock", {"type": "unit", "unit": upgraded_ally.uid, "cell": upgraded_ally.cell})
+	t.eq(upgraded_ally.shield_hp, 15, "磐岩加固将护盾提高至十五点")
 
 
 func _rock_blast(t: TestContext) -> void:

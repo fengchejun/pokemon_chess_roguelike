@@ -255,6 +255,7 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 				total += actor_after.electric_resonance_bonus - actor_before.electric_resonance_bonus
 			if actor_after.mountain_form_ticks > actor_before.mountain_form_ticks:
 				total += 18
+			total += _shield_score(actor_before, actor_after)
 			if actor_after.ice_glide_until_round > actor_before.ice_glide_until_round and before.terrain_at(actor_after.cell) == TerrainDB.ICE:
 				total += 13
 			if actor_after.surf_until_round > actor_before.surf_until_round and TerrainDB.is_water_body(before.terrain_at(actor_after.cell)):
@@ -278,8 +279,18 @@ static func _score(before: BattleState, after: BattleState, actor_uid: int) -> D
 			var ally_cleansed := _debuff_score(unit) - _debuff_score(later)
 			if ally_cleansed > 0:
 				total += ally_cleansed
+			total += _shield_score(unit, later)
 	total += _terrain_setup_score(before, after)
 	return {"total": total, "kills": kills}
+
+
+static func _shield_score(before: CombatUnit, after: CombatUnit) -> int:
+	if before == null or after == null:
+		return 0
+	var score := maxi(0, after.shield_hp - before.shield_hp) * 2
+	if after.shield_hp > 0 and after.shield_ticks > before.shield_ticks:
+		score += 4
+	return score
 
 
 static func _bonus_cast_available(state: BattleState, actor: CombatUnit, target: CombatUnit) -> bool:

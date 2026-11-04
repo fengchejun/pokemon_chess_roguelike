@@ -192,6 +192,16 @@ var mountain_form_ticks: int = 0:
 		mountain_form_ticks = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "山岳形态" + ("解除" if not active else ""), int(value), cell)
+var shield_hp: int = 0:
+	set(value):
+		var was_active := shield_hp > 0
+		var active := value > 0
+		var announce := active != was_active or (active and value > shield_hp)
+		shield_hp = maxi(0, value)
+		if announce:
+			feedback_changed.emit("shield" if active else "clear", "护盾" + ("解除" if not active else ""), int(value), cell)
+var shield_ticks: int = 0
+var shield_source_uid: int = -1
 
 # 最近一次成功施放，供「拓印」读取。
 var last_skill_id: String = ""
@@ -297,6 +307,9 @@ func dup() -> CombatUnit:
 	copy.fire_amp_stacks = fire_amp_stacks
 	copy.electric_resonance_bonus = electric_resonance_bonus
 	copy.mountain_form_ticks = mountain_form_ticks
+	copy.shield_hp = shield_hp
+	copy.shield_ticks = shield_ticks
+	copy.shield_source_uid = shield_source_uid
 	copy.last_skill_id = last_skill_id
 	copy.last_skill_from = last_skill_from
 	copy.last_skill_target = last_skill_target.duplicate(true)

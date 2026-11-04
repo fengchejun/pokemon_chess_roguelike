@@ -729,6 +729,31 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		emit_feedback(target, "shield", "镜花水月·免疫", 0)
 		log_event("镜花水月的镜影替 %s 承受了 %d 点伤害。" % [target.display_name, amount])
 		return {"amount": 0, "killed": false, "previous_hp": target.hp, "hp": target.hp, "mirror_immune": true}
+	var shield_absorbed := 0
+	var shield_broken := false
+	var shield_burst_hits: Array = []
+	if amount > 0 and target.shield_hp > 0:
+		shield_absorbed = mini(amount, target.shield_hp)
+		target.shield_hp -= shield_absorbed
+		amount -= shield_absorbed
+		emit_feedback(target, "shield", "护盾 -%d" % shield_absorbed, shield_absorbed)
+		log_event("%s 的护盾抵挡了 %d 点伤害，剩余护盾 %d。" % [target.display_name, shield_absorbed, target.shield_hp])
+		if target.shield_hp <= 0:
+			var shield_source := unit_by_uid(target.shield_source_uid)
+			target.shield_ticks = 0
+			target.shield_source_uid = -1
+			shield_broken = true
+			shield_burst_hits = _trigger_guard_rock_break(target, shield_source)
+	if shield_absorbed > 0 and amount <= 0:
+		return {
+			"amount": 0,
+			"killed": false,
+			"previous_hp": target.hp,
+			"hp": target.hp,
+			"shield_absorbed": shield_absorbed,
+			"shield_broken": shield_broken,
+			"shield_burst_hits": shield_burst_hits,
+		}
 	var absorbed_from_uid := -1
 	var absorbed_by_uid := -1
 	if amount > 0:
@@ -813,7 +838,35 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		"thawed_wet": thawed_wet,
 		"absorbed_from_uid": absorbed_from_uid,
 		"absorbed_by_uid": absorbed_by_uid,
+		"shield_absorbed": shield_absorbed,
+		"shield_broken": shield_broken,
+		"shield_burst_hits": shield_burst_hits,
 	}
+
+
+func _trigger_guard_rock_break(target: CombatUnit, shield_source: CombatUnit) -> Array:
+	var hits: Array = []
+	var source := shield_source if shield_source != null and shield_source.is_alive() and shield_source.side == target.side else null
+	emit_feedback(target, "shield", "守岩破盾", Balance.GUARD_ROCK_BREAK_DAMAGE)
+	log_event("%s 的护盾被破坏，向四邻格敌人释放守岩冲击。" % target.display_name)
+	for cell in GridSpec.neighbors4(target.cell):
+		var enemy := unit_at(cell)
+		if enemy == null or not enemy.is_alive() or enemy.side == target.side:
+			continue
+		var result := damage_unit(source, enemy, Balance.GUARD_ROCK_BREAK_DAMAGE, {
+			"no_element": true,
+			"cause": "守岩破盾",
+			"killer_side": target.side,
+			"killer_uid": source.uid if source != null else -1,
+		})
+		hits.append({
+			"uid": enemy.uid,
+			"name": enemy.display_name,
+			"cell": cell,
+			"damage": int(result.get("amount", 0)),
+			"killed": bool(result.get("killed", false)),
+		})
+	return hits
 
 
 static func mountain_form_reduced_damage(amount: int) -> int:
@@ -833,6 +886,33 @@ func _mountain_form_bearer(target: CombatUnit) -> CombatUnit:
 		if absi(offset.x) <= radius and absi(offset.y) <= radius:
 			return unit
 	return null
+
+
+func apply_guard_rock_shield(target: CombatUnit, amount: int, source_uid: int = -1) -> bool:
+	if target == null or not target.is_alive() or amount <= 0:
+		return false
+	var was_active := target.shield_hp > 0
+	target.shield_hp = maxi(target.shield_hp, amount)
+	target.shield_ticks = Balance.SHIELD_TICKS
+	target.shield_source_uid = source_uid
+	log_event("%s 获得 %d 点护盾，持续 %d 回合%s。" % [
+		target.display_name,
+		target.shield_hp,
+		target.shield_ticks,
+		"（刷新）" if was_active else "",
+	])
+	return true
+
+
+func clear_guard_rock_shield(target: CombatUnit, expired: bool = false) -> void:
+	if target == null:
+		return
+	var had_shield := target.shield_hp > 0
+	target.shield_hp = 0
+	target.shield_ticks = 0
+	target.shield_source_uid = -1
+	if expired and had_shield:
+		log_event("%s 的护盾持续两回合后消失。" % target.display_name)
 
 
 func apply_burn(target: CombatUnit, source: CombatUnit) -> bool:
@@ -1700,6 +1780,10 @@ func _settle_round_rules() -> void:
 			unit.slow_ticks = maxi(0, unit.slow_ticks - 1)
 		if unit.mountain_form_ticks > 0:
 			unit.mountain_form_ticks = maxi(0, unit.mountain_form_ticks - 1)
+		if unit.shield_ticks > 0:
+			unit.shield_ticks -= 1
+			if unit.shield_ticks <= 0:
+				clear_guard_rock_shield(unit, true)
 		if unit.shock_ticks > 0:
 			unit.shock_ticks -= 1
 		if unit.frozen and unit.frozen_ticks > 0:
@@ -2015,6 +2099,7 @@ func _signature() -> String:
 		parts.append("channel_lock:%d:%d" % [unit.uid, unit.channel_lock_round])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.electric_resonance_bonus, unit.summon_owner_uid])
 		parts.append("mountain_form:%d:%d" % [unit.uid, unit.mountain_form_ticks])
+		parts.append("shield:%d:%d:%d:%d" % [unit.uid, unit.shield_hp, unit.shield_ticks, unit.shield_source_uid])
 		parts.append("last_skill:%d:%s:%s:%s" % [unit.uid, unit.last_skill_id, str(unit.last_skill_from), str(unit.last_skill_target)])
 		parts.append("imprison:%d:%d" % [unit.uid, unit.imprison_ticks])
 		parts.append("vine_reapply:%d:%d:%d,%d" % [unit.uid, unit.vine_reapply_round, unit.vine_reapply_cell.x, unit.vine_reapply_cell.y])
@@ -2127,6 +2212,9 @@ func reset_exploration_actions() -> void:
 		unit.frozen = false
 		unit.frozen_ticks = 0
 		unit.paralyzed_ticks = 0
+		unit.shield_hp = 0
+		unit.shield_ticks = 0
+		unit.shield_source_uid = -1
 		unit.move_cancelled = false
 		unit.root_pending = false
 		unit.vine_ticks = 0

@@ -34,6 +34,9 @@ const PARALYSIS_TICKS := 2
 const LIGHTNING_SHOCK_TICKS := 2
 const ELECTRIC_RESONANCE_SHOCK_BONUS := 3
 const ELECTRIC_RESONANCE_PARALYSIS_BONUS := 5
+const SHIELD_TICKS := 2
+const GUARD_ROCK_SHIELD := 10
+const GUARD_ROCK_BREAK_DAMAGE := 4
 
 static func burn_damage_for(max_hp: int) -> int:
 	return maxi(1, ceili(float(maxi(1, max_hp)) * BURN_MAX_HP_RATIO))

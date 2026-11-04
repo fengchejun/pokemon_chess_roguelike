@@ -414,6 +414,8 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		badges_text += "镜"
 	if unit.mountain_form_ticks > 0:
 		badges_text += "山"
+	if unit.shield_hp > 0:
+		badges_text += "盾"
 	if unit.root_pending or unit.move_cancelled:
 		badges_text += "定"
 	if unit.imprison_ticks > 0:

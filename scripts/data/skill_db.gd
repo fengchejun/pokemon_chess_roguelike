@@ -44,7 +44,7 @@ const DEFS := {
 	"magnet_pull": {"name": "磁吸", "element": "electric", "kind": "self", "damage": 0, "ranged": false, "desc": "自动选择四正交方向 5 格内最近且路径可见的敌人，将其向自身拉近 1 格；目标有感电或麻痹时拉近 2 格。障碍与中间单位会截断路径。"},
 	"glare": {"name": "眩光", "element": "electric", "kind": "self", "damage": 0, "ranged": false, "desc": "对自身周围 3×3 内所有敌人施加一层感电；麻痹中的目标不能获得感电。已有感电的目标再获得一层时转为麻痹。"},
 	"electromagnetic_laser": {"name": "电磁镭射", "element": "electric", "kind": "electric_laser", "range": 4, "damage": 12, "ranged": true, "desc": "选择四正交方向 4 格内一名敌人造成 12 点基础直伤；障碍会阻挡。目标有感电或麻痹时可越过地形障碍攻击，但仍不能越过中间单位。"},
-	"electric_resonance": {"name": "电共鸣", "element": "electric", "kind": "self", "damage": 0, "ranged": false, "desc": "消耗自身周围 3×3 内每名单位一层感电或麻痹，为施法者下一次造成实际伤害的技能分别蓄积 3 点或 5 点伤害；范围内友军和敌人均生效。"},
+	"electric_resonance": {"name": "电共鸣", "element": "electric", "kind": "self", "damage": 0, "ranged": false, "desc": "共鸣自身周围 3×3 内每名单位的感电或麻痹，为施法者下一次造成实际伤害的技能分别蓄积 3 点或 5 点伤害；不会消除感电与麻痹，范围内友军和敌人均生效。"},
 	"electric_spark": {"name": "电极火花", "element": "electric", "kind": "direction", "range": 3, "damage": 8, "ranged": true, "desc": "选择四正交方向，对前方 3 格内所有敌人造成 8 点基础直伤；命中前已有感电或麻痹的目标额外尝试施加烧伤。障碍会截断。"},
 	"fire_seed": {
 		"name": "火种",
@@ -227,9 +227,24 @@ const DEFS := {
 		"kind": "self",
 		"damage": 0,
 		"ranged": false,
+		"category": "special",
 		"duration": 1,
 		"buff": true,
-		"desc": "持续 1 回合的增益状态：自身 3×3 内友军与自身受到的伤害先减免三分之一并向上取整，再由施法者承受。解药只能解除异常状态，不会解除山岳形态。",
+		"desc": "岩系特殊技能。持续 1 回合的增益状态：自身 3×3 内友军与自身受到的伤害先减免三分之一并向上取整，再由施法者承受。解药只能解除异常状态，不会解除山岳形态。",
+	},
+	"guard_rock": {
+		"name": "守岩",
+		"element": "rock",
+		"kind": "unit",
+		"range": 3,
+		"damage": 0,
+		"shield": 10,
+		"shield_duration": 2,
+		"break_damage": 4,
+		"ranged": false,
+		"ally_only": true,
+		"allows_self": true,
+		"desc": "为自身或曼哈顿 3 格内一名友军施加 10 点护盾，持续 2 回合。护盾先抵挡伤害；被破坏时，目标四邻格中的敌人各受 4 点伤害，不影响障碍。",
 	},
 	"rock_blast": {
 		"name": "岩爆弹",
@@ -267,6 +282,7 @@ const ROCK_SKILL_POOL := [
 	"earth_shake",
 	"mountain_chain",
 	"mountain_form",
+	"guard_rock",
 	"rock_blast",
 	"water_drop_stone",
 	"imprint",
@@ -298,7 +314,7 @@ static func learnable_ids_for(element: String) -> Array:
 		"water": ids.append_array(["surf", "water_magic_burst", "ice_breath", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard"])
 		"electric": ids.append_array(["tailwind", "double_cast", "magnet_pull", "glare", "electromagnetic_laser", "electric_resonance", "electric_spark"])
 		"grass": ids.append_array(["leech_seed", "tree_man", "first_aid", "rooted_grass", "leaf_wind", "antidote"])
-		"rock": ids.append_array(["rock_slide", "earth_shake", "mountain_chain", "mountain_form", "rock_blast", "water_drop_stone"])
+		"rock": ids.append_array(["rock_slide", "earth_shake", "mountain_chain", "guard_rock", "rock_blast", "water_drop_stone"])
 	return ids
 
 
