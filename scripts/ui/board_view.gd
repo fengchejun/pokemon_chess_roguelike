@@ -446,7 +446,7 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		draw_string(font, center + Vector2(18, -18), "★", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("ffe17d"))
 	if unit.fresh_spawn:
 		draw_string(font, center + Vector2(-30, -18), "新", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.95, 0.8, 0.4))
-	if String(reward.get("state", "")) == "carried" and int(reward.get("owner_uid", -1)) == unit.uid:
+	if ([reward] + extra_rewards).any(func(point): return point.get("state") == "carried" and int(point.get("owner_uid", -1)) == unit.uid and not bool(point.get("credited", false))):
 		draw_string(font, center + Vector2(-31, 33), "奖", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1.0, 0.85, 0.2))
 	if not unit.battle_buffs.is_empty():
 		draw_string(font, center + Vector2(19, 32), "增", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1.0, 0.88, 0.3))

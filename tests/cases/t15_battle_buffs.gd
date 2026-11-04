@@ -47,7 +47,7 @@ func _t_reward_credit(t: TestContext) -> void:
 	var enemy_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 4)]])
 	enemy_state.reward["cell"] = Vector2i(6, 4)
 	enemy_state.begin_enemy_phase()
-	t.eq(enemy_state.reward["state"], "map", "敌人占点只会阻挡，不领取我方奖励")
+	t.eq(enemy_state.reward["state"], "map", "敌人在己方阶段结束前不会立即拾取")
 	var damage_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(7, 6)]])
 	damage_state.reward["cell"] = Vector2i(4, 3)
 	damage_state.unit_by_uid(1).cell = Vector2i(0, 3)

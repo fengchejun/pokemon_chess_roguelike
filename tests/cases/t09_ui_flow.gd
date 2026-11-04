@@ -97,7 +97,7 @@ func run(t: TestContext) -> void:
 	battle_screen.refresh_all()
 	var reward_layer: Control = battle_screen.find_child("RewardChoiceLayer", true, false)
 	t.check(reward_layer == null, "战场奖励不再打断战斗弹出 Buff 选择")
-	t.check(battle_screen.status_label.text.contains("奖励已持有"), "战斗界面显示奖励持有状态")
+	t.check(battle_screen.status_label.text.contains("我方持有 1"), "战斗界面显示奖励持有状态")
 	if unit != null:
 		battle_screen.select_unit(unit.uid)
 		t.check(battle_screen.skill_box.find_child("ChooseSkillButton", true, false) != null, "选中后先显示技能类型入口")

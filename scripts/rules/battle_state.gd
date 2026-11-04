@@ -477,27 +477,28 @@ func damage_reward_at(_cell: Vector2i) -> void:
 	pass
 
 
-func _begin_reward_guard() -> void:
+func _begin_reward_guard(side: String = "player") -> void:
 	for point in all_rewards():
 		if point.get("state") != "map":
 			continue
 		var unit := unit_at(point["cell"])
-		if unit != null and unit.side == "player":
+		if unit != null and unit.side == side:
 			point["state"] = "guarding"
 			point["guard_uid"] = unit.uid
+			point["guard_side"] = side
 			log_event("%s 开始守住奖励点。" % unit.display_name)
 
 
-func _finish_reward_guard() -> void:
+func _finish_reward_guard(side: String = "player") -> void:
 	for point in all_rewards():
-		if point.get("state") != "guarding":
+		if point.get("state") != "guarding" or point.get("guard_side", "player") != side:
 			continue
 		var unit := unit_by_uid(int(point.get("guard_uid", -1)))
-		if unit != null and unit.is_alive() and unit.side == "player" and unit.cell == point["cell"]:
+		if unit != null and unit.is_on_board() and unit.side == side and unit.cell == point["cell"]:
 			point["state"] = "carried"
 			point["owner_uid"] = unit.uid
 			emit_feedback(unit, "buff", "获得战场奖励")
-			log_event("%s 取得奖励点，存活离场可额外三选一。" % unit.display_name)
+			log_event(("%s 取得奖励点，存活离场可额外三选一。" if side == "player" else "%s 拾取并携带了奖励点，击杀后可夺回。") % unit.display_name)
 		else:
 			point["state"] = "map"
 			point["guard_uid"] = -1
@@ -508,7 +509,7 @@ func _refresh_reward_guard() -> void:
 		if point.get("state") != "guarding":
 			continue
 		var unit := unit_by_uid(int(point.get("guard_uid", -1)))
-		if unit == null or not unit.is_alive() or unit.side != "player" or unit.cell != point["cell"]:
+		if unit == null or not unit.is_on_board() or unit.side != point.get("guard_side", "player") or unit.cell != point["cell"]:
 			point["state"] = "map"
 			point["guard_uid"] = -1
 
@@ -519,6 +520,18 @@ func earned_reward_points(uncredited_only: bool = false) -> Array:
 	return all_rewards().filter(func(point):
 		var holder := unit_by_uid(int(point.get("owner_uid", -1)))
 		return point.get("state") == "carried" and holder != null and holder.is_alive() and holder.side == "player" and (not uncredited_only or not bool(point.get("credited", false))))
+
+
+func reward_count_held(side: String) -> int:
+	var count := 0
+	for point in all_rewards():
+		var holder := unit_by_uid(int(point.get("owner_uid", -1)))
+		if point.get("state") == "carried" and not bool(point.get("credited", false)) and holder != null and holder.is_alive() and holder.side == side:
+			count += 1
+	for unit in alive_units(side):
+		if unit.reward_carrier:
+			count += 1
+	return count
 
 
 func reward_bonus_earned() -> bool:
@@ -700,7 +713,14 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 			point["state"] = "map"
 			point["guard_uid"] = -1
 		if point.get("state") == "carried" and int(point.get("owner_uid", -1)) == unit.uid:
-			point["state"] = "lost"
+			if unit.side == "enemy" and not TerrainDB.is_lethal(terrain_kind):
+				point["state"] = "map"
+				point["cell"] = unit.cell
+				point["owner_uid"] = -1
+				point["guard_uid"] = -1
+				_relay_feedback("buff", "奖励点掉落", 0, unit.cell, -1)
+			else:
+				point["state"] = "lost"
 	if unit.side == "enemy" and unit.reward_carrier:
 		unit.reward_carrier = false
 		if not TerrainDB.is_lethal(terrain_kind):
@@ -778,6 +798,12 @@ func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
 	unit.guard_nest = Vector2i(-1, -1)
 	unit.guard_charge = false
 	unit.reward_carrier = false
+	for point in all_rewards():
+		if point.get("state") == "carried" and int(point.get("owner_uid", -1)) == unit.uid:
+			point["state"] = "lost"
+		if point.get("state") == "guarding" and int(point.get("guard_uid", -1)) == unit.uid:
+			point["state"] = "map"
+			point["guard_uid"] = -1
 	enemy_outcomes[unit.uid] = "captured"
 	cancel_channel(unit, "阵营改变")
 	emit_feedback(unit, "action", "捕获成功")
@@ -990,6 +1016,7 @@ func apply_vine_bind(unit: CombatUnit) -> void:
 
 
 func apply_vine_on_landing(unit: CombatUnit) -> void:
+	_refresh_reward_guard()
 	if unit != null and GridSpec.is_inside(unit.cell) and terrain_at(unit.cell) == TerrainDB.VINES:
 		apply_vine_bind(unit)
 
@@ -1494,6 +1521,8 @@ func _begin_enemy_phase_rules() -> Array:
 		return []
 	_finish_movement_effects("player")
 	_apply_shallow_wet("enemy", 1)
+	_refresh_reward_guard()
+	_finish_reward_guard("enemy")
 	phase = PHASE_ENEMY
 	for unit in units:
 		unit.guard_nest = Vector2i(-1, -1)
@@ -1579,6 +1608,7 @@ func _end_enemy_phase_rules() -> void:
 	_finish_movement_effects("enemy")
 	_apply_shallow_wet("player", 1)
 	_finish_reward_guard()
+	_begin_reward_guard("enemy")
 	_finish_round()
 
 
@@ -1753,6 +1783,7 @@ func _settle_ice_slides() -> void:
 			continue
 		var next: Vector2i = slide["to"]
 		unit.cell = next
+		_refresh_reward_guard()
 		log_event("%s 从冰面滑行到 (%d,%d)。" % [unit.display_name, next.x, next.y])
 		if bool(slide["lethal"]):
 			kill_unit(unit, "冰面滑入致死地形")

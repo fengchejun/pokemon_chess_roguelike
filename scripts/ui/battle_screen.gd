@@ -479,7 +479,7 @@ func _update_header() -> void:
 			reward_text = "　奖励因持有者倒下而失去"
 		"destroyed":
 			reward_text = "　奖励已摧毁"
-	reward_text = "奖励待拾取 %d · 奖励已持有 %d" % [state.all_rewards().filter(func(p): return p.get("state") in ["map", "guarding"]).size(), state.all_rewards().filter(func(p): return p.get("state") == "carried" and not bool(p.get("credited", false))).size()]
+	reward_text = "奖励待拾取 %d · 我方持有 %d · 敌方携带 %d" % [state.all_rewards().filter(func(p): return p.get("state") in ["map", "guarding"]).size(), state.reward_count_held("player"), state.reward_count_held("enemy")]
 	status_label.text = "敌人剩余 %d｜已击败 %d｜已捕获 %d%s" % [
 		state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size(), reward_text,
 	]
@@ -500,7 +500,7 @@ func _update_header() -> void:
 		objective_label.text += "\n" + ("天雷已锁定 %d 格：本轮末落雷，伤害为最大生命50%%，可误伤敌人。" % state.storm_strikes.size() if not state.storm_strikes.is_empty() else "第8轮末开始预告天雷，可移动躲避。")
 	if state.is_free_exploration():
 		objective_label.text += "\n自由探索 · 无限行动 · 禁止恢复"
-	objective_label.text += "\n宝箱 %d · 待拾 %d · 持有 %d" % [state.chests.size(), state.all_rewards().filter(func(p): return p.get("state") in ["map", "guarding"]).size(), state.all_rewards().filter(func(p): return p.get("state") == "carried" and not bool(p.get("credited", false))).size()]
+	objective_label.text += "\n宝箱 %d · 待拾 %d · 我持 %d · 敌持 %d" % [state.chests.size(), state.all_rewards().filter(func(p): return p.get("state") in ["map", "guarding"]).size(), state.reward_count_held("player"), state.reward_count_held("enemy")]
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
 
 
@@ -621,7 +621,7 @@ func _update_unit_card() -> void:
 	for buff_id in unit.battle_buffs:
 		statuses.append("本场 Buff：%s" % BattleBuffDB.name_of(String(buff_id)))
 	if state.all_rewards().any(func(p): return p.get("state") == "carried" and int(p.get("owner_uid", -1)) == unit.uid and not bool(p.get("credited", false))):
-		statuses.append("持有战场奖励：战斗结束前须存活")
+		statuses.append("持有战场奖励：战斗结束前须存活" if unit.side == "player" else "持有抢走的奖励点：击杀后原格掉落，危险格死亡或捕获不掉落")
 	if statuses.is_empty():
 		statuses.append("无")
 	lines.append("状态：" + "、".join(statuses))
@@ -1292,13 +1292,14 @@ func _show_terrain(cell: Vector2i) -> void:
 	if state.is_chest_cell(cell):
 		lines.append("命中一次攻击后破坏，原格生成奖励点；碰撞不损伤宝箱。")
 	if state.all_rewards().any(func(p): return p.get("cell") == cell and p.get("state") in ["map", "guarding"]):
-		lines.append("奖励点不受攻击破坏；我方守点经过敌方行动后取得，持有者存活离场可获得一次三选一。")
+		lines.append("奖励点不受攻击破坏；双方在本方回合末占点，守过对方行动阶段后携带。击杀敌方携带者可夺回。")
 	if cell == state.reward.get("cell", Vector2i(-1, -1)):
 		match String(state.reward.get("state", "")):
 			"map", "guarding":
-				lines.append("奖励格：我方在结束行动时站上去，敌方行动结束时仍活着且站在此格即可取得奖励。受伤但存活不妨碍守点；持有者须活到战斗结束。")
+				lines.append("奖励格：在本方回合末站上去，经过对方行动后仍存活且未离开即可携带；敌人也会拾取。受伤但存活不打断占点。")
 			"carried":
-				lines.append("奖励已由我方持有；持有者活到战斗结束可记录一次额外战后三选一。")
+				var owner := state.reward_owner()
+				lines.append("奖励已由敌方携带，正常击杀可夺回。" if owner != null and owner.side == "enemy" else "奖励已由我方持有；持有者活到战斗结束可记录一次额外战后三选一。")
 			"lost", "destroyed":
 				lines.append("本场奖励已失去。")
 	if state.food_cells.has(cell):
