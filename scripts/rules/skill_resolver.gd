@@ -103,17 +103,21 @@ static func _ray_targets(state: BattleState, unit: CombatUnit, skill_id: String,
 static func ice_breath_cells(state: BattleState, caster: CombatUnit, dir: Vector2i) -> Array:
 	var cells: Array = []
 	var perpendicular := Vector2i(dir.y, dir.x)
-	var active_lanes := {0: true, 1: true}
-	for depth in range(1, 4):
-		for offset in [0, 1]:
-			if not bool(active_lanes.get(offset, false)):
+	var def := SkillDB.get_def("ice_breath")
+	var width := maxi(1, int(def.get("width", 3)))
+	var depth := maxi(1, int(def.get("depth", 2)))
+	var lane_start := -int(width / 2)
+	var active_lanes: Dictionary = {}
+	for distance in range(1, depth + 1):
+		for lane in range(lane_start, lane_start + width):
+			if not bool(active_lanes.get(lane, true)):
 				continue
-			var cell: Vector2i = caster.cell + dir * depth + perpendicular * offset
+			var cell: Vector2i = caster.cell + dir * distance + perpendicular * lane
 			if not GridSpec.is_inside(cell):
-				active_lanes[offset] = false
+				active_lanes[lane] = false
 				continue
 			if TerrainDB.blocks_rays(state.terrain_at(cell)) or (state.is_nest_cell(cell) and state.unit_at(cell) == null):
-				active_lanes[offset] = false
+				active_lanes[lane] = false
 				continue
 			cells.append(cell)
 	return cells

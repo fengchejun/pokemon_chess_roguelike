@@ -50,11 +50,11 @@ func _water_magic_burst(t: TestContext) -> void:
 
 func _ice_breath(t: TestContext) -> void:
 	var state := TestScenario.make_state(["water_starter"], [
+		["rock_wild1", Vector2i(2, 3)],
 		["rock_wild1", Vector2i(3, 3)],
+		["rock_wild1", Vector2i(2, 4)],
+		["rock_wild1", Vector2i(3, 2)],
 		["rock_wild1", Vector2i(4, 3)],
-		["rock_wild1", Vector2i(3, 4)],
-		["rock_wild1", Vector2i(4, 4)],
-		["rock_wild1", Vector2i(5, 3)],
 	])
 	var caster := state.unit_by_uid(1)
 	var wet_front := state.unit_by_uid(100)
@@ -68,17 +68,17 @@ func _ice_breath(t: TestContext) -> void:
 	state.apply_slow(wet_side)
 	var hp_before := [wet_front.hp, dry_behind.hp, wet_side.hp, dry_side.hp, outside.hp]
 	var area := SkillResolver.ice_breath_cells(state, caster, Vector2i.RIGHT)
-	t.eq(area.size(), 6, "冰之息覆盖前方 3×2 六格")
-	for cell in [Vector2i(2, 3), Vector2i(2, 4), Vector2i(3, 3), Vector2i(3, 4), Vector2i(4, 3), Vector2i(4, 4)]:
+	t.eq(area.size(), 6, "冰之息覆盖前方 3 格宽、2 格深共六格")
+	for cell in [Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 4), Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4)]:
 		t.check(area.has(cell), "冰之息范围包含 %s" % str(cell))
 	var result := state.cast_skill(caster, "ice_breath", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(2, 3)})
 	t.check(bool(result.get("ok", false)), "冰之息可朝正交方向施放")
 	t.eq((result.get("area_cells", []) as Array).size(), 6, "冰之息结算完整三乘二范围")
-	t.eq(wet_front.hp, int(hp_before[0]) - 8, "冰之息命中前排浸湿目标")
-	t.eq(dry_behind.hp, int(hp_before[1]) - 8, "冰之息继续命中同列后排敌人")
-	t.eq(wet_side.hp, int(hp_before[2]) - 8, "冰之息命中第二列浸湿目标")
-	t.eq(dry_side.hp, int(hp_before[3]) - 8, "冰之息命中第二列后排敌人")
-	t.eq(outside.hp, int(hp_before[4]), "冰之息不命中四格外目标")
+	t.eq(wet_front.hp, int(hp_before[0]) - 8, "冰之息命中第一排中央列浸湿目标")
+	t.eq(dry_behind.hp, int(hp_before[1]) - 8, "冰之息命中第二排中央列敌人")
+	t.eq(wet_side.hp, int(hp_before[2]) - 8, "冰之息命中第一排侧列浸湿目标")
+	t.eq(dry_side.hp, int(hp_before[3]) - 8, "冰之息命中第二排另一侧列敌人")
+	t.eq(outside.hp, int(hp_before[4]), "冰之息不命中第三排目标")
 	t.eq(wet_front.slow_ticks, 0, "冰之息清除前排目标浸湿")
 	t.check(wet_front.frozen, "前排浸湿目标获得冰冻")
 	t.eq(wet_front.frozen_ticks, Balance.FREEZE_TICKS, "冰之息冰冻持续一回合")
@@ -94,7 +94,7 @@ func _ice_breath(t: TestContext) -> void:
 	blocked_caster.skills.append("ice_breath")
 	var blocked_lane := SkillResolver.ice_breath_cells(blocked, blocked_caster, Vector2i.RIGHT)
 	t.check(not blocked_lane.has(Vector2i(2, 3)), "障碍格不会被冰之息覆盖")
-	t.check(blocked_lane.has(Vector2i(3, 4)), "障碍只阻断对应列，另一列继续延伸")
+	t.check(blocked_lane.has(Vector2i(3, 4)), "障碍只阻断中央列，其余列继续延伸")
 	var blocked_result := blocked.cast_skill(blocked_caster, "ice_breath", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(2, 3)})
 	t.check(bool(blocked_result.get("ok", false)), "另一列有敌人时冰之息仍可施放")
 	t.eq(blocked.unit_by_uid(100).hp, SpeciesDB.hp_of("rock_wild1"), "障碍后的敌人不受伤")

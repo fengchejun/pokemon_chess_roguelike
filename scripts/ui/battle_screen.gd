@@ -935,7 +935,7 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		var center_damage := Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, 11), unit.side)
 		parts.append("十字 5 格 · 伤害 %d · 中心 %d · 击退" % [damage, center_damage])
 	elif skill_id == "ice_breath":
-		parts.append("前方 3×2 · 伤害 %d · 浸湿转冰冻" % damage)
+		parts.append("前方 3 格宽 × 2 格深 · 伤害 %d · 浸湿转冰冻" % damage)
 	elif skill_id == "tree_man":
 		parts.append("即时召唤 · 上限 1")
 	elif skill_id == "herbal_heal":
