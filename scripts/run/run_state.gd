@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 16
+const SAVE_VERSION := 17
 var essence: int = 0
 var trainer_items: Dictionary = {}
 var sold_monster_uids: Array = []

@@ -58,6 +58,7 @@ func _collisions(t: TestContext) -> void:
 func _escape(t: TestContext) -> void:
 	for current_round in [1, 5, 9, 20]:
 		var state := _state()
+		state.unit_by_uid(1).cell = Vector2i(1,3)
 		state.round = current_round
 		state.unit_by_uid(1).moved = true
 		state.unit_by_uid(1).skill_used = true
@@ -104,6 +105,7 @@ func _ui(t: TestContext) -> void:
 	screen.do_leave_node()
 	t.check(not screen.state.ended, "UI调用不能绕过首领限制")
 	screen.state.node_kind = "battle"
+	screen.state.unit_by_uid(1).cell = Vector2i(1,3)
 	screen.do_leave_node()
 	t.eq(screen.state.end_reason, "escape", "UI实际触发撤退结算")
 	app.free()

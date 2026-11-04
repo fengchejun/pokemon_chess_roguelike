@@ -1993,16 +1993,7 @@ func can_leave_node() -> bool:
 
 
 static func extraction_area(map: Dictionary) -> Array:
-	var candidates: Array = []
-	for y in GridSpec.H:
-		var cell := Vector2i(0, y)
-		if not TerrainDB.can_stand(int(map["terrain"][GridSpec.index(cell)]), "normal"):
-			continue
-		if (map.get("nest_cells", [map.get("nest_cell", Vector2i(-1,-1))]) as Array).has(cell) or cell in [map.get("mentor_cell"), map.get("merchant_cell"), map.get("portal_cell")]:
-			continue
-		candidates.append(cell)
-	candidates.sort_custom(func(x,y): return absi(x.y - 3) < absi(y.y - 3) if absi(x.y - 3) != absi(y.y - 3) else x.y < y.y)
-	return candidates.slice(0, 3)
+	return (map.get("deploy_area", Balance.DEPLOY_AREA) as Array).duplicate()
 
 
 func can_escape() -> bool:
@@ -2014,11 +2005,15 @@ func escape_stragglers() -> Array:
 	var actor := trainer()
 	if actor == null:
 		return []
-	return alive_units("player").filter(func(u): return not u.is_trainer and u.summon_owner_uid < 0 and GridSpec.manhattan(u.cell, actor.cell) > 2)
+	return alive_units("player").filter(func(u): return not u.is_trainer and u.summon_owner_uid < 0 and not extraction_cells.has(u.cell))
+
+
+func escape_hp_after(unit: CombatUnit) -> int:
+	return maxi(0, unit.hp - ceili(unit.max_hp / 4.0))
 
 
 func escape_losses() -> Array:
-	var ids := escape_stragglers().map(func(u): return u.uid)
+	var ids := escape_stragglers().filter(func(u): return escape_hp_after(u) == 0).map(func(u): return u.uid)
 	return all_rewards().filter(func(p): return p.get("state") == "carried" and ids.has(int(p.get("owner_uid", -1))) and not bool(p.get("credited", false)))
 
 
@@ -2030,8 +2025,21 @@ func leave_node(emergency: bool = false) -> bool:
 		if not missing.is_empty() and not emergency:
 			return false
 		for unit in missing:
-			escape_penalties.append({"uid": unit.uid, "name": unit.display_name})
-			kill_unit(unit, "紧急撤离：未能集合")
+			var before: int = unit.hp
+			var after := escape_hp_after(unit)
+			if after == 0:
+				for point in all_rewards():
+					if point.get("state") == "carried" and int(point.get("owner_uid", -1)) == unit.uid and not bool(point.get("credited", false)):
+						point["state"] = "map"
+						point["cell"] = unit.cell
+						point["owner_uid"] = -1
+						point["guard_uid"] = -1
+						log_event("%s 撤离濒死，携带奖励留在 (%d,%d)。" % [unit.display_name, unit.cell.x, unit.cell.y])
+				kill_unit(unit, "撤离：区外队员损失25%最大生命")
+			else:
+				unit.hp = after
+			escape_penalties.append({"uid": unit.uid, "name": unit.display_name, "from": before, "to": unit.hp})
+			emit_feedback(unit, "damage", "撤离 -%d" % (before - unit.hp), before - unit.hp)
 		end_battle("escape")
 	else:
 		return false

@@ -508,7 +508,7 @@ func _update_header() -> void:
 		objective_label.text += "\n自由探索 · 无限行动 · 禁止恢复"
 	objective_label.text += "\n宝箱 %d · 待拾 %d · 我持 %d · 敌持 %d" % [state.chests.size(), state.all_rewards().filter(func(p): return p.get("state") in ["map", "guarding"]).size(), state.reward_count_held("player"), state.reward_count_held("enemy")]
 	if not state.can_leave_node() and state.node_kind != "boss" and state.boss_uid < 0:
-		objective_label.text += "\n撤离：训练家进绿框，队员距≤2\n未集合%d名；紧急撤离将濒死" % state.escape_stragglers().size()
+		objective_label.text += "\n部署/撤离区：绿色框\n区外%d名：撤离损失25%%最大生命" % state.escape_stragglers().size()
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
 
 
@@ -955,7 +955,7 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 func _update_action_buttons() -> void:
 	if leave_node_button != null:
 		leave_node_button.text = "返回区域" if state.can_leave_node() else "首领战不可撤退" if state.node_kind == "boss" or state.boss_uid >= 0 else "撤退" if state.can_escape() else "前往撤离区"
-		leave_node_button.tooltip_text = "首领战必须击败或捕获首领。" if state.node_kind == "boss" or state.boss_uid >= 0 else "训练家进入绿色撤离区后，带走距离2格内队员；未集合成员须确认紧急撤离并濒死。"
+		leave_node_button.tooltip_text = "首领战必须击败或捕获首领。" if state.node_kind == "boss" or state.boss_uid >= 0 else "训练家进入部署/撤离区后可撤离；区外队员损失25%最大生命，可能濒死；濒死者奖励留原地。"
 		leave_node_button.disabled = busy or _playback_active() or state.ended or not (state.can_leave_node() or state.can_escape())
 	if end_turn_button != null:
 		end_turn_button.disabled = busy or state.ended or state.is_free_exploration() or state.phase != BattleState.PHASE_PLAYER
@@ -1824,9 +1824,9 @@ func do_leave_node() -> void:
 	if busy or _playback_active() or state == null:
 		return
 	if not state.can_leave_node() and state.can_escape() and not state.escape_stragglers().is_empty():
-		var names := state.escape_stragglers().map(func(u): return "%s (#%d)" % [u.display_name, u.uid])
-		_show_modal("紧急撤离确认", "未集合成员将濒死：%s\n将失去携带奖励点：%d个。此前已获得的经验保留。\n可取消，继续集合队员。" % ["、".join(names), state.escape_losses().size()])
-		var button := UIKit.button("确认紧急撤离（未集合成员濒死）")
+		var names := state.escape_stragglers().map(func(u): return "%s (#%d)：%d→%d HP" % [u.display_name, u.uid, u.hp, state.escape_hp_after(u)])
+		_show_modal("撤离确认", "区外队员扣除最大生命25%%（向上取整）：\n%s\n0 HP者濒死，%d个携带奖励点留在原格，需重访拾取。存活者保留奖励。已入账经验保留，可取消返回撤离区。" % ["\n".join(names), state.escape_losses().size()])
+		var button := UIKit.button("确认撤离（区外扣血，可能濒死）")
 		button.name = "ConfirmEmergencyEscape"
 		button.pressed.connect(func() -> void:
 			_close_modal()

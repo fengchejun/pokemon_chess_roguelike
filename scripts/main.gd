@@ -415,6 +415,7 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 		state.deploy_area = final_map["deploy_area"].duplicate()
 		for player in players:
 			player.cell = positions[player.uid]
+	state.extraction_cells = state.deploy_area.duplicate()
 	state.repair_food()
 	run.battle_snapshot = BattleSnapshot.save_state(state)
 	run.pending_region_entry_backup.clear()

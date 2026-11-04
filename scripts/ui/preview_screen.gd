@@ -122,7 +122,7 @@ func _ready() -> void:
 	board.cell_hovered.connect(_on_cell_hovered)
 	board_host.add_child(board)
 	board_host.resized.connect(_layout_preview_board)
-	preview.add_child(UIKit.wrapped("绿框：撤离区（训练家带走2格内队员） · 蓝框：部署区 · 紫色：巢穴 · ★：奖励 · 粮：食物；悬停单位查看招式。", 12))
+	preview.add_child(UIKit.wrapped("绿框：部署/撤离区（区外队员撤离损失25%最大生命，可能濒死并掉落奖励） · 蓝框：部署选位 · 紫色：巢穴 · ★：奖励 · 粮：食物；悬停单位查看招式。", 12))
 	deployment_toggle = UIKit.small_button("部署选位 · 点击单位，再点击蓝框格")
 	deployment_toggle.name = "DeploymentModeButton"
 	deployment_toggle.pressed.connect(func() -> void:

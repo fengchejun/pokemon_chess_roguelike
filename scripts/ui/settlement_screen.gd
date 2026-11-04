@@ -102,7 +102,7 @@ func _summary_box(run: RunState) -> Control:
 			MonsterProgression.threshold_for_level(int(growth["level_after"]) + 1), level_text, affinity,
 		])
 	if not (outcome.get("escape_penalties", []) as Array).is_empty():
-		lines.append("紧急撤离濒死：" + "、".join(outcome["escape_penalties"].map(func(p): return String(p["name"]))) )
+		lines.append("撤离代价：" + "、".join(outcome["escape_penalties"].map(func(p): return "%s %d→%d HP" % [p["name"], p["from"], p["to"]] if p.has("from") else "%s（旧版已结算记录）" % p["name"])))
 	lines.append("击败：%d　捕获：%d" % [int(outcome.get("kills", 0)), int(outcome.get("captures", 0))])
 	if int(outcome.get("boss_blood", 0)) > 0:
 		lines.append("捕获首领：永久首领之血 +%d（当前 %d 份）" % [int(outcome["boss_blood"]), app.collection.boss_blood])

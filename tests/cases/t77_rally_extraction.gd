@@ -6,18 +6,19 @@ func run(t: TestContext) -> void:
 	var state := BattleState.new()
 	state.node_kind = "battle"
 	state.setup(TestScenario.make_map(TestScenario.plain_terrain()), {"enemies": [["rock_wild1",Vector2i(6,3)]]}, 7701, 0, run.build_deploy_units([1,2]), {}, {}, [])
-	t.eq(state.extraction_cells.size(), 3, "普通地图提供三个部署侧出口")
-	t.check(state.extraction_cells.all(func(c): return c.x == 0), "出口在我方地图边缘")
+	t.eq(state.extraction_cells, state.deploy_area, "部署区域与撤离区域完全一致")
+	t.check(state.extraction_cells.has(Vector2i(1,5)), "部署区域第二列也可撤离")
 	state.trainer().cell = Vector2i(2,3)
 	t.check(not state.can_escape() and not state.leave_node(true), "紧急撤离也不能绕过指定位置")
 	state.trainer().cell = Vector2i(0,3)
-	state.unit_by_uid(1).cell = Vector2i(5,3)
-	state.unit_by_uid(2).cell = Vector2i(1,4)
+	state.unit_by_uid(1).cell = Vector2i(2,3)
+	state.unit_by_uid(1).hp = 5
+	state.unit_by_uid(2).cell = Vector2i(1,5)
 	state.award_battle_experience("test", 3)
 	state.add_reward_point(Vector2i(5,3), "test:carried")
 	state.reward["state"] = "carried"
 	state.reward["owner_uid"] = 1
-	t.eq(state.escape_stragglers().map(func(u): return u.uid), [1], "曼哈顿2格内随队，远处成员未集合")
+	t.eq(state.escape_stragglers().map(func(u): return u.uid), [1], "区内免罚，哪怕靠近训练家但在区外仍扣血")
 	t.eq(state.escape_losses().size(), 1, "确认前可查询奖励点损失")
 	var before := state._signature()
 	t.check(not state.leave_node(), "未集合时普通撤离不自动牺牲队友")
@@ -27,7 +28,7 @@ func run(t: TestContext) -> void:
 	t.eq(restored.extraction_cells, state.extraction_cells, "克隆和快照保留撤离区")
 	var legacy := saved.duplicate(true)
 	legacy["fields"].erase("extraction_cells")
-	t.eq(BattleSnapshot.load_state(legacy).extraction_cells.size(), 3, "旧快照补齐出口")
+	t.eq(BattleSnapshot.load_state(legacy).extraction_cells.size(), 8, "旧快照补齐出口")
 	var app = load("res://scripts/main.gd").new()
 	app.autosave_enabled = false
 	t.tree.root.add_child(app)
@@ -45,7 +46,7 @@ func run(t: TestContext) -> void:
 	t.check(state.ended and state.end_reason == "escape", "确认后立即撤离，不再等待一轮")
 	t.eq(state.unit_by_uid(1).hp, 0, "未集合宝可梦濒死")
 	t.check(state.unit_by_uid(2).hp > 0, "已集合宝可梦不受额外惩罚")
-	t.eq(state.reward["state"], "lost", "未集合者携带奖励失去")
+	t.eq(state.reward["state"], "map", "撤离濒死者的奖励留在原地")
 	var outcome := run.settle_battle(state)
 	t.eq(run.record_by_uid(1)["xp"], 3, "未集合者此前经验保留")
 	t.eq(run.record_by_uid(1)["hp"], 0, "濒死代价跨结算保留")
@@ -63,9 +64,34 @@ func run(t: TestContext) -> void:
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
 	app.show_preview([1,2,3])
 	var preview = app.current_screen
-	t.eq(preview.board.extraction_cells.size(), 3, "正式战前预览标出三个撤离格")
+	t.eq(preview.board.extraction_cells, preview.map["deploy_area"], "正式战前预览的部署与撤离范围一致")
 	var exits: Array = preview.board.extraction_cells.duplicate()
 	preview._on_start()
 	t.eq(app.current_screen.state.extraction_cells, exits, "正式开战的撤离区与预览一致")
+	var dropped := BattleSnapshot.load_state(BattleSnapshot.save_state(state))
+	t.eq(dropped.reward["cell"], Vector2i(2,3), "掉落保留濒死者当时所在格")
+	var region := RegionState.create_floor(0, "rock")
+	region.active_node = "battle_1"
+	region.store_battle("battle_1", dropped)
+	var reloaded := RegionState.from_dict(region.to_dict())
+	var revisit := reloaded.resume_node("battle_1", run.build_deploy_units([2]), {"enemies": [], "reinforce": ["rock_wild1"]})
+	t.check(revisit != null and revisit.reward["state"] == "map", "重访保留地面奖励")
+	if revisit != null:
+		t.eq(revisit.reward["cell"], Vector2i(2,3), "重访不把奖励挪回部署区")
+		revisit.unit_by_uid(2).cell = Vector2i(2,3)
+		revisit._begin_reward_guard()
+		revisit._finish_reward_guard()
+		t.eq(revisit.reward["owner_uid"], 2, "掉落奖励可再次拾取")
+	for hp in [1, 8, 9, 30]:
+		var sample := BattleSnapshot.load_state(saved)
+		var unit := sample.unit_by_uid(1)
+		unit.max_hp = 30
+		unit.hp = hp
+		t.check(sample.leave_node(true), "允许确认区外扣血撤离")
+		t.eq(unit.hp, maxi(0, hp - 8), "最大生命30固定扣8，允许濒死")
+		t.eq(sample.reward["state"], "map" if hp <= 8 else "carried", "仅濒死者奖励掉落，存活者仍携带")
+		var snapshot := BattleSnapshot.save_state(sample)
+		t.check(not sample.leave_node(true), "结束后不会再次扣血或掉落")
+		t.eq(BattleSnapshot.save_state(sample), snapshot, "重复撤离没有副作用")
 	app.free()
 	t.finish()
