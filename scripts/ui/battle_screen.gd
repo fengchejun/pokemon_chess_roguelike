@@ -485,6 +485,10 @@ func _update_header() -> void:
 	]
 	status_label.visible = false
 	objective_label.text = "战斗目标\n敌人 %d · 击败 %d · 捕获 %d" % [state.alive_enemy_count(), state.enemy_kills.size(), state.captured.size()]
+	if state.corruption_active:
+		objective_label.text += "\n敌军黑化：生命/威力+10%\n击杀无经验 · 天雷仍生效"
+	elif not state.is_free_exploration():
+		objective_label.text += "\n第8轮末黑化并全面占领"
 	if state.has_live_nests():
 		var guards := 0
 		for current in state.all_nests():
@@ -553,7 +557,7 @@ func _update_unit_card() -> void:
 		return
 	var side_text := "我方" if unit.side == "player" else "野生"
 	unit_title.text = "%s%s（%s · %s）" % ["首领·" if unit.is_boss else "", unit.display_name, side_text, Elements.FULL_NAMES.get(unit.element, "无属性")]
-	if unit.side == "enemy" and unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND:
+	if unit.side == "enemy" and (unit.corrupted or (unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND)):
 		unit_title.text += " · 击杀无经验"
 	unit_title.text += "\nHP %d/%d" % [unit.hp, unit.max_hp]
 	unit_health.max_value = maxi(1, unit.max_hp)
@@ -573,6 +577,8 @@ func _update_unit_card() -> void:
 	if Elements.MATCHUPS_ENABLED:
 		lines.append(Elements.counter_hint(unit.element))
 	var statuses: Array = []
+	if unit.corrupted:
+		statuses.append("黑化：最大生命+10%、技能威力+10%，击杀无经验")
 	if unit.guard_nest.x >= 0:
 		statuses.append("守护巢穴：不能施法，持续分担一半伤害" if state.active_nest_guards(unit.guard_nest).has(unit) else "守护已中断；本阶段仍不能施法")
 	if unit.side == "enemy" and unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND:

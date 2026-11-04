@@ -56,7 +56,7 @@ static func save_state(state: BattleState) -> Dictionary:
 	var members: Array = []
 	for unit in state.units:
 		members.append(_fields(unit))
-	return {"version": 5, "fields": _fields(state), "units": members, "rng": {
+	return {"version": 6, "fields": _fields(state), "units": members, "rng": {
 		"spawn_seed": str(state.spawn_rng.seed), "spawn_state": str(state.spawn_rng.state),
 		"capture_seed": str(state.capture_rng.seed), "capture_state": str(state.capture_rng.state),
 		"terrain_seed": str(state.terrain_rng.seed), "terrain_state": str(state.terrain_rng.state),
@@ -118,6 +118,8 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		state.nest["boss_sheltered"] = state.sheltered_boss() != null
 	if state.sheltered_boss() != null:
 		state.boss_retreat_used = true
+	if int(snapshot.get("version", 1)) < 6 and state.round > Balance.CORRUPTION_ROUND and not state.ended:
+		state._trigger_timed_corruption()
 	state._boss_effect_depth = 0
 	state.normalize_nest_terrain()
 	state.try_release_boss()

@@ -60,7 +60,8 @@ func _ready() -> void:
 		button.pressed.connect(func() -> void: _show_monster(uid))
 		(left if index < 3 else right).add_child(button)
 		index += 1
-	result_label = UIKit.wrapped("营地安全。初始在此，不计区域移动。", 15, UIKit.TEXT_DIM)
+	var recovered: bool = bool(app.run.get_region().nodes["camp"].get("cleared", false))
+	result_label = UIKit.wrapped("营地已夺回，食物回复服务恢复。" if recovered else "营地安全。初始在此，不计区域移动。", 15, UIKit.TEXT_DIM)
 	result_label.name = "CampFeedback"
 	column.add_child(result_label)
 	_refresh_inventory()

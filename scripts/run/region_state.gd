@@ -13,6 +13,7 @@ var active_node: String = ""
 var nodes: Dictionary = {}
 var visit_pending: bool = false
 var support_triggered: bool = false
+var corrupted: bool = false
 var boss_level_bonus: int = 0 # 本层累计压力等级，结算差额写入整局
 var camp_invaded: bool = false
 var notifications: Array = []
@@ -114,30 +115,38 @@ func _occupy(id: String) -> void:
 	node["pending_replenish"] = false
 
 
+func occupy_all(preserve_node: String = "") -> void:
+	support_triggered = true
+	camp_invaded = true
+	at_camp_scene = false
+	for id in nodes:
+		if id != "boss":
+			if id == preserve_node:
+				nodes[id]["mode"] = "battle"
+				nodes[id]["cleared"] = false
+				nodes[id]["pending_garrison"] = false
+			else:
+				_occupy(id)
+	notifications.append("战斗超过8轮：敌军全面占领营地及已清理节点；夺回营地后恢复食物回复服务，首领驻军+2。")
+
+
 func _apply_pressure() -> void:
 	if active_node == "boss":
 		return
-	if visits >= 8 and not support_triggered:
-		support_triggered = true
-		for id in nodes:
-			if id not in ["boss", "camp"]:
-				_occupy(id)
-		notifications.append("敌军全面占领：除营地、首领外全部节点转为战斗区，首领驻军 +2。")
-	if support_triggered and visits >= 11:
-		if not camp_invaded:
-			camp_invaded = true
-			_occupy("camp")
-			notifications.append("营地被入侵，转为普通战斗区。")
+	if visits >= Balance.CORRUPTION_VISITS:
+		if not corrupted:
+			corrupted = true
+			notifications.append("第11次区域移动：本层全地图敌军及后续增援黑化，最大生命与技能威力+10%，击杀无经验。")
 		var new_bonus := (visits - 8) / 3
 		if new_bonus > boss_level_bonus:
 			boss_level_bonus = new_bonus
-			notifications.append("全体敌人等级再次 +1，跨层保留。")
+			notifications.append("全体敌人等级再次+1，跨层保留；黑化不会叠加。")
 
 
 func next_pressure_text() -> String:
-	if not support_triggered:
-		return "再移动 %d 次全面占领（首领 +2 名）" % maxi(0, 8 - visits)
-	return "再移动 %d 次全体敌人等级 +1%s" % [maxi(0, 11 + boss_level_bonus * 3 - visits), "，并入侵营地" if not camp_invaded else "（跨层保留）"]
+	if not corrupted:
+		return "再移动%d次全图黑化；战斗第8轮末全面占领" % maxi(0, Balance.CORRUPTION_VISITS - visits)
+	return "全图已黑化；再移动%d次等级+1" % maxi(0, 11 + boss_level_bonus * 3 - visits)
 
 
 func store_battle(id: String, battle: BattleState) -> bool:
@@ -158,8 +167,12 @@ func store_battle(id: String, battle: BattleState) -> bool:
 	elif node_mode(id) == "battle":
 		node["cleared"] = battle.alive_enemy_count() == 0 and not battle.has_live_nests()
 		if bool(node["cleared"]):
-			node["mode"] = "event"
+			node["mode"] = "camp" if node["type"] == "camp" else "event"
+			node["pending_garrison"] = false
 			node["pending_replenish"] = false
+			if node["type"] == "camp":
+				camp_invaded = false
+				notifications.append("营地驻军已清除，食物回复服务重新开放。")
 		elif battle.end_reason == "escape":
 			node["pending_replenish"] = true
 			notifications.append("%s 撤退；下次进入存活敌军回到出生格并回满生命，空缺补足 4 名。" % display_name(id))
@@ -174,6 +187,11 @@ func load_battle(id: String) -> BattleState:
 	if not nodes.has(id) or (nodes[id]["snapshot"] as Dictionary).is_empty():
 		return null
 	var battle := Snapshot.load_state(nodes[id]["snapshot"])
+	if battle != null and (corrupted or bool(nodes[id].get("corrupted", false))):
+		battle.corruption_active = true
+		for unit in battle.units:
+			if unit.side == "enemy" and unit.is_alive():
+				unit.set_corrupted(true)
 	# 兼容旧版已离开节点但仍保存临时效果的快照。战斗中途读档不走此分支。
 	if battle != null and battle.ended:
 		battle.clear_node_temporaries()
@@ -185,6 +203,9 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 	if battle == null:
 		return null
 	battle.clear_node_temporaries()
+	battle.corruption_active = battle.corruption_active or corrupted or bool(nodes[id].get("corrupted", false)) or bool(cfg.get("corrupted", false))
+	battle.timed_corruption_triggered = false
+	battle.occupation_applied = false
 	var survivors: Array = []
 	var occupied := {}
 	for unit in battle.units:
@@ -192,7 +213,7 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 			continue
 		if unit.is_alive():
 			var fresh := CombatUnit.make(unit.species_id, "enemy", unit.uid)
-			for field in ["cell", "max_hp", "move_points", "skills", "enemy_level", "combat_level", "is_boss", "upgrades", "reg_index", "spawned_from_nest", "spawn_round", "reward_carrier"]:
+			for field in ["cell", "max_hp", "move_points", "skills", "enemy_level", "combat_level", "is_boss", "upgrades", "reg_index", "spawned_from_nest", "spawn_round", "reward_carrier", "inspired", "corrupted", "corruption_hp_bonus"]:
 				fresh.set(field, unit.get(field))
 			var original: Vector2i = battle.enemy_origins.get(unit.uid, Vector2i(-1, -1))
 			if not GridSpec.is_inside(original) and unit.uid >= 100 and unit.uid - 100 < (cfg.get("enemies", []) as Array).size():
@@ -266,12 +287,13 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 	battle.reward.erase("run_settled_outcome")
 	for current in battle.all_nests():
 		current["destroyed_by_player"] = false
+	battle.set_enemy_level_bonus(int(cfg.get("enemy_level_bonus", battle.enemy_level_bonus)))
 	battle.start_round()
 	return battle
 
 
 func to_dict() -> Dictionary:
-	return {"floor": floor_index, "theme": theme, "visits": visits, "active_node": active_node, "nodes": nodes.duplicate(true), "visit_pending": visit_pending, "support_triggered": support_triggered, "boss_level_bonus": boss_level_bonus, "camp_invaded": camp_invaded, "notifications": notifications.duplicate(), "at_camp_scene": at_camp_scene}
+	return {"floor": floor_index, "theme": theme, "visits": visits, "active_node": active_node, "nodes": nodes.duplicate(true), "visit_pending": visit_pending, "support_triggered": support_triggered, "corrupted": corrupted, "boss_level_bonus": boss_level_bonus, "camp_invaded": camp_invaded, "notifications": notifications.duplicate(), "at_camp_scene": at_camp_scene}
 
 
 static func from_dict(data: Dictionary) -> RegionState:
@@ -283,6 +305,7 @@ static func from_dict(data: Dictionary) -> RegionState:
 	region.nodes = (data.get("nodes", {}) as Dictionary).duplicate(true)
 	region.visit_pending = bool(data.get("visit_pending", false))
 	region.support_triggered = bool(data.get("support_triggered", false))
+	region.corrupted = bool(data.get("corrupted", region.visits >= Balance.CORRUPTION_VISITS))
 	region.boss_level_bonus = int(data.get("boss_level_bonus", 0))
 	region.camp_invaded = bool(data.get("camp_invaded", false))
 	region.notifications = (data.get("notifications", []) as Array).duplicate()

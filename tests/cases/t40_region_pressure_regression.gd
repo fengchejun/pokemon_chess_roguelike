@@ -31,8 +31,7 @@ func _timeout(app, battle: BattleState) -> void:
 	app.continue_after_settlement()
 	if was_free:
 		var region = app.run.get_region()
-		region.visits = 8
-		region._apply_pressure()
+		region.occupy_all()
 		app.run.region_data = region.to_dict()
 
 
@@ -142,6 +141,7 @@ func run(t: TestContext) -> void:
 	boss_app.queue_free()
 	var support_app = _new_app(t, 74)
 	region = support_app.run.get_region()
+	region.occupy_all()
 	region.nodes["boss"]["unlocked"] = true
 	for index in range(14):
 		region.record_entry("camp")

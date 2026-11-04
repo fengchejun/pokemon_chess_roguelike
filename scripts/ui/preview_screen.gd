@@ -347,6 +347,8 @@ func _on_cell_hovered(cell: Vector2i) -> void:
 		for id in unit.skills:
 			skills.append(SkillDB.name_of(String(id)))
 		hint_label.text = "%s · Lv.%d · HP %d/%d · %s" % [unit.display_name, unit.combat_level, unit.hp, unit.max_hp, "、".join(skills)]
+		if unit.corrupted:
+			hint_label.text += " · 黑化：生命/威力+10%，击杀无经验"
 		if unit.reward_carrier:
 			hint_label.text += " · 携带奖励点"
 	else:
@@ -488,6 +490,7 @@ func _preview_units(run: RunState) -> Array:
 			unit.skills = BattleDB.enemy_skills_for_level(unit.species_id, unit.enemy_level)
 			unit.max_hp = MonsterProgression.max_hp(unit.species_id, unit.enemy_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0)
 			unit.hp = unit.max_hp
+		unit.set_corrupted(bool(cfg.get("corrupted", false)))
 		unit.reward_carrier = unit.uid == int(map.get("carrier_uid", -1)) and not unit.is_boss
 		unit.cell = pair[1]
 		units.append(unit)

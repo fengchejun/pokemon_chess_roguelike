@@ -49,6 +49,9 @@ var ended: bool = false
 var end_reason: String = ""
 var exploration_started: bool = false
 var enemy_level_bonus: int = 0
+var corruption_active: bool = false
+var timed_corruption_triggered: bool = false
+var occupation_applied: bool = false
 var node_kind: String = "" # 空值沿用旧逐场流程；battle / boss / event 使用区域规则。
 var food_cells: Array = []
 var food_wait: Dictionary = {}
@@ -139,6 +142,7 @@ var _forecast_signature: String = ""
 func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_value: int, player_units: Array, effects_value: Dictionary, upgrades_value: Dictionary, pool_value: Array, capture_options_value: Dictionary = {}, relic_stacks_value: Dictionary = {}) -> void:
 	run_seed = seed_value
 	battle_index = battle_index_value
+	corruption_active = bool(cfg.get("corrupted", false))
 	enemy_level_bonus = maxi(0, int(cfg.get("enemy_level_bonus", 0)))
 	skill_use_counts = {"player": {}, "enemy": {}}
 	effects = effects_value.duplicate()
@@ -188,14 +192,19 @@ func _configure_enemy(enemy: CombatUnit, spawn_index: int, make_boss: bool = fal
 	BattleDB.configure_enemy(enemy, run_seed, battle_index, spawn_index, make_boss)
 	if inspiration_triggered:
 		_grant_inspiration(enemy)
+	if corruption_active:
+		enemy.set_corrupted(true)
 
 
 func _grant_inspiration(unit: CombatUnit) -> void:
 	if unit == null or not unit.is_alive() or unit.side != "enemy" or unit.is_boss or unit.inspired:
 		return
+	var was_corrupted: bool = unit.corrupted
+	unit.set_corrupted(false)
 	unit.inspired = true
 	unit.max_hp += Balance.INSPIRATION_HP_BONUS
 	unit.hp += Balance.INSPIRATION_HP_BONUS
+	unit.set_corrupted(was_corrupted)
 
 
 func _trigger_inspiration() -> void:
@@ -662,6 +671,8 @@ func summon_tree(owner: CombatUnit, cell: Vector2i) -> CombatUnit:
 	summon.hp = summon.max_hp
 	if inspiration_triggered:
 		_grant_inspiration(summon)
+	if summon.side == "enemy" and corruption_active:
+		summon.set_corrupted(true)
 	units.append(summon)
 	_watch_feedback(summon)
 	apply_vine_on_landing(summon)
@@ -755,7 +766,8 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 		enemy_kills.append({
 			"uid": unit.uid,
 			"enemy_level": unit.enemy_level,
-			"xp_reward": 0 if unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND else Balance.xp_for_enemy_level(unit.enemy_level),
+			"xp_reward": 0 if unit.corrupted or (unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND) else Balance.xp_for_enemy_level(unit.enemy_level),
+			"corrupted": unit.corrupted,
 			"species_id": unit.species_id,
 			"by_player": killer_side == "player",
 			"killer_side": killer_side,
@@ -799,6 +811,7 @@ func on_captured(unit: CombatUnit, species_id: String, keep_hp: int) -> void:
 	unit.guard_nest = Vector2i(-1, -1)
 	unit.guard_charge = false
 	unit.reward_carrier = false
+	unit.set_corrupted(false)
 	for point in all_rewards():
 		if point.get("state") == "carried" and int(point.get("owner_uid", -1)) == unit.uid:
 			point["state"] = "lost"
@@ -917,6 +930,8 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: Dictionary) -> int:
 	# 纯数值计算，巢穴使用无属性目标复用技能与遗物加成，不施加状态或触发击杀。
 	var amount := base
+	if source != null and source.side == "enemy" and source.corrupted and bool(opts.get("skill_direct", false)):
+		amount = roundi(amount * Balance.CORRUPTION_MULTIPLIER)
 	if source != null and bool(opts.get("skill_direct", false)):
 		amount = Balance.skill_damage_for_side(amount, source.side)
 	if not bool(opts.get("no_element", false)):
@@ -1722,15 +1737,28 @@ func _settle_round_rules() -> void:
 			steam_cells.erase(cell)
 	# 5. 停留拾取食物
 	_pickups()
-	# 6. 胜负与持续天雷压力
+	# 6. 胜负、黑化与持续天雷压力
 	if check_battle_end():
 		return
 	if is_free_exploration():
 		return
+	_trigger_timed_corruption()
 	_settle_storm()
 	if ended or is_free_exploration():
 		return
 	log_event("环境结算完成。")
+
+
+func _trigger_timed_corruption() -> void:
+	if ended or is_free_exploration() or round < Balance.CORRUPTION_ROUND or timed_corruption_triggered:
+		return
+	timed_corruption_triggered = true
+	corruption_active = true
+	for unit in units:
+		if unit.side == "enemy" and unit.is_alive():
+			unit.set_corrupted(true)
+			emit_feedback(unit, "buff", "黑化 · 生命与威力+10%")
+	log_event("第8轮已结束：敌军黑化，最大生命与技能威力+10%，击杀无经验；本层节点将被全面占领。")
 
 
 func _settle_storm() -> void:
@@ -2000,11 +2028,13 @@ func set_enemy_level_bonus(bonus: int) -> void:
 		var target_level := base_level + maxi(0, bonus)
 		if unit.enemy_level == target_level:
 			continue
+		var was_corrupted: bool = unit.corrupted
+		unit.set_corrupted(false)
 		var old_max: int = unit.max_hp
 		unit.enemy_level = target_level
 		unit.combat_level = target_level
 		unit.skills = BattleDB.enemy_skills_for_level(unit.species_id, target_level)
-		unit.max_hp = MonsterProgression.max_hp(unit.species_id, target_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0)
+		unit.max_hp = MonsterProgression.max_hp(unit.species_id, target_level) + (Balance.BOSS_HP_BONUS if unit.is_boss else 0) + (Balance.INSPIRATION_HP_BONUS if unit.inspired else 0)
 		unit.hp = clampi(unit.hp + unit.max_hp - old_max, 1, unit.max_hp)
 		var upgrades := {}
 		for upgrade_id in BattleDB.enemy_upgrade_ids_at_level(run_seed, battle_index, unit.uid, unit.species_id, target_level):
@@ -2012,6 +2042,11 @@ func set_enemy_level_bonus(bonus: int) -> void:
 			if not info.is_empty():
 				upgrades[String(info["key"])] = int(info["value"])
 		unit.upgrades = upgrades
+		unit.set_corrupted(was_corrupted)
+	if corruption_active:
+		for unit in units:
+			if unit.side == "enemy" and unit.is_alive():
+				unit.set_corrupted(true)
 
 
 func end_battle(reason: String) -> void:
@@ -2056,7 +2091,7 @@ func forecast() -> Array:
 
 func _signature() -> String:
 	var parts: PackedStringArray = ["%d|%s|%s|%s" % [round, phase, ended, end_reason]]
-	parts.append("mode:%s|level:%d" % [node_kind, enemy_level_bonus])
+	parts.append("mode:%s|level:%d|corruption:%s:%s" % [node_kind, enemy_level_bonus, corruption_active, timed_corruption_triggered])
 	var terrain_text := ""
 	for value in terrain:
 		terrain_text += str(int(value))
@@ -2090,6 +2125,7 @@ func _signature() -> String:
 		parts.append("control:%d:%d:%d:%s" % [unit.uid, unit.shock_ticks, unit.paralyzed_ticks, str(unit.frozen)])
 		parts.append("guard:%d:%s:%s:%s:%d" % [unit.uid, str(unit.guard_nest), str(unit.guard_charge), str(unit.spawned_from_nest), unit.spawn_round])
 		parts.append("carrier:%d:%s" % [unit.uid, str(unit.reward_carrier)])
+		parts.append("corrupted:%d:%s:%d" % [unit.uid, unit.corrupted, unit.corruption_hp_bonus])
 		parts.append("sheltered:%d:%s" % [unit.uid, str(unit.sheltered)])
 		parts.append("parasite_layers:%d:%d" % [unit.uid, unit.parasite_ticks])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.summon_owner_uid])
@@ -2176,6 +2212,9 @@ func clone() -> BattleState:
 	copy.pending_casts = pending_casts.duplicate(true)
 	copy.exploration_started = exploration_started
 	copy.enemy_level_bonus = enemy_level_bonus
+	copy.corruption_active = corruption_active
+	copy.timed_corruption_triggered = timed_corruption_triggered
+	copy.occupation_applied = occupation_applied
 	copy.channel_claims = channel_claims.duplicate(true)
 	copy.skill_use_counts = skill_use_counts.duplicate(true)
 	for unit in units:

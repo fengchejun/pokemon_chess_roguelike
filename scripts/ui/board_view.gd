@@ -443,6 +443,9 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		draw_string(font, center + Vector2(20, -18), badges_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 0.6, 0.3))
 	if unit.capture_used:
 		draw_string(font, center + Vector2(20, 32), "捕", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.8, 0.9))
+	if unit.corrupted:
+		draw_arc(center, 30, 0, TAU, 32, Color("7c3fb3"), 3.0)
+		draw_string(font, center + Vector2(-28, -19), "黑", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("d4a0f3"))
 	if unit.reward_carrier:
 		draw_string(font, center + Vector2(18, -18), "★", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("ffe17d"))
 	if unit.fresh_spawn:

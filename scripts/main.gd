@@ -490,6 +490,8 @@ func continue_after_settlement() -> void:
 		else:
 			var notices: Array = region.complete_visit()
 			region.notifications.append_array(notices)
+			if region.active_node == "camp" and region.node_mode("camp") == "camp":
+				region.at_camp_scene = true
 			run.region_data = region.to_dict()
 		autosave()
 		if run.run_finished() or run.run_lost():
@@ -497,7 +499,7 @@ func continue_after_settlement() -> void:
 		elif run.needs_theme_choice():
 			show_floor_theme()
 		else:
-			show_region()
+			show_camp() if run.get_region().at_camp_scene else show_region()
 		return
 	run.advance_battle()
 	autosave()

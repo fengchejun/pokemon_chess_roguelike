@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 14
+const SAVE_VERSION := 15
 var essence: int = 0
 var trainer_items: Dictionary = {}
 var sold_monster_uids: Array = []
@@ -407,6 +407,7 @@ func battle_config() -> Dictionary:
 				chosen.append([pool[chosen.size() % pool.size()] if not pool.is_empty() else source[0][0], Vector2i(-1, -1)])
 			cfg["enemies"] = chosen
 			cfg["enemy_level_bonus"] = invasion_level_bonus
+			cfg["corrupted"] = region.corrupted or bool(region.nodes[region.active_node].get("corrupted", false))
 	return cfg
 
 
@@ -551,6 +552,14 @@ func mark_deployed(deploy_uids: Array) -> void:
 
 
 func sync_from_battle(battle: BattleState) -> void:
+	if region_mode and battle.timed_corruption_triggered:
+		var region = get_region()
+		if region.nodes.has(region.active_node):
+			region.nodes[region.active_node]["corrupted"] = true
+		if not battle.occupation_applied:
+			region.occupy_all(region.active_node)
+			battle.occupation_applied = true
+		region_data = region.to_dict()
 	essence += maxi(0, battle.essence_earned - battle.essence_applied)
 	battle.essence_applied = battle.essence_earned
 	if region_mode:

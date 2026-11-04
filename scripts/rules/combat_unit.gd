@@ -17,6 +17,8 @@ var move_points: int = 3
 var skills: Array = []
 var reg_index: int = 0
 var enemy_level: int = 1
+var corrupted: bool = false
+var corruption_hp_bonus: int = 0
 var combat_level: int = 1
 var guard_nest := Vector2i(-1, -1)
 var guard_charge: bool = false
@@ -262,11 +264,27 @@ func dup() -> CombatUnit:
 	copy.surf_until_round = surf_until_round
 	copy.fire_amp_stacks = fire_amp_stacks
 	copy.fresh_spawn = fresh_spawn
+	copy.corrupted = corrupted
+	copy.corruption_hp_bonus = corruption_hp_bonus
 	copy.combat_xp = combat_xp
 	copy.reward_carrier = reward_carrier
 	copy.summon_owner_uid = summon_owner_uid
 	copy.summon_power_bonus = summon_power_bonus
 	return copy
+
+
+func set_corrupted(active: bool) -> void:
+	if corrupted == active:
+		return
+	var old_max := maxi(1, max_hp)
+	if active:
+		corruption_hp_bonus = ceili(max_hp * 11 / 10.0) - max_hp
+		max_hp += corruption_hp_bonus
+	else:
+		max_hp = maxi(1, max_hp - corruption_hp_bonus)
+		corruption_hp_bonus = 0
+	hp = clampi(roundi(float(hp) * max_hp / old_max), 1, max_hp) if hp > 0 else 0
+	corrupted = active
 
 
 static func make(species_id: String, side: String, uid_value: int) -> CombatUnit:

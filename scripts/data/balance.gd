@@ -6,6 +6,9 @@ extends RefCounted
 const GRID_W := 8
 const GRID_H := 8
 
+const CORRUPTION_ROUND := 8
+const CORRUPTION_VISITS := 11
+const CORRUPTION_MULTIPLIER := 1.1
 const STORM_START_ROUND := 8
 const MAX_ROUNDS := STORM_START_ROUND # 旧测试兼容常量，不再是战斗上限。
 const NEST_SPAWN_INTERVAL := 2

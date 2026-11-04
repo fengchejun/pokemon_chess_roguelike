@@ -49,7 +49,7 @@ func run(t: TestContext) -> void:
 	run_state.choose_floor_theme(String(run_state.offered_floor_themes[0]))
 	var region = run_state.get_region()
 	region.visits = 10
-	region.support_triggered = true
+	region.occupy_all()
 	run_state.region_data = region.to_dict()
 	t.check(run_state.enter_region_node("camp"), "第十一次可进入营地")
 	t.eq(run_state.get_region().node_mode("camp"), "battle", "进场前营地已转战斗")
