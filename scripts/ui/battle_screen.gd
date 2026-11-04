@@ -489,11 +489,11 @@ func _update_header() -> void:
 		var guards := 0
 		for current in state.all_nests():
 			guards += state.nest_guard_charges(current["cell"])
-		objective_label.text += "\n巢穴守护：%d 次拦截" % guards
+		objective_label.text += "\n巢穴守军：%d 名分担伤害" % guards
 	if state.node_kind == "event":
 		objective_label.text = "收集区\n本次收集食物 %d\n可随时返回区域" % state.food_collected
 	if state.sheltered_boss() != null:
-		objective_label.text = "首领已回巢 · 巢内庇护\n摧毁主巢穴（剩余 %d 耐久）\n破巢后可继续攻击或捕获。" % int(state.nest.get("hp", 0))
+		objective_label.text = "首领已回巢 · 巢内庇护\n摧毁主巢穴（剩余 %d HP）\n破巢后可继续攻击或捕获。" % int(state.nest.get("hp", 0))
 	if GridSpec.is_inside(state.boss_portal_cell):
 		objective_label.text = "首领已击败 · 敌军撤离\n训练师相邻后，点击传送门或行动按钮前往下一层。"
 	elif not state.is_free_exploration() and state.round >= 7:
@@ -574,7 +574,7 @@ func _update_unit_card() -> void:
 		lines.append(Elements.counter_hint(unit.element))
 	var statuses: Array = []
 	if unit.guard_nest.x >= 0:
-		statuses.append("守护巢穴：本阶段不能施法；拦截次数%s" % ("可用" if unit.guard_charge else "已用") if state.active_nest_guards(unit.guard_nest).has(unit) else "守护已中断；本阶段仍不能施法")
+		statuses.append("守护巢穴：不能施法，持续分担一半伤害" if state.active_nest_guards(unit.guard_nest).has(unit) else "守护已中断；本阶段仍不能施法")
 	if unit.side == "enemy" and unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND:
 		statuses.append("第%d轮增援：击杀不提供经验" % unit.spawn_round)
 	if unit.burn_ticks > 0:
@@ -1189,7 +1189,7 @@ func _on_board_hovered(cell: Vector2i) -> void:
 		board.queue_redraw()
 		return
 	if state.is_nest_cell(cell):
-		var detail := "不可站立；守军可拦截 %d 次并均分伤害；上下左右空格生成增援" % state.nest_guard_charges(cell)
+		var detail := "不可站立；%d 名主动守军均分一半伤害，巢穴承担另一半；四邻生成增援" % state.nest_guard_charges(cell)
 		hint_label.text = "巢穴：%s。" % detail
 		hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	var unit := state.unit_by_uid(selected_uid)
@@ -1286,9 +1286,9 @@ func _show_terrain(cell: Vector2i) -> void:
 	if state.is_nest_cell(cell):
 		if bool(state.nest_at_cell(cell).get("boss_sheltered", false)):
 			lines.append("首领正在巢内庇护：摧毁巢穴使其出巢；巢内首领不占格。")
-		lines.append("巢穴耐久：%d/%d；每两轮在上下左右合法空格生成。" % [int(state.nest_at_cell(cell).get("hp", 0)), Balance.NEST_DURABILITY])
-		lines.append("巢穴不可站立或叠加其他地形；敌人可用技能机会守护邻接巢穴。每名守军提供一次拦截，攻击伤害由当前守军均分；用尽后攻击巢穴扣1耐久。")
-		lines.append("当前守护：%d 次；积压 %d 只。" % [state.nest_guard_charges(cell), int(state.nest_at_cell(cell).get("pending_waves", 0))])
+		lines.append("巢穴生命：%d/%d；每两轮在上下左右合法空格生成。" % [int(state.nest_at_cell(cell).get("hp", 0)), int(state.nest_at_cell(cell).get("max_hp", Balance.nest_max_hp(state.battle_index)))])
+		lines.append("巢穴不可站立或叠加其他地形；主动守护消耗技能机会，持续到下次敌方阶段。巢穴承担至少一半伤害，其余由四邻有效守军均分，不消耗拦截次数。")
+		lines.append("当前守军：%d 名；积压 %d 只。" % [state.nest_guard_charges(cell), int(state.nest_at_cell(cell).get("pending_waves", 0))])
 	if state.is_chest_cell(cell):
 		lines.append("命中一次攻击后破坏，原格生成奖励点；碰撞不损伤宝箱。")
 	if state.all_rewards().any(func(p): return p.get("cell") == cell and p.get("state") in ["map", "guarding"]):

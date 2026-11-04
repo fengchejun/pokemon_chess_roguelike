@@ -31,7 +31,12 @@ const CHEST_DOUBLE_CHANCE := 0.20
 const REWARD_CARRIER_CHANCE := 0.15
 const OBSTACLE_DURABILITY := 2
 const TREE_DURABILITY := 1
-const NEST_DURABILITY := 3
+const NEST_BASE_HP := 30
+const NEST_HP_PER_FLOOR := 20
+const NEST_DURABILITY := NEST_BASE_HP # 兼容旧入口；当前语义为第一层生命。
+
+static func nest_max_hp(battle_index: int) -> int:
+	return NEST_BASE_HP + clampi(battle_index / 6, 0, 2) * NEST_HP_PER_FLOOR
 
 const BURN_DAMAGE := 4
 const BURN_TICKS := 2

@@ -27,8 +27,7 @@ func _retreat(state: BattleState) -> void:
 	state.damage_unit(null, boss, 31, {"no_element": true})
 
 func _break_nest(state: BattleState) -> void:
-	for index in range(3):
-		state.damage_nest(1, "player")
+	state.damage_nest(int(state.nest["hp"]), "player")
 
 func _transition(t: TestContext) -> void:
 	var state := _state()

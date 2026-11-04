@@ -206,7 +206,8 @@ static func _nest_guard_score(state: BattleState, nest: Dictionary) -> int:
 	# 健康巢穴优先进攻；受损后才按附近威胁投入守军，避免无限叠护。
 	var hp := int(nest.get("hp", 0))
 	var shelter := state.sheltered_boss() != null
-	if hp >= Balance.NEST_DURABILITY and not shelter:
+	var max_hp := int(nest.get("max_hp", Balance.nest_max_hp(state.battle_index)))
+	if hp * 3 >= max_hp * 2 and not shelter:
 		return 0
 	var pressure := 0
 	for target in state.alive_units("player"):
@@ -227,7 +228,7 @@ static func _nest_guard_score(state: BattleState, nest: Dictionary) -> int:
 	var charges := state.nest_guard_charges(nest["cell"])
 	if pressure <= charges:
 		return 0
-	var value := (8 if hp >= 2 else 42) + mini(pressure, 3) * 6 + (22 if shelter else 0) - charges * 12
+	var value := (8 if hp * 3 > max_hp else 42) + mini(pressure, 3) * 6 + (22 if shelter else 0) - charges * 12
 	return value
 
 

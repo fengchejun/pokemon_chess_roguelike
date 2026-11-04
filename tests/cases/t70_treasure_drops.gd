@@ -112,7 +112,7 @@ func _drops(t: TestContext) -> void:
 	t.check(not captured.unit_by_uid(100).reward_carrier and captured.reward["state"] == "absent", "捕获不触发击杀掉落")
 	var nest := _state()
 	var cell: Vector2i = nest.nest["cell"]
-	for index in range(3): nest.damage_nest(1, "player", cell)
+	nest.damage_nest(30, "player", cell)
 	t.eq(nest.reward["cell"], cell, "拆巢原格生成奖励点")
 	t.eq(nest.reward["state"], "map", "拆巢不自动取得奖励")
 	var boss_state := _state()

@@ -1,7 +1,7 @@
 extends RefCounted
 
 func run(t: TestContext) -> void:
-	t.begin("主动守巢、均分拦截与后期增援经验")
+	t.begin("主动守巢、半额分伤与后期增援经验")
 	_guard(t)
 	_interrupt(t)
 	_ai(t)
@@ -31,30 +31,30 @@ func _guard(t: TestContext) -> void:
 	var second := state.unit_by_uid(101)
 	t.check(state.begin_nest_guard(first, state.nest["cell"]), "相邻守军可主动守护")
 	t.check(state.begin_nest_guard(second, state.nest["cell"]), "第二名守军可同时守护")
-	t.eq(state.nest_guard_charges(state.nest["cell"]), 2, "两名守军提供两次拦截")
+	t.eq(state.nest_guard_charges(state.nest["cell"]), 2, "两名守军共同分伤")
 	first.extra_casts = 1
 	t.check(not first.can_act_skill(), "守护后额外施法也不能绕过动作承诺")
 	t.check(not state.begin_nest_guard(first, state.nest["cell"]), "不能重复守护刷新次数")
 	var preview := state.preview_skill(state.unit_by_uid(1), "rock_break", {"type": "nest", "cell": state.nest["cell"]})
 	t.check(preview.get("guard_intercepted", false), "预览显示守军拦截")
 	t.eq(preview["hits"].size(), 2, "预览显示所有分伤守军")
-	t.eq(state.nest_guard_charges(state.nest["cell"]), 2, "预览不消耗实战拦截")
+	t.eq(state.nest_guard_charges(state.nest["cell"]), 2, "预览不改变实战守军")
 	_attack(state)
-	t.eq([first.hp, second.hp], [95, 95], "10伤害由两守军各承受5点")
-	t.eq(state.nest["hp"], 3, "第一次拦截巢穴不掉耐久")
-	t.eq(state.nest_guard_charges(state.nest["cell"]), 1, "一次攻击只消耗一次拦截")
+	t.eq([first.hp, second.hp], [97, 98], "10伤中5点由两守军分为3加2")
+	t.eq(state.nest["hp"], 25, "巢穴始终承担一半伤害")
+	t.eq(state.nest_guard_charges(state.nest["cell"]), 2, "攻击不消耗守护次数")
 	_attack(state)
-	t.eq([first.hp, second.hp], [90, 90], "第二次拦截仍由所有守军均分")
-	t.eq(state.nest_guard_charges(state.nest["cell"]), 0, "两次用完")
+	t.eq([first.hp, second.hp], [94, 96], "第二次仍由当前守军分担半额")
+	t.eq(state.nest_guard_charges(state.nest["cell"]), 2, "多次受击守护仍有效")
 	_attack(state)
-	t.eq(state.nest["hp"], 2, "次数用尽后直接伤巢")
-	t.eq([first.hp, second.hp], [90, 90], "守军不会无限自动挡伤")
+	t.eq(state.nest["hp"], 15, "第三次仍有一半伤巢")
+	t.eq([first.hp, second.hp], [91, 94], "守护持续分伤但始终不能完全挡伤")
 	var odd := _state()
 	odd.begin_nest_guard(odd.unit_by_uid(100), odd.nest["cell"])
 	odd.begin_nest_guard(odd.unit_by_uid(101), odd.nest["cell"])
 	var summary := {"skill_id": "rock_break", "hits": []}
 	SkillResolver._hit_nest(odd, odd.unit_by_uid(1), odd.nest["cell"], summary, 1, 11)
-	t.eq([odd.unit_by_uid(100).hp, odd.unit_by_uid(101).hp], [94, 95], "奇数分伤6加5，不凭空增加总伤害")
+	t.eq([odd.unit_by_uid(100).hp, odd.unit_by_uid(101).hp], [97, 98], "11伤由巢穴6加守军3加2，无额外伤害")
 
 func _interrupt(t: TestContext) -> void:
 	var state := _state()
@@ -70,7 +70,7 @@ func _interrupt(t: TestContext) -> void:
 	second.frozen = true
 	t.eq(state.nest_guard_charges(state.nest["cell"]), 0, "冻结失去守护资格")
 	_attack(state)
-	t.eq(state.nest["hp"], 2, "控制守军可直接攻击巢穴")
+	t.eq(state.nest["hp"], 20, "控制守军后巢穴承担全部10伤")
 	second.frozen = false
 	state.begin_enemy_phase()
 	t.check(first.guard_nest.x < 0 and second.guard_nest.x < 0, "下一敌方阶段开始清除旧守护")
@@ -130,20 +130,20 @@ func _save(t: TestContext) -> void:
 	state.begin_nest_guard(state.unit_by_uid(101), state.nest["cell"])
 	_attack(state)
 	var restored := BattleSnapshot.load_state(BattleSnapshot.save_state(state))
-	t.eq(restored.nest_guard_charges(restored.nest["cell"]), 1, "读档保留已经消耗的次数")
-	t.eq(restored.clone().nest_guard_charges(restored.nest["cell"]), 1, "克隆保留守护状态")
+	t.eq(restored.nest_guard_charges(restored.nest["cell"]), 2, "读档保留持续守护")
+	t.eq(restored.clone().nest_guard_charges(restored.nest["cell"]), 2, "克隆保留守护状态")
 	var before := restored.unit_by_uid(100).hp
 	_attack(restored)
-	t.eq(restored.unit_by_uid(100).hp, before - 5, "读档后剩余一次拦截正确分伤")
-	t.eq(restored.nest_guard_charges(restored.nest["cell"]), 0, "读档不刷新已消耗拦截")
+	t.eq(restored.unit_by_uid(100).hp, before - 3, "读档后继续按半额均分伤害")
+	t.eq(restored.nest_guard_charges(restored.nest["cell"]), 2, "读档后仍为同一批守军")
 
 func _capture_and_area(t: TestContext) -> void:
 	var state := _state()
 	state.begin_nest_guard(state.unit_by_uid(100), state.nest["cell"])
 	state.begin_nest_guard(state.unit_by_uid(101), state.nest["cell"])
 	SkillResolver.resolve_channel(state, state.unit_by_uid(1), "fire_burst", [state.nest["cell"]])
-	t.eq(state.nest_guard_charges(state.nest["cell"]), 1, "一次范围攻击对同一巢穴只消耗一次拦截")
-	t.eq(state.nest["hp"], 3, "范围攻击拦截后巢穴不掉耐久")
+	t.eq(state.nest_guard_charges(state.nest["cell"]), 2, "范围攻击不消耗守护")
+	t.eq(state.nest["hp"], 21, "火球中心守护后仍伤巢9生命")
 	var captured := _state()
 	var guard := captured.unit_by_uid(100)
 	captured.begin_nest_guard(guard, captured.nest["cell"])
@@ -174,7 +174,7 @@ func _ui(t: TestContext) -> void:
 	screen._show_terrain(state.nest["cell"])
 	t.check(screen.terrain_label.text.contains("巢穴（不可站立）"), "巢穴详情不再误标平地")
 	t.check(screen.terrain_label.text.contains("移动消耗：不可进入"), "巢穴详情明确不能作为移动终点")
-	t.eq(screen.board.nest_guard_counts[state.nest["cell"]], 2, "棋盘显示实际拦截次数")
+	t.eq(screen.board.nest_guard_counts[state.nest["cell"]], 2, "棋盘显示实际守军人数")
 	state.unit_by_uid(100).spawned_from_nest = true
 	state.unit_by_uid(100).spawn_round = 10
 	screen.viewed_enemy_uid = 100

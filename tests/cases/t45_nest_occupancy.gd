@@ -4,7 +4,8 @@ func _state() -> BattleState:
 	var state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]], [], {}, {}, ["rock_wild1"])
 	state.node_kind = "battle"
 	state.nest["cell"] = Vector2i(3, 3)
-	state.nest["hp"] = 10
+	state.nest["hp"] = 100
+	state.nest["max_hp"] = 100
 	state.unit_by_uid(1).cell = Vector2i(2, 3)
 	return state
 
@@ -33,7 +34,8 @@ func run(t: TestContext) -> void:
 		else:
 			result = SkillResolver.apply(state, caster, skill, entry, false)
 		t.check(bool(result.get("ok", false)), "%s可命中空置巢穴" % skill)
-		t.eq(state.nest["hp"], 10 if skill == "tsunami" else 9, "%s按独立巢穴规则结算" % skill)
+		var expected := {"fire_seed": 11, "water_flow": 8, "flame_charge": 11, "rock_push": 13, "discharge": 13, "drain": 10, "ice_shard": 11, "tree_wrath": 10, "rock_break": 10, "trial_fire_1": 10, "electric_arc": 10, "flame_jet": 13, "rock_create": 10, "fire_burst": 18, "rock_slide": 30, "earth_shake": 18, "lightning": 18, "tsunami": 0}
+		t.eq(state.nest["hp"], 100 - int(expected[skill]), "%s按技能威力伤巢" % skill)
 	var state := _state()
 	var unit := state.unit_by_uid(1)
 	t.check(not state.move_options(unit).has(state.nest["cell"]), "普通移动不能停在巢穴")
@@ -68,5 +70,5 @@ func run(t: TestContext) -> void:
 	var burning := _state()
 	burning.ignite(burning.nest["cell"], "player")
 	burning._settle_burning_cells()
-	t.eq(burning.nest["hp"], 10, "巢穴不叠加燃烧地形")
+	t.eq(burning.nest["hp"], 100, "巢穴不叠加燃烧地形")
 	t.finish()

@@ -278,7 +278,8 @@ func load_map(map_data: Dictionary) -> void:
 	nest = {
 		"cell": map_data["nest_cell"],
 		"exits": [], # Legacy snapshot field; spawning uses cell only.
-		"hp": Balance.NEST_DURABILITY,
+		"hp": Balance.nest_max_hp(battle_index),
+		"max_hp": Balance.nest_max_hp(battle_index),
 		"alive": true,
 		"pending_waves": 0,
 	}
@@ -851,48 +852,13 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		log_event("%s 的冰冻被攻击解除，本轮仍无法行动。" % target.display_name)
 		if not break_frozen:
 			return {"amount": 0, "killed": false}
-	var amount := base
-	if source != null and bool(opts.get("skill_direct", false)):
-		amount = Balance.skill_damage_for_side(amount, source.side)
-	var is_lethal_check := true
-	var matchup_modifier := 0
-	if not bool(opts.get("no_element", false)):
-		var skill_element: String = opts.get("element", "")
-		matchup_modifier = Elements.modifier(skill_element, target.element)
-		if source != null and bool(opts.get("skill_direct", false)):
-			amount = Elements.direct_damage(amount, skill_element, target.element)
-		if skill_element == "fire" and int(effects.get("fire_bonus", 0)) > 0:
-			if source != null and source.side == "player":
-				amount += int(effects["fire_bonus"])
-	var target_in_grass := GridSpec.is_inside(target.cell) and terrain_at(target.cell) == TerrainDB.GRASS
-	if bool(opts.get("ranged", false)) and target.side == "player":
-		## 密林（草丛中）与岩脊（障碍旁）的远程减伤取其一，不叠加。
-		var covered := false
-		if target_in_grass and int(effects.get("grass_reduction", 0)) > 0:
-			covered = true
-		if int(effects.get("obstacle_cover", 0)) > 0 and adjacent_to_obstacle(target):
-			covered = true
-		if covered:
-			amount = maxi(0, amount - Balance.DIRECT_GUARD_REDUCTION)
-	if source != null and source.side == "player" and int(effects.get("grass_strike", 0)) > 0:
-		## 密林：站在草丛中的我方单位造成的直接伤害 +1。
-		if not bool(opts.get("no_element", false)):
-			if GridSpec.is_inside(source.cell) and terrain_at(source.cell) == TerrainDB.GRASS:
-				amount += int(effects["grass_strike"])
-	if source != null and bool(opts.get("skill_direct", false)):
-		amount += int(debug_skill_damage_bonus.get(source.side, 0))
 	var was_burning := target.burn_ticks > 0
-	if source != null and bool(opts.get("skill_direct", false)):
-		amount += RelicDB.damage_bonus(self, source, target, opts)
-		amount -= RelicDB.incoming_reduction(self, source, target, opts)
-	amount = maxi(0, amount)
-	if amount > 0:
-		if source != null and not bool(opts.get("no_element", false)) and target.has_buff("direct_guard") and not bool(opts.get("conductive", false)):
-			amount = maxi(0, amount - Balance.DIRECT_GUARD_REDUCTION)
-		if amount > 0:
-			damage_reward_at(target.cell)
+	var matchup_modifier := 0 if bool(opts.get("no_element", false)) else Elements.modifier(String(opts.get("element", "")), target.element)
+	var amount := calculate_damage(source, target, base, opts)
 	if break_frozen:
 		amount *= int(opts.get("frozen_multiplier", 1))
+	if bool(opts.get("guard_share_half", false)):
+		amount = amount / 2
 	var guard_divisor := maxi(1, int(opts.get("guard_divisor", 1)))
 	if guard_divisor > 1:
 		var remainder := amount % guard_divisor
@@ -946,6 +912,44 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	if amount > 0 and target.uid == boss_uid:
 		_try_shelter_boss()
 	return {"amount": amount, "killed": killed, "previous_hp": previous_hp, "hp": target.hp, "relic_healed": relic_healed}
+
+
+func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: Dictionary) -> int:
+	# 纯数值计算，巢穴使用无属性目标复用技能与遗物加成，不施加状态或触发击杀。
+	var amount := base
+	if source != null and bool(opts.get("skill_direct", false)):
+		amount = Balance.skill_damage_for_side(amount, source.side)
+	if not bool(opts.get("no_element", false)):
+		var skill_element: String = opts.get("element", "")
+		if source != null and bool(opts.get("skill_direct", false)):
+			amount = Elements.direct_damage(amount, skill_element, target.element)
+		if skill_element == "fire" and int(effects.get("fire_bonus", 0)) > 0:
+			if source != null and source.side == "player":
+				amount += int(effects["fire_bonus"])
+	var target_in_grass := GridSpec.is_inside(target.cell) and terrain_at(target.cell) == TerrainDB.GRASS
+	if bool(opts.get("ranged", false)) and target.side == "player":
+		## 密林（草丛中）与岩脊（障碍旁）的远程减伤取其一，不叠加。
+		var covered := false
+		if target_in_grass and int(effects.get("grass_reduction", 0)) > 0:
+			covered = true
+		if int(effects.get("obstacle_cover", 0)) > 0 and adjacent_to_obstacle(target):
+			covered = true
+		if covered:
+			amount = maxi(0, amount - Balance.DIRECT_GUARD_REDUCTION)
+	if source != null and source.side == "player" and int(effects.get("grass_strike", 0)) > 0:
+		## 密林：站在草丛中的我方单位造成的直接伤害 +1。
+		if not bool(opts.get("no_element", false)):
+			if GridSpec.is_inside(source.cell) and terrain_at(source.cell) == TerrainDB.GRASS:
+				amount += int(effects["grass_strike"])
+	if source != null and bool(opts.get("skill_direct", false)):
+		amount += int(debug_skill_damage_bonus.get(source.side, 0))
+	if source != null and bool(opts.get("skill_direct", false)):
+		amount += RelicDB.damage_bonus(self, source, target, opts)
+		amount -= RelicDB.incoming_reduction(self, source, target, opts)
+	amount = maxi(0, amount)
+	if amount > 0 and source != null and not bool(opts.get("no_element", false)) and target.has_buff("direct_guard") and not bool(opts.get("conductive", false)):
+		amount = maxi(0, amount - Balance.DIRECT_GUARD_REDUCTION)
+	return amount
 
 
 func apply_burn(target: CombatUnit, source: CombatUnit) -> void:
@@ -1016,6 +1020,8 @@ func apply_vine_bind(unit: CombatUnit) -> void:
 
 
 func apply_vine_on_landing(unit: CombatUnit) -> void:
+	if unit != null and unit.guard_nest.x >= 0 and GridSpec.manhattan(unit.cell, unit.guard_nest) != 1:
+		unit.guard_charge = false
 	_refresh_reward_guard()
 	if unit != null and GridSpec.is_inside(unit.cell) and terrain_at(unit.cell) == TerrainDB.VINES:
 		apply_vine_bind(unit)
@@ -1098,9 +1104,9 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 		return false
 	if amount <= 0:
 		return false
-	# 未被主动守护拦截的有效命中每次扣1耐久。
-	target_nest["hp"] = maxi(0, int(target_nest["hp"]) - 1)
-	_relay_feedback("damage", "耐久 -1", 1, target_nest["cell"], -1)
+	var actual := mini(amount, int(target_nest["hp"]))
+	target_nest["hp"] = maxi(0, int(target_nest["hp"]) - amount)
+	_relay_feedback("damage", "生命 -%d" % actual, actual, target_nest["cell"], -1)
 	if int(target_nest["hp"]) <= 0:
 		if source_side == "player":
 			earn_essence("nest" if target_nest == nest else "nest:%d:%d" % [target_nest["cell"].x, target_nest["cell"].y], 8, target_nest["cell"])
@@ -1113,12 +1119,12 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 		if node_kind == "" and boss_uid < 0 and not has_live_nests():
 			end_battle("victory")
 		return true
-	log_event("巢穴耐久 -1（剩 %d）。" % target_nest["hp"])
+	log_event("巢穴生命 -%d（剩 %d/%d）。" % [actual, target_nest["hp"], target_nest.get("max_hp", Balance.nest_max_hp(battle_index))])
 	return false
 
 
 func nest_covered(_target_cell: Vector2i = Vector2i(-1, -1)) -> bool:
-	# 兼容旧技能汇总字段；巢穴现在不允许占格，守护由主动拦截处理。
+	# 兼容旧技能汇总字段；巢穴现在不允许占格，守护由主动分伤处理。
 	return false
 
 
@@ -1127,14 +1133,14 @@ func active_nest_guards(cell: Vector2i) -> Array:
 	if not is_nest_cell(cell):
 		return guards
 	for unit in alive_units("enemy"):
-		if unit.guard_nest == cell and GridSpec.manhattan(unit.cell, cell) == 1 and not unit.fresh_spawn and not unit.frozen and unit.paralyzed_ticks <= 0:
+		if unit.guard_charge and unit.guard_nest == cell and GridSpec.manhattan(unit.cell, cell) == 1 and not unit.fresh_spawn and not unit.frozen and unit.paralyzed_ticks <= 0:
 			guards.append(unit)
 	guards.sort_custom(func(a: CombatUnit, b: CombatUnit) -> bool: return a.uid < b.uid)
 	return guards
 
 
 func nest_guard_charges(cell: Vector2i) -> int:
-	return active_nest_guards(cell).filter(func(unit): return unit.guard_charge).size()
+	return active_nest_guards(cell).size() # 兼容旧名称，现返回守军数量，不是消耗次数。
 
 
 func can_guard_nest(unit: CombatUnit, cell: Vector2i) -> bool:
@@ -1149,7 +1155,7 @@ func begin_nest_guard(unit: CombatUnit, cell: Vector2i) -> bool:
 	unit.skill_used = true
 	unit.extra_casts = 0
 	emit_feedback(unit, "buff", "守护巢穴")
-	log_event("%s 放弃本阶段施法，守护巢穴并增加一次拦截；当前守军均分伤害。" % unit.display_name)
+	log_event("%s 放弃本阶段施法，守护巢穴至下次敌方阶段；巢穴承受一半，其余由守军均分。" % unit.display_name)
 	return true
 
 
@@ -1783,6 +1789,8 @@ func _settle_ice_slides() -> void:
 			continue
 		var next: Vector2i = slide["to"]
 		unit.cell = next
+		if unit.guard_nest.x >= 0 and GridSpec.manhattan(unit.cell, unit.guard_nest) != 1:
+			unit.guard_charge = false
 		_refresh_reward_guard()
 		log_event("%s 从冰面滑行到 (%d,%d)。" % [unit.display_name, next.x, next.y])
 		if bool(slide["lethal"]):

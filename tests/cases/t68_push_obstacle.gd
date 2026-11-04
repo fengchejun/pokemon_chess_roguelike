@@ -55,7 +55,7 @@ func _move(t: TestContext) -> void:
 	var nest := _state()
 	nest.nest["cell"] = DST
 	_hit(nest)
-	t.eq(nest.nest["hp"], 3, "推岩不伤前方巢穴")
+	t.eq(nest.nest["hp"], 30, "推岩不伤前方巢穴")
 	t.eq(nest.obstacle_durability[SRC], 1, "巢穴阻止岩障移动")
 	var facility := _state()
 	facility.boss_portal_cell = DST

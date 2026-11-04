@@ -221,7 +221,8 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 	battle.units = survivors
 	if bool(nodes[id].get("pending_garrison", false)):
 		battle.nest["alive"] = true
-		battle.nest["hp"] = Balance.NEST_DURABILITY
+		battle.nest["hp"] = Balance.nest_max_hp(battle.battle_index)
+		battle.nest["max_hp"] = battle.nest["hp"]
 		battle.nest["pending_waves"] = 0
 		battle.nest["scheduled_waves"] = []
 		battle.add_garrison(maxi(0, 3 - battle.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))

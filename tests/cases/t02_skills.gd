@@ -91,7 +91,7 @@ func _t_flame_charge(t: TestContext) -> void:
 	t.check(nest_state.skill_targets(nest_fire, "flame_charge").has(nest_entry), "巢穴格可以作为冲锋方向")
 	SkillResolver.apply(nest_state, nest_fire, "flame_charge", nest_entry, false)
 	t.eq(nest_fire.cell, Vector2i(6, 7), "冲锋停在巢穴前")
-	t.eq(int(nest_state.nest["hp"]), 2, "冲锋使未守口巢穴耐久减少一")
+	t.eq(int(nest_state.nest["hp"]), 19, "冲锋按11点技能伤害扣除巢穴生命")
 	var collision_terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(2, 3), TerrainDB.OBSTACLE]])
 	var collision_state := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(1, 3)]], collision_terrain)
 	var collision_fire := collision_state.unit_by_uid(1)

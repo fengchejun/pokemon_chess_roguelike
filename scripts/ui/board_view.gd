@@ -101,7 +101,8 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	nest = {
 		"cell": map.get("nest_cell", Vector2i(-1, -1)),
 		"exits": [],
-		"hp": int(map.get("nest_hp", Balance.NEST_DURABILITY)),
+		"hp": int(map.get("nest_hp", map.get("nest_max_hp", Balance.NEST_BASE_HP))),
+		"max_hp": int(map.get("nest_max_hp", Balance.NEST_BASE_HP)),
 		"alive": bool(map.get("nest_alive", true)),
 	}
 	extra_nests = []
@@ -534,7 +535,11 @@ func _draw_nest_object(font: Font, nest: Dictionary) -> void:
 		draw_colored_polygon(points, Color(0.55, 0.3, 0.7, 0.95))
 		draw_polyline(points + PackedVector2Array([points[0]]), Color(0.9, 0.8, 1.0), 2.0)
 		draw_string(font, center + Vector2(-10, 8), "巢", HORIZONTAL_ALIGNMENT_CENTER, 20, 18, Color.WHITE)
-		draw_string(font, center + Vector2(-20, -26), "耐久 %d/3" % int(nest.get("hp", 3)), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.9, 0.8, 1.0))
+		var maximum := maxi(1, int(nest.get("max_hp", Balance.NEST_BASE_HP)))
+		var life := int(nest.get("hp", 0))
+		draw_rect(Rect2(center + Vector2(-24, 22), Vector2(48, 4)), Color("373242"))
+		draw_rect(Rect2(center + Vector2(-24, 22), Vector2(48 * clampf(float(life) / maximum, 0.0, 1.0), 4)), Color("c39aef"))
+		draw_string(font, center + Vector2(-20, 35), "%d/%d" % [life, maximum], HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.9, 0.8, 1.0))
 
 
 func _draw_storm_strikes(font: Font) -> void:

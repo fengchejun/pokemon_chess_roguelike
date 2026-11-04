@@ -364,7 +364,7 @@ func _mod_hover_text(cell: Vector2i) -> String:
 	if (map.get("nest_cells", [map.get("nest_cell", Vector2i(-1, -1))]) as Array).has(cell):
 		if run.region_mode and run.get_region().node_mode(run.get_region().active_node) == "event":
 			return "该格为后续占领事件保留，暂不能改造。"
-		return "巢穴不可站立或叠加其他地形；每两轮在上下左右空格生成增援，无空格则积压，出生轮待机。邻接敌人可消耗技能机会守护，增加拦截并共同分伤。第9轮起出生的增援击杀无经验。"
+		return "巢穴不可站立或叠加其他地形；每两轮在上下左右空格生成增援，无空格则积压，出生轮待机。巢穴三层生命30/50/70；邻接敌人可消耗技能机会守护，巢穴承担一半伤害，其余由有效守军均分，持续到下次敌方阶段。第9轮起出生的增援击杀无经验。"
 	if MapGenerator.mod_protected(map, cell):
 		return "【%s】该格受保护（部署区 / 巢穴 / 奖励 / 果实），不能改造。" % tool_name
 	var terrain := int(map["terrain"][GridSpec.index(cell)])
@@ -405,6 +405,7 @@ func _prepare_treasure() -> void:
 
 func _refresh() -> void:
 	var run: RunState = app.run
+	map["nest_max_hp"] = Balance.nest_max_hp(run.battle_index)
 	_prepare_treasure()
 	deploy_enemies = _preview_units(run)
 	deploy_players = run.build_deploy_units(deploy_uids)

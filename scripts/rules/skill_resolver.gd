@@ -241,7 +241,7 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 	state._boss_effect_depth += 1
 	var result := _apply_rules(state, caster, skill_id, target_entry, preview)
 	if bool(result.get("guard_intercepted", false)):
-		result["text"] = String(result.get("text", "")) + "（守军拦截并分伤）"
+		result["text"] = String(result.get("text", "")) + "（巢穴承受一半，其余由守军分担）"
 	state._boss_effect_depth -= 1
 	state.try_release_boss()
 	if state.feedback_enabled:
@@ -327,6 +327,7 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 	if String(def.get("kind", "")) == "unit" and String(target_entry.get("type", "")) == "nest":
 		_hit_nest(state, caster, target_entry["cell"], summary, int(def.get("damage", 0)))
 		summary["text"] = "%s命中巢穴。" % SkillDB.name_of(skill_id)
+		_consume_fire_amp_if_used(state, caster, summary)
 		if SkillDB.battle_limit_of(skill_id) > 0:
 			caster.battle_skill_uses[skill_id] = int(caster.battle_skill_uses.get(skill_id, 0)) + 1
 		caster.moved = true
@@ -543,6 +544,10 @@ static func tsunami_cells(origin: Vector2i, dir: Vector2i) -> Array:
 static func _consume_fire_amp_if_used(state: BattleState, caster: CombatUnit, summary: Dictionary) -> void:
 	if caster.fire_amp_stacks <= 0:
 		return
+	if (summary.get("nests_damaged", []) as Array).any(func(hit): return int(hit.get("damage", 0)) > 0):
+		state.log_event("%s 的火焰增幅 +%d 已用于本次技能。" % [caster.display_name, caster.fire_amp_stacks])
+		caster.fire_amp_stacks = 0
+		return
 	for hit in summary.get("hits", []):
 		if int(hit.get("damage", 0)) > 0:
 			state.log_event("%s 的火焰增幅 +%d 已用于本次技能。" % [caster.display_name, caster.fire_amp_stacks])
@@ -593,24 +598,30 @@ static func _hit_nest(state: BattleState, caster: CombatUnit, cell: Vector2i, su
 	if not summary.has("_nest_hit_cells"):
 		summary["_nest_hit_cells"] = []
 	summary["_nest_hit_cells"].append(cell)
-	var guards := state.active_nest_guards(cell)
-	if caster.side == "player" and state.nest_guard_charges(cell) > 0:
-		for guard in guards:
-			if guard.guard_charge:
-				guard.guard_charge = false
-				break
-		var skill_id := String(summary.get("skill_id", ""))
-		var base := guard_base if guard_base >= 0 else maxi(1, SkillDB.damage_of(skill_id))
+	var skill_id := String(summary.get("skill_id", ""))
+	var base := guard_base if guard_base >= 0 else amount
+	if skill_id != "fire_burst":
+		base = upgraded_base_damage(caster, skill_id, base)
+	base += caster.fire_amp_stacks if base > 0 else 0
+	var target := CombatUnit.new()
+	target.side = "enemy"
+	target.cell = cell
+	target.element = ""
+	target.hp = int(state.nest_at_cell(cell)["hp"])
+	target.max_hp = int(state.nest_at_cell(cell).get("max_hp", Balance.nest_max_hp(state.battle_index)))
+	var damage := state.calculate_damage(caster, target, base, {"skill_id": skill_id, "element": SkillDB.element_of(skill_id), "skill_direct": true, "ranged": SkillDB.is_ranged(skill_id)})
+	var guards := state.active_nest_guards(cell) if caster.side == "player" else []
+	if not guards.is_empty():
 		for index in range(guards.size()):
-			var hit := _hit_entry(state, caster, skill_id, guards[index], base, {"guard_divisor": guards.size(), "guard_rank": index, "base_upgraded": skill_id == "fire_burst"})
-			hit["guard_intercept"] = true
+			var hit := _hit_entry(state, caster, skill_id, guards[index], guard_base if guard_base >= 0 else amount, {"guard_share_half": true, "guard_divisor": guards.size(), "guard_rank": index, "base_upgraded": skill_id == "fire_burst"})
+			hit["guard_intercept"] = true # 兼容预览字段；现在是分伤而非全额拦截。
 			summary["hits"].append(hit)
-		state.log_event("巢穴攻击被拦截，%d 名守军均分承受伤害；剩余 %d 次拦截。" % [guards.size(), state.nest_guard_charges(cell)])
+		state.log_event("巢穴承担一半伤害，其余由 %d 名主动守军均分；守护本阶段持续。" % guards.size())
 		summary["guard_intercepted"] = true
-		return false
+		damage = ceili(damage / 2.0)
 	var current := state.nest_at_cell(cell)
 	var old_hp := int(current["hp"])
-	var destroyed := state.damage_nest(amount, caster.side, cell)
+	var destroyed := state.damage_nest(damage, caster.side, cell)
 	var actual := old_hp - int(current["hp"])
 	if actual > 0:
 		summary["_nest_hit"] = true
@@ -706,7 +717,7 @@ static func _apply_fire_seed(state: BattleState, caster: CombatUnit, entry: Dict
 		if state.obstacle_durability.has(hit_cell):
 			_hit_obstacle(state, hit_cell, summary, caster.side)
 		elif state.is_nest_cell(hit_cell):
-			_hit_nest(state, caster, hit_cell, summary, 2)
+			_hit_nest(state, caster, hit_cell, summary, SkillDB.damage_of("fire_seed"))
 		var splash_cells := GridSpec.neighbors4(hit_cell)
 		for cell in splash_cells:
 			_hit_nest(state, caster, cell, summary, int(SkillDB.get_def("fire_seed").get("splash_damage", 0)))
@@ -766,8 +777,8 @@ static func _apply_water_flow(state: BattleState, caster: CombatUnit, entry: Dic
 	elif hit_object == "nest":
 		var hit_nest: Dictionary = state.nest_at_cell(hit_cell)
 		var old_hp := int(hit_nest["hp"])
-		_hit_nest(state, caster, hit_cell, summary, 1)
-		summary["text"] = "水炮击中巢穴，造成 %d 点耐久伤害" % (old_hp - int(hit_nest["hp"]))
+		_hit_nest(state, caster, hit_cell, summary, SkillDB.damage_of("water_flow"))
+		summary["text"] = "水炮击中巢穴，造成 %d 点生命伤害" % (old_hp - int(hit_nest["hp"]))
 	else:
 		state.damage_reward_at(hit_cell)
 		if _convert_to_water(state, target_cell, summary):
@@ -853,10 +864,10 @@ static func _apply_flame_charge(state: BattleState, caster: CombatUnit, entry: D
 		if state.is_nest_cell(next):
 			var hit_nest: Dictionary = state.nest_at_cell(next)
 			var old_hp := int(hit_nest["hp"])
-			var destroyed := _hit_nest(state, caster, next, summary, 1 + (1 if caster.has_buff("flame_charge") or int(caster.upgrades.get("flame_charge_damage", 0)) > 0 else 0))
+			var destroyed := _hit_nest(state, caster, next, summary, SkillDB.damage_of("flame_charge") + (5 if caster.has_buff("flame_charge") and not caster.upgrades.has("flame_charge_damage") else 0))
 			var actual := old_hp - int(hit_nest["hp"])
 			summary["nest_damaged"] = {"damage": actual, "destroyed": destroyed}
-			summary["text"] = "闪焰冲锋撞击巢穴：耐久 −%d。" % actual
+			summary["text"] = "闪焰冲锋撞击巢穴：生命 −%d。" % actual
 			break
 		if TerrainDB.blocks_move(state.terrain_at(next)):
 			var obstacle_name := TerrainDB.name_of(state.terrain_at(next))
@@ -997,10 +1008,10 @@ static func _apply_rock_smash(state: BattleState, caster: CombatUnit, skill_id: 
 	if entry_type == "nest":
 		var hit_nest: Dictionary = state.nest_at_cell(cell)
 		var old_hp := int(hit_nest["hp"])
-		var destroyed := _hit_nest(state, caster, cell, summary, 2)
+		var destroyed := _hit_nest(state, caster, cell, summary, SkillDB.damage_of(skill_id))
 		var actual := old_hp - int(hit_nest["hp"])
 		summary["nest_damaged"] = {"damage": actual, "destroyed": destroyed}
-		summary["text"] = "碎岩击中巢穴：耐久 −%d%s" % [actual, "，巢穴被摧毁" if destroyed else ""]
+		summary["text"] = "碎岩击中巢穴：生命 −%d%s" % [actual, "，巢穴被摧毁" if destroyed else ""]
 		return
 	if state.obstacle_durability.has(cell):
 		_hit_obstacle(state, cell, summary, caster.side, true)
@@ -1131,11 +1142,11 @@ static func _apply_fire_burst(state: BattleState, caster: CombatUnit, entry: Dic
 		if state.is_nest_cell(cell):
 			var hit_nest: Dictionary = state.nest_at_cell(cell)
 			var old_hp := int(hit_nest["hp"])
-			_hit_nest(state, caster, cell, summary, 4, fireball_base_damage(caster, cell == center))
+			_hit_nest(state, caster, cell, summary, fireball_base_damage(caster, cell == center), fireball_base_damage(caster, cell == center))
 			nest_damage += old_hp - int(hit_nest["hp"])
 	summary["text"] = "火球术命中九宫格：%d 个单位受伤。" % summary["hits"].size()
 	if nest_damage > 0:
-		summary["text"] += "巢穴耐久 −%d。" % nest_damage
+		summary["text"] += "巢穴生命 −%d。" % nest_damage
 	elif (summary.get("_nest_covered_cells", []) as Array).any(func(cell): return cells.has(cell)):
 		summary["text"] += "单位覆盖巢穴，本次不伤及巢穴。"
 
@@ -1153,8 +1164,8 @@ static func _apply_line(state: BattleState, caster: CombatUnit, skill_id: String
 				if state.is_nest_cell(cell):
 					var hit_nest: Dictionary = state.nest_at_cell(cell)
 					var old_hp := int(hit_nest["hp"])
-					_hit_nest(state, caster, cell, summary, 1)
-					summary["text"] = "喷射火焰击中巢穴：耐久 −%d。" % (old_hp - int(hit_nest["hp"]))
+					_hit_nest(state, caster, cell, summary, SkillDB.damage_of("flame_jet") + (int(SkillDB.get_def("flame_jet").get("adjacent_bonus", 0)) if step == 1 else 0))
+					summary["text"] = "喷射火焰击中巢穴：生命 −%d。" % (old_hp - int(hit_nest["hp"]))
 				else:
 					_hit_obstacle(state, cell, summary, caster.side)
 			break

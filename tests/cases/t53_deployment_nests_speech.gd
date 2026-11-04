@@ -56,14 +56,14 @@ func _nests(t: TestContext) -> void:
 	second["cell"] = Vector2i(5, 2)
 	var caster := state.unit_by_uid(1)
 	SkillResolver.resolve_channel(state, caster, "fire_burst", [Vector2i(4, 2)])
-	t.eq(state.nest["hp"], 2, "范围技能命中主巢穴一次")
-	t.eq(second["hp"], 2, "同一范围技能也命中第二巢穴一次")
+	t.eq(state.nest["hp"], 12, "范围技能中心伤巢18生命一次")
+	t.eq(second["hp"], 21, "同一范围技能外围伤第二巢穴9生命一次")
 	var before := state.essence_earned
-	state.damage_nest(1, "player", second["cell"])
-	state.damage_nest(1, "player", second["cell"])
+	state.damage_nest(11, "player", second["cell"])
+	state.damage_nest(11, "player", second["cell"])
 	t.check(not second["alive"] and state.nest["alive"], "只摧毁指定巢穴")
 	var earned := state.essence_earned
-	state.damage_nest(1, "player", second["cell"])
+	state.damage_nest(11, "player", second["cell"])
 	t.eq(state.essence_earned, earned, "摧毁奖励不会重复")
 	t.check(earned > before, "第二巢穴有摧毁奖励")
 	state.food_cells = [state.nest["cell"], second["cell"], Balance.DEPLOY_AREA[0]]
@@ -78,7 +78,7 @@ func _nests(t: TestContext) -> void:
 	legacy["fields"].erase("extra_nests")
 	t.eq(BattleSnapshot.load_state(legacy).all_nests().size(), 1, "旧单巢穴快照只恢复原有巢穴")
 	for i in range(2):
-		state.damage_nest(1, "player", state.nest["cell"])
+		state.damage_nest(6, "player", state.nest["cell"])
 	t.eq(state.essence_earned, earned + 8, "两个巢穴分别结算摧毁奖励")
 	state.stop_nests()
 	t.check(not state.has_live_nests() and second["pending_waves"] == 0, "清场停止所有巢穴")

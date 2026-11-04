@@ -40,7 +40,7 @@ func _obstacles(t: TestContext) -> void:
 		t.eq(action.get("skill", {}).get("id", ""), "rock_break", "只使用已有碎岩技能")
 		_execute(state)
 		t.eq(state.terrain_at(Vector2i(5, 3)), TerrainDB.PLAIN, "实战拆除出生格障碍")
-		t.eq(state.nest["hp"], 3, "清理不伤及己方巢穴")
+		t.eq(state.nest["hp"], 30, "清理不伤及己方巢穴")
 		state.nest["pending_waves"] = 1
 		state._try_spawn_wave()
 		t.eq(state.units.back().cell, Vector2i(5, 3), "清出的出生格实际用于补产增援")

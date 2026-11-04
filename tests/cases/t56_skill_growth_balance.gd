@@ -60,14 +60,14 @@ func _fire(t: TestContext) -> void:
 		var result := SkillResolver.resolve_channel(state, caster, "fire_burst", [Vector2i(4, 3)])
 		t.eq(200 - state.unit_by_uid(100).hp, 23 if upgraded else 18, "火球中心伤害")
 		t.eq(200 - state.unit_by_uid(101).hp, 9, "火球外围伤害不随强化提高")
-		t.eq(state.nest["hp"], 2, "火球外围仍可伤巢且每次仅扣一次耐久")
+		t.eq(state.nest["hp"], 21, "火球外围伤巢9生命且只结算一次")
 		t.eq(result["area_cells"].size(), 9, "火球仍为九宫格")
 	var covered := _state("fire_burst", [["rock_wild1", Vector2i(4, 3)]])
 	covered.nest["cell"] = Vector2i(4, 3)
 	covered.relocate_nest_occupants()
 	covered.unit_by_uid(100).hp = 1
 	SkillResolver.resolve_channel(covered, covered.unit_by_uid(1), "fire_burst", [Vector2i(4, 3)])
-	t.eq(covered.nest["hp"], 2, "敌人位于巢穴邻格时火球可正常伤巢")
+	t.eq(covered.nest["hp"], 12, "敌人位于巢穴邻格时火球中心仍伤巢18生命")
 	var ai := _state("fire_burst", [["fire_wild1", Vector2i(4, 3)]])
 	ai.unit_by_uid(100).skills = ["fire_burst"]
 	ai.unit_by_uid(1).hp = 100

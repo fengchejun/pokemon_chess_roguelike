@@ -56,7 +56,7 @@ static func save_state(state: BattleState) -> Dictionary:
 	var members: Array = []
 	for unit in state.units:
 		members.append(_fields(unit))
-	return {"version": 4, "fields": _fields(state), "units": members, "rng": {
+	return {"version": 5, "fields": _fields(state), "units": members, "rng": {
 		"spawn_seed": str(state.spawn_rng.seed), "spawn_state": str(state.spawn_rng.state),
 		"capture_seed": str(state.capture_rng.seed), "capture_state": str(state.capture_rng.state),
 		"terrain_seed": str(state.terrain_rng.seed), "terrain_state": str(state.terrain_rng.state),
@@ -97,6 +97,11 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 	for entry in state.captured:
 		if entry.has("uid"):
 			state.enemy_outcomes[int(entry["uid"])] = "captured"
+	for current in state.all_nests():
+		if not current.has("max_hp"):
+			var maximum := Balance.nest_max_hp(state.battle_index)
+			current["hp"] = clampi(roundi(int(current.get("hp", 0)) * maximum / 3.0), 0, maximum)
+			current["max_hp"] = maximum
 	state.nest["exits"] = [] # Old exits no longer affect movement, targeting or spawning.
 	var rng: Dictionary = snapshot["rng"]
 	state.spawn_rng.seed = int(rng["spawn_seed"])

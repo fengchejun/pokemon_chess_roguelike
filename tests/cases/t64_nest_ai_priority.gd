@@ -6,8 +6,8 @@ func run(t: TestContext) -> void:
 	var action := _action(healthy, 100)
 	t.check(not action.has("guard") and not action.get("skill", {}).is_empty(), "满耐久巢穴附近优先攻击可命中的玩家")
 	var moderate := _state()
-	moderate.nest["hp"] = 2
-	t.check(not _action(moderate, 100).has("guard"), "剩余两点耐久时仍更倾向有效攻击")
+	moderate.nest["hp"] = 20
+	t.check(not _action(moderate, 100).has("guard"), "巢穴仍有三分之二生命时倾向有效攻击")
 	var hurt := _state()
 	hurt.nest["hp"] = 1
 	t.check(_action(hurt, 100).has("guard"), "残血巢穴受附近攻击者威胁时主动守护")

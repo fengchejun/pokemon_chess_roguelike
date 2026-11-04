@@ -104,4 +104,4 @@ func _rock_break(t: TestContext) -> void:
 	nest_state.unit_by_uid(1).cell = Vector2i(2, 3)
 	var nest_hit := SkillResolver.apply(nest_state, nest_state.unit_by_uid(1), "rock_break", {"type": "nest", "cell": Vector2i(3, 3)}, false)
 	t.check(nest_hit.get("ok", false), "碎岩仍能攻击敌方巢穴")
-	t.eq(nest_state.nest["hp"], 2, "巢穴不属于碎岩一击摧毁的障碍")
+	t.eq(nest_state.nest["hp"], 20, "碎岩按10点生命伤巢而非直接摧毁")
