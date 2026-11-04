@@ -29,6 +29,7 @@ var mentor_cell := Vector2i(-1, -1)
 var merchant_cell := Vector2i(-1, -1)
 var units: Array = []
 var deploy_cells: Array = []
+var extraction_cells: Array = []
 var ice_slides: Array = []
 
 var movement_cells: Dictionary = {}
@@ -55,6 +56,7 @@ func set_from_state(state: BattleState) -> void:
 	if state == null:
 		return
 	terrain = state.terrain.duplicate()
+	extraction_cells = state.extraction_cells.duplicate() if state.node_kind != "boss" and state.boss_uid < 0 else []
 	obstacle_durability = state.obstacle_durability.duplicate()
 	burning_cells = state.burning_cells.duplicate()
 	steam_cells = state.steam_cells.duplicate()
@@ -89,6 +91,7 @@ func set_from_state(state: BattleState) -> void:
 
 
 func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
+	extraction_cells = map.get("extraction_cells", []).duplicate()
 	nest_guard_counts.clear()
 	storm_strikes = map.get("storm_strikes", []).duplicate(true)
 	terrain = (map.get("terrain", []) as Array).duplicate()
@@ -189,6 +192,11 @@ func _draw() -> void:
 			if steam_cells.has(cell):
 				draw_circle(rect.position + Vector2(28, 25), 17.0, Color(0.92, 0.94, 0.96, 0.38))
 				draw_circle(rect.position + Vector2(46, 42), 13.0, Color(0.92, 0.94, 0.96, 0.33))
+	for cell in extraction_cells:
+		var zone := Rect2(Vector2(cell) * TILE + Vector2(3,3), Vector2.ONE * (TILE - 6))
+		draw_rect(zone, Color(0.25, 0.85, 0.72, 0.18))
+		draw_rect(zone, Color("62d8be"), false, 2.0)
+		draw_string(font, zone.position + Vector2(3,14), "撤离", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("8cf7d9"))
 	# 覆盖层：移动范围 / 攻击范围 / 区域 / 射线
 	for cell in movement_cells:
 		_draw_fill(cell, Color(0.35, 0.6, 1.0, 0.28))

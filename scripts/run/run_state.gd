@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 15
+const SAVE_VERSION := 16
 var essence: int = 0
 var trainer_items: Dictionary = {}
 var sold_monster_uids: Array = []
@@ -719,6 +719,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		"reason": battle.end_reason,
 		"exp": 0,
 		"monster_exp": [],
+		"escape_penalties": battle.escape_penalties.duplicate(true),
 		"trainer_exp": {"gained": int(battle.experience_gains.get(Balance.TRAINER_UID, 0)), "level": trainer_level, "xp": trainer_xp},
 		"monster_affinity": [],
 		"kills": battle.enemy_kills.size(),

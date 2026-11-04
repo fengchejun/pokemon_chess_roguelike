@@ -264,6 +264,7 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 		if not placed:
 			return null
 	battle.experience_recipients = players.filter(func(u): return u.summon_owner_uid < 0).map(func(u): return u.uid)
+	battle.escape_penalties.clear()
 	battle.experience_events.clear()
 	battle.experience_gains.clear()
 	battle.round = 0

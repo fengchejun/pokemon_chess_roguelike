@@ -58,6 +58,8 @@ var enemy_level_bonus: int = 0
 var corruption_active: bool = false
 var timed_corruption_triggered: bool = false
 var occupation_applied: bool = false
+var extraction_cells: Array = []
+var escape_penalties: Array = []
 var node_kind: String = "" # 空值沿用旧逐场流程；battle / boss / event 使用区域规则。
 var food_cells: Array = []
 var food_wait: Dictionary = {}
@@ -279,6 +281,7 @@ func capture_roll() -> float:
 
 func load_map(map_data: Dictionary) -> void:
 	terrain = map_data["terrain"].duplicate()
+	extraction_cells = map_data.get("extraction_cells", extraction_area(map_data)).duplicate()
 	burning_cells = {}
 	steam_cells = map_data.get("steam_cells", {}).duplicate()
 	vine_origin = {}
@@ -1989,14 +1992,46 @@ func can_leave_node() -> bool:
 	return not ended and phase == PHASE_PLAYER and (node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not has_live_nests()))
 
 
+static func extraction_area(map: Dictionary) -> Array:
+	var candidates: Array = []
+	for y in GridSpec.H:
+		var cell := Vector2i(0, y)
+		if not TerrainDB.can_stand(int(map["terrain"][GridSpec.index(cell)]), "normal"):
+			continue
+		if (map.get("nest_cells", [map.get("nest_cell", Vector2i(-1,-1))]) as Array).has(cell) or cell in [map.get("mentor_cell"), map.get("merchant_cell"), map.get("portal_cell")]:
+			continue
+		candidates.append(cell)
+	candidates.sort_custom(func(x,y): return absi(x.y - 3) < absi(y.y - 3) if absi(x.y - 3) != absi(y.y - 3) else x.y < y.y)
+	return candidates.slice(0, 3)
+
+
 func can_escape() -> bool:
-	return not ended and phase == PHASE_PLAYER and node_kind != "boss" and boss_uid < 0
+	var actor := trainer()
+	return not ended and phase == PHASE_PLAYER and node_kind != "boss" and boss_uid < 0 and actor != null and actor.is_alive() and extraction_cells.has(actor.cell)
 
 
-func leave_node() -> bool:
+func escape_stragglers() -> Array:
+	var actor := trainer()
+	if actor == null:
+		return []
+	return alive_units("player").filter(func(u): return not u.is_trainer and u.summon_owner_uid < 0 and GridSpec.manhattan(u.cell, actor.cell) > 2)
+
+
+func escape_losses() -> Array:
+	var ids := escape_stragglers().map(func(u): return u.uid)
+	return all_rewards().filter(func(p): return p.get("state") == "carried" and ids.has(int(p.get("owner_uid", -1))) and not bool(p.get("credited", false)))
+
+
+func leave_node(emergency: bool = false) -> bool:
 	if can_leave_node():
 		end_battle("explored" if node_kind == "event" else "victory")
 	elif can_escape():
+		var missing := escape_stragglers()
+		if not missing.is_empty() and not emergency:
+			return false
+		for unit in missing:
+			escape_penalties.append({"uid": unit.uid, "name": unit.display_name})
+			kill_unit(unit, "紧急撤离：未能集合")
 		end_battle("escape")
 	else:
 		return false
@@ -2120,6 +2155,7 @@ func _signature() -> String:
 	for cell in fire_keys:
 		parts.append("burning:%d,%d:%d" % [cell.x, cell.y, int(burning_cells[cell])])
 	parts.append("nests:%s" % str(all_nests()))
+	parts.append("exits:%s" % str(extraction_cells))
 	parts.append("terrain_rng:%d" % terrain_rng.state)
 	for unit in units:
 		parts.append("%d:%d,%d:%d:%s:%s:%s:%d:%d:%s" % [
@@ -2162,6 +2198,8 @@ func clone() -> BattleState:
 	copy.experience_events = experience_events.duplicate()
 	copy.experience_gains = experience_gains.duplicate()
 	copy.node_kind = node_kind
+	copy.extraction_cells = extraction_cells.duplicate()
+	copy.escape_penalties = escape_penalties.duplicate(true)
 	copy.mentor = mentor.duplicate(true)
 	copy.merchant = merchant.duplicate(true)
 	copy.essence_earned = essence_earned
