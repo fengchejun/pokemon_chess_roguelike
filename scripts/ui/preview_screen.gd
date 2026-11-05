@@ -51,10 +51,15 @@ func _ready() -> void:
 	map = MapGenerator.generate(run.seed, run.battle_index, map_salt, [], run.current_theme(), nest_count)
 	if run.region_mode:
 		var region = run.get_region()
+		if region.active_node == "camp":
+			preload("res://scripts/run/camp_map.gd").ensure(run)
+			region = run.get_region()
 		var saved: BattleState = region.load_battle(region.active_node)
 		if saved != null:
 			persistent_node = true
 			map["terrain"] = saved.terrain.duplicate()
+			map["camp_facilities"] = saved.camp_facilities.duplicate(true)
+			map["obstacle_durability"] = saved.obstacle_durability.duplicate()
 			map["nest_cell"] = saved.nest["cell"]
 			map["nest_cells"] = saved.all_nests().map(func(current): return current["cell"])
 			map["nests"] = saved.all_nests().duplicate(true)
@@ -472,6 +477,9 @@ func _preview_units(run: RunState) -> Array:
 	var units: Array = []
 	if run.region_mode:
 		var region = run.get_region()
+		if region.active_node == "camp":
+			preload("res://scripts/run/camp_map.gd").ensure(run)
+			region = run.get_region()
 		var saved: BattleState = region.load_battle(region.active_node)
 		if saved != null:
 			var cfg := run.place_region_enemies(run.battle_config(), map)

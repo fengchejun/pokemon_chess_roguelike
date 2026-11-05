@@ -9,6 +9,7 @@ func run(t: TestContext) -> void:
 	app.run.region_mode = true
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
 	app.enter_region_node("camp")
+	app.leave_camp()
 	app.enter_region_node("battle_1")
 	app.show_preview([1, 2, 3])
 	app.current_screen._on_start()

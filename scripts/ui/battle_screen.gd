@@ -1,5 +1,6 @@
 extends Control
 
+var camp_services: Control = null
 var app = null
 var state: BattleState = null
 var deploy_uids: Array = []
@@ -168,6 +169,16 @@ func _ready() -> void:
 	log_scroll.add_child(log_label)
 	log_scroll.visible = false
 	add_child(log_scroll)
+	if state.is_camp_map:
+		camp_services = preload("res://scripts/ui/camp_services.gd").new()
+		camp_services.app = app
+		camp_services.result_label = hint_label
+		camp_services.inventory_label = Label.new()
+		camp_services.add_child(camp_services.inventory_label)
+		camp_services.inventory_label.hide()
+		camp_services.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(camp_services)
+		camp_services.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	board.set_from_state(_display_state())
 	refresh_all()
 	resized.connect(_layout_overlays)
@@ -467,7 +478,7 @@ func _add_battle_xp_bar(unit: CombatUnit) -> void:
 func _update_header() -> void:
 	var state := _display_state()
 	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
-	var region_name := "收集区" if state.node_kind == "event" else "首领区" if state.node_kind == "boss" else "%d/6 战" % (BattleDB.local_battle_of(state.battle_index) + 1)
+	var region_name := ("营地" if state.is_free_exploration() else "营地防守") if state.is_camp_map else "收集区" if state.node_kind == "event" else "首领区" if state.node_kind == "boss" else "%d/6 战" % (BattleDB.local_battle_of(state.battle_index) + 1)
 	round_label.text = "第 %d 层 · %s\n第 %d 回合 · %s" % [BattleDB.floor_of(state.battle_index) + 1, region_name, maxi(1, state.round), phase_text]
 	var reward_text := ""
 	match String(state.reward.get("state", "")):
@@ -505,11 +516,18 @@ func _update_header() -> void:
 	elif not state.is_free_exploration() and state.round >= 7:
 		objective_label.text += "\n" + ("天雷已锁定 %d 格：本轮末落雷，伤害为最大生命50%%，可误伤敌人。" % state.storm_strikes.size() if not state.storm_strikes.is_empty() else "第8轮末开始预告天雷，可移动躲避。")
 	if state.is_free_exploration():
-		objective_label.text += "\n自由探索 · 无限行动 · 禁止恢复"
+		objective_label.text += "\n自由探索 · 无限行动 · 禁用直接治疗"
 	objective_label.text += "\n宝箱 %d · 待拾 %d · 我持 %d · 敌持 %d" % [state.chests.size(), state.all_rewards().filter(func(p): return p.get("state") in ["map", "guarding"]).size(), state.reward_count_held("player"), state.reward_count_held("enemy")]
 	if not state.can_leave_node() and state.node_kind != "boss" and state.boss_uid < 0:
 		objective_label.text += "\n部署/撤离区：绿色框\n区外%d名：撤离损失25%%最大生命" % state.escape_stragglers().size()
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
+	if state.is_camp_map:
+		if state.is_free_exploration():
+			objective_label.text = "营地 · 自由布置\n可移动、施法、返回区域\n食物 %d · 原质 %d" % [app.run.total_food(), app.run.essence]
+		for facility in state.camp_facilities.values():
+			objective_label.text += "\n%s：%s" % [facility["name"], "本层已毁 · 服务关闭" if facility.get("destroyed", false) else "%d/%d 耐久" % [int(state.obstacle_durability.get(facility["cell"], 0)), int(facility["max_hp"])]]
+		objective_label.text += "\n双方技能均可破坏设施"
+
 
 
 func _update_relic_panel() -> void:
@@ -1157,6 +1175,16 @@ func _on_board_clicked(cell: Vector2i) -> void:
 		var target := state.unit_at(cell)
 		_use_trainer_item(item_aim, target.uid if target != null else -1)
 		return
+	if aim_skill == "" and not capture_mode and state.camp_facility_at(cell) != "":
+		app.sync_and_save(state)
+		var facility_id := state.camp_facility_at(cell)
+		if not app.run.camp_service_available(facility_id):
+			hint_label.text = "营地仍被占领，清场夺回后才可使用尚存的设施。"
+		elif facility_id == "fire":
+			camp_services._open_fire()
+		else:
+			camp_services._open_storage()
+		return
 	if aim_skill == "" and not capture_mode and state.is_interaction_cell(cell):
 		if not state.mentor.is_empty() and cell == state.mentor["cell"]:
 			if state.can_interact_at(cell):
@@ -1393,6 +1421,10 @@ func _show_terrain(cell: Vector2i) -> void:
 		lines.append("单位本轮在冰面留下位移方向时，蓝色箭头指向回合末滑行格；红色表示致死落点，灰色止步标记表示被挡住。")
 	if state.obstacle_durability.has(cell) and not state.is_chest_cell(cell):
 		var max_hp := Balance.TREE_DURABILITY if value == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
+		var facility_id := state.camp_facility_at(cell)
+		if facility_id != "":
+			max_hp = int(state.camp_facilities[facility_id]["max_hp"])
+			lines.append("%s：摧毁后本层永久失去服务。" % state.camp_facilities[facility_id]["name"])
 		lines.append("障碍耐久：%d/%d；树木和岩障会截断射线。" % [int(state.obstacle_durability[cell]), max_hp])
 	for strike in state.storm_strikes:
 		if strike["cell"] == cell:

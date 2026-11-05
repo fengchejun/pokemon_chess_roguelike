@@ -185,6 +185,8 @@ func continue_run(path: String = SaveSystem.DEFAULT_PATH) -> void:
 		var restored := BattleSnapshot.load_state(run.battle_snapshot)
 		if restored == null:
 			show_prep()
+		elif restored.is_camp_map and run.region_mode and run.get_region().node_mode("camp") == "camp":
+			show_camp()
 		else:
 			var screen: Control = BattleScreen.new()
 			screen.state = restored
@@ -214,7 +216,7 @@ func sync_and_save(battle: BattleState) -> void:
 		if battle.phase == BattleState.PHASE_ENEMY or battle.phase == BattleState.PHASE_SETTLE:
 			return
 		run.sync_from_battle(battle)
-		if battle.phase == BattleState.PHASE_PLAYER and not battle.ended:
+		if battle.phase == BattleState.PHASE_PLAYER and not battle.ended and not (battle.is_camp_map and run.get_region().at_camp_scene):
 			run.battle_snapshot = BattleSnapshot.save_state(battle)
 		autosave()
 
@@ -222,6 +224,13 @@ func sync_and_save(battle: BattleState) -> void:
 func save_battle_and_return(battle: BattleState) -> bool:
 	if run == null or battle == null or battle.phase != BattleState.PHASE_PLAYER or battle.ended:
 		return false
+	if battle.is_camp_map and run.region_mode and run.get_region().node_mode("camp") == "camp":
+		run.sync_from_battle(battle)
+		run.battle_snapshot = {}
+		if autosave_enabled and not SaveSystem.save_run(run):
+			return false
+		show_menu()
+		return true
 	var snapshot := BattleSnapshot.save_state(battle)
 	var previous := run.battle_snapshot
 	run.battle_snapshot = snapshot
@@ -304,6 +313,7 @@ func cancel_region_entry() -> void:
 
 
 func show_camp() -> void:
+	run.battle_snapshot = {}
 	battle_settled = false
 	_switch(CampScreen.new())
 
@@ -332,6 +342,7 @@ func mentor_train(state: BattleState, uid: int, skill_id: String, save_path: Str
 func leave_camp() -> void:
 	var region = run.get_region()
 	region.at_camp_scene = false
+	run.battle_snapshot = {}
 	var notices: Array = region.complete_visit()
 	region.notifications.append_array(notices)
 	run.region_data = region.to_dict()

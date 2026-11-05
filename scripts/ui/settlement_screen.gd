@@ -156,6 +156,20 @@ func _show_next_step() -> void:
 	var run: RunState = app.run
 	if not run.pending_captures.is_empty():
 		if run.region_mode and run.carried.size() >= Balance.CARRIED_LIMIT:
+			if run.camp_facility_destroyed("storage"):
+				step_label.text = "仓库已毁，背包已满"
+				var target: Dictionary = run.pending_capture()
+				choice_box.add_child(UIKit.wrapped("%s 无法入库：本层仓库已被摧毁，已有留守成员无法存取。" % SpeciesDB.name_of(String(target["species_id"])), 15))
+				var discard := UIKit.small_button("放弃这只新捕获的宝可梦")
+				discard.name = "DiscardCaptureDestroyedStorage"
+				discard.pressed.connect(func() -> void:
+					run.capture_discard()
+					app.autosave()
+					_show_next_step()
+				)
+				choice_box.add_child(discard)
+				continue_button.disabled = true
+				return
 			run.capture_to_storage()
 			app.autosave()
 			_show_next_step()

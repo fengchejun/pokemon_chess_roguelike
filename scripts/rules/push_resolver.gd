@@ -101,6 +101,9 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 	state._relay_feedback("damage", "岩障耐久 -1", 1, cell, -1)
 	if result["destroyed"]:
 		return result
+	if state.camp_facility_at(cell) != "":
+		result["blocked"] = true
+		return result
 	var next: Vector2i = cell + (cell - caster.cell)
 	if not GridSpec.is_inside(next) or state.is_nest_cell(next) or state.is_interaction_cell(next) or TerrainDB.blocks_move(state.terrain_at(next)):
 		result["blocked"] = true

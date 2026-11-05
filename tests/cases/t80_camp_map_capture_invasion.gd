@@ -21,6 +21,8 @@ func run(t: TestContext) -> void:
 	for unit in camp.camp_units:
 		t.check(not used.has(unit.cell) and unit.cell not in [camp.FIRE_CELL, camp.STORAGE_CELL], "随机站位不重叠设施或成员")
 		used[unit.cell] = true
+	camp.select_unit(Balance.TRAINER_UID)
+	camp._on_move_pressed()
 	var destination: Vector2i = camp.board.movement_cells.keys()[0]
 	var visits: int = app.run.get_region().visits
 	camp._on_cell_clicked(destination)

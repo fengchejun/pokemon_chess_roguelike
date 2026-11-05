@@ -28,9 +28,8 @@ func run(t: TestContext) -> void:
 	t.eq(app.run.carried[0]["affinity"], affinity_before, "互动不增加亲密度")
 	app.run.trainer_hp = 1
 	app.run.carried[0]["hp"] = 0
-	var fire: Button = app.current_screen.find_child("Campfire", true, false)
-	t.check(fire != null, "独立营地有可点击篝火")
-	fire.pressed.emit()
+	t.check(app.current_screen.state.camp_facility_at(Vector2i(3, 3)) == "fire", "营地地图有可点击篝火")
+	app.current_screen._open_fire()
 	var rest: Button = app.current_screen.find_child("CampRestButton", true, false)
 	t.check(rest != null and not rest.disabled, "库存足够且需恢复时可休息")
 	rest.pressed.emit()
@@ -38,7 +37,7 @@ func run(t: TestContext) -> void:
 	t.eq(app.run.carried[0]["hp"], ceili(app.run.monster_max_hp(app.run.carried[0]) / 2.0), "篝火将濒死成员恢复至半血")
 	app.run.trainer_hp = 1
 	app.show_camp()
-	app.current_screen.find_child("Campfire", true, false).pressed.emit()
+	app.current_screen._open_fire()
 	var empty_rest: Button = app.current_screen.find_child("CampRestButton", true, false)
 	t.check(empty_rest.disabled and String(app.current_screen.find_child("CampRestHint", true, false).text).contains("不足"), "库存不足时禁用并说明原因")
 	app.leave_camp()

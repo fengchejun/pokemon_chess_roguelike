@@ -68,6 +68,8 @@ var food_applied: int = 0
 var boss_power_percent: int = 0 # 仅为旧快照兼容保留；新版不使用百分比强化。
 
 var terrain: Array = []
+var is_camp_map := false
+var camp_facilities: Dictionary = {}
 var obstacle_durability: Dictionary = {}
 var obstacle_origin: Dictionary = {}
 var obstacle_expire_round: Dictionary = {}
@@ -350,6 +352,10 @@ func normalize_nest_terrain() -> void:
 
 func clear_node_temporaries() -> void:
 	# 节点离场清理，不结算伤害或奖励；恢复地形后由重访流程重新安置敌军。
+	if is_camp_map:
+		# 营地的地形布置跨访问保留；入侵后的地形仍按正常回合结算。
+		obstacle_expire_round.clear()
+		vine_expire_round.clear()
 	var cells: Array = obstacle_expire_round.keys()
 	for cell in vine_expire_round:
 		if not cells.has(cell):
@@ -384,7 +390,7 @@ func terrain_at(cell: Vector2i) -> int:
 
 
 func set_terrain(cell: Vector2i, value: int) -> void:
-	if is_nest_cell(cell) or is_chest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return
 	var was_vines := terrain_at(cell) == TerrainDB.VINES
 	terrain[GridSpec.index(cell)] = value
@@ -417,7 +423,7 @@ func set_terrain(cell: Vector2i, value: int) -> void:
 
 
 func place_temp_vines(cell: Vector2i) -> void:
-	if is_nest_cell(cell) or is_chest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return
 	if terrain_at(cell) != TerrainDB.VINES:
 		vine_origin[cell] = terrain_at(cell)
@@ -426,7 +432,7 @@ func place_temp_vines(cell: Vector2i) -> void:
 
 
 func ignite(cell: Vector2i, source_side: String = "", force: bool = false) -> bool:
-	if is_nest_cell(cell) or is_chest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return false
 	if not GridSpec.is_inside(cell):
 		return false
@@ -448,7 +454,7 @@ func ignite(cell: Vector2i, source_side: String = "", force: bool = false) -> bo
 
 
 func add_steam(cell: Vector2i) -> void:
-	if is_nest_cell(cell) or is_chest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return
 	if not GridSpec.is_inside(cell):
 		return
@@ -591,9 +597,16 @@ func is_chest_cell(cell: Vector2i) -> bool:
 func is_blocking_ray(cell: Vector2i) -> bool:
 	if TerrainDB.blocks_rays(terrain_at(cell)):
 		return true
-	if is_nest_cell(cell) or is_chest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return true
 	return unit_at(cell) != null
+
+
+func camp_facility_at(cell: Vector2i) -> String:
+	for id in camp_facilities:
+		if camp_facilities[id]["cell"] == cell and not bool(camp_facilities[id].get("destroyed", false)):
+			return String(id)
+	return ""
 
 
 func is_interaction_cell(cell: Vector2i) -> bool:
@@ -1396,6 +1409,17 @@ func claim_obstacle_essence(cell: Vector2i, source_side: String) -> void:
 
 
 func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "") -> bool:
+	var facility_id := camp_facility_at(cell)
+	if facility_id != "" and amount > 0:
+		var left := maxi(0, int(obstacle_durability.get(cell, 0)) - amount)
+		if left > 0:
+			obstacle_durability[cell] = left
+		else:
+			camp_facilities[facility_id]["destroyed"] = true
+			obstacle_durability.erase(cell)
+			terrain[GridSpec.index(cell)] = TerrainDB.PLAIN
+		log_event("%s耐久剩余%d；被毁后本层永久失去服务。" % [camp_facilities[facility_id]["name"], left])
+		return left == 0
 	if amount > 0 and is_chest_cell(cell):
 		chests.erase(cell)
 		obstacle_origin.erase(cell)
@@ -1510,7 +1534,7 @@ func relocate_nest_occupants() -> void:
 
 
 func place_temp_obstacle(cell: Vector2i, origin: int, expire_round: int) -> void:
-	if is_nest_cell(cell) or is_chest_cell(cell):
+	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return
 	natural_essence_cells.erase(cell)
 	obstacle_reward_origins.erase(cell)
@@ -2540,6 +2564,7 @@ func _signature() -> String:
 	parts.append("boss_phase:%s" % str(boss_retreat_used))
 	parts.append("pending:%s" % str(pending_casts))
 	parts.append("relics:%s" % str(relic_stacks))
+	parts.append("camp:%s:%s" % [is_camp_map, str(camp_facilities)])
 	parts.append("channel_claims:%s:%s" % [str(channel_claims.get("player", {})), str(channel_claims.get("enemy", {}))])
 	var obstacle_keys: Array = obstacle_durability.keys().duplicate()
 	obstacle_keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
@@ -2578,6 +2603,8 @@ func clone() -> BattleState:
 	copy.ended = ended
 	copy.end_reason = end_reason
 	copy.terrain = terrain.duplicate()
+	copy.is_camp_map = is_camp_map
+	copy.camp_facilities = camp_facilities.duplicate(true)
 	copy.obstacle_durability = obstacle_durability.duplicate()
 	copy.obstacle_origin = obstacle_origin.duplicate()
 	copy.obstacle_expire_round = obstacle_expire_round.duplicate()

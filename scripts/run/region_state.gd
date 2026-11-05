@@ -155,7 +155,7 @@ func store_battle(id: String, battle: BattleState) -> bool:
 	if not nodes.has(id) or battle == null:
 		return false
 	var node: Dictionary = nodes[id]
-	if not ["battle", "boss", "event"].has(node_mode(id)):
+	if not ["battle", "boss", "event", "camp"].has(node_mode(id)):
 		return false
 	var persisted := battle.clone()
 	if battle.ended:

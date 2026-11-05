@@ -202,7 +202,7 @@ func _camp_ui(t: TestContext) -> void:
 	app.run.trainer_hp = 1
 	app.run.food_inventory["basic"] = 3
 	t.eq(app.current_screen.name, "CampScreen", "夺回营地后实际打开回复界面")
-	app.current_screen.find_child("Campfire", true, false).pressed.emit()
+	app.current_screen._open_fire()
 	var rest = app.current_screen.find_child("CampRestButton", true, false)
 	t.check(rest != null and not rest.disabled, "夺回后可以使用原有食物回复")
 	if rest != null:

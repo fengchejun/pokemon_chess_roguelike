@@ -395,7 +395,24 @@ func total_food() -> int:
 	return result
 
 
+func camp_facility_destroyed(id: String) -> bool:
+	if not region_mode:
+		return false
+	var region = get_region()
+	var facilities: Dictionary = BattleSnapshot.decode(region.nodes["camp"].get("facilities", {}))
+	return bool(facilities.get(id, {}).get("destroyed", false))
+
+
+func camp_service_available(id: String) -> bool:
+	var region = get_region()
+	if region.active_node != "camp" or region.node_mode("camp") != "camp":
+		return false
+	return not camp_facility_destroyed(id)
+
+
 func rest_with_food(selection: Dictionary) -> Dictionary:
+	if not camp_service_available("fire"):
+		return {"ok": false, "reason": "篝火已毁或营地被占，本层无法恢复。"}
 	var region = get_region()
 	if region.active_node != "camp" or region.node_mode(region.active_node) != "camp":
 		return {"ok": false, "reason": "请先进入营地。"}
@@ -598,6 +615,8 @@ func mark_deployed(deploy_uids: Array) -> void:
 
 
 func sync_from_battle(battle: BattleState) -> void:
+	if region_mode and battle.is_camp_map:
+		preload("res://scripts/run/camp_map.gd").save(self, battle)
 	if region_mode and battle.timed_corruption_triggered:
 		var region = get_region()
 		if region.nodes.has(region.active_node):
@@ -677,6 +696,8 @@ func capture_join_team() -> bool:
 
 
 func capture_to_storage() -> bool:
+	if camp_facility_destroyed("storage"):
+		return false
 	if pending_captures.is_empty() or (not region_mode and storage.size() >= Balance.STORAGE_LIMIT):
 		return false
 	var record: Dictionary = pending_captures.pop_front()
@@ -701,6 +722,8 @@ func capture_replace(replace_uid: int) -> bool:
 
 
 func camp_swap(carried_uid: int, stored_uid: int) -> bool:
+	if not camp_service_available("storage"):
+		return false
 	if not region_mode or get_region().active_node != "camp" or not get_region().at_camp_scene:
 		return false
 	for i in carried.size():
@@ -728,6 +751,8 @@ func capture_discard() -> void:
 
 
 func release_storage(uid: int) -> bool:
+	if camp_facility_destroyed("storage"):
+		return false
 	for index in storage.size():
 		if int(storage[index]["uid"]) == uid:
 			storage.remove_at(index)

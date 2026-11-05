@@ -32,6 +32,7 @@ var deploy_cells: Array = []
 var extraction_cells: Array = []
 var ice_slides: Array = []
 
+var camp_facilities: Dictionary = {}
 var show_movement_costs := true
 var movement_cells: Dictionary = {}
 var enemy_cells_view: Array = []
@@ -56,6 +57,7 @@ func _ready() -> void:
 func set_from_state(state: BattleState) -> void:
 	if state == null:
 		return
+	camp_facilities = state.camp_facilities.duplicate(true)
 	terrain = state.terrain.duplicate()
 	extraction_cells = state.extraction_cells.duplicate() if state.node_kind != "boss" and state.boss_uid < 0 else []
 	obstacle_durability = state.obstacle_durability.duplicate()
@@ -92,6 +94,7 @@ func set_from_state(state: BattleState) -> void:
 
 
 func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
+	camp_facilities = map.get("camp_facilities", {}).duplicate(true)
 	extraction_cells = map.get("extraction_cells", []).duplicate()
 	nest_guard_counts.clear()
 	storm_strikes = map.get("storm_strikes", []).duplicate(true)
@@ -103,6 +106,7 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	vine_expire_round = {}
 	for cell in map.get("obstacle_cells", []):
 		obstacle_durability[cell] = Balance.TREE_DURABILITY if terrain[GridSpec.index(cell)] == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
+	obstacle_durability.merge(map.get("obstacle_durability", {}), true)
 	nest = {
 		"cell": map.get("nest_cell", Vector2i(-1, -1)),
 		"exits": [],
@@ -253,6 +257,14 @@ func _draw() -> void:
 	_draw_nest_status(font)
 	if GridSpec.is_inside(merchant_cell):
 		_draw_marker(font, {"cell": merchant_cell, "kind": "facility", "text": "商人", "color": Color("257a70")})
+	if not camp_facilities.is_empty():
+		for unit in units:
+			if unit.side == "player" and unit.hp <= 0:
+				_draw_marker(font, {"cell": unit.cell, "kind": "facility", "text": "%s 濒死" % unit.display_name, "color": Color("654846")})
+	for facility in camp_facilities.values():
+		var cell: Vector2i = facility["cell"]
+		var destroyed: bool = facility.get("destroyed", false)
+		_draw_marker(font, {"cell": cell, "kind": "facility", "text": "%s\n%s" % [facility["name"], "已毁" if destroyed else "%d/%d" % [int(obstacle_durability.get(cell, 0)), int(facility["max_hp"])]], "color": Color("654846") if destroyed else Color("806435")})
 	# 标记与箭头
 	for arrow in arrows:
 		_draw_arrow(arrow)
@@ -526,8 +538,10 @@ func _draw_marker(font: Font, marker: Dictionary) -> void:
 		draw_rect(box, Color(0.94, 0.91, 0.73), false, 2.0)
 		var label := String(marker.get("text", ""))
 		var font_size := 17 if label.length() >= 3 else 21
-		var baseline := center.y + font.get_ascent(font_size) * 0.35
-		draw_string(font, Vector2(box.position.x + 2, baseline), label, HORIZONTAL_ALIGNMENT_CENTER, box.size.x - 4, font_size, Color.WHITE)
+		var lines := label.split("\n")
+		for index in lines.size():
+			var baseline := center.y + font.get_ascent(font_size) * 0.35 + (index - (lines.size() - 1) / 2.0) * 21
+			draw_string(font, Vector2(box.position.x + 2, baseline), lines[index], HORIZONTAL_ALIGNMENT_CENTER, box.size.x - 4, font_size, Color.WHITE)
 	elif kind == "lethal":
 		_skull(center + Vector2(22, -22))
 	elif kind == "damage":
