@@ -289,26 +289,16 @@ const ROCK_SKILL_POOL := [
 ]
 
 static func get_def(skill_id: String) -> Dictionary:
-	if is_placeholder(skill_id):
-		var parts := skill_id.split("_")
-		var numeral := "Ⅰ" if parts[2] == "1" else "Ⅱ"
-		return {
-			"name": "%s元素试招%s" % ["冰" if parts[1] == "ice" else "风" if parts[1] == "wind" else Elements.name_of(parts[1]), numeral],
-			"element": "water" if parts[1] == "ice" else "electric" if parts[1] == "wind" else parts[1], "kind": "unit", "range": 2,
-			"damage": 10, "ranged": true, "placeholder": true,
-			"desc": "临时占位技能：射程 2，单体造成 10 点基础直伤，无状态或地形效果；强化后基础直伤 13、射程 3。正式技能尚待设计。",
-		}
 	return DEFS.get(skill_id, {})
 
 
 static func placeholder_ids_for(element: String) -> Array:
-	if not Elements.LIST.has(element):
-		return []
-	return ["trial_%s_1" % element, "trial_%s_2" % element]
+	# 保留接口供旧工具调用，但测试招式已永久退役。
+	return []
 
 
 static func learnable_ids_for(element: String) -> Array:
-	var ids := placeholder_ids_for(element)
+	var ids: Array = []
 	match element:
 		"fire": ids.append_array(["fire_amplify", "flame_rush", "windfire_breath", "furnace_fist", "skyfire", "combustion", "burn_out"])
 		"water": ids.append_array(["surf", "water_magic_burst", "ice_breath", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard"])

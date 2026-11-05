@@ -32,6 +32,7 @@ var deploy_cells: Array = []
 var extraction_cells: Array = []
 var ice_slides: Array = []
 
+var show_movement_costs := true
 var movement_cells: Dictionary = {}
 var enemy_cells_view: Array = []
 var attack_cells: Array = []
@@ -200,8 +201,9 @@ func _draw() -> void:
 	# 覆盖层：移动范围 / 攻击范围 / 区域 / 射线
 	for cell in movement_cells:
 		_draw_fill(cell, Color(0.35, 0.6, 1.0, 0.28))
-		var cost := int(movement_cells[cell]["cost"])
-		draw_string(font, cell_center(cell) + Vector2(20, 28), "∞" if bool(movement_cells[cell].get("terrain_travel", false)) else str(cost), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.9, 1.0, 0.9))
+		if show_movement_costs:
+			var cost := int(movement_cells[cell]["cost"])
+			draw_string(font, cell_center(cell) + Vector2(20, 28), "∞" if bool(movement_cells[cell].get("terrain_travel", false)) else str(cost), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.9, 1.0, 0.9))
 	for cell in enemy_cells_view:
 		_draw_fill(cell, Color(1.0, 0.35, 0.3, 0.20))
 	for cell in area_cells:

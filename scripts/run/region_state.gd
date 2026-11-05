@@ -127,12 +127,14 @@ func occupy_all(preserve_node: String = "") -> void:
 				nodes[id]["pending_garrison"] = false
 			else:
 				_occupy(id)
-	notifications.append("战斗超过8轮：敌军全面占领营地及已清理节点；夺回营地后恢复食物回复服务，首领驻军+2。")
+	notifications.append("第8次区域移动：敌军全面占领营地及已清理节点；夺回营地后恢复食物回复服务，首领驻军+2。")
 
 
 func _apply_pressure() -> void:
 	if active_node == "boss":
 		return
+	if visits >= Balance.INVASION_VISITS and not support_triggered:
+		occupy_all()
 	if visits >= Balance.CORRUPTION_VISITS:
 		if not corrupted:
 			corrupted = true
@@ -145,7 +147,7 @@ func _apply_pressure() -> void:
 
 func next_pressure_text() -> String:
 	if not corrupted:
-		return "再移动%d次全图黑化；战斗第8轮末全面占领" % maxi(0, Balance.CORRUPTION_VISITS - visits)
+		return "再移动%d次全面占领；再移动%d次全图黑化" % [maxi(0, Balance.INVASION_VISITS - visits), maxi(0, Balance.CORRUPTION_VISITS - visits)] if not support_triggered else "敌军已入侵；再移动%d次全图黑化" % maxi(0, Balance.CORRUPTION_VISITS - visits)
 	return "全图已黑化；再移动%d次等级+1" % maxi(0, 11 + boss_level_bonus * 3 - visits)
 
 

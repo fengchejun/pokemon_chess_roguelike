@@ -20,7 +20,7 @@ func run(t: TestContext) -> void:
 	t.eq(app.current_screen.name, "CampScreen", "主动点击营地进入营地场景")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(camp_path))
 	var affinity_before := int(app.run.carried[0].get("affinity", 0))
-	app.current_screen.find_child("CampMonster_1", true, false).pressed.emit()
+	app.current_screen._show_monster(1)
 	var interaction: PopupMenu = app.current_screen.find_child("CampInteraction_1", true, false)
 	t.check(interaction != null, "点击宝可梦打开互动选项")
 	interaction.id_pressed.emit(0)

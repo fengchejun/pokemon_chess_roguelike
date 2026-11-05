@@ -490,7 +490,7 @@ func _update_header() -> void:
 	if state.corruption_active:
 		objective_label.text += "\n敌军黑化：生命/威力+10%\n击杀无经验 · 天雷仍生效"
 	elif not state.is_free_exploration():
-		objective_label.text += "\n第8轮末黑化并全面占领"
+		objective_label.text += "\n第8轮末敌军黑化"
 	if state.has_live_nests():
 		var guards := 0
 		for current in state.all_nests():
@@ -1785,9 +1785,13 @@ func _on_capture_pressed() -> void:
 	aim_cells = []
 	aim_first_uid = 0
 	board.clear_overlays()
+	for cell in GridSpec.all_cells():
+		var delta: Vector2i = cell - trainer.cell
+		if maxi(absi(delta.x), absi(delta.y)) <= Balance.CAPTURE_RANGE:
+			board.area_cells.append(cell)
 	for enemy in _capture_targets(trainer):
 		board.attack_cells.append(enemy.cell)
-	hint_label.text = "捕获：点击周围两格内的合法目标。"
+	hint_label.text = "捕获：橙色为周围两格捕捉范围（金色为合法目标，包含斜向，不受障碍阻挡）。"
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_position_action_panel()
 	board.queue_redraw()

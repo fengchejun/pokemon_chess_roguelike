@@ -112,7 +112,7 @@ func _movement(t: TestContext) -> void:
 	region.visits = 7
 	region.active_node = "camp"
 	region.record_entry("battle_1")
-	t.check(not region.support_triggered, "八次移动不再自动占领")
+	t.check(region.support_triggered, "八次移动自动占领")
 	region.complete_visit()
 	region.visits = 10
 	run.region_data = region.to_dict()
@@ -144,12 +144,11 @@ func _occupation(t: TestContext) -> void:
 	_darken(state)
 	run.sync_from_battle(state)
 	region = run.get_region()
-	for id in region.nodes:
-		if id != "boss":
-			t.eq(region.node_mode(id), "battle", "全面占领包含营地和已清理节点")
+	t.eq(region.node_mode("camp"), "camp", "单场黑化不会提前占领营地")
+	t.eq(region.node_mode("battle_2"), "event", "单场黑化不占领其他已清理节点")
 	t.check(region.nodes["battle_1"]["corrupted"], "本场黑化记入本节点至离层")
 	t.check(not region.corrupted, "本场超时不会提前让所有其他节点黑化")
-	t.check(not run.rest_with_food({"basic": 3})["ok"], "营地被占期间不能回复")
+	t.check(not region.camp_invaded, "移动不足八次保持营地安全")
 	region.nodes["camp"]["mode"] = "camp"
 	region.camp_invaded = false
 	run.region_data = region.to_dict()
@@ -166,7 +165,7 @@ func _occupation(t: TestContext) -> void:
 	run.region_data = region.to_dict()
 	_darken(resumed)
 	run.sync_from_battle(resumed)
-	t.eq(run.get_region().node_mode("camp"), "battle", "另一场再拖满八轮可重新占领营地")
+	t.eq(run.get_region().node_mode("camp"), "camp", "另一场拖满八轮也不触发区域入侵")
 
 func _camp_ui(t: TestContext) -> void:
 	var app = load("res://scripts/main.gd").new()

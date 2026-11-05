@@ -22,7 +22,7 @@ func run(t: TestContext) -> void:
 	for index in range(7):
 		region.record_entry("camp")
 		region.complete_visit()
-	t.check(not region.support_triggered, "第八次移动本身不再触发占领")
+	t.check(region.support_triggered, "第八次移动触发占领")
 	region.occupy_all()
 	t.check(region.support_triggered, "八轮战斗事件触发全面占领")
 	for id in region.nodes:

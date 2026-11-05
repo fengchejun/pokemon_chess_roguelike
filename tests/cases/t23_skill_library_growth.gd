@@ -12,42 +12,20 @@ func run(t: TestContext) -> void:
 
 
 func _test_placeholder_effect(t: TestContext) -> void:
-	for element in Elements.LIST:
-		var ids := SkillDB.placeholder_ids_for(element)
-		t.eq(ids.size(), 2, "%s 有两招占位技能" % element)
-		t.check(ids[0] != ids[1] and SkillDB.element_of(ids[0]) == element, "%s 占位技能使用当前五属性" % element)
-		t.eq(SkillDB.get_def(ids[0]).get("range", 0), 2, "%s 占位招式基础射程 2" % element)
-	t.check(SkillDB.placeholder_ids_for("ice").is_empty(), "冰不再作为独立占位属性")
-	t.check(SkillDB.placeholder_ids_for("wind").is_empty(), "风不再作为独立占位属性")
-	t.eq(SkillDB.element_of("trial_ice_1"), "water", "旧冰试招 ID 归入水属性")
-	t.eq(SkillDB.element_of("trial_wind_1"), "electric", "旧风试招 ID 归入电属性")
-	t.check(not SkillDB.learnable_ids_for("water").has("trial_ice_1"), "旧冰试招不进入水系普通学习池")
-	t.check(not SkillDB.learnable_ids_for("electric").has("trial_wind_1"), "旧风试招不进入电系普通学习池")
-	var battle := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(3, 3)]])
-	var caster := battle.unit_by_uid(1)
-	caster.cell = Vector2i(1, 3)
-	caster.skills.append("trial_fire_1")
-	var target := battle.unit_by_uid(100)
-	var hp := target.hp
-	var terrain_before := battle.terrain.duplicate()
-	var result := battle.cast_skill(caster, "trial_fire_1", {"type": "unit", "unit": 100, "cell": target.cell})
-	t.check(bool(result.get("ok", false)), "占位技能可作为正常技能施放")
-	t.eq(target.hp, hp - SkillDB.damage_of("trial_fire_1"), "占位技能造成配置的直接伤害")
-	t.eq(battle.terrain, terrain_before, "占位技能不改变地形")
-	t.eq(target.burn_ticks + target.slow_ticks + target.shock_ticks, 0, "占位技能不附加状态")
-	t.check(not caster.can_act_skill(), "占位技能耗用普通一次施法机会")
-	var ranged := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(4, 3)]])
-	var ranged_caster := ranged.unit_by_uid(1)
-	ranged_caster.cell = Vector2i(1, 3)
-	ranged_caster.skills.append("trial_fire_1")
-	t.check(ranged.skill_targets(ranged_caster, "trial_fire_1").is_empty(), "未强化试招无法攻击三格目标")
-	ranged_caster.upgrades["trial_fire_1_range"] = 1
-	t.check(not ranged.skill_targets(ranged_caster, "trial_fire_1").is_empty(), "强化后试招射程增加至三格")
-	var upgraded_preview := ranged.preview_skill(ranged_caster, "trial_fire_1", {"type": "unit", "unit": 100, "cell": Vector2i(4, 3)})
-	t.eq(int(upgraded_preview["hits"][0]["damage"]), 13, "强化后试招预览直伤为 20")
-	var upgraded_hp := ranged.unit_by_uid(100).hp
-	t.check(bool(ranged.cast_skill(ranged_caster, "trial_fire_1", {"type": "unit", "unit": 100, "cell": Vector2i(4, 3)}).get("ok", false)), "强化试招实战可施放")
-	t.eq(upgraded_hp - ranged.unit_by_uid(100).hp, 13, "强化后试招实战直伤与预览一致")
+	for element in Elements.LIST + ["ice", "wind"]:
+		t.check(SkillDB.placeholder_ids_for(element).is_empty(), "不再生成试招 " + element)
+		for suffix in ["1", "2"]:
+			var id := "trial_%s_%s" % [element, suffix]
+			t.check(SkillDB.get_def(id).is_empty(), "试招无可执行定义 " + id)
+			t.check(not SkillDB.learnable_ids_for(element).has(id), "试招不进入学习池 " + id)
+	var run_state := RunState.new_run(8001)
+	run_state._add_capture("fire_starter", 10)
+	var record: Dictionary = run_state.carried[0]
+	record["known_skills"] = ["flame_jet", "trial_fire_1"]
+	record["equipped_skills"] = ["flame_jet", "trial_fire_1"]
+	var loaded := RunState.from_dict(run_state.to_dict())
+	t.eq(loaded.carried[0]["known_skills"], ["flame_jet"], "读档清理试招并保留正式招式")
+	t.eq(loaded.carried[0]["equipped_skills"], ["flame_jet"], "读档清理装备中的试招")
 
 
 func _test_missing_skill_upgrades(t: TestContext) -> void:

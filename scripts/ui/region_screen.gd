@@ -32,7 +32,7 @@ func _ready() -> void:
 	team_button.pressed.connect(_show_team)
 	header.add_child(team_button)
 	column.add_child(UIKit.wrapped("移动%d次｜%s｜首领驻军%d名 · 敌人等级+%d" % [region.visits, region.next_pressure_text(), 5 if region.support_triggered else 3, app.run.invasion_level_bonus], 16, UIKit.ACCENT))
-	column.add_child(UIKit.wrapped("初始营地邻区已解锁。可进入任意已解锁区域；确认进入才计移动，首领除外。正式战斗无回合上限；第8轮末敌军黑化并全面占领（包括营地），天雷照常预告。第11次移动全图黑化；夺回营地恢复食物回复。胜利后自由探索；主动撤离不解锁邻区。", 14))
+	column.add_child(UIKit.wrapped("初始营地邻区已解锁。可进入任意已解锁区域；确认进入才计移动，首领除外。正式战斗无回合上限；第8轮末敌军黑化，天雷照常预告。第8次区域移动全面占领（包括营地）。第11次移动全图黑化；夺回营地恢复食物回复。胜利后自由探索；主动撤离不解锁邻区。", 14))
 	graph = Control.new()
 	graph.name = "AreaGraph"
 	graph.custom_minimum_size.y = 350

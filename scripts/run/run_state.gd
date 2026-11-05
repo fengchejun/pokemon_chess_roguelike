@@ -85,16 +85,10 @@ const MONSTER_UPGRADES := {
 
 
 static func upgrade_info(upgrade_id: String) -> Dictionary:
-	if upgrade_id.ends_with("_range"):
-		var skill_id := upgrade_id.trim_suffix("_range")
-		if SkillDB.is_placeholder(skill_id):
-			return {"name": "%s强化" % SkillDB.name_of(skill_id), "desc": "此试招基础直伤 +3，射程由 2 格增至 3 格。", "key": upgrade_id, "value": 1, "damage_bonus": 3, "requires_skill": skill_id}
 	return MONSTER_UPGRADES.get(upgrade_id, {})
 
 
 static func upgrade_id_for_skill(skill_id: String) -> String:
-	if SkillDB.is_placeholder(skill_id):
-		return skill_id + "_range"
 	for upgrade_id in MONSTER_UPGRADES:
 		if String(MONSTER_UPGRADES[upgrade_id].get("requires_skill", "")) == skill_id:
 			return String(upgrade_id)
@@ -608,9 +602,6 @@ func sync_from_battle(battle: BattleState) -> void:
 		var region = get_region()
 		if region.nodes.has(region.active_node):
 			region.nodes[region.active_node]["corrupted"] = true
-		if not battle.occupation_applied:
-			region.occupy_all(region.active_node)
-			battle.occupation_applied = true
 		region_data = region.to_dict()
 	essence += maxi(0, battle.essence_earned - battle.essence_applied)
 	battle.essence_applied = battle.essence_earned

@@ -96,14 +96,14 @@ func _direct_effects(t: TestContext) -> void:
 	ember_preview.relic_stacks = {"ember_recovery": 2}
 	var ember_caster := ember_preview.unit_by_uid(1)
 	ember_caster.cell = Vector2i(2, 3)
-	ember_caster.skills = ["trial_fire_1"]
+	ember_caster.skills = ["ice_shard"]
 	ember_caster.hp = 4
 	var ember_target := ember_preview.unit_by_uid(100)
 	ember_target.hp = 5
 	ember_target.burn_ticks = 2
 	var ember_entry := {"type": "unit", "unit": 100, "cell": ember_target.cell}
-	var heal_preview := ember_preview.preview_skill(ember_caster, "trial_fire_1", ember_entry)
-	var heal_actual := ember_preview.cast_skill(ember_caster, "trial_fire_1", ember_entry)
+	var heal_preview := ember_preview.preview_skill(ember_caster, "ice_shard", ember_entry)
+	var heal_actual := ember_preview.cast_skill(ember_caster, "ice_shard", ember_entry)
 	t.eq(int(heal_preview["hits"][0]["relic_healed"]), 8, "预览显示灼烧击杀的余烬回复")
 	t.eq(heal_preview["hits"], heal_actual["hits"], "余烬治疗预览与实伤一致")
 	t.eq(ember_caster.hp, 12, "实战回复与预览相同")

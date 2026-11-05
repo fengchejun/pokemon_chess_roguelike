@@ -30,7 +30,7 @@ func run(t: TestContext) -> void:
 	t.check(not state.obstacle_durability.has(Vector2i(3, 2)), "吟唱即时产生效果")
 	t.check(state.pending_casts.is_empty() and caster.channel_lock_round < 0 and not caster.skill_used, "吟唱无等待和行动代价")
 	var healer := state.unit_by_uid(2)
-	for skill in ["herbal_heal", "drain", "leech_seed"]:
+	for skill in ["herbal_heal", "first_aid", "antidote"]:
 		t.check(SkillResolver.targets(state, healer, skill).is_empty(), "战外禁用含回复技能 " + skill)
 	var reloaded := BattleSnapshot.load_state(BattleSnapshot.save_state(state))
 	t.check(reloaded.is_free_exploration(), "读档保留自由探索")

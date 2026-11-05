@@ -2104,7 +2104,7 @@ func _trigger_timed_corruption() -> void:
 		if unit.side == "enemy" and unit.is_alive():
 			unit.set_corrupted(true)
 			emit_feedback(unit, "buff", "黑化 · 生命与威力+10%")
-	log_event("第8轮已结束：敌军黑化，最大生命与技能威力+10%，击杀无经验；本层节点将被全面占领。")
+	log_event("第8轮已结束：敌军黑化，最大生命与技能威力+10%，击杀无经验。全面占领按区域移动次数触发。")
 
 
 func _settle_storm() -> void:
@@ -2643,7 +2643,7 @@ func is_free_exploration() -> bool:
 
 
 func recovery_skill_blocked(skill_id: String) -> bool:
-	return is_free_exploration() and skill_id in ["herbal_heal", "drain", "leech_seed", "first_aid", "antidote"]
+	return is_free_exploration() and skill_id in ["herbal_heal", "first_aid", "antidote"]
 
 
 func reset_exploration_actions() -> void:
