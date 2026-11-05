@@ -178,7 +178,7 @@ func _show_next_step() -> void:
 		for reward_id in run.reward_choices():
 			var id := String(reward_id)
 			var next_rank := RelicDB.rank(run.relic_stacks, id) + 1
-			var button := UIKit.button("%s · 取得后 %d/%d 级\n%s" % [RelicDB.name_of(id), next_rank, RelicDB.MAX_RANK, RelicDB.description_of(id)], 14)
+			var button := UIKit.button("%s · 取得后 %d/%d 级\n%s" % [RelicDB.display_name_of(id), next_rank, RelicDB.MAX_RANK, RelicDB.description_of(id)], 14)
 			button.custom_minimum_size = Vector2(0, 76)
 			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			var normal_style := StyleBoxFlat.new()
