@@ -64,6 +64,8 @@ func _ready() -> void:
 	battle_notice = preload("res://scripts/ui/battle_notice.gd").new()
 	add_child(battle_notice)
 	battle_notice.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	battle_notice.started.connect(_update_action_buttons)
+	battle_notice.finished.connect(_playback_finished)
 	UIKit.fill_background(self)
 	board = BoardView.new()
 	board.name = "BoardView"
@@ -523,7 +525,7 @@ func _update_header() -> void:
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
 	if state.exploration_v2:
 		if state.exploration_role == "capture":
-			objective_label.text = "限时捕捉\n第%d/%d回合 · 野生%d只\n最后一回合结束后逃跑\n捕获后可直接返回区域" % [state.round, state.capture_deadline, state.alive_enemy_count()]
+			objective_label.text = "限时捕捉\n第%d/%d回合 · 野生%d只\n最后一回合结束后逃跑\n目标全部解决或到时后结算" % [state.round, state.capture_deadline, state.alive_enemy_count()]
 		elif state.exploration_role == "treasure":
 			objective_label.text = "宝箱解谜\n利用技能和地形到达宝箱\n地形变化与损耗保留\n可暂时离开，准备后回访"
 		elif state.exploration_role == "hunt":
@@ -692,8 +694,9 @@ func _update_unit_card() -> void:
 		lines.append("本回合技能：%s" % ("可用" if skill_reason == "" else "不可用（%s）" % skill_reason))
 	if unit.side == "enemy":
 		var low_hp_rules := bool(state.capture_options.get("capture_low_hp", false))
+		lines.append("捕捉支援：4格内%d只我方宝可梦，额外+%d个百分点（最多30）；不计训练师和召唤物。" % [CaptureSystem.support_count(state, unit), mini(30, 10 * CaptureSystem.support_count(state, unit))])
 		lines.append("捕获概率：%d%%（训练家在周围两格可尝试%s）" % [
-			mini(100, CaptureSystem.chance_percent(unit, low_hp_rules, state.debug_capture_percent) + (20 if state.capture_aid else 0)), "，目标需不高于半血" if low_hp_rules else "",
+			CaptureSystem.chance_percent_for(state, unit), "，目标需不高于半血" if low_hp_rules else "",
 		])
 	if unit.reward_carrier:
 		lines.append("携带奖励点：击杀后原格掉落；落入深水、岩浆或深坑时不掉落。")
@@ -1077,6 +1080,9 @@ func _update_action_buttons() -> void:
 	if leave_node_button != null:
 		leave_node_button.text = "返回区域" if state.can_leave_node() else "首领战不可撤退" if state.node_kind == "boss" or state.boss_uid >= 0 else "撤退" if state.can_escape() else "前往撤离区"
 		leave_node_button.tooltip_text = "首领战必须击败或捕获首领。" if state.node_kind == "boss" or state.boss_uid >= 0 else "训练家进入部署/撤离区后可撤离；区外队员损失25%最大生命，可能濒死；濒死者奖励留原地。"
+		if state.retreat_disabled and not state.can_leave_node():
+			leave_node_button.text = "不可撤退 · 等待完成遭遇"
+			leave_node_button.tooltip_text = "本次遭遇不能提前退出；完成目标或捕捉时限结束后结算。"
 		leave_node_button.disabled = busy or _playback_active() or state.ended or not (state.can_leave_node() or state.can_escape())
 	if end_turn_button != null:
 		end_turn_button.disabled = busy or state.ended or state.is_free_exploration() or state.phase != BattleState.PHASE_PLAYER
@@ -1328,7 +1334,7 @@ func _on_board_hovered(cell: Vector2i) -> void:
 				hint_label.text = "当前设置要求目标生命不高于一半。"
 			else:
 				hint_label.text = "捕获 %s：成功率 %d%%（生命 %d/%d）" % [
-					occupant.display_name, mini(100, CaptureSystem.chance_percent(occupant, bool(state.capture_options.get("capture_low_hp", false)), state.debug_capture_percent) + (20 if state.capture_aid else 0)), occupant.hp, occupant.max_hp,
+					occupant.display_name, CaptureSystem.chance_percent_for(state, occupant), occupant.hp, occupant.max_hp,
 				]
 			hint_label.add_theme_color_override("font_color", UIKit.TEXT)
 		board.queue_redraw()

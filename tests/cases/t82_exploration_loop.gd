@@ -95,7 +95,7 @@ func run(t: TestContext) -> void:
 	app.current_screen._on_start()
 	state = app.current_screen.state
 	t.check(state.alive_enemy_count() >= 1 and state.alive_enemy_count() <= 3 and not state.has_live_nests(), "捕捉刷新1到3只且无巢穴")
-	t.check(state.can_leave_node(), "捕捉节点可主动结束")
+	t.check(not state.can_leave_node() and not state.can_escape(), "捕捉未完成前不能撤退")
 	for i in 3:
 		state.begin_enemy_phase()
 		while not state.enemy_phase_finished(): state.step_enemy_phase()

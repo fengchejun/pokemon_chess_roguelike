@@ -108,7 +108,7 @@ func run(t: TestContext) -> void:
 	state.units.append(foe)
 	var chance := CaptureSystem.capture_chance(foe)
 	var result := state.capture_attempt(trainer, foe, 0.99)
-	t.check(result["ok"] and is_equal_approx(float(result["chance"]), minf(1.0, chance + 0.2)) and not state.capture_aid, "捕获使用加成并消耗辅助")
+	t.check(result["ok"] and is_equal_approx(float(result["chance"]), minf(1.0, chance + 0.2 + minf(0.3, CaptureSystem.support_count(state, foe) * 0.1))) and not state.capture_aid, "捕获使用加成并消耗辅助")
 	state.kill_unit(foe, "测试", "player", 1)
 	state.kill_unit(foe, "重复", "player", 1)
 	t.eq(state.essence_earned, 3, "同一敌人只领取一次")

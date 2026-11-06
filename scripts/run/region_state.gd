@@ -114,9 +114,10 @@ func complete_visit() -> Array:
 
 func unlock_neighbors(id: String) -> void:
 	for neighbor in nodes[id].get("links", []):
-		nodes[neighbor]["revealed"] = true
+		if flow_version != 2:
+			nodes[neighbor]["revealed"] = true
 		if not bool(nodes[neighbor].get("unlocked", false)):
-			notifications.append("已解锁：%s" % display_name(String(neighbor)))
+			notifications.append("点亮了一处相邻地点。" if flow_version == 2 else "已解锁：%s" % display_name(String(neighbor)))
 		nodes[neighbor]["unlocked"] = true
 
 

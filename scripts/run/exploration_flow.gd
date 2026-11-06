@@ -73,8 +73,8 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 		map["deploy_area"] = Balance.DEPLOY_AREA.duplicate()
 	if kind == "capture":
 		map["fixed_deploy_area"] = [Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(4, 2)]
-	if kind in ["capture", "starter", "group"]:
-		# 先用开阔地形验证捕捉/首战节奏，不叠加致死地形和巢穴压力。
+	if kind in ["starter", "group"]:
+		# 先用开阔地形验证首战/群体战节奏，不叠加致死地形和巢穴压力。
 		map["terrain"] = []
 		for cell in GridSpec.all_cells():
 			map["terrain"].append(TerrainDB.GRASS if cell.x >= 6 and cell.y % 2 == 0 else TerrainDB.PLAIN)
@@ -85,8 +85,31 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 		map["food_cells"] = []
 		map["treasure_generated"] = true
 
+	if kind in ["capture", "treasure"]:
+		decorate_terrain(run, map, kind)
+
+static func decorate_terrain(run: RunState, map: Dictionary, kind: String) -> void:
+	# 完整地形池按种子抽取；保护部署点、遭遇起点与谜题既有解法，不强求每图全类型。
+	var reserved: Array = Balance.DEPLOY_AREA.duplicate()
+	reserved.append_array(map.get("fixed_deploy_area", []))
+	reserved.append_array(map.get("obstacle_cells", []))
+	reserved.append_array([Vector2i(5, 2), Vector2i(6, 3), Vector2i(5, 4), Vector2i(5, 3), Vector2i(6, 4), Vector2i(7, 3)])
+	for cell in GridSpec.all_cells():
+		if cell.x == 2 or cell.x == 4 or (kind == "treasure" and cell.x == 3): reserved.append(cell)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("landscape:%d:%s:%d" % [run.seed, run.get_region().active_node, run.get_region().nodes[run.get_region().active_node]["visits"]])
+	var candidates: Array = GridSpec.all_cells().filter(func(cell): return not reserved.has(cell))
+	for index in mini(10, candidates.size()):
+		var cell: Vector2i = candidates.pop_at(rng.randi_range(0, candidates.size() - 1))
+		map["terrain"][GridSpec.index(cell)] = TerrainDB.ALL[rng.randi_range(0, TerrainDB.ALL.size() - 1)]
+	# 清理生成器可能留在受保护遭遇格上的岩石/致死地形。
+	for cell in map.get("fixed_deploy_area", []) + GridSpec.all_cells().filter(func(c): return c.x == 2 or c.x == 4) + [Vector2i(5, 2), Vector2i(6, 3), Vector2i(5, 4)]:
+		if not map.get("chests", {}).has(cell): map["terrain"][GridSpec.index(cell)] = TerrainDB.PLAIN
+	map["obstacle_cells"] = GridSpec.all_cells().filter(func(cell): return TerrainDB.blocks_move(int(map["terrain"][GridSpec.index(cell)])))
+
 static func prepare_state(run: RunState, state: BattleState) -> void:
 	state.exploration_v2 = true
+	state.retreat_disabled = true
 	state.exploration_role = role(run)
 	if state.exploration_role == "treasure":
 		state.preserve_node_terrain = true

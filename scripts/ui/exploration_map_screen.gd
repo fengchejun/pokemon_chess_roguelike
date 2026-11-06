@@ -25,7 +25,7 @@ func _ready() -> void:
 	menu.pressed.connect(func() -> void: app.autosave(); app.show_menu())
 	row.add_child(menu)
 	column.add_child(UIKit.label("剩余行动 %d/%d · 原质 %d · 食物 %d" % [maxi(0, Balance.EXPLORATION_ACTIONS - region.visits), Balance.EXPLORATION_ACTIONS, app.run.essence, app.run.total_food()], 20, UIKit.ACCENT))
-	column.add_child(UIKit.wrapped("相邻地点逐步揭示；处理拦路遭遇才能继续深入。去过的地点可直接回访，每次1行动。Boss位置已知，但仍需探索到达路线。行动耗尽：结算当前节点后强制追猎，敌方全员黑化，胜利可通过本层。", 15))
+	column.add_child(UIKit.wrapped("连线始终可见；点亮后可进入，实际到达才揭示节点类型。处理拦路遭遇才能继续深入。去过的地点可直接回访，每次1行动。Boss位置已知，但仍需探索到达路线。行动耗尽：结算当前节点后强制追猎，敌方全员黑化，胜利可通过本层。", 15))
 	graph = Control.new()
 	graph.name = "FogMap"
 	graph.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -34,11 +34,11 @@ func _ready() -> void:
 	graph.draw.connect(_draw_links)
 	for id in Flow.POSITIONS:
 		var node: Dictionary = region.nodes[id]
-		var known: bool = node.get("revealed", false)
+		var known: bool = int(node.get("visits", 0)) > 0 or id == "boss"
 		var available: bool = node.get("unlocked", false)
 		var visited: bool = int(node["visits"]) > 0
-		var label: String = region.display_name(id) if known else "迷雾"
-		var status := "已到达 · 可回访" if visited else "可探索" if available else "位置已知 · 尚未通路" if known else "未知"
+		var label: String = region.display_name(id) if known else "未知地点"
+		var status := "已到达 · 可回访" if visited else "已点亮 · 可探索" if available else "位置已知 · 尚未通路" if known else "未知"
 		if node.get("done", false):
 			status = "已完成"
 		var button := UIKit.button("%s\n%s" % [label, status], 17)
@@ -56,7 +56,7 @@ func _ready() -> void:
 		var target: String = id
 		button.pressed.connect(func() -> void: _confirm_entry(target))
 		graph.add_child(button)
-	column.add_child(UIKit.wrapped("当前位置：%s。%s" % [region.display_name(region.active_node), " ".join(region.notifications)], 15, UIKit.TEXT_DIM))
+	column.add_child(UIKit.wrapped("当前位置：%s。亮色地点可以进入；灰色地点须先打通道路。" % region.display_name(region.active_node), 15, UIKit.TEXT_DIM))
 	call_deferred("_layout_nodes")
 
 func _layout_nodes() -> void:
@@ -67,10 +67,8 @@ func _layout_nodes() -> void:
 
 func _draw_links() -> void:
 	for id in Flow.POSITIONS:
-		if not region.nodes[id].get("revealed", false):
-			continue
 		for other in region.nodes[id]["links"]:
-			if not region.nodes[other].get("revealed", false) or id > other:
+			if id > other:
 				continue
 			var a: Control = graph.get_node("Node_" + id)
 			var b: Control = graph.get_node("Node_" + other)
@@ -80,9 +78,10 @@ func _confirm_entry(id: String) -> void:
 	var node: Dictionary = region.nodes[id]
 	var role: String = node["role"]
 	var dialog := ConfirmationDialog.new()
-	dialog.title = "前往" + region.display_name(id)
-	var detail: String = {"starter": "少量普通敌人，无巢穴。清场后打通分支。", "capture": "刷新1—3只野生宝可梦；第3回合结束后逃跑。捕获后可随时结束本次遭遇。", "group": "可以玩耍、喂食，或主动选择战斗。", "request": "训练家寻找可达鸭，可先离开准备。", "shop": "查看商品、买卖遗物和强化技能；库存不会因回访刷新。", "camp": "消耗食物休息、取用共享仓库、调整队伍。", "treasure": "宝箱隔在深水另一侧。可使用水系伙伴、移动或地形技能解谜；地形变化和损耗保留。", "boss": "敌方约2级，岩系首领带两名同伴，擅长近距离推击与碎岩。不能撤退，需清空敌人与巢穴后通关。"}.get(role, "")
-	dialog.dialog_text = detail + "\n确认进入消耗1行动；取消不消耗。"
+	var known: bool = int(node.get("visits", 0)) > 0 or id == "boss"
+	dialog.title = "前往" + (region.display_name(id) if known else "未知地点")
+	var detail: String = {"starter": "少量普通敌人，无巢穴。清场后打通分支。", "capture": "刷新1—3只野生宝可梦；第3回合结束后逃跑。本次捕捉不能提前退出；目标全部解决或到时后结算。", "group": "可以玩耍、喂食，或主动选择战斗。", "request": "训练家寻找可达鸭，可先离开准备。", "shop": "查看商品、买卖遗物和强化技能；库存不会因回访刷新。", "camp": "消耗食物休息、取用共享仓库、调整队伍。", "treasure": "宝箱隔在深水另一侧。可使用水系伙伴、移动或地形技能解谜；地形变化和损耗保留。", "boss": "敌方约2级，岩系首领带两名同伴，擅长近距离推击与碎岩。不能撤退，需清空敌人与巢穴后通关。"}.get(role, "")
+	dialog.dialog_text = (detail if known else "这里的道路已点亮，进入后才能知道具体遭遇。") + "\n确认进入消耗1行动；取消不消耗。"
 	dialog.confirmed.connect(func() -> void: app.enter_region_node(id))
 	dialog.canceled.connect(func() -> void: dialog.queue_free())
 	add_child(dialog)

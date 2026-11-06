@@ -72,6 +72,7 @@ var exploration_v2 := false
 var exploration_role := ""
 var preserve_node_terrain := false
 var capture_deadline := 0
+var retreat_disabled := false
 var is_camp_map := false
 var camp_facilities: Dictionary = {}
 var obstacle_durability: Dictionary = {}
@@ -2377,8 +2378,10 @@ func battle_objective_met() -> bool:
 
 
 func can_leave_node() -> bool:
-	if exploration_v2 and exploration_role in ["capture", "treasure"]:
+	if exploration_v2 and exploration_role == "treasure":
 		return not ended and phase == PHASE_PLAYER
+	if exploration_v2 and exploration_role == "capture":
+		return not ended and phase == PHASE_PLAYER and battle_objective_met()
 	return not ended and phase == PHASE_PLAYER and (node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not has_live_nests()))
 
 
@@ -2387,6 +2390,8 @@ static func extraction_area(map: Dictionary) -> Array:
 
 
 func can_escape() -> bool:
+	if retreat_disabled:
+		return false
 	var actor := trainer()
 	return not ended and phase == PHASE_PLAYER and node_kind != "boss" and boss_uid < 0 and actor != null and actor.is_alive() and extraction_cells.has(actor.cell)
 
@@ -2408,7 +2413,7 @@ func escape_losses() -> Array:
 
 
 func leave_node(emergency: bool = false) -> bool:
-	if exploration_v2 and exploration_role in ["capture", "treasure"] and not ended and phase == PHASE_PLAYER:
+	if exploration_v2 and exploration_role in ["capture", "treasure"] and can_leave_node():
 		end_battle("explored")
 		return true
 	if can_leave_node():
@@ -2633,6 +2638,7 @@ func clone() -> BattleState:
 	copy.terrain = terrain.duplicate()
 	copy.exploration_v2 = exploration_v2
 	copy.exploration_role = exploration_role
+	copy.retreat_disabled = retreat_disabled
 	copy.capture_deadline = capture_deadline
 	copy.preserve_node_terrain = preserve_node_terrain
 	copy.is_camp_map = is_camp_map

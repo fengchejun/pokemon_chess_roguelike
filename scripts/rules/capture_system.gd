@@ -22,6 +22,32 @@ static func chance_percent(target: CombatUnit, low_hp_rules: bool = false, debug
 	return roundi(capture_chance(target, low_hp_rules, debug_percent) * 100.0)
 
 
+static func support_count(state, target: CombatUnit) -> int:
+	if target == null or not target.is_on_board():
+		return 0
+	var count := 0
+	for unit in state.alive_units("player"):
+		if unit.is_trainer or unit.summon_owner_uid >= 0 or not unit.is_on_board():
+			continue
+		var delta: Vector2i = unit.cell - target.cell
+		if maxi(absi(delta.x), absi(delta.y)) <= 4:
+			count += 1
+	return count
+
+
+static func chance_for(state, target: CombatUnit) -> float:
+	if target == null or not target.is_on_board():
+		return 0.0
+	var base := capture_chance(target, bool(state.capture_options.get("capture_low_hp", false)), int(state.debug_capture_percent))
+	# 调试指定概率仍覆盖自然概率，便于复现0%/100%等验收场景。
+	var support := minf(0.3, support_count(state, target) * 0.1) if int(state.debug_capture_percent) < 0 else 0.0
+	return minf(1.0, base + support + (0.2 if state.capture_aid else 0.0))
+
+
+static func chance_percent_for(state, target: CombatUnit) -> int:
+	return roundi(chance_for(state, target) * 100.0)
+
+
 static func has_debuff(target: CombatUnit) -> bool:
 	return target.burn_ticks > 0 or target.slow_ticks > 0 or target.root_pending or target.move_cancelled
 
@@ -57,10 +83,7 @@ static func attempt(state, trainer: CombatUnit, target: CombatUnit, forced_roll:
 	## forced_roll ≥ 0 时使用指定骰值（测试用），否则从战斗内可复现的捕获随机数取。
 	if not can_attempt(state, trainer, target):
 		return {"ok": false}
-	var low_hp_rules := bool(state.capture_options.get("capture_low_hp", false))
-	var debug_percent := int(state.debug_capture_percent)
-	var chance := capture_chance(target, low_hp_rules, debug_percent)
-	chance = minf(1.0, chance + (0.2 if state.capture_aid else 0.0))
+	var chance := chance_for(state, target)
 	state.capture_aid = false
 	var roll := forced_roll
 	if chance < 1.0 and roll < 0.0:

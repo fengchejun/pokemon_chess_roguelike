@@ -199,6 +199,7 @@ func continue_run(path: String = SaveSystem.DEFAULT_PATH) -> void:
 		elif restored.is_camp_map and run.region_mode and run.get_region().node_mode("camp") == "camp":
 			show_camp()
 		else:
+			restored.retreat_disabled = bool(run.options.get("exploration_v2", false))
 			var screen: Control = BattleScreen.new()
 			screen.state = restored
 			_switch(screen)
@@ -499,6 +500,7 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 			player.cell = positions[player.uid]
 	if run.region_mode and run.get_region().flow_version == 2:
 		preload("res://scripts/run/exploration_flow.gd").prepare_state(run, state)
+	state.retreat_disabled = bool(run.options.get("exploration_v2", false))
 	state.extraction_cells = state.deploy_area.duplicate()
 	state.repair_food()
 	run.battle_snapshot = BattleSnapshot.save_state(state)
