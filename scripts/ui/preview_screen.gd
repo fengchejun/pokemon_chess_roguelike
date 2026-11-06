@@ -51,7 +51,7 @@ func _ready() -> void:
 	map = MapGenerator.generate(run.seed, run.battle_index, map_salt, [], run.current_theme(), nest_count)
 	if run.region_mode:
 		var region = run.get_region()
-		if region.active_node == "camp":
+		if region.active_node == "camp" and region.flow_version != 2:
 			preload("res://scripts/run/camp_map.gd").ensure(run)
 			region = run.get_region()
 		var saved: BattleState = region.load_battle(region.active_node)
@@ -81,6 +81,9 @@ func _ready() -> void:
 		if region.nodes[region.active_node].has("merchant") and saved == null:
 			var position_data: Array = region.nodes[region.active_node]["merchant"].get("cell", [-1, -1])
 			map["merchant_cell"] = Vector2i(int(position_data[0]), int(position_data[1]))
+	if run.region_mode and run.get_region().flow_version == 2:
+		if not persistent_node:
+			preload("res://scripts/run/exploration_flow.gd").prepare_map(run, map)
 	if run.preview_used_reward_item.begins_with("map:"):
 		card_result = MapGenerator.generate_card_preview(run.seed, run.battle_index, run.preview_used_reward_item.trim_prefix("map:"), map)
 		map = (card_result["map"] as Dictionary).duplicate(true)
@@ -252,7 +255,7 @@ func _cards_box() -> Control:
 
 
 func _on_use_reward_item() -> void:
-	if persistent_node:
+	if persistent_node or (app.run.region_mode and app.run.get_region().flow_version == 2):
 		return
 	var run: RunState = app.run
 	var index := card_selector.selected - 1
@@ -391,7 +394,7 @@ func _mod_hover_text(cell: Vector2i) -> String:
 
 
 func _on_reset() -> void:
-	if persistent_node:
+	if persistent_node or (app.run.region_mode and app.run.get_region().flow_version == 2):
 		return
 	map = base_map.duplicate(true)
 	mod_used = 0
@@ -402,7 +405,7 @@ func _on_reset() -> void:
 
 
 func _prepare_treasure() -> void:
-	if persistent_node:
+	if persistent_node or (app.run.region_mode and app.run.get_region().flow_version == 2):
 		return
 	var run: RunState = app.run
 	var region = run.get_region() if run.region_mode else null
@@ -413,6 +416,10 @@ func _prepare_treasure() -> void:
 func _refresh() -> void:
 	var run: RunState = app.run
 	map["nest_max_hp"] = Balance.nest_max_hp(run.battle_index)
+	if run.region_mode and run.get_region().flow_version == 2:
+		var role: String = preload("res://scripts/run/exploration_flow.gd").role(run)
+		if role == "capture":
+			map["deploy_area"] = [Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(4, 2)]
 	_prepare_treasure()
 	deploy_enemies = _preview_units(run)
 	deploy_players = run.build_deploy_units(deploy_uids)
@@ -477,7 +484,7 @@ func _preview_units(run: RunState) -> Array:
 	var units: Array = []
 	if run.region_mode:
 		var region = run.get_region()
-		if region.active_node == "camp":
+		if region.active_node == "camp" and region.flow_version != 2:
 			preload("res://scripts/run/camp_map.gd").ensure(run)
 			region = run.get_region()
 		var saved: BattleState = region.load_battle(region.active_node)

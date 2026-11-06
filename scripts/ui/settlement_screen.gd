@@ -48,7 +48,7 @@ func _ready() -> void:
 	continue_button.disabled = true
 	continue_button.pressed.connect(func() -> void:
 		var region = app.run.get_region() if app.run.region_mode else null
-		if region != null and region.active_node == "boss" and bool(region.nodes["boss"]["cleared"]) and not app.run.storage.is_empty():
+		if region != null and region.active_node == "boss" and bool(region.nodes["boss"]["cleared"]) and not app.run.storage.is_empty() and not bool(app.run.options.get("exploration_v2", false)):
 			var confirm := ConfirmationDialog.new()
 			confirm.title = "前往下一层"
 			confirm.dialog_text = "留在营地的 %d 只宝可梦将被抛弃，无法进入永久收藏。" % app.run.storage.size()
@@ -155,6 +155,26 @@ func _show_next_step() -> void:
 	UIKit.clear_children(choice_box)
 	var run: RunState = app.run
 	if not run.pending_captures.is_empty():
+		if run.region_mode and bool(run.options.get("exploration_v2", false)) and run.carried.size() >= Balance.CARRIED_LIMIT:
+			step_label.text = "新伙伴 · 选择随身替换或送入仓库"
+			var incoming: Dictionary = run.pending_capture()
+			choice_box.add_child(UIKit.wrapped("捕获了%s；换下的成员完整保留培养，送往共享仓库。" % SpeciesDB.name_of(String(incoming["species_id"])), 16))
+			for member in run.carried:
+				var uid := int(member["uid"])
+				var swap := UIKit.small_button("换下%s，带上新伙伴" % SpeciesDB.name_of(String(member["species_id"])))
+				swap.name = "CaptureSwap_%d" % uid
+				swap.pressed.connect(func() -> void:
+					for index in run.carried.size():
+						if int(run.carried[index]["uid"]) == uid:
+							run.storage.append(run.carried[index]); run.carried[index] = run.pending_captures.pop_front(); break
+					app.autosave(); _show_next_step())
+				choice_box.add_child(swap)
+			var store := UIKit.small_button("送入共享仓库")
+			store.name = "CaptureToStorageButton"
+			store.pressed.connect(func() -> void: run.capture_to_storage(); app.autosave(); _show_next_step())
+			choice_box.add_child(store)
+			continue_button.disabled = true
+			return
 		if run.region_mode and run.carried.size() >= Balance.CARRIED_LIMIT:
 			if run.camp_facility_destroyed("storage"):
 				step_label.text = "仓库已毁，背包已满"

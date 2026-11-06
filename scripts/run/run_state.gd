@@ -321,9 +321,10 @@ func current_theme() -> String:
 
 func get_region():
 	if region_data.is_empty():
-		region_data = Region.create_floor(floor_index(), current_theme()).to_dict()
+		region_data = (preload("res://scripts/run/exploration_flow.gd").create(floor_index(), current_theme()) if bool(options.get("exploration_v2", false)) and floor_index() == 0 else Region.create_floor(floor_index(), current_theme())).to_dict()
 	var region = Region.from_dict(region_data)
-	Merchant.ensure_region(region, seed)
+	if region.flow_version != 2:
+		Merchant.ensure_region(region, seed)
 	# Skill upgrades now belong exclusively to the merchant.
 	for node in region.nodes.values():
 		node.erase("mentor")
@@ -471,6 +472,8 @@ func battle_config() -> Dictionary:
 			cfg["enemies"] = chosen
 			cfg["enemy_level_bonus"] = invasion_level_bonus
 			cfg["corrupted"] = region.corrupted or bool(region.nodes[region.active_node].get("corrupted", false))
+	if region_mode and get_region().flow_version == 2:
+		cfg = preload("res://scripts/run/exploration_flow.gd").configure(self, cfg)
 	return cfg
 
 

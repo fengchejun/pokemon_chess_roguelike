@@ -34,6 +34,8 @@ var music_muted: bool = false
 
 func _ready() -> void:
 	OS.set_use_file_access_save_and_swap(true)
+	if autosave_enabled:
+		SaveSystem.clear_obsolete_run()
 	collection = CollectionState.load_profile() if autosave_enabled else CollectionState.defaults()
 	music_director = MusicDirectorScript.new()
 	add_child(music_director)
@@ -165,6 +167,8 @@ func begin_new_run_with_collection(chosen: Array) -> void:
 		return
 	run = RunState.new_run(0, chosen)
 	run.region_mode = true
+	run.options["exploration_v2"] = true
+	run.options["exploration_schema"] = SaveSystem.EXPLORATION_SCHEMA
 	autosave()
 	show_prep()
 
@@ -175,6 +179,13 @@ func continue_run(path: String = SaveSystem.DEFAULT_PATH) -> void:
 		show_menu()
 		return
 	run = loaded
+	if run.region_mode and run.get_region().flow_version == 2 and run.get_region().visit_pending and run.battle_snapshot.is_empty() and not run.settlement_pending:
+		var region = run.get_region()
+		if region.nodes[region.active_node].get("role") in ["camp", "shop", "group", "request", "empty"]:
+			_switch(preload("res://scripts/ui/exploration_node_screen.gd").new())
+		else:
+			show_prep()
+		return
 	if run.region_mode and run.battle_snapshot.is_empty() and not run.pending_region_entry_backup.is_empty() and not run.settlement_pending:
 		run.cancel_region_entry()
 		if autosave_enabled:
@@ -302,10 +313,31 @@ func show_floor_theme() -> void:
 
 func show_region() -> void:
 	battle_settled = false
+	if run != null and run.get_region().flow_version == 2:
+		var region = run.get_region()
+		if region.active_node == "hunt" and not region.nodes["hunt"].get("cleared", false):
+			show_prep()
+			return
+		if not region.visit_pending and region.visits >= Balance.EXPLORATION_ACTIONS:
+			if not region.nodes.has("hunt"):
+				region.nodes["hunt"] = {"type": "boss", "mode": "boss", "role": "hunt", "visits": 1, "unlocked": true, "revealed": true, "cleared": false, "snapshot": {}, "links": []}
+			region.active_node = "hunt"
+			region.visit_pending = true
+			run.region_data = region.to_dict()
+			run.battle_index = 5
+			run.pending_region_entry_backup.clear()
+			autosave()
+			show_prep()
+			return
+		_switch(preload("res://scripts/ui/exploration_map_screen.gd").new())
+		return
 	_switch(RegionScreen.new())
 
 
 func cancel_region_entry() -> void:
+	if run != null and run.get_region().flow_version == 2 and run.get_region().active_node == "hunt":
+		show_prep()
+		return
 	if run != null:
 		run.cancel_region_entry()
 		autosave()
@@ -313,6 +345,10 @@ func cancel_region_entry() -> void:
 
 
 func show_camp() -> void:
+	if run.get_region().flow_version == 2:
+		run.battle_snapshot = {}
+		_switch(preload("res://scripts/ui/exploration_node_screen.gd").new())
+		return
 	run.battle_snapshot = {}
 	battle_settled = false
 	_switch(CampScreen.new())
@@ -354,6 +390,20 @@ func enter_region_node(id: String) -> void:
 	if not run.enter_region_node(id):
 		return
 	autosave()
+	if run.get_region().flow_version == 2:
+		var region = run.get_region()
+		var role: String = region.nodes[id]["role"]
+		if role == "capture":
+			region.nodes[id]["snapshot"] = {}
+			run.region_data = region.to_dict()
+		if role in ["camp", "shop", "group", "request", "empty"] or (role == "starter" and region.nodes[id].get("done", false)):
+			if role == "starter":
+				region.complete_visit(); run.region_data = region.to_dict(); autosave(); show_region()
+			else:
+				_switch(preload("res://scripts/ui/exploration_node_screen.gd").new())
+		else:
+			show_prep()
+		return
 	if run.get_region().node_mode(id) == "camp":
 		show_camp()
 	else:
@@ -447,6 +497,8 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 		state.deploy_area = final_map["deploy_area"].duplicate()
 		for player in players:
 			player.cell = positions[player.uid]
+	if run.region_mode and run.get_region().flow_version == 2:
+		preload("res://scripts/run/exploration_flow.gd").prepare_state(run, state)
 	state.extraction_cells = state.deploy_area.duplicate()
 	state.repair_food()
 	run.battle_snapshot = BattleSnapshot.save_state(state)
@@ -471,6 +523,13 @@ func finish_battle(battle: BattleState) -> void:
 	if run.region_mode:
 		var region = run.get_region()
 		battle.reward["node_reward_available"] = false # 奖励只来自实际拾取的奖励点。
+	if run.region_mode and run.get_region().flow_version == 2:
+		var region = run.get_region()
+		var node: Dictionary = region.nodes[region.active_node]
+		if battle.end_reason == "victory" and battle.battle_objective_met() and node.get("role") in ["starter", "boss", "hunt", "group"] and not node.get("challenge_reward_claimed", false):
+			run.pending_bonus_choices += 2 if node.get("role") in ["boss", "hunt"] else 1
+			node["challenge_reward_claimed"] = true
+			run.region_data = region.to_dict()
 	var outcome := run.settle_battle(battle)
 	if run.region_mode:
 		if battle.node_kind != "event" and not run.run_failed:
@@ -508,15 +567,16 @@ func continue_after_settlement() -> void:
 		run.settlement_pending = false
 		run.last_settlement = {}
 		var region = run.get_region()
-		var boss_cleared: bool = region.active_node == "boss" and bool(region.nodes["boss"]["cleared"])
+		var boss_cleared: bool = region.active_node in ["boss", "hunt"] and bool(region.nodes[region.active_node]["cleared"])
 		if boss_cleared:
-			if collection != null:
+			if collection != null and not bool(run.options.get("exploration_v2", false)):
 				for member in run.storage:
 					var source := "run:%d:%d" % [run.seed, int(member.get("uid", -1))]
 					collection.owned = collection.owned.filter(func(entry: Dictionary) -> bool: return String(entry.get("source", "")) != source)
 				if autosave_enabled:
 					collection.save()
-			run.storage.clear()
+			if not bool(run.options.get("exploration_v2", false)):
+				run.storage.clear()
 			run.battle_index = (region.floor_index + 1) * 6
 			run.region_data = {}
 			run.refresh_theme_offers()
@@ -526,6 +586,7 @@ func continue_after_settlement() -> void:
 			if region.active_node == "camp" and region.node_mode("camp") == "camp":
 				region.at_camp_scene = true
 			run.region_data = region.to_dict()
+			run.pending_region_entry_backup.clear()
 		autosave()
 		if run.run_finished() or run.run_lost():
 			show_run_end()

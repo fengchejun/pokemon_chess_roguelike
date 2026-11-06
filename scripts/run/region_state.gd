@@ -6,6 +6,7 @@ const Snapshot = preload("res://scripts/run/battle_snapshot.gd")
 const NODE_TYPES := ["camp", "battle", "event", "boss"]
 const AREA_CELLS := {"battle_1": Vector2i(0, 0), "battle_2": Vector2i(1, 0), "event_2": Vector2i(2, 0), "camp": Vector2i(0, 1), "battle_3": Vector2i(1, 1), "boss": Vector2i(2, 1), "event_1": Vector2i(0, 2), "battle_5": Vector2i(1, 2), "battle_4": Vector2i(2, 2)}
 
+var flow_version := 1
 var floor_index: int = 0
 var theme: String = ""
 var visits: int = 0
@@ -58,10 +59,14 @@ func node_mode(id: String) -> String:
 	if not nodes.has(id):
 		return ""
 	var node: Dictionary = nodes[id]
+	if flow_version == 2 and node.get("role") == "group" and node.get("battle_selected", false) and not node.get("done", false):
+		return "battle"
 	return String(node.get("mode", "event" if node["type"] == "battle" and bool(node["cleared"]) else node["type"]))
 
 
 func display_name(id: String) -> String:
+	if flow_version == 2:
+		return String(preload("res://scripts/run/exploration_flow.gd").NAMES.get(nodes[id].get("role", ""), id))
 	if id == "camp":
 		return "营地（敌军占领）" if node_mode(id) == "battle" else "营地"
 	if id == "boss":
@@ -78,7 +83,15 @@ func record_entry(id: String) -> bool:
 		return false
 	if nodes[id]["type"] == "boss" and bool(nodes[id]["cleared"]):
 		return false
-	if nodes[id]["type"] != "boss":
+	if flow_version == 2:
+		if visits >= Balance.EXPLORATION_ACTIONS or (int(nodes[id]["visits"]) == 0 and not bool(nodes[id].get("unlocked", false))):
+			return false
+		visits += 1
+		nodes[id]["revealed"] = true
+		if nodes[id].get("role") in ["capture", "group", "shop", "camp", "treasure", "empty"]:
+			nodes[id]["passable"] = true
+			unlock_neighbors(id)
+	elif nodes[id]["type"] != "boss":
 		visits += 1
 	nodes[id]["visits"] = int(nodes[id]["visits"]) + 1
 	active_node = id
@@ -101,6 +114,7 @@ func complete_visit() -> Array:
 
 func unlock_neighbors(id: String) -> void:
 	for neighbor in nodes[id].get("links", []):
+		nodes[neighbor]["revealed"] = true
 		if not bool(nodes[neighbor].get("unlocked", false)):
 			notifications.append("已解锁：%s" % display_name(String(neighbor)))
 		nodes[neighbor]["unlocked"] = true
@@ -131,6 +145,8 @@ func occupy_all(preserve_node: String = "") -> void:
 
 
 func _apply_pressure() -> void:
+	if flow_version == 2:
+		return
 	if active_node == "boss":
 		return
 	if visits >= Balance.INVASION_VISITS and not support_triggered:
@@ -146,6 +162,8 @@ func _apply_pressure() -> void:
 
 
 func next_pressure_text() -> String:
+	if flow_version == 2:
+		return "剩余%d行动；耗尽并结算当前节点后进入全员黑化追猎" % maxi(0, Balance.EXPLORATION_ACTIONS - visits)
 	if not corrupted:
 		return "再移动%d次全面占领；再移动%d次全图黑化" % [maxi(0, Balance.INVASION_VISITS - visits), maxi(0, Balance.CORRUPTION_VISITS - visits)] if not support_triggered else "敌军已入侵；再移动%d次全图黑化" % maxi(0, Balance.CORRUPTION_VISITS - visits)
 	return "全图已黑化；再移动%d次等级+1" % maxi(0, 11 + boss_level_bonus * 3 - visits)
@@ -163,6 +181,15 @@ func store_battle(id: String, battle: BattleState) -> bool:
 	node["snapshot"] = Snapshot.save_state(persisted)
 	if battle.ended and battle.end_reason in ["victory", "explored"]:
 		unlock_neighbors(id)
+	if flow_version == 2:
+		if battle.ended and battle.end_reason in ["victory", "explored"]:
+			if node.get("role") in ["starter", "boss", "hunt", "group"] and battle.battle_objective_met():
+				node["cleared"] = true
+				node["passable"] = true
+				node["done"] = true
+			if node.get("role") == "treasure" and battle.chests.is_empty() and battle.all_rewards().all(func(point): return point.get("credited", false)):
+				node["done"] = true
+		return true
 	if node["type"] == "boss":
 		var boss := battle.unit_by_uid(battle.boss_uid)
 		node["cleared"] = boss != null and (not boss.is_alive() or boss.side == "player")
@@ -249,7 +276,7 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 		battle.nest["pending_waves"] = 0
 		battle.nest["scheduled_waves"] = []
 		battle.add_garrison(maxi(0, 3 - battle.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
-	elif node_mode(id) == "battle":
+	elif node_mode(id) == "battle" and flow_version != 2:
 		battle.add_garrison(maxi(0, 4 - battle.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
 	elif id == "boss" and support_triggered:
 		battle.add_garrison(maxi(0, 5 - battle.alive_enemy_count()), cfg.get("reinforce", []), (cfg.get("enemies", []) as Array).map(func(pair): return pair[1]))
@@ -296,11 +323,12 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 
 
 func to_dict() -> Dictionary:
-	return {"floor": floor_index, "theme": theme, "visits": visits, "active_node": active_node, "nodes": nodes.duplicate(true), "visit_pending": visit_pending, "support_triggered": support_triggered, "corrupted": corrupted, "boss_level_bonus": boss_level_bonus, "camp_invaded": camp_invaded, "notifications": notifications.duplicate(), "at_camp_scene": at_camp_scene}
+	return {"flow_version": flow_version, "floor": floor_index, "theme": theme, "visits": visits, "active_node": active_node, "nodes": nodes.duplicate(true), "visit_pending": visit_pending, "support_triggered": support_triggered, "corrupted": corrupted, "boss_level_bonus": boss_level_bonus, "camp_invaded": camp_invaded, "notifications": notifications.duplicate(), "at_camp_scene": at_camp_scene}
 
 
 static func from_dict(data: Dictionary) -> RegionState:
 	var region := RegionState.new()
+	region.flow_version = int(data.get("flow_version", 1))
 	region.floor_index = int(data.get("floor", 0))
 	region.theme = String(data.get("theme", ""))
 	region.visits = int(data.get("visits", 0))

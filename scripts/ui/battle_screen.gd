@@ -478,7 +478,7 @@ func _add_battle_xp_bar(unit: CombatUnit) -> void:
 func _update_header() -> void:
 	var state := _display_state()
 	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
-	var region_name := ("营地" if state.is_free_exploration() else "营地防守") if state.is_camp_map else "收集区" if state.node_kind == "event" else "首领区" if state.node_kind == "boss" else "%d/6 战" % (BattleDB.local_battle_of(state.battle_index) + 1)
+	var region_name := ("捕捉栖息地" if state.exploration_role == "capture" else "宝箱解谜" if state.exploration_role == "treasure" else "追猎" if state.exploration_role == "hunt" else "首领挑战" if state.exploration_role == "boss" else "林缘试炼") if state.exploration_v2 else ("营地" if state.is_free_exploration() else "营地防守") if state.is_camp_map else "收集区" if state.node_kind == "event" else "首领区" if state.node_kind == "boss" else "%d/6 战" % (BattleDB.local_battle_of(state.battle_index) + 1)
 	round_label.text = "第 %d 层 · %s\n第 %d 回合 · %s" % [BattleDB.floor_of(state.battle_index) + 1, region_name, maxi(1, state.round), phase_text]
 	var reward_text := ""
 	match String(state.reward.get("state", "")):
@@ -521,6 +521,13 @@ func _update_header() -> void:
 	if not state.can_leave_node() and state.node_kind != "boss" and state.boss_uid < 0:
 		objective_label.text += "\n部署/撤离区：绿色框\n区外%d名：撤离损失25%%最大生命" % state.escape_stragglers().size()
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
+	if state.exploration_v2:
+		if state.exploration_role == "capture":
+			objective_label.text = "限时捕捉\n第%d/%d回合 · 野生%d只\n最后一回合结束后逃跑\n捕获后可直接返回区域" % [state.round, state.capture_deadline, state.alive_enemy_count()]
+		elif state.exploration_role == "treasure":
+			objective_label.text = "宝箱解谜\n利用技能和地形到达宝箱\n地形变化与损耗保留\n可暂时离开，准备后回访"
+		elif state.exploration_role == "hunt":
+			objective_label.text = "强制追猎 · 敌方全员黑化\n不能撤退，清场后通过本层\n敌人 %d" % state.alive_enemy_count()
 	if state.is_camp_map:
 		if state.is_free_exploration():
 			objective_label.text = "营地 · 自由布置\n可移动、施法、返回区域\n食物 %d · 原质 %d" % [app.run.total_food(), app.run.essence]
@@ -1245,7 +1252,7 @@ func _request_portal() -> void:
 	if not state.can_interact_at(state.boss_portal_cell):
 		hint_label.text = "训练师需走到传送门相邻格才能进入。"
 		return
-	if app.run.storage.is_empty():
+	if app.run.storage.is_empty() or bool(app.run.options.get("exploration_v2", false)):
 		_enter_boss_portal()
 		return
 	_show_modal("前往下一层", "营地留守的 %d 只宝可梦将被抛弃，无法进入永久收藏。确认前往下一层？" % app.run.storage.size())

@@ -4,6 +4,17 @@ extends RefCounted
 ## 存档：单槽位 JSON。濒死状态跨读档持久（只能经基地休养恢复），异常退出不复活。
 
 const DEFAULT_PATH := "user://save_v1.json"
+const EXPLORATION_SCHEMA := "first_floor_4x4_v1"
+
+static func clear_obsolete_run(path: String = DEFAULT_PATH) -> bool:
+	if not FileAccess.file_exists(path):
+		return false
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if data is Dictionary and data.get("options", {}).get("exploration_schema", "") == EXPLORATION_SCHEMA:
+		return false
+	delete_save(path)
+	return not FileAccess.file_exists(path)
+
 static func backup_old_save(path: String = DEFAULT_PATH) -> String:
 	if not FileAccess.file_exists(path):
 		return ""

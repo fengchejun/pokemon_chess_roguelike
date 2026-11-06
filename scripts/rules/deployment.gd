@@ -16,7 +16,7 @@ static func distance(cell: Vector2i) -> int:
 	return result
 
 static func prepare(map: Dictionary, enemies: Array, players: Array, previous: Dictionary) -> Dictionary:
-	var area: Array = Balance.DEPLOY_AREA.filter(func(cell): return players.any(func(unit): return legal(map, enemies, unit, cell)))
+	var area: Array = (map.get("fixed_deploy_area", Balance.DEPLOY_AREA) as Array).filter(func(cell): return players.any(func(unit): return legal(map, enemies, unit, cell)))
 	var candidates := GridSpec.all_cells()
 	candidates.sort_custom(func(a, b):
 		var da := distance(a)

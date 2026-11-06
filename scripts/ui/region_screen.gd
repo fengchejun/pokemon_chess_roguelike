@@ -112,9 +112,9 @@ func _confirm_entry(id: String) -> void:
 	var node: Dictionary = region.nodes[id]
 	var kind: String = region.node_mode(id)
 	var details: String = "营地：篝火休息与宝可梦互动。" if kind == "camp" else "首领：击败或捕获后开启传送门；第8轮末起预告天雷，无回合上限。" if kind == "boss" else "收集区：无限行动，可随时离开；禁止恢复技能。" if kind == "event" else "战斗区：清空敌人与巢穴后无限探索；第8轮末起预告天雷，可主动撤离，重访补足4名。"
-	if kind == "boss" and not app.run.storage.is_empty():
+	if kind == "boss" and not app.run.storage.is_empty() and not bool(app.run.options.get("exploration_v2", false)):
 		details += "\n进入首领区后无法返回营地。进入下一层时，营地留守的 %d 只宝可梦将被抛弃，无法进入永久收藏。" % app.run.storage.size()
-	if kind == "boss" and app.run.carried.size() >= Balance.CARRIED_LIMIT:
+	if kind == "boss" and app.run.carried.size() >= Balance.CARRIED_LIMIT and not bool(app.run.options.get("exploration_v2", false)):
 		details += "\n背包已满：本战新捕获的宝可梦将送往营地，进入下一层时被抛弃。"
 	if bool(node.get("pending_replenish", false)):
 		details += "\n本次进场补足 4 名敌人。"

@@ -68,6 +68,10 @@ var food_applied: int = 0
 var boss_power_percent: int = 0 # 仅为旧快照兼容保留；新版不使用百分比强化。
 
 var terrain: Array = []
+var exploration_v2 := false
+var exploration_role := ""
+var preserve_node_terrain := false
+var capture_deadline := 0
 var is_camp_map := false
 var camp_facilities: Dictionary = {}
 var obstacle_durability: Dictionary = {}
@@ -352,7 +356,7 @@ func normalize_nest_terrain() -> void:
 
 func clear_node_temporaries() -> void:
 	# 节点离场清理，不结算伤害或奖励；恢复地形后由重访流程重新安置敌军。
-	if is_camp_map:
+	if is_camp_map or preserve_node_terrain:
 		# 营地的地形布置跨访问保留；入侵后的地形仍按正常回合结算。
 		obstacle_expire_round.clear()
 		vine_expire_round.clear()
@@ -1996,6 +2000,12 @@ func _end_enemy_phase_rules() -> void:
 
 
 func _finish_round() -> void:
+	if exploration_v2 and exploration_role == "capture" and round >= capture_deadline:
+		for enemy in alive_units("enemy"):
+			enemy.hp = 0
+		log_event("野生宝可梦逃走了，本次捕捉结束。")
+		end_battle("explored")
+		return
 	if is_free_exploration():
 		reset_exploration_actions()
 		return
@@ -2120,7 +2130,7 @@ func _settle_round_rules() -> void:
 
 
 func _trigger_timed_corruption() -> void:
-	if ended or is_free_exploration() or round < Balance.CORRUPTION_ROUND or timed_corruption_triggered:
+	if (exploration_v2 and exploration_role != "hunt") or ended or is_free_exploration() or round < Balance.CORRUPTION_ROUND or timed_corruption_triggered:
 		return
 	timed_corruption_triggered = true
 	corruption_active = true
@@ -2272,6 +2282,14 @@ func try_pickup_fruit(unit: CombatUnit) -> Dictionary:
 
 
 func _pickups() -> void:
+	if exploration_v2 and is_free_exploration():
+		for point in all_rewards():
+			if point.get("state") not in ["map", "guarding"]: continue
+			var holder := _player_unit_at(point["cell"])
+			if holder != null:
+				point["state"] = "carried"
+				point["owner_uid"] = holder.uid
+				emit_feedback(holder, "buff", "拾取宝藏")
 	for cell in food_cells.duplicate():
 		var picker := _player_unit_at(cell)
 		if picker != null:
@@ -2326,6 +2344,11 @@ func check_battle_end() -> bool:
 		return false
 	if ended:
 		return true
+	if exploration_v2 and exploration_role in ["boss", "hunt"]:
+		if battle_objective_met():
+			end_battle("victory")
+			return true
+		return false
 	if boss_uid >= 0:
 		var boss := unit_by_uid(boss_uid)
 		if boss != null and (not boss.is_alive() or boss.side == "player"):
@@ -2354,6 +2377,8 @@ func battle_objective_met() -> bool:
 
 
 func can_leave_node() -> bool:
+	if exploration_v2 and exploration_role in ["capture", "treasure"]:
+		return not ended and phase == PHASE_PLAYER
 	return not ended and phase == PHASE_PLAYER and (node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not has_live_nests()))
 
 
@@ -2383,6 +2408,9 @@ func escape_losses() -> Array:
 
 
 func leave_node(emergency: bool = false) -> bool:
+	if exploration_v2 and exploration_role in ["capture", "treasure"] and not ended and phase == PHASE_PLAYER:
+		end_battle("explored")
+		return true
 	if can_leave_node():
 		end_battle("explored" if node_kind == "event" else "victory")
 	elif can_escape():
@@ -2603,6 +2631,10 @@ func clone() -> BattleState:
 	copy.ended = ended
 	copy.end_reason = end_reason
 	copy.terrain = terrain.duplicate()
+	copy.exploration_v2 = exploration_v2
+	copy.exploration_role = exploration_role
+	copy.capture_deadline = capture_deadline
+	copy.preserve_node_terrain = preserve_node_terrain
 	copy.is_camp_map = is_camp_map
 	copy.camp_facilities = camp_facilities.duplicate(true)
 	copy.obstacle_durability = obstacle_durability.duplicate()

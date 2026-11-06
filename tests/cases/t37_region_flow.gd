@@ -7,6 +7,7 @@ func run(t: TestContext) -> void:
 	app.autosave_enabled = false
 	t.tree.root.add_child(app)
 	app.begin_new_run_with_collection(CollectionState.defaults().select_records([1, 2, 3]))
+	app.run.options["exploration_v2"] = false # 保留旧营地机制回归；新版首层由t82/t83覆盖。
 	var theme := String(app.run.offered_floor_themes[0])
 	app.current_screen.find_child("ChooseTheme_" + theme, true, false).pressed.emit()
 	t.eq(app.current_screen.name, "RegionScreen", "选择主题直接进入大地图")
