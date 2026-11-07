@@ -53,7 +53,7 @@ func run(t: TestContext) -> void:
 	region.store_battle("battle_1", occupied)
 	var persisted := region.load_battle("battle_1")
 	t.eq(persisted.unit_by_uid(100).hp, hp, "离场恢复深坑不追加死亡或伤害结算")
-	t.check(persisted.unit_by_uid(100).vine_sources.is_empty(), "离场清除临时藤蔓束缚来源")
+	t.eq(persisted.unit_by_uid(100).imprison_ticks, 0, "离场恢复地形时立即解除临时藤蔓禁锢")
 	var next := region.resume_node("battle_1", [], {})
 	t.check(TerrainDB.can_stand(next.terrain_at(next.unit_by_uid(100).cell), next.unit_by_uid(100).element), "重访将敌人安置在恢复地形后的合法位置")
 	t.finish()

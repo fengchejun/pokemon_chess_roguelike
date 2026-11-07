@@ -219,8 +219,8 @@ func _t_burning_vines_release(t: TestContext) -> void:
 	t.eq(fire.imprison_ticks, 2, "敌方阶段踩入藤蔓会束缚下次移动")
 	state.end_enemy_phase()
 	t.eq(state.terrain_at(cell), TerrainDB.PLAIN, "完整回合结算后藤蔓烧尽")
-	t.eq(fire.imprison_ticks, 2, "藤蔓烧尽不提前解除已经施加的禁锢")
-	t.check(not fire.can_move_now(), "已经施加的禁锢仍按持续时间限制普通移动")
+	t.eq(fire.imprison_ticks, 0, "藤蔓烧尽时立即解除禁锢")
+	t.check(state.can_move_unit_now(fire), "新回合开始即可普通移动")
 
 
 func _t_haste_next_move(t: TestContext) -> void:

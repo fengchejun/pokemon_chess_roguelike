@@ -358,7 +358,10 @@ func normalize_nest_terrain() -> void:
 		var cell: Vector2i = current["cell"]
 		if not GridSpec.is_inside(cell):
 			continue
+		var was_vines := _is_vine_cell(cell)
 		terrain[GridSpec.index(cell)] = TerrainDB.PLAIN
+		if was_vines:
+			_clear_vine_binding_at(cell)
 		for effects_by_cell in [electric_flowers, obstacle_durability, obstacle_origin, obstacle_expire_round, burning_cells, burning_sources, steam_cells, vine_origin, vine_expire_round, obstacle_reward_origins]:
 			effects_by_cell.erase(cell)
 		natural_essence_cells.erase(cell)
@@ -393,9 +396,8 @@ func clear_node_temporaries() -> void:
 		burning_cells.erase(cell)
 		burning_sources.erase(cell)
 		steam_cells.erase(cell)
-		for unit in units:
-			unit.vine_sources.erase(cell)
-			_refresh_vine_ticks(unit)
+		if origin != TerrainDB.VINES:
+			_clear_vine_binding_at(cell)
 	for unit in units:
 		if unit.summon_owner_uid >= 0:
 			enemy_origins.erase(unit.uid)
@@ -418,19 +420,8 @@ func set_terrain(cell: Vector2i, value: int, move_or_break_mountain: bool = fals
 	if was_vines and value != TerrainDB.VINES:
 		vine_origin.erase(cell)
 		vine_expire_round.erase(cell)
-		for unit in units:
-			if unit.vine_reapply_cell == cell:
-				unit.vine_reapply_round = 0
-				unit.vine_reapply_cell = Vector2i(-1, -1)
-			if unit.vine_sources.has(cell):
-				unit.vine_sources.erase(cell)
-				_refresh_vine_ticks(unit)
-				if unit.is_alive():
-					log_event("%s 来源于 (%d,%d) 的禁锢解除。" % [unit.display_name, cell.x, cell.y])
+		_clear_vine_binding_at(cell)
 		var occupant := unit_at(cell)
-		if occupant != null and occupant.vine_ticks > 0 and occupant.vine_sources.is_empty():
-			# 兼容旧战场状态中尚未记录束缚来源的单位。
-			occupant.vine_ticks = 0
 		if occupant != null and not occupant.has_buff("flight") and TerrainDB.is_lethal(value) and (value != TerrainDB.DEEP or occupant.element != "water"):
 			kill_unit(occupant, "藤蔓消失后落入" + TerrainDB.name_of(value))
 	if not TerrainDB.is_flammable(value):
@@ -1236,12 +1227,14 @@ func apply_root(target: CombatUnit) -> void:
 	log_event("%s 被定身：下一次移动机会将被取消。" % target.display_name)
 
 
-func apply_imprison(target: CombatUnit, after_movement: bool = false) -> bool:
+func apply_imprison(target: CombatUnit, after_movement: bool = false, vine_cell: Vector2i = Vector2i(-1, -1)) -> bool:
 	if target == null or not target.is_alive():
 		return false
 	var ticks := 2
 	if phase == target.side and (after_movement or target.moved):
 		ticks = 3
+	if GridSpec.is_inside(vine_cell) or ticks > target.imprison_ticks:
+		target.vine_imprison_cell = vine_cell
 	if ticks <= target.imprison_ticks:
 		return false
 	target.imprison_ticks = ticks
@@ -1389,7 +1382,7 @@ func apply_vine_bind(unit: CombatUnit) -> void:
 		return
 	unit.vine_reapply_round = 0
 	unit.vine_reapply_cell = Vector2i(-1, -1)
-	apply_imprison(unit)
+	apply_imprison(unit, false, unit.cell)
 
 
 func apply_vine_on_landing(unit: CombatUnit, after_movement: bool = true) -> void:
@@ -1404,9 +1397,54 @@ func apply_vine_on_landing(unit: CombatUnit, after_movement: bool = true) -> voi
 		unit.vine_reapply_round = 0
 		unit.vine_reapply_cell = Vector2i(-1, -1)
 	if not unit.has_buff("flight") and GridSpec.is_inside(unit.cell) and terrain_at(unit.cell) == TerrainDB.VINES:
-		if apply_imprison(unit, after_movement):
+		if apply_imprison(unit, after_movement, unit.cell):
 			unit.vine_reapply_round = 0
 			unit.vine_reapply_cell = Vector2i(-1, -1)
+
+
+func _is_vine_cell(cell: Vector2i) -> bool:
+	return GridSpec.is_inside(cell) and terrain_at(cell) == TerrainDB.VINES
+
+
+func _clear_vine_binding_at(cell: Vector2i) -> void:
+	for unit in units:
+		if unit.vine_reapply_cell == cell:
+			unit.vine_reapply_round = 0
+			unit.vine_reapply_cell = Vector2i(-1, -1)
+		var released: bool = unit.vine_imprison_cell == cell
+		if released:
+			unit.imprison_ticks = 0
+		if unit.vine_sources.erase(cell):
+			_refresh_vine_ticks(unit)
+			released = released or unit.vine_ticks == 0
+		elif unit.cell == cell and unit.vine_ticks > 0 and unit.vine_sources.is_empty():
+			unit.vine_ticks = 0
+		if released and unit.is_alive():
+			log_event("%s 来源于 (%d,%d) 的禁锢解除。" % [unit.display_name, cell.x, cell.y])
+
+
+func restore_vine_binding(unit: CombatUnit, has_saved_source: bool) -> void:
+	if not has_saved_source:
+		# 旧版禁锢只有计时，须用仍存在的藤蔓确认来源。
+		if unit.imprison_ticks > 0 and _is_vine_cell(unit.cell):
+			unit.vine_imprison_cell = unit.cell
+		else:
+			unit.imprison_ticks = 0
+			for cell in unit.vine_sources:
+				var ticks := int(unit.vine_sources[cell])
+				if ticks > unit.imprison_ticks and _is_vine_cell(cell):
+					unit.vine_imprison_cell = cell
+					unit.imprison_ticks = ticks
+			if unit.imprison_ticks == 0 and unit.vine_ticks > 0 and unit.vine_sources.is_empty() and _is_vine_cell(unit.cell):
+				unit.vine_imprison_cell = unit.cell
+				unit.imprison_ticks = unit.vine_ticks
+	elif unit.vine_imprison_cell != Vector2i(-1, -1) and not _is_vine_cell(unit.vine_imprison_cell):
+		unit.imprison_ticks = 0
+	unit.vine_ticks = 0
+	unit.vine_sources.clear()
+	if unit.vine_reapply_cell != unit.cell or not _is_vine_cell(unit.vine_reapply_cell):
+		unit.vine_reapply_round = 0
+		unit.vine_reapply_cell = Vector2i(-1, -1)
 
 
 func _refresh_vine_ticks(unit: CombatUnit) -> void:
@@ -1671,6 +1709,7 @@ func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 	var burn_source_side_before := unit.burn_source_side
 	var direction_before := unit.last_move_direction
 	var imprison_ticks_before := unit.imprison_ticks
+	var vine_imprison_cell_before := unit.vine_imprison_cell
 	var vine_reapply_round_before := unit.vine_reapply_round
 	var vine_reapply_cell_before := unit.vine_reapply_cell
 	var vine_ticks_before := unit.vine_ticks
@@ -1691,6 +1730,7 @@ func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 		"direction": direction_before,
 		"moved_before": movement_used_before,
 		"imprison_ticks": imprison_ticks_before,
+		"vine_imprison_cell": vine_imprison_cell_before,
 		"vine_reapply_round": vine_reapply_round_before,
 		"vine_reapply_cell": vine_reapply_cell_before,
 		"vine_ticks": vine_ticks_before,
@@ -1724,11 +1764,13 @@ func undo_last_move() -> bool:
 	unit.burn_source_uid = int(entry["burn_source_uid"])
 	unit.burn_source_side = String(entry["burn_source_side"])
 	unit.last_move_direction = entry.get("direction", Vector2i.ZERO)
-	unit.imprison_ticks = int(entry.get("imprison_ticks", unit.imprison_ticks))
+	unit.imprison_ticks = int(entry.get("imprison_ticks", 0))
+	unit.vine_imprison_cell = entry.get("vine_imprison_cell", Vector2i(-1, -1))
 	unit.vine_reapply_round = int(entry.get("vine_reapply_round", unit.vine_reapply_round))
 	unit.vine_reapply_cell = entry.get("vine_reapply_cell", unit.vine_reapply_cell)
 	unit.vine_ticks = int(entry.get("vine_ticks", 0))
 	unit.vine_sources = (entry.get("vine_sources", {}) as Dictionary).duplicate()
+	restore_vine_binding(unit, entry.has("vine_imprison_cell"))
 	var fruit_cell: Vector2i = entry.get("fruit_cell", Vector2i(-1, -1))
 	if fruit_cell != Vector2i(-1, -1):
 		fruits.append(fruit_cell)
@@ -1911,7 +1953,7 @@ func _start_round_rules() -> void:
 		unit.vine_reapply_round = 0
 		unit.vine_reapply_cell = Vector2i(-1, -1)
 		if same_vine and unit.imprison_ticks <= 0:
-			apply_imprison(unit)
+			apply_imprison(unit, false, unit.cell)
 	if RelicDB.rank(relic_stacks, "root_rest") > 0:
 		for unit in units:
 			if unit.side == "player" and unit.is_alive() and RelicDB.on_grass_or_vines(self, unit):
@@ -2683,7 +2725,7 @@ func _signature() -> String:
 		parts.append("mountain_form:%d:%d" % [unit.uid, unit.mountain_form_ticks])
 		parts.append("shield:%d:%d:%d:%d" % [unit.uid, unit.shield_hp, unit.shield_ticks, unit.shield_source_uid])
 		parts.append("last_skill:%d:%s:%s:%s" % [unit.uid, unit.last_skill_id, str(unit.last_skill_from), str(unit.last_skill_target)])
-		parts.append("imprison:%d:%d" % [unit.uid, unit.imprison_ticks])
+		parts.append("imprison:%d:%d:%s" % [unit.uid, unit.imprison_ticks, str(unit.vine_imprison_cell)])
 		parts.append("vine_reapply:%d:%d:%d,%d" % [unit.uid, unit.vine_reapply_round, unit.vine_reapply_cell.x, unit.vine_reapply_cell.y])
 		parts.append("frozen:%d:%d:%d" % [unit.uid, int(unit.frozen), unit.frozen_ticks])
 		parts.append("mirror:%d:%d" % [unit.uid, unit.mirror_until_round])

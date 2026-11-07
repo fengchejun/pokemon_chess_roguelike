@@ -63,7 +63,7 @@ func _vines(t: TestContext) -> void:
 	state.round = 2
 	state._settle_temp_vines()
 	t.eq(state.terrain_at(Vector2i(3, 3)), TerrainDB.ICE, "临时藤蔓到期恢复冰面")
-	t.eq(walker.imprison_ticks, 3, "恢复冰面不提前清除已施加禁锢")
+	t.eq(walker.imprison_ticks, 0, "藤蔓到期恢复冰面时立即解除禁锢")
 	t.check(not state.ice_slide_outcome(walker).is_empty(), "恢复冰面后重新符合滑行地形条件")
 	var grass := _state("grass_starter")
 	var caster := grass.unit_by_uid(1)

@@ -55,12 +55,15 @@ var move_cancelled: bool = false:
 		move_cancelled = value
 		if was_active and not move_cancelled and not root_pending:
 			feedback_changed.emit("clear", "定身解除", 0, cell)
+var vine_imprison_cell: Vector2i = Vector2i(-1, -1)
 var imprison_ticks: int = 0:
 	set(value):
 		var was_active := imprison_ticks > 0
 		var active := value > 0
 		var announce := active != was_active
 		imprison_ticks = value
+		if not active:
+			vine_imprison_cell = Vector2i(-1, -1)
 		if announce:
 			feedback_changed.emit("status" if active else "clear", "禁锢" + ("解除" if not active else ""), int(value), cell)
 var vine_reapply_round: int = 0
@@ -299,6 +302,7 @@ func dup() -> CombatUnit:
 	copy.root_pending = root_pending
 	copy.move_cancelled = move_cancelled
 	copy.imprison_ticks = imprison_ticks
+	copy.vine_imprison_cell = vine_imprison_cell
 	copy.vine_reapply_round = vine_reapply_round
 	copy.vine_reapply_cell = vine_reapply_cell
 	copy.slow_ticks = slow_ticks

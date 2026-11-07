@@ -97,13 +97,18 @@ func _vine_imprison_reentry(t: TestContext) -> void:
 	t.eq(fire.imprison_ticks, 2, "位移不会清除或刷新禁锢")
 	state.set_terrain(first, TerrainDB.PLAIN)
 	t.eq(fire.imprison_ticks, 2, "原藤蔓消失不会提前解除禁锢")
+	var restored_battle := BattleSnapshot.load_state(BattleSnapshot.save_state(state))
+	for battlefield in [state.clone(), restored_battle]:
+		battlefield.set_terrain(second, TerrainDB.PLAIN)
+		t.eq(battlefield.unit_by_uid(1).imprison_ticks, 0, "克隆和存读档均保留当前藤蔓来源")
+	t.eq(fire.imprison_ticks, 2, "清理副本不影响原战场")
+	PushResolver.push(state, fire, Vector2i.RIGHT, 1, 0, "推离藤蔓", "enemy")
+	t.eq(fire.imprison_ticks, 2, "推到平地后仍受存续的藤蔓禁锢")
+	fire.root_pending = true
 	state.set_terrain(second, TerrainDB.PLAIN)
-	t.eq(fire.imprison_ticks, 2, "脚下藤蔓消失仍不解除已施加的禁锢")
-	state._finish_movement_effects("player")
-	t.eq(fire.imprison_ticks, 1, "第一个移动阶段结束后仍剩一回合")
-	state._finish_movement_effects("player")
-	t.eq(fire.imprison_ticks, 0, "第二个移动阶段结束后禁锢解除")
-	t.check(fire.can_move_now(), "禁锢结束后停留原地不会自动再次触发")
+	t.eq(fire.imprison_ticks, 0, "移除来源藤蔓后立即解禁，即使单位已被推到别处")
+	t.check(fire.can_move_now(), "移除藤蔓后普通移动立即可用")
+	t.check(fire.root_pending, "移除藤蔓不会清除独立的定身效果")
 	var reentry := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
 	var reentering := reentry.unit_by_uid(1)
 	reentering.cell = first
@@ -119,11 +124,31 @@ func _vine_imprison_reentry(t: TestContext) -> void:
 	t.eq(reentering.imprison_ticks, 3, "离开后再次触碰原藤蔓格会重新获得禁锢并覆盖之后两次移动")
 	var legacy := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
 	var legacy_unit := legacy.unit_by_uid(1)
+	legacy.set_terrain(first, TerrainDB.VINES)
 	legacy_unit.vine_ticks = 1
 	legacy_unit.vine_sources[first] = 1
-	var restored := BattleSnapshot.load_state(BattleSnapshot.save_state(legacy))
-	t.eq(restored.unit_by_uid(1).imprison_ticks, 1, "旧藤蔓束缚迁移为禁锢")
+	var old_snapshot := BattleSnapshot.save_state(legacy)
+	old_snapshot["units"][1].erase("vine_imprison_cell")
+	var restored := BattleSnapshot.load_state(old_snapshot)
+	t.eq(restored.unit_by_uid(1).imprison_ticks, 1, "仍存在来源的旧藤蔓束缚迁移为禁锢")
 	t.eq(restored.unit_by_uid(1).vine_ticks, 0, "旧藤蔓束缚字段读取后清空")
+	restored.set_terrain(first, TerrainDB.PLAIN)
+	t.eq(restored.unit_by_uid(1).imprison_ticks, 0, "迁移后的旧束缚也会随藤蔓消失")
+	legacy.set_terrain(first, TerrainDB.PLAIN)
+	legacy_unit.imprison_ticks = 2
+	old_snapshot = BattleSnapshot.save_state(legacy)
+	old_snapshot["units"][1].erase("vine_imprison_cell")
+	restored = BattleSnapshot.load_state(old_snapshot)
+	t.eq(restored.unit_by_uid(1).imprison_ticks, 0, "读旧档时清除平地上无法确认来源的残留禁锢")
+	reentry._finish_movement_effects("player")
+	reentry._finish_movement_effects("player")
+	reentry._finish_movement_effects("player")
+	t.check(reentering.vine_reapply_round > 0, "持续时间耗尽后已排定再次触发")
+	reentry.round = 2
+	reentry._settle_temp_vines()
+	t.eq(reentering.vine_reapply_round, 0, "藤蔓到期会取消待触发的禁锢")
+	reentry.start_round()
+	t.check(reentering.can_move_now(), "到期后下一回合可正常移动")
 
 
 func _ice_growth(t: TestContext) -> void:

@@ -84,10 +84,7 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		unit.upgrades.erase("volt_replace_flex")
 		if int(snapshot.get("version", 1)) < 3:
 			RunState.rebase_upgrade_values(unit.upgrades)
-		if unit.imprison_ticks <= 0 and unit.vine_ticks > 0:
-			unit.imprison_ticks = unit.vine_ticks
-		unit.vine_ticks = 0
-		unit.vine_sources.clear()
+		state.restore_vine_binding(unit, member.has("vine_imprison_cell"))
 		if unit.frozen and unit.frozen_ticks <= 0:
 			unit.frozen_ticks = Balance.FREEZE_TICKS
 		elif unit.frozen_ticks > 0:
