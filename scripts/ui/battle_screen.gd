@@ -1031,6 +1031,8 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		var actual_range := int(def.get("range", 1))
 		if SkillDB.is_placeholder(skill_id):
 			actual_range += int(unit.upgrades.get(skill_id + "_range", 0))
+		elif skill_id == "drain":
+			actual_range += int(unit.upgrades.get("drain_range", 0))
 		elif skill_id == "rock_break":
 			actual_range += int(unit.upgrades.get(skill_id + "_range", 0))
 		parts.append("射程 %d" % actual_range)

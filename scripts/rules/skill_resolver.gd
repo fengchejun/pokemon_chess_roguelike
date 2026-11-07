@@ -201,6 +201,7 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 	if (
 		(int(def.get("damage", 0)) > 0 or skill_id == "rock_smash" or skill_id == "rock_break")
 		and skill_id not in ["furnace_fist", "combustion", "leaf_wind", "mountain_chain", "rock_blast", "water_drop_stone"]
+		and not bool(def.get("unit_only", false))
 	):
 		for cell in GridSpec.all_cells():
 			var distance := GridSpec.manhattan(unit.cell, cell)
@@ -211,7 +212,7 @@ static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String
 			elif skill_id == "rock_break" and unit.has_buff("rock_break") and state.terrain_at(cell) == TerrainDB.FRAGILE:
 				entries.append({"type": "cell", "cell": cell})
 
-	if unit.side == "player" and (int(def.get("damage", 0)) > 0 or skill_id == "burn_out"):
+	if unit.side == "player" and not bool(def.get("unit_only", false)) and (int(def.get("damage", 0)) > 0 or skill_id == "burn_out"):
 		for nest in state.all_nests():
 			var cell: Vector2i = nest["cell"]
 			if not state.is_nest_cell(cell):
@@ -1064,9 +1065,7 @@ static func _apply_nest_hit_healing(state: BattleState, caster: CombatUnit, skil
 	if caster == null or not caster.is_alive():
 		return
 	var healing := 0
-	if skill_id == "drain":
-		healing = Balance.DRAIN_HEAL
-	elif skill_id == "furnace_fist":
+	if skill_id == "furnace_fist":
 		healing = 5 + int(caster.upgrades.get("furnace_fist_healing", 0))
 	var healed := mini(caster.max_hp - caster.hp, healing)
 	if healed <= 0:

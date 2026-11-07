@@ -121,7 +121,7 @@ func _special(t: TestContext) -> void:
 	_compare(t, side_nest, "rock_blast", {"type": "unit", "unit": target.uid, "cell": target.cell}, 3)
 
 func _nest_healing(t: TestContext) -> void:
-	for skill in ["drain", "furnace_fist"]:
+	for skill in ["furnace_fist"]:
 		var state := _state(skill)
 		var caster := state.unit_by_uid(1)
 		caster.hp = 5
@@ -134,7 +134,7 @@ func _nest_healing(t: TestContext) -> void:
 		state.preview_skill(caster, skill, entry)
 		t.eq(caster.hp, 5, "%s预攻巢不提前回复生命" % skill)
 		var result := SkillResolver.apply(state, caster, skill, entry, false)
-		var expected_heal := Balance.DRAIN_HEAL if skill == "drain" else 8
+		var expected_heal := 8
 		t.eq(caster.hp, 5 + expected_heal, "%s攻巢后按技能规则回复生命" % skill)
 		var heal = result.get("heal")
 		var healed := int(heal.get("amount", 0)) if heal is Dictionary else 0
