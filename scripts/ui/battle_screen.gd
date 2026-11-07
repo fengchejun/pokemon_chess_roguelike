@@ -1751,27 +1751,28 @@ func _on_skill_pressed(skill_id: String) -> void:
 					var reach: Vector2i = unit.cell + direction * distance
 					if GridSpec.is_inside(reach):
 						board.area_cells.append(reach)
-		if skill_id == "earth_shake":
-			for affected in SkillResolver.front_area_cells(unit.cell, entry["dir"], 3):
-				if not board.area_cells.has(affected):
-					board.area_cells.append(affected)
-		if skill_id == "windfire_breath":
-			for affected in SkillResolver.half_circle_cells(unit.cell, entry["dir"]):
-				if not board.area_cells.has(affected):
-					board.area_cells.append(affected)
-		if skill_id == "wild_vines":
-			for affected in SkillResolver.wild_vines_cells(state, unit, entry["dir"]):
-				if not board.area_cells.has(affected):
-					board.area_cells.append(affected)
-		if skill_id == "electric_spark":
-			for affected in SkillResolver.electric_spark_cells(state, unit, entry["dir"]):
-				if not board.area_cells.has(affected):
-					board.area_cells.append(affected)
+	if SkillDB.kind_of(skill_id) == "direction":
+		board.area_cells = _directional_aim_area(unit, skill_id)
 	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_rebuild_skill_buttons()
 	_position_action_panel()
 	board.queue_redraw()
+
+
+func _directional_aim_area(unit: CombatUnit, skill_id: String) -> Array:
+	var cells: Array = []
+	for entry in aim_entries:
+		if String(entry.get("type", "")) != "dir":
+			continue
+		var preview := state.preview_skill(unit, skill_id, entry)
+		if not bool(preview.get("ok", false)):
+			continue
+		for key in ["area_cells", "ray_cells"]:
+			for cell in preview.get(key, []):
+				if GridSpec.is_inside(cell) and not cells.has(cell):
+					cells.append(cell)
+	return cells
 
 
 func _on_capture_pressed() -> void:

@@ -1572,6 +1572,18 @@ static func half_circle_cells(origin: Vector2i, direction: Vector2i) -> Array:
 	return cells
 
 
+static func frozen_ground_cells(state: BattleState, caster: CombatUnit, direction: Vector2i) -> Array:
+	var cells: Array = []
+	var reach := 3 + int(caster.upgrades.get("ice_ground_reach", 0))
+	var sideways := Vector2i(-direction.y, direction.x)
+	for distance in range(1, reach + 1):
+		for offset in [-1, 0, 1]:
+			var cell: Vector2i = caster.cell + direction * distance + sideways * offset
+			if GridSpec.is_inside(cell) and not TerrainDB.blocks_move(state.terrain_at(cell)) and not state.is_nest_cell(cell):
+				cells.append(cell)
+	return cells
+
+
 static func wild_vines_reach(caster: CombatUnit) -> int:
 	return 2 + int(caster.upgrades.get("wild_vines_reach", 0))
 
@@ -2096,7 +2108,6 @@ static func _apply_directional(state: BattleState, caster: CombatUnit, skill_id:
 		_apply_line(state, caster, skill_id, entry, summary)
 		return
 	var dir: Vector2i = entry["dir"]
-	var perpendicular := Vector2i(dir.y, dir.x)
 	if skill_id == "wild_vines":
 		for cell in wild_vines_cells(state, caster, dir):
 			var from := state.terrain_at(cell)
@@ -2104,15 +2115,12 @@ static func _apply_directional(state: BattleState, caster: CombatUnit, skill_id:
 			summary["area_cells"].append(cell)
 			summary["terrain_changes"].append({"cell": cell, "from": from, "to": TerrainDB.VINES})
 	elif skill_id == "frozen_ground":
-		var reach := 3 + int(caster.upgrades.get("ice_ground_reach", 0))
-		for distance in range(1, reach + 1):
-			for offset in [-1, 0, 1]:
-				var cell: Vector2i = caster.cell + dir * distance + perpendicular * offset
-				if not GridSpec.is_inside(cell) or TerrainDB.blocks_move(state.terrain_at(cell)) or state.is_nest_cell(cell):
-					continue
-				var from := state.terrain_at(cell)
-				state.set_terrain(cell, TerrainDB.ICE)
-				summary["terrain_changes"].append({"cell": cell, "from": from, "to": TerrainDB.ICE})
+		var area := frozen_ground_cells(state, caster, dir)
+		summary["area_cells"].append_array(area)
+		for cell in area:
+			var from := state.terrain_at(cell)
+			state.set_terrain(cell, TerrainDB.ICE)
+			summary["terrain_changes"].append({"cell": cell, "from": from, "to": TerrainDB.ICE})
 	summary["text"] = "%s 影响 %d 格。" % [SkillDB.name_of(skill_id), summary["terrain_changes"].size()]
 
 
