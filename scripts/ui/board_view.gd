@@ -419,6 +419,11 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	else:
 		draw_circle(center, radius, fill)
 		draw_arc(center, radius, 0, TAU, 48, _border_color(unit), 3.0)
+	if unit.frozen:
+		draw_circle(center, radius + 3, Color(0.45, 0.85, 1.0, 0.16))
+		draw_arc(center, radius + 7, 0, TAU, 48, Color("91e9ff"), 3.0)
+		for direction in [Vector2.UP, Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT]:
+			draw_line(center + direction * (radius - 2), center + direction * (radius + 10), Color("b9f4ff"), 2.0)
 	if unit.uid == selected_uid:
 		draw_arc(center, radius + 4, 0, TAU, 48, UIKit.ACCENT, 3.0)
 	draw_string(font, center + Vector2(-14, 10), unit.glyph, HORIZONTAL_ALIGNMENT_CENTER, 28, 26, Color(0.1, 0.1, 0.12))
@@ -456,6 +461,8 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		badges_text += "禁"
 	if unit.slow_ticks > 0:
 		badges_text += "缓"
+	if unit.frozen:
+		badges_text += "冰"
 	if badges_text != "":
 		draw_string(font, center + Vector2(20, -18), badges_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 0.6, 0.3))
 	if unit.capture_used:

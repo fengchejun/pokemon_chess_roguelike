@@ -5,6 +5,8 @@ func run(t: TestContext) -> void:
 	t.begin("冰冻：一回合无法行动且受伤正常结算")
 	_blocks_all_actions(t)
 	_damage_breaks_without_immunity(t)
+	_skill_damage_breaks_without_immunity(t)
+	_ui_skill_damage_breaks_without_immunity(t)
 	_expires_after_one_round(t)
 	t.finish()
 
@@ -39,6 +41,47 @@ func _damage_breaks_without_immunity(t: TestContext) -> void:
 	var zero := guarded.damage_unit(guarded.unit_by_uid(1), guarded_target, 1, {"skill_direct": true, "element": "rock", "cause": "被抵消的伤害"})
 	t.eq(int(zero.get("amount", -1)), 0, "减伤可以把伤害降为零")
 	t.check(guarded_target.frozen, "没有实际伤害时不会解除冰冻")
+
+
+func _skill_damage_breaks_without_immunity(t: TestContext) -> void:
+	var state := TestScenario.make_state(["rock_starter"], [["rock_wild1", Vector2i(3, 3)]])
+	var caster := state.unit_by_uid(1)
+	var target := state.unit_by_uid(100)
+	caster.cell = Vector2i(2, 3)
+	caster.skills = ["ice_shard"]
+	target.element = ""
+	state.apply_freeze(target)
+	var hp_before := target.hp
+	var result := state.cast_skill(caster, "ice_shard", {"type": "unit", "unit": target.uid, "cell": target.cell})
+	t.check(bool(result.get("ok", false)), "冰冻目标可被正式技能选中")
+	t.eq(target.hp, hp_before - SkillDB.damage_of("ice_shard"), "冰冻目标受到正式技能伤害")
+	t.check(not target.frozen, "正式技能命中后冰冻解除")
+
+
+func _ui_skill_damage_breaks_without_immunity(t: TestContext) -> void:
+	var app = load("res://scripts/main.gd").new()
+	app.autosave_enabled = false
+	t.tree.root.add_child(app)
+	app.run = RunState.new_run(6101)
+	var state := TestScenario.make_state(["rock_starter"], [["rock_wild1", Vector2i(3, 3)]])
+	var caster := state.unit_by_uid(1)
+	var target := state.unit_by_uid(100)
+	caster.cell = Vector2i(2, 3)
+	caster.skills = ["ice_shard"]
+	target.element = ""
+	state.apply_freeze(target)
+	var screen = load("res://scripts/ui/battle_screen.gd").new()
+	screen.state = state
+	app._switch(screen)
+	screen.select_unit(caster.uid)
+	screen.action_mode = "skills"
+	screen._on_skill_pressed("ice_shard")
+	var hp_before := target.hp
+	screen._try_cast_at(target.cell)
+	t.eq(target.hp, hp_before - SkillDB.damage_of("ice_shard"), "界面点击冰冻目标后实际扣血")
+	screen.playback.finish_all()
+	t.eq(screen.playback.visual.unit_by_uid(target.uid).hp, target.hp, "播放结束的冰冻受击生命与真实状态一致")
+	app.free()
 
 
 func _expires_after_one_round(t: TestContext) -> void:
