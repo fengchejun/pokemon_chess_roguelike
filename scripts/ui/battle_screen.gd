@@ -70,7 +70,6 @@ func _ready() -> void:
 	board = BoardView.new()
 	board.name = "BoardView"
 	board.cell_clicked.connect(_on_board_clicked)
-	board.cell_double_clicked.connect(_on_board_double_clicked)
 	board.cell_right_clicked.connect(func(_cell: Vector2i) -> void: _cancel_action())
 	board.cell_hovered.connect(_on_board_hovered)
 	add_child(board)
@@ -694,7 +693,7 @@ func _update_unit_card() -> void:
 		lines.append("本回合技能：%s" % ("可用" if skill_reason == "" else "不可用（%s）" % skill_reason))
 	if unit.side == "enemy":
 		if state.exploration_v2 and state.exploration_role == "capture":
-			lines.append("逃跑状态：" + ("撤离点等待中，下次行动逃脱" if state.capture_exit_wait.has(unit.uid) else "受惊，正向撤离点逃跑" if state.capture_alerted else "尚未受惊，保持待机"))
+			lines.append("逃跑状态：" + ("撤离点等待中，下次行动逃脱" if state.capture_exit_wait.has(unit.uid) else "受惊，正向撤离点逃跑" if state.capture_alerted else "尚未受惊，每回合随机移动一格"))
 		var low_hp_rules := bool(state.capture_options.get("capture_low_hp", false))
 		lines.append("捕捉支援：4格内%d只我方宝可梦，额外+%d个百分点（最多30）；不计训练师和召唤物。" % [CaptureSystem.support_count(state, unit), mini(30, 10 * CaptureSystem.support_count(state, unit))])
 		lines.append("捕获概率：%d%%（训练家在周围两格可尝试%s）" % [
@@ -1486,15 +1485,6 @@ func select_unit(uid: int) -> void:
 	_update_selection_overlay()
 	board.queue_redraw()
 	_position_action_panel()
-
-
-func _on_board_double_clicked(cell: Vector2i) -> void:
-	if modal_layer != null:
-		return
-	var unit := _display_state().unit_at(cell)
-	if unit != null:
-		speech_layer.dismiss_on_unit_click()
-		_show_unit_detail(unit)
 
 
 func _show_unit_detail(unit: CombatUnit) -> void:

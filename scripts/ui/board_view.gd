@@ -2,7 +2,6 @@ class_name BoardView
 extends Control
 
 signal cell_clicked(cell: Vector2i)
-signal cell_double_clicked(cell: Vector2i)
 signal cell_right_clicked(cell: Vector2i)
 signal cell_hovered(cell: Vector2i)
 
@@ -173,10 +172,7 @@ func _gui_input(event: InputEvent) -> void:
 		if cell == Vector2i(-1, -1):
 			return
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			if event.double_click:
-				cell_double_clicked.emit(cell)
-			else:
-				cell_clicked.emit(cell)
+			cell_clicked.emit(cell)
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			cell_right_clicked.emit(cell)
 	elif event is InputEventMouseMotion:

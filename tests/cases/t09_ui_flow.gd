@@ -187,8 +187,13 @@ func run(t: TestContext) -> void:
 		battle_screen._on_board_clicked(enemy.cell)
 		t.check(battle_screen.action_panel.visible, "单击敌方显示行动窗口")
 		t.eq(battle_screen.skill_box.get_child(0).text, "查看详情", "敌方窗口提供详情入口")
-		battle_screen._on_board_double_clicked(enemy.cell)
-		t.check(battle_screen.modal_layer != null, "敌方双击可以查看详情")
+		var double_click := InputEventMouseButton.new()
+		double_click.button_index = MOUSE_BUTTON_LEFT; double_click.pressed = true; double_click.double_click = true
+		double_click.position = BoardView.cell_center(enemy.cell)
+		battle_screen.board._gui_input(double_click)
+		t.check(battle_screen.modal_layer == null, "双击敌方不再打开详情")
+		battle_screen.skill_box.get_child(0).pressed.emit()
+		t.check(battle_screen.modal_layer != null, "查看详情按钮仍可打开详情")
 		battle_screen._close_modal()
 		var old_merchant: Dictionary = state.merchant.duplicate(true)
 		var old_kind: String = state.node_kind

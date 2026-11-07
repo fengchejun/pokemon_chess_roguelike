@@ -18,11 +18,13 @@ func enemy_turn(state: BattleState) -> void:
 func run(t: TestContext) -> void:
 	t.begin("八回合捕捉、受惊逃跑与本层常见委托")
 	var state := make_state()
-	var starts := state.alive_units("enemy").map(func(u): return u.cell)
-	for i in 3: enemy_turn(state)
+	for i in 3:
+		var starts := state.alive_units("enemy").map(func(u): return u.cell)
+		enemy_turn(state)
+		for index in starts.size():
+			t.eq(GridSpec.manhattan(starts[index], state.alive_units("enemy")[index].cell), 1, "未受惊每回合仅向四邻随机移动一格")
 	t.check(not state.ended and not state.capture_alerted, "前三回合未受惊不会结束")
-	t.eq(state.alive_units("enemy").map(func(u): return u.cell), starts, "未受惊不主动进攻或逃跑")
-	state.trainer().cell = Vector2i(4, 2)
+	state.trainer().cell = state.unit_by_uid(100).cell + Vector2i.LEFT
 	state.debug_capture_percent = 0
 	var failed := state.capture_attempt(state.trainer(), state.unit_by_uid(100), 0.99)
 	t.check(failed.get("ok", false) and not failed.get("success", true) and state.capture_alerted, "捕获失败也惊动全场")
@@ -32,6 +34,27 @@ func run(t: TestContext) -> void:
 	t.check(plan.any(func(a): return not a["move_path"].is_empty()), "实际规划向撤离点移动")
 	var clone := state.clone()
 	t.check(clone.capture_alerted and clone.capture_exits == state.capture_exits, "预览克隆保留捕捉规则")
+	# 重复规划和存读档不刷新随机方向，且不会在预览时移动真实单位。
+	var roaming := make_state()
+	var positions := roaming.alive_units("enemy").map(func(u): return u.cell)
+	var wander_plan := EnemyAI.plan(roaming)
+	t.eq(EnemyAI.plan(roaming), wander_plan, "重复规划不重掷游荡方向")
+	t.eq(EnemyAI.plan(BattleSnapshot.load_state(BattleSnapshot.save_state(roaming))), wander_plan, "读档后游荡方向一致")
+	t.eq(roaming.alive_units("enemy").map(func(u): return u.cell), positions, "规划不移动真实单位")
+	var trapped := roaming.unit_by_uid(100)
+	for cell in GridSpec.neighbors4(trapped.cell): roaming.set_terrain(cell, TerrainDB.OBSTACLE)
+	t.check(Encounter.wander_path(roaming, trapped).is_empty(), "四面堵死则原地停留")
+	roaming = make_state(); trapped = roaming.unit_by_uid(100)
+	trapped.move_cancelled = true
+	t.check(Encounter.wander_path(roaming, trapped).is_empty(), "不能移动时不随机游荡")
+	roaming = make_state(); trapped = roaming.unit_by_uid(100)
+	for cell in GridSpec.neighbors4(trapped.cell): roaming.set_terrain(cell, TerrainDB.LAVA)
+	t.check(Encounter.wander_path(roaming, trapped).is_empty(), "不会主动游荡进致死地形")
+	roaming = make_state(); trapped = roaming.unit_by_uid(100)
+	trapped.cell = Encounter.EXITS[0]
+	Encounter.act(roaming, trapped, {"move_path": []}); roaming.round += 1
+	Encounter.act(roaming, trapped, {"move_path": []})
+	t.check(trapped.is_alive() and roaming.capture_exit_wait.is_empty(), "未受惊停在撤离点不会逃脱")
 	# 普通攻击也会全场受惊；模拟预览不会改变真实状态。
 	state = make_state()
 	var foe := state.unit_by_uid(100)

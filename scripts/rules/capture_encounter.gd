@@ -16,12 +16,30 @@ static func distance(state: BattleState, unit: CombatUnit, cell: Vector2i) -> in
 		best = mini(best, PathFinder.path_distance(state, cell, exit_cell, unit.element, unit.has_buff("flight")))
 	return best
 
+static func wander_path(state: BattleState, unit: CombatUnit) -> Array:
+	if not state.can_move_unit_now(unit): return []
+	var options := PathFinder.stop_cells(state, unit)
+	var cells: Array = []
+	for dir in GridSpec.DIRS4:
+		var cell: Vector2i = unit.cell + dir
+		if not options.has(cell) or options[cell]["path"].size() != 1: continue
+		var terrain := state.terrain_at(cell)
+		if TerrainDB.is_lethal(terrain) and not unit.has_buff("flight") and not (terrain == TerrainDB.DEEP and unit.element == "water"): continue
+		cells.append(cell)
+	if cells.is_empty(): return []
+	# 使用快照已保存的种子、回合与位置；规划/预览不消耗全局随机数。
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("wander:%d:%d:%d:%d:%d:%d" % [state.run_seed, state.battle_index, state.round, unit.uid, unit.cell.x, unit.cell.y])
+	return [cells[rng.randi_range(0, cells.size() - 1)]]
+
 static func plan(state: BattleState) -> Array:
 	var work := state.clone()
 	var actions: Array = []
 	for unit in work.alive_units("enemy"):
 		var action := {"uid": unit.uid, "move_path": [], "skill": {}, "capture_flee": true}
-		if work.capture_alerted and not work.capture_exits.has(unit.cell) and work.can_move_unit_now(unit):
+		if not work.capture_alerted:
+			action["move_path"] = wander_path(work, unit)
+		elif not work.capture_exits.has(unit.cell) and work.can_move_unit_now(unit):
 			var best := distance(work, unit, unit.cell)
 			var best_cost := 1 << 30
 			var options := PathFinder.stop_cells(work, unit)
@@ -39,9 +57,9 @@ static func plan(state: BattleState) -> Array:
 	return actions
 
 static func act(state: BattleState, unit: CombatUnit, action: Dictionary) -> void:
-	if not state.capture_alerted: return
+	var wandering := not state.capture_alerted
 	var waiting: Dictionary = state.capture_exit_wait.get(unit.uid, {})
-	if state.capture_exits.has(unit.cell) and waiting.get("cell", Vector2i(-1, -1)) == unit.cell and int(waiting.get("round", state.round)) < state.round:
+	if not wandering and state.capture_exits.has(unit.cell) and waiting.get("cell", Vector2i(-1, -1)) == unit.cell and int(waiting.get("round", state.round)) < state.round:
 		unit.hp = 0 # 逃离不算击倒，不发放击倒原质、经验和掉落。
 		state.capture_exit_wait.erase(unit.uid)
 		state.emit_feedback(unit, "action", "成功逃脱")
@@ -55,8 +73,8 @@ static func act(state: BattleState, unit: CombatUnit, action: Dictionary) -> voi
 	if not path.is_empty():
 		unit.moved = not bool(action.get("free_terrain_move", false))
 		state.apply_vine_on_landing(unit)
-		state.log_event("%s 向撤离点移动%d格。" % [unit.display_name, path.size()])
-	if unit.is_on_board() and state.capture_exits.has(unit.cell):
+		state.log_event(("%s 随机游荡%d格。" if wandering else "%s 向撤离点移动%d格。") % [unit.display_name, path.size()])
+	if not wandering and unit.is_on_board() and state.capture_exits.has(unit.cell):
 		state.capture_exit_wait[unit.uid] = {"cell": unit.cell, "round": state.round}
 		state.emit_feedback(unit, "action", "下次行动逃脱")
 	else:
