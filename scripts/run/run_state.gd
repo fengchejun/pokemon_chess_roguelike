@@ -85,16 +85,10 @@ const MONSTER_UPGRADES := {
 
 
 static func upgrade_info(upgrade_id: String) -> Dictionary:
-	if upgrade_id.ends_with("_range"):
-		var skill_id := upgrade_id.trim_suffix("_range")
-		if SkillDB.is_placeholder(skill_id):
-			return {"name": "%s强化" % SkillDB.name_of(skill_id), "desc": "此试招基础直伤 +3，射程由 2 格增至 3 格。", "key": upgrade_id, "value": 1, "damage_bonus": 3, "requires_skill": skill_id}
 	return MONSTER_UPGRADES.get(upgrade_id, {})
 
 
 static func upgrade_id_for_skill(skill_id: String) -> String:
-	if SkillDB.is_placeholder(skill_id):
-		return skill_id + "_range"
 	for upgrade_id in MONSTER_UPGRADES:
 		if String(MONSTER_UPGRADES[upgrade_id].get("requires_skill", "")) == skill_id:
 			return String(upgrade_id)
@@ -104,10 +98,6 @@ static func rebase_upgrade_values(values: Dictionary) -> void:
 	for info in MONSTER_UPGRADES.values():
 		var key := String(info["key"])
 		if values.has(key):
-			values[key] = int(info["value"])
-	for key in values.keys():
-		var info := upgrade_info(String(key))
-		if not info.is_empty() and SkillDB.is_placeholder(String(info.get("requires_skill", ""))):
 			values[key] = int(info["value"])
 
 static func migrate_snapshot(snapshot: Dictionary) -> Dictionary:
@@ -1473,4 +1463,13 @@ func _normalize_record_growth(record: Dictionary, legacy_upgrade_style: bool) ->
 	record["upgrades"] = values
 	record["upgrades_taken"] = kept_taken
 	record["claimed_even_levels"] = kept_claimed
-	record["level_choices"] = {} if legacy_upgrade_style else (record.get("level_choices", {}) as Dictionary).duplicate(true)
+	var choices: Dictionary = {} if legacy_upgrade_style else (record.get("level_choices", {}) as Dictionary).duplicate(true)
+	for key in choices.keys():
+		if not choices[key] is Array:
+			choices.erase(key)
+			continue
+		for skill_id in choices[key]:
+			if SkillDB.get_def(String(skill_id)).is_empty():
+				choices.erase(key)
+				break
+	record["level_choices"] = choices

@@ -41,15 +41,16 @@ func _battle_actions(t: TestContext) -> void:
 	var caster := state.unit_by_uid(1)
 	var target := state.unit_by_uid(100)
 	caster.cell = Vector2i(1, 2)
-	caster.skills.append("trial_fire_1")
+	target.element = ""
+	caster.skills.append("ice_shard")
 	t.check(bool(DebugActions.set_damage_bonus(state, "player", 2).get("ok", false)), "我方伤害可调")
 	t.eq(int(state.clone().debug_skill_damage_bonus["player"]), 2, "克隆保留伤害覆盖")
 	var entry := {"type": "unit", "unit": target.uid, "cell": target.cell}
-	var preview := state.preview_skill(caster, "trial_fire_1", entry)
-	t.eq(int(preview["hits"][0]["damage"]), SkillDB.damage_of("trial_fire_1") + 2, "预览展示调整后的单体直伤")
+	var preview := state.preview_skill(caster, "ice_shard", entry)
+	t.eq(int(preview["hits"][0]["damage"]), SkillDB.damage_of("ice_shard") + 2, "预览展示调整后的单体直伤")
 	var hp_before := target.hp
-	state.cast_skill(caster, "trial_fire_1", entry)
-	t.eq(hp_before - target.hp, SkillDB.damage_of("trial_fire_1") + 2, "实际直伤与预览一致")
+	state.cast_skill(caster, "ice_shard", entry)
+	t.eq(hp_before - target.hp, SkillDB.damage_of("ice_shard") + 2, "实际直伤与预览一致")
 	t.check(bool(DebugActions.set_capture_percent(state, 100).get("ok", false)), "捕获率可设置为 100%")
 	state.trainer().cell = Vector2i(2, 2)
 	var captured := state.capture_attempt(state.trainer(), target, 0.99)

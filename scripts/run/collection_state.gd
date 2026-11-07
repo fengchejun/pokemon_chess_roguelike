@@ -46,7 +46,7 @@ static func load_profile(path: String = SAVE_PATH) -> CollectionState:
 		for raw_id in counts:
 			var skill_id := String(raw_id)
 			var amount := maxi(0, int(counts[raw_id]))
-			if skill_id != "" and amount > 0:
+			if skill_id != "" and amount > 0 and not SkillDB.get_def(skill_id).is_empty():
 				(profile.skill_use_counts[side] as Dictionary)[skill_id] = amount
 	var saved_battles: Dictionary = parsed.get("recorded_skill_battles", {}) if parsed.get("recorded_skill_battles", {}) is Dictionary else {}
 	for raw_key in saved_battles:
@@ -105,8 +105,8 @@ func record_battle_skill_usage(battle: BattleState) -> bool:
 		var total: Dictionary = skill_use_counts[side]
 		for raw_id in source:
 			var amount := maxi(0, int(source[raw_id]))
-			if amount > 0:
-				var skill_id := String(raw_id)
+			var skill_id := String(raw_id)
+			if amount > 0 and not SkillDB.get_def(skill_id).is_empty():
 				total[skill_id] = int(total.get(skill_id, 0)) + amount
 	recorded_skill_battles[key] = true
 	return true

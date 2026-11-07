@@ -52,8 +52,7 @@ func _skill_ids(profile: CollectionState) -> Array:
 			found[String(skill_id)] = true
 	for element in Elements.LIST:
 		for skill_id in SkillDB.learnable_ids_for(element):
-			if not SkillDB.is_placeholder(String(skill_id)):
-				found[String(skill_id)] = true
+			found[String(skill_id)] = true
 	for side in ["player", "enemy"]:
 		var counts: Dictionary = profile.skill_use_counts.get(side, {})
 		for skill_id in counts:

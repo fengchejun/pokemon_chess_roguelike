@@ -70,7 +70,7 @@ func _test_skill_bound_growth(t: TestContext) -> void:
 	t.check(run_state.available_monster_upgrades(1).has("fireball_damage"), "火系可强化已学火球术")
 	t.check(not run_state.available_monster_upgrades(2).has("fireball_damage"), "水系不会获得火系强化")
 	t.check(not run_state.available_monster_upgrades(1).has("direct_guard"), "永久通用减伤不再可选")
-	t.eq(run_state.available_new_skills(1), ["flame_jet", "flame_charge", "trial_fire_1", "trial_fire_2", "fire_amplify", "flame_rush", "windfire_breath", "furnace_fist", "skyfire", "combustion", "burn_out"], "未选为开局技能的物种招式与扩充火系招式可学习")
+	t.eq(run_state.available_new_skills(1), ["flame_jet", "flame_charge", "fire_amplify", "flame_rush", "windfire_breath", "furnace_fist", "skyfire", "combustion", "burn_out"], "未选为开局技能的物种招式与扩充火系招式可学习")
 	var fire := run_state.record_by_uid(1)
 	MonsterProgression.award_xp(fire, MonsterProgression.threshold_for_level(10))
 	var level_two := String(run_state.monster_level_choices(1, 2)[0])

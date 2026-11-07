@@ -108,8 +108,6 @@ func _build_prep() -> void:
 	skill_option = OptionButton.new()
 	skill_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var skill_ids: Array = SkillDB.DEFS.keys()
-	for element in Elements.LIST:
-		skill_ids.append_array(SkillDB.placeholder_ids_for(element))
 	skill_ids.sort()
 	for skill_id in skill_ids:
 		var id := String(skill_id)

@@ -140,8 +140,6 @@ static func ice_breath_has_enemy(state: BattleState, caster: CombatUnit, dir: Ve
 static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
 	var skill_range := int(def.get("range", 1))
 	var allows_self := skill_id in ["first_aid", "antidote", "guard_rock"]
-	if SkillDB.is_placeholder(skill_id):
-		skill_range += int(unit.upgrades.get(skill_id + "_range", 0))
 	if unit.side == "player" and skill_id == "drain":
 		skill_range += int(unit.upgrades.get("drain_range", 0))
 	if skill_id == "rock_break":
@@ -742,53 +740,50 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		"charge":
 			_apply_flame_charge(state, caster, target_entry, summary)
 		"unit":
-			if SkillDB.is_placeholder(skill_id):
-				_apply_placeholder(state, caster, skill_id, target_entry, summary)
-			else:
-				match skill_id:
-					"volt_replace":
-						if String(target_entry.get("type", "")) == "cell":
-							_apply_volt_replace_empty(state, caster, target_entry, summary)
-						else:
-							_apply_swap(state, caster, target_entry, summary)
-					"double_cast":
-						_apply_double_cast(state, caster, target_entry, summary)
-					"discharge":
-						_apply_discharge(state, caster, target_entry, summary)
-					"drain":
-						_apply_drain(state, caster, target_entry, summary)
-					"ice_shard":
-						_apply_ice_shard(state, caster, target_entry, summary)
-					"furnace_fist":
-						_apply_furnace_fist(state, caster, target_entry, summary)
-					"combustion":
-						_apply_combustion(state, caster, target_entry, summary)
-					"burn_out":
-						_apply_burn_out(state, caster, target_entry, summary)
-					"leech_seed":
-						_apply_leech_seed(state, caster, target_entry, summary)
-					"push", "rock_push":
-						_apply_push(state, caster, target_entry, summary)
-					"rock_smash", "rock_break":
-						_apply_rock_smash(state, caster, skill_id, target_entry, summary)
-					"imprint":
-						_apply_imprint(state, caster, target_entry, summary, preview)
-					"mountain_chain":
-						_apply_mountain_chain(state, caster, target_entry, summary)
-					"guard_rock":
-						_apply_guard_rock(state, caster, target_entry, summary)
-					"rock_blast":
-						_apply_rock_blast(state, caster, target_entry, summary)
-					"water_drop_stone":
-						_apply_water_drop_stone(state, caster, target_entry, summary)
-					"tree_wrath":
-						_apply_tree_wrath(state, caster, target_entry, summary)
-					"first_aid":
-						_apply_first_aid(state, caster, target_entry, summary)
-					"antidote":
-						_apply_antidote(state, caster, target_entry, summary)
-					"leaf_wind":
-						_apply_leaf_wind(state, caster, target_entry, summary)
+			match skill_id:
+				"volt_replace":
+					if String(target_entry.get("type", "")) == "cell":
+						_apply_volt_replace_empty(state, caster, target_entry, summary)
+					else:
+						_apply_swap(state, caster, target_entry, summary)
+				"double_cast":
+					_apply_double_cast(state, caster, target_entry, summary)
+				"discharge":
+					_apply_discharge(state, caster, target_entry, summary)
+				"drain":
+					_apply_drain(state, caster, target_entry, summary)
+				"ice_shard":
+					_apply_ice_shard(state, caster, target_entry, summary)
+				"furnace_fist":
+					_apply_furnace_fist(state, caster, target_entry, summary)
+				"combustion":
+					_apply_combustion(state, caster, target_entry, summary)
+				"burn_out":
+					_apply_burn_out(state, caster, target_entry, summary)
+				"leech_seed":
+					_apply_leech_seed(state, caster, target_entry, summary)
+				"push", "rock_push":
+					_apply_push(state, caster, target_entry, summary)
+				"rock_smash", "rock_break":
+					_apply_rock_smash(state, caster, skill_id, target_entry, summary)
+				"imprint":
+					_apply_imprint(state, caster, target_entry, summary, preview)
+				"mountain_chain":
+					_apply_mountain_chain(state, caster, target_entry, summary)
+				"guard_rock":
+					_apply_guard_rock(state, caster, target_entry, summary)
+				"rock_blast":
+					_apply_rock_blast(state, caster, target_entry, summary)
+				"water_drop_stone":
+					_apply_water_drop_stone(state, caster, target_entry, summary)
+				"tree_wrath":
+					_apply_tree_wrath(state, caster, target_entry, summary)
+				"first_aid":
+					_apply_first_aid(state, caster, target_entry, summary)
+				"antidote":
+					_apply_antidote(state, caster, target_entry, summary)
+				"leaf_wind":
+					_apply_leaf_wind(state, caster, target_entry, summary)
 		"cell":
 			if skill_id == "skyfire":
 				_apply_skyfire(state, caster, target_entry, summary)
@@ -1172,15 +1167,6 @@ static func upgraded_base_damage(caster: CombatUnit, skill_id: String, base: int
 		base += caster.summon_power_bonus
 	var upgrade_info := RunState.upgrade_info(RunState.upgrade_id_for_skill(skill_id))
 	return base + int(upgrade_info.get("damage_bonus", 0)) if not upgrade_info.is_empty() and caster.upgrades.has(String(upgrade_info.get("key", ""))) else base
-
-
-static func _apply_placeholder(state: BattleState, caster: CombatUnit, skill_id: String, entry: Dictionary, summary: Dictionary) -> void:
-	var target := state.unit_by_uid(int(entry["unit"]))
-	if target == null:
-		return
-	var hit := _hit_entry(state, caster, skill_id, target, SkillDB.damage_of(skill_id))
-	summary["hits"].append(hit)
-	summary["text"] = "%s命中%s：%d伤害。" % [SkillDB.name_of(skill_id), target.display_name, int(hit["damage"])]
 
 
 static func _apply_fire_seed(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:

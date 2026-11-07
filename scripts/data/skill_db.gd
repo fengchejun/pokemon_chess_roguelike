@@ -290,26 +290,11 @@ const ROCK_SKILL_POOL := [
 ]
 
 static func get_def(skill_id: String) -> Dictionary:
-	if is_placeholder(skill_id):
-		var parts := skill_id.split("_")
-		var numeral := "Ⅰ" if parts[2] == "1" else "Ⅱ"
-		return {
-			"name": "%s元素试招%s" % ["冰" if parts[1] == "ice" else "风" if parts[1] == "wind" else Elements.name_of(parts[1]), numeral],
-			"element": "water" if parts[1] == "ice" else "electric" if parts[1] == "wind" else parts[1], "kind": "unit", "range": 2,
-			"damage": 10, "ranged": true, "placeholder": true,
-			"desc": "临时占位技能：射程 2，单体造成 10 点基础直伤，无状态或地形效果；强化后基础直伤 13、射程 3。正式技能尚待设计。",
-		}
 	return DEFS.get(skill_id, {})
 
 
-static func placeholder_ids_for(element: String) -> Array:
-	if not Elements.LIST.has(element):
-		return []
-	return ["trial_%s_1" % element, "trial_%s_2" % element]
-
-
 static func learnable_ids_for(element: String) -> Array:
-	var ids := placeholder_ids_for(element)
+	var ids: Array = []
 	match element:
 		"fire": ids.append_array(["fire_amplify", "flame_rush", "windfire_breath", "furnace_fist", "skyfire", "combustion", "burn_out"])
 		"water": ids.append_array(["surf", "water_magic_burst", "ice_breath", "tsunami", "frozen_ground", "ice_glide", "freeze_ray", "ice_shard"])
@@ -317,11 +302,6 @@ static func learnable_ids_for(element: String) -> Array:
 		"grass": ids.append_array(["leech_seed", "tree_man", "first_aid", "rooted_grass", "leaf_wind", "antidote"])
 		"rock": ids.append_array(["rock_slide", "earth_shake", "mountain_chain", "guard_rock", "rock_blast", "water_drop_stone", "imprint"])
 	return ids
-
-
-static func is_placeholder(skill_id: String) -> bool:
-	var parts := skill_id.split("_")
-	return parts.size() == 3 and parts[0] == "trial" and ["fire", "water", "grass", "electric", "rock", "ice", "wind"].has(parts[1]) and ["1", "2"].has(parts[2])
 
 
 static func is_special(skill_id: String) -> bool:

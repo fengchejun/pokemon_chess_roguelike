@@ -146,7 +146,7 @@ func _rain(t: TestContext) -> void:
 	t.eq(SkillResolver.rain_cells(caster, center).size(), 9, "基础造雨保持九格")
 
 func _upgrades(t: TestContext) -> void:
-	for info in [["rock_push", 3], ["rock_create", 3], ["flame_jet", 3], ["drain", 3], ["flame_charge", 5], ["rock_break", 3], ["trial_fire_1", 3], ["ice_shard", 5], ["tsunami", 5], ["rock_slide", 5], ["lightning", 5], ["earth_shake", 5]]:
+	for info in [["rock_push", 3], ["rock_create", 3], ["flame_jet", 3], ["drain", 3], ["flame_charge", 5], ["rock_break", 3], ["ice_shard", 5], ["tsunami", 5], ["rock_slide", 5], ["lightning", 5], ["earth_shake", 5]]:
 		var skill := String(info[0])
 		var caster := CombatUnit.make("fire_starter", "player", 1)
 		var upgrade := RunState.upgrade_info(RunState.upgrade_id_for_skill(skill))

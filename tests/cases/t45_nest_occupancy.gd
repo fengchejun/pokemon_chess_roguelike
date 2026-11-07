@@ -11,7 +11,7 @@ func _state() -> BattleState:
 
 func run(t: TestContext) -> void:
 	t.begin("巢穴阻挡、邻格生成与任意伤害")
-	for skill in ["fire_seed", "water_flow", "flame_charge", "rock_push", "discharge", "ice_shard", "tree_wrath", "rock_break", "trial_fire_1", "electric_arc", "flame_jet", "rock_create", "fire_burst", "rock_slide", "earth_shake", "lightning", "tsunami"]:
+	for skill in ["fire_seed", "water_flow", "flame_charge", "rock_push", "discharge", "ice_shard", "tree_wrath", "rock_break", "electric_arc", "flame_jet", "rock_create", "fire_burst", "rock_slide", "earth_shake", "lightning", "tsunami"]:
 		var state := _state()
 		var caster := state.unit_by_uid(1)
 		var def := SkillDB.get_def(skill)
@@ -34,7 +34,7 @@ func run(t: TestContext) -> void:
 		else:
 			result = SkillResolver.apply(state, caster, skill, entry, false)
 		t.check(bool(result.get("ok", false)), "%s可命中空置巢穴" % skill)
-		var expected := {"fire_seed": 11, "water_flow": 8, "flame_charge": 11, "rock_push": 13, "discharge": 13, "ice_shard": 11, "tree_wrath": 10, "rock_break": 10, "trial_fire_1": 10, "electric_arc": 10, "flame_jet": 13, "rock_create": 10, "fire_burst": 18, "rock_slide": 30, "earth_shake": 18, "lightning": 18, "tsunami": 0}
+		var expected := {"fire_seed": 11, "water_flow": 8, "flame_charge": 11, "rock_push": 13, "discharge": 13, "ice_shard": 11, "tree_wrath": 10, "rock_break": 10, "electric_arc": 10, "flame_jet": 13, "rock_create": 10, "fire_burst": 18, "rock_slide": 30, "earth_shake": 18, "lightning": 18, "tsunami": 0}
 		t.eq(state.nest["hp"], 100 - int(expected[skill]), "%s按技能威力伤巢" % skill)
 	var state := _state()
 	var unit := state.unit_by_uid(1)
