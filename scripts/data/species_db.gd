@@ -84,6 +84,18 @@ const SPECIES := {
 		"name": "雪童子", "glyph": "冰", "element": "water", "hp": 20, "move": 2,
 		"skills": ["frozen_ground", "freeze_ray", "ice_shard"],
 	},
+	"torkoal": {
+		"name": "煤炭龟", "glyph": "龟", "element": "fire", "hp": 32, "move": 2, "rarity": "rare",
+		"skills": ["skyfire", "flame_jet", "fire_amplify"],
+	},
+	"cloyster": {
+		"name": "铁甲贝", "glyph": "贝", "element": "water", "hp": 32, "move": 2, "rarity": "rare",
+		"skills": ["ice_breath", "frozen_ground", "freeze_ray"],
+	},
+	"ampharos": {
+		"name": "电龙", "glyph": "龙", "element": "electric", "hp": 28, "move": 3, "rarity": "rare",
+		"skills": ["electric_arc", "lightning", "electric_spark"],
+	},
 	"wind_wild1": {
 		"name": "波波", "glyph": "鸟", "element": "electric", "hp": 20, "move": 4,
 		"skills": ["tailwind", "double_cast"],

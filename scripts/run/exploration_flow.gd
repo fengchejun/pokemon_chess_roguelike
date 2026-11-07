@@ -5,6 +5,8 @@ const MAX_EVENTS := 3
 const ACTIONS := Balance.EXPLORATION_ACTIONS
 const POSITIONS := {"battle_1": Vector2i(0, 0), "battle_2": Vector2i(1, 0), "event_2": Vector2i(2, 0), "empty_1": Vector2i(3, 0), "empty_2": Vector2i(0, 1), "event_1": Vector2i(1, 1), "boss": Vector2i(2, 1), "battle_3": Vector2i(3, 1), "camp": Vector2i(0, 2), "battle_5": Vector2i(1, 2), "battle_4": Vector2i(2, 2), "empty_3": Vector2i(3, 2), "empty_4": Vector2i(0, 3), "capture_3": Vector2i(1, 3), "group_2": Vector2i(2, 3), "empty_5": Vector2i(3, 3)}
 const ROLES := {"camp": "camp", "battle_1": "starter", "battle_2": "capture", "event_2": "shop", "boss": "boss", "battle_3": "capture", "event_1": "group", "battle_5": "request", "battle_4": "treasure", "empty_1": "empty", "empty_2": "empty", "empty_3": "empty", "empty_4": "empty", "empty_5": "empty", "capture_3": "capture", "group_2": "group"}
+const RARE_HABITAT := "rare_habitat"
+const RARE_SPECIES := ["torkoal", "cloyster", "ampharos"]
 const NAMES := {"camp": "营地", "starter": "林缘试炼", "battle": "普通战斗", "elite": "精英战斗", "item_shop": "道具商店", "skill_shop": "技能商店", "capture": "野生栖息地", "shop": "旅行商店", "boss": "本层首领", "group": "嬉戏的宝可梦", "request": "训练家的委托", "treasure": "隔水藏珍", "hunt": "追猎", "empty": "林间空地"}
 
 static func active(run: RunState) -> bool:
@@ -133,6 +135,57 @@ static func position(id: String, node: Dictionary) -> Vector2i:
 		return Vector2i(int(coords[0]), int(coords[1]))
 	return POSITIONS.get(id, Vector2i(-1, -1))
 
+static func _rare_habitat_site(region: RegionState) -> Array:
+	var occupied := {}
+	for id in region.nodes:
+		occupied[position(id, region.nodes[id])] = id
+	var shop := position(region.active_node, region.nodes[region.active_node])
+	var site := []
+	var closest := 1 << 30
+	for y in 4:
+		for x in 4:
+			var cell := Vector2i(x, y)
+			if occupied.has(cell):
+				continue
+			for near in adjacent_cells(cell):
+				var anchor := String(occupied.get(near, ""))
+				if anchor in ["", "boss", "hunt"]:
+					continue
+				var distance := GridSpec.manhattan(near, shop)
+				if distance < closest:
+					closest = distance
+					site = [cell, anchor]
+	return site
+
+
+static func intel_unavailable(region: RegionState) -> String:
+	if region.nodes.has(RARE_HABITAT):
+		return "本层已解锁过神秘栖息地。"
+	if region.visits >= Balance.EXPLORATION_ACTIONS:
+		return "本层行动已耗尽，无法前往神秘栖息地。"
+	if _rare_habitat_site(region).is_empty():
+		return "本层地图没有可以连接的空位。"
+	return ""
+
+
+static func unlock_rare_habitat(region: RegionState, run_seed: int) -> bool:
+	if not intel_unavailable(region).is_empty():
+		return false
+	var site := _rare_habitat_site(region)
+	var cell: Vector2i = site[0]
+	var anchor: String = site[1]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("rare-habitat:%d:%d" % [run_seed, region.floor_index])
+	region.nodes[RARE_HABITAT] = {
+		"type": "battle", "mode": "battle", "role": "capture", "position": [cell.x, cell.y],
+		"rare_species": RARE_SPECIES[rng.randi_range(0, RARE_SPECIES.size() - 1)],
+		"visits": 0, "revealed": true, "unlocked": true, "passable": false,
+		"cleared": false, "done": false, "snapshot": {}, "links": [anchor],
+	}
+	region.nodes[anchor]["links"].append(RARE_HABITAT)
+	return true
+
+
 static func commission(run_seed: int, floor_value: int, theme: String) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("commission:%d:%d" % [run_seed, floor_value])
@@ -196,7 +249,9 @@ static func configure(run: RunState, cfg: Dictionary) -> Dictionary:
 	var pairs: Array = []
 	for index in count:
 		pairs.append([pool[rng.randi_range(0, pool.size() - 1)], Vector2i(5 + index % 2, 2 + index)])
-	if kind in ["boss", "hunt"]:
+	if region.active_node == RARE_HABITAT:
+		pairs = [[node["rare_species"], Vector2i(5, 2)]]
+	elif kind in ["boss", "hunt"]:
 		pairs[0][0] = "rock_wild1"
 	result["enemies"] = [] if kind in ["treasure", "camp", "shop", "item_shop", "skill_shop", "request"] or (kind == "group" and not bool(node.get("battle_selected", false))) else pairs
 	result["reinforce"] = pool if kind in ["boss", "hunt"] else []

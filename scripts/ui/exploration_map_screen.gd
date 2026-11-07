@@ -58,7 +58,7 @@ func _ready() -> void:
 		button.add_theme_stylebox_override("disabled", style)
 		button.name = "Node_" + id
 		button.custom_minimum_size = Vector2(192, 66)
-		button.disabled = not available
+		button.disabled = not available or (node.has("rare_species") and node.get("done", false))
 		var target: String = id
 		button.pressed.connect(func() -> void: _confirm_entry(target))
 		graph.add_child(button)
@@ -91,6 +91,8 @@ func _confirm_entry(id: String) -> void:
 	var known: bool = bool(node.get("unlocked", false)) or int(node.get("visits", 0)) > 0 or id == "boss"
 	dialog.title = "前往" + (region.display_name(id) if known else "未知地点")
 	var detail: String = {"starter": "少量普通敌人，无巢穴。清场后打通分支；可由训练师前往绿色撤离区撤退，区外伙伴承受原有扣血代价。", "capture": "固定出现3只野生宝可梦；攻击或尝试捕捉会惊动全场，抵达撤离点后停留至下次行动即可逃脱。第8回合结束剩余目标全部逃跑，也可随时直接离开。", "group": "可以玩耍、喂食，或主动选择战斗；事件战斗可直接离开，未胜利不发放挑战奖励。", "request": "%s。只接收随身成员，可先离开准备。" % Flow.request_description(Flow.request_terms(node, region.theme)), "shop": "查看商品、买卖遗物和强化技能；库存不会因回访刷新。", "camp": "消耗食物休息、取用共享仓库、调整队伍。", "treasure": Flow.puzzle_description(node), "boss": "岩系首领带两名同伴，擅长近距离推击与碎岩。不能撤退，需清空敌人与巢穴后通关。"}.get(role, "")
+	if node.has("rare_species"):
+		detail = "有一只稀有宝可梦在此活动，进入后才会揭晓物种。只有一次遭遇机会，开战后主动离开也会用掉这次机会。"
 	if role in ["starter", "battle", "elite"]:
 		detail = "%d 名普通敌人，无巢穴。清场后打通分支。未清场可从绿色撤离区撤退。" % (3 + region.floor_index)
 	if role == "elite":

@@ -28,6 +28,8 @@ func run(t: TestContext) -> void:
 	var stock: Dictionary = region.nodes["shop_2"]["stock"]
 	t.eq(stock.size(), 3, "技能店生成三本技能书")
 	t.check(node.find_child("Buy_potion", true, false) == null, "技能店不卖常规药品")
+	for id in Merchant.ITEM_SHOP_ADDITIONS:
+		t.check(node.find_child("Buy_" + id, true, false) == null, "技能店不卖成长糖果或情报")
 	var item := String(stock.keys()[0])
 	var skill := item.trim_prefix(Merchant.BOOK_PREFIX)
 	var uid := 0

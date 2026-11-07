@@ -219,6 +219,14 @@ func _shop(run: RunState, region) -> void:
 				stock["relic:" + relic] = 1
 		node["stock"] = stock
 		run.region_data = region.to_dict(); app.autosave()
+	if node["role"] == "item_shop" and not node.get("growth_stock_initialized", false):
+		node["stock"].merge(Merchant.ITEM_SHOP_ADDITIONS)
+		node["growth_stock_initialized"] = true
+		run.region_data = region.to_dict()
+		app.autosave()
+	var intel_reason := Flow.intel_unavailable(region) if node["role"] == "item_shop" else ""
+	if not intel_reason.is_empty() and int(node["stock"].get(Merchant.INTEL_ID, 0)) > 0:
+		column.add_child(UIKit.wrapped("神秘宝可梦情报 · " + intel_reason, 15))
 	for product in node["stock"]:
 		var id: String = product
 		var relic := id.trim_prefix("relic:")
@@ -230,7 +238,9 @@ func _shop(run: RunState, region) -> void:
 			title = RelicDB.display_name_of(relic)
 		else:
 			title = "基础食物" if id == "food" else String(Merchant.ITEMS[id][0])
-		button("购买%s · %d原质 · 剩余%d" % [title, price, int(node["stock"][id])], "Buy_" + id.replace(":", "_"), func() -> void: buy(id), run.essence < price or int(node["stock"][id]) <= 0 or (id.begins_with("relic:") and RelicDB.rank(run.relic_stacks, relic) >= 3))
+		var unavailable := id == Merchant.INTEL_ID and not intel_reason.is_empty()
+		var disabled := unavailable or run.essence < price or int(node["stock"][id]) <= 0 or (id.begins_with("relic:") and RelicDB.rank(run.relic_stacks, relic) >= 3)
+		button("购买%s · %d原质 · 剩余%d" % [title, price, int(node["stock"][id])], "Buy_" + id.replace(":", "_"), func() -> void: buy(id), disabled)
 	if node["role"] != "skill_shop":
 		for relic_id in run.relic_stacks:
 			var relic: String = relic_id
@@ -265,7 +275,13 @@ func buy(id: String) -> void:
 		var relic := id.trim_prefix("relic:")
 		if RelicDB.rank(run.relic_stacks, relic) >= 3: return
 		run.relic_stacks[relic] = RelicDB.rank(run.relic_stacks, relic) + 1
-	elif id == "food": run.add_food("basic", 1)
-	else: run.trainer_items[id] = int(run.trainer_items.get(id, 0)) + 1
+	elif id == "food":
+		run.add_food("basic", 1)
+	elif id == Merchant.INTEL_ID:
+		if node["role"] != "item_shop" or not Flow.unlock_rare_habitat(region, run.seed):
+			return
+		message = "已解锁本层的神秘栖息地。返回地图后可前往。"
+	else:
+		run.trainer_items[id] = int(run.trainer_items.get(id, 0)) + 1
 	run.essence -= price; node["stock"][id] -= 1
 	persist(region)

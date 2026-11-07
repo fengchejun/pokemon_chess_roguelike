@@ -1,9 +1,13 @@
 extends Control
 
+const GrowthChoices = preload("res://scripts/ui/monster_growth_choices.gd")
+
 var app = null
 var return_to_node := false
 var content: VBoxContainer
 var message := ""
+var growth_uid := -1
+var scroll: ScrollContainer
 
 func _ready() -> void:
 	name = "ItemBagScreen"
@@ -28,7 +32,7 @@ func _ready() -> void:
 		else:
 			app.show_region())
 	header.add_child(back)
-	var scroll := UIKit.scroll()
+	scroll = UIKit.scroll()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	page.add_child(scroll)
 	content = UIKit.vbox(10)
@@ -41,6 +45,29 @@ func refresh() -> void:
 	var run: RunState = app.run
 	if not message.is_empty():
 		content.add_child(UIKit.wrapped(message, 16))
+	var pending := run.pending_monster_levels()
+	var choices := pending.filter(func(entry): return int(entry["uid"]) == growth_uid)
+	if not choices.is_empty():
+		var heading := UIKit.label("", 19, UIKit.ACCENT)
+		content.add_child(heading)
+		var box := UIKit.vbox(8)
+		content.add_child(box)
+		GrowthChoices.show_choice(run, box, heading, choices[0], choices.size(), func() -> void:
+			app.autosave()
+			refresh())
+		scroll.set_deferred("scroll_vertical", 0)
+		return
+	growth_uid = -1
+	for member in run.carried:
+		var uid := int(member["uid"])
+		if not pending.any(func(entry): return int(entry["uid"]) == uid):
+			continue
+		var growth_button := UIKit.small_button("处理%s的升级选择" % SpeciesDB.name_of(member["species_id"]))
+		growth_button.name = "OpenGrowth_%d" % uid
+		growth_button.pressed.connect(func() -> void:
+			growth_uid = uid
+			refresh())
+		content.add_child(growth_button)
 	var has_items := false
 	for key in run.trainer_items:
 		var id := String(key)
@@ -56,7 +83,10 @@ func refresh() -> void:
 				_potion_target(Balance.TRAINER_UID, "训练师", run.trainer_hp, run.trainer_max_hp())
 				for member in run.carried:
 					_potion_target(int(member["uid"]), SpeciesDB.name_of(member["species_id"]), int(member["hp"]), run.monster_max_hp(member))
-			else:
+			elif id == Merchant.RARE_CANDY or Merchant.CANDY_XP.has(id):
+				for member in run.carried:
+					_candy_target(id, member)
+			elif id == "capture_aid":
 				content.add_child(UIKit.wrapped("捕获辅助在战斗中通过训练师道具菜单使用。", 15))
 	for card in run.reward_inventory:
 		has_items = true
@@ -93,4 +123,26 @@ func _potion_target(uid: int, display_name: String, hp: int, max_hp: int) -> voi
 			message = "%s已使用治疗药。" % display_name
 			app.autosave()
 			refresh())
+	content.add_child(button)
+
+
+func _candy_target(id: String, member: Dictionary) -> void:
+	var uid := int(member["uid"])
+	var monster_name := SpeciesDB.name_of(member["species_id"])
+	var level := int(member["level"])
+	var xp := int(member["xp"])
+	var amount := Merchant.candy_xp(id, member)
+	var after_xp := mini(xp + amount, MonsterProgression.threshold_for_level(MonsterProgression.MAX_LEVEL))
+	var after_level := MonsterProgression.level_for_xp(after_xp)
+	var button := UIKit.small_button("%s · Lv.%d（%d 经验） → Lv.%d（%d 经验）" % [monster_name, level, xp, after_level, after_xp])
+	button.name = "UseCandy_%s_%d" % [id, uid]
+	button.disabled = amount <= 0
+	button.pressed.connect(func() -> void:
+		var growth := Merchant.use_candy(app.run, id, uid)
+		if growth.is_empty():
+			return
+		message = "%s已使用%s，获得 %d 经验。" % [monster_name, Merchant.ITEMS[id][0], int(growth["gained"])]
+		growth_uid = uid
+		app.autosave()
+		refresh())
 	content.add_child(button)

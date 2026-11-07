@@ -765,7 +765,7 @@ func _rebuild_skill_buttons() -> void:
 		skill_box.add_child(UIKit.label("选择己方单位后显示行动。", 13, UIKit.TEXT_DIM))
 		return
 	if action_mode == "items" and unit.is_trainer:
-		for item_id in Merchant.ITEMS:
+		for item_id in Merchant.BATTLE_ITEMS:
 			var id := String(item_id)
 			var button := UIKit.small_button("%s ×%d" % [Merchant.ITEMS[id][0], int(app.run.trainer_items.get(id, 0))])
 			button.tooltip_text = Merchant.ITEMS[id][2]

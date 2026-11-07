@@ -2,7 +2,20 @@ class_name Merchant
 extends RefCounted
 
 const RARITIES := {"common": ["普通", 10], "rare": ["稀有", 15], "precious": ["珍稀", 25]}
-const ITEMS := {"potion": ["治疗药", 5, "恢复三格内一个存活己方单位15 HP，不能复活。"], "capture_aid": ["捕获辅助", 6, "本次探索下一次捕获概率增加20个百分点。"]}
+const BATTLE_ITEMS := ["potion", "capture_aid"]
+const INTEL_ID := "rare_intel"
+const RARE_CANDY := "rare_candy"
+const CANDY_XP := {"xp_candy_small": 6, "xp_candy_medium": 30, "xp_candy_large": 70}
+const ITEM_SHOP_ADDITIONS := {RARE_CANDY: 1, "xp_candy_small": 2, "xp_candy_medium": 1, "xp_candy_large": 1, INTEL_ID: 1}
+const ITEMS := {
+	"potion": ["治疗药", 5, "恢复三格内一个存活己方单位15 HP，不能复活。"],
+	"capture_aid": ["捕获辅助", 6, "本次探索下一次捕获概率增加20个百分点。"],
+	RARE_CANDY: ["神奇糖果", 28, "提升一级，保留当前等级内的经验进度。"],
+	"xp_candy_small": ["经验糖果（小）", 9, "增加6经验。"],
+	"xp_candy_medium": ["经验糖果（中）", 20, "增加30经验。"],
+	"xp_candy_large": ["经验糖果（大）", 36, "增加70经验。"],
+	INTEL_ID: ["神秘宝可梦情报", 28, "解锁本层一次性的神秘栖息地。进入消耗1次行动。"],
+}
 
 const BOOK_PREFIX := "skill_book:"
 const BOOK_PRICE := 18
@@ -37,6 +50,27 @@ static func use_potion_outside_battle(run: RunState, uid: int) -> bool:
 	run.trainer_items["potion"] -= 1
 	return true
 
+static func candy_xp(id: String, member: Dictionary) -> int:
+	var level := int(member.get("level", MonsterProgression.MAX_LEVEL))
+	if level >= MonsterProgression.MAX_LEVEL:
+		return 0
+	if id == RARE_CANDY:
+		return MonsterProgression.threshold_for_level(level + 1) - MonsterProgression.threshold_for_level(level)
+	return int(CANDY_XP.get(id, 0))
+
+
+static func use_candy(run: RunState, id: String, uid: int) -> Dictionary:
+	if not run.battle_snapshot.is_empty() or int(run.trainer_items.get(id, 0)) <= 0:
+		return {}
+	var member := run.record_by_uid(uid)
+	var amount := candy_xp(id, member)
+	if amount <= 0:
+		return {}
+	var growth := MonsterProgression.award_xp(member, amount)
+	run.trainer_items[id] -= 1
+	return growth
+
+
 static func item_target_valid(state: BattleState, target: CombatUnit) -> bool:
 	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
 	if target == null or not target.is_alive() or target.side != "player" or target.hp >= target.max_hp or GridSpec.manhattan(trainer.cell, target.cell) > 3:
@@ -52,7 +86,7 @@ static func item_target_valid(state: BattleState, target: CombatUnit) -> bool:
 static func use_item(run: RunState, state: BattleState, id: String, target_uid: int = -1) -> Dictionary:
 	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
 	var free_heal := id == "potion" and state.is_free_exploration()
-	if state.ended or state.phase != BattleState.PHASE_PLAYER or trainer == null or not trainer.is_alive() or (not free_heal and (not trainer.can_act_skill() or trainer.capture_used or trainer.channel_lock_round == state.round)) or not ITEMS.has(id) or int(run.trainer_items.get(id, 0)) <= 0:
+	if state.ended or state.phase != BattleState.PHASE_PLAYER or trainer == null or not trainer.is_alive() or (not free_heal and (not trainer.can_act_skill() or trainer.capture_used or trainer.channel_lock_round == state.round)) or id not in BATTLE_ITEMS or int(run.trainer_items.get(id, 0)) <= 0:
 		return {"ok": false, "reason": "道具不足或训练师本回合无法行动。"}
 	if id == "potion":
 		var target := state.unit_by_uid(target_uid)
