@@ -299,7 +299,10 @@ static func decorate_terrain(run: RunState, map: Dictionary, kind: String) -> vo
 		pool.erase(TerrainDB.BLUE_FIRE)
 	for index in mini(10, candidates.size()):
 		var cell: Vector2i = candidates.pop_at(rng.randi_range(0, candidates.size() - 1))
-		map["terrain"][GridSpec.index(cell)] = pool[rng.randi_range(0, pool.size() - 1)]
+		var terrain: int = pool[rng.randi_range(0, pool.size() - 1)]
+		if terrain in [TerrainDB.SHALLOW_GRASS, TerrainDB.GRASS]:
+			terrain = MapGenerator.generated_grass(rng.seed, cell)
+		map["terrain"][GridSpec.index(cell)] = terrain
 	# 清理生成器可能留在受保护遭遇格上的岩石/致死地形。
 	for cell in map.get("fixed_deploy_area", []) + GridSpec.all_cells().filter(func(c): return kind == "treasure" and c.x in [2, 4]) + [Vector2i(5, 2), Vector2i(6, 3), Vector2i(5, 4)]:
 		if not map.get("chests", {}).has(cell): map["terrain"][GridSpec.index(cell)] = TerrainDB.PLAIN

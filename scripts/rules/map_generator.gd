@@ -276,7 +276,7 @@ static func _scatter(terrain: Array, protected: Dictionary, rng: RandomNumberGen
 			"fragile": terrain[GridSpec.index(cell)] = TerrainDB.FRAGILE
 			"rock": terrain[GridSpec.index(cell)] = TerrainDB.OBSTACLE
 			"plant": terrain[GridSpec.index(cell)] = TerrainDB.TREE
-			"grass": terrain[GridSpec.index(cell)] = TerrainDB.SHALLOW_GRASS if posmod(hash("%d:%d:%d" % [rng.seed, cell.x, cell.y]), 2) == 0 else TerrainDB.GRASS
+			"grass": terrain[GridSpec.index(cell)] = generated_grass(rng.seed, cell)
 			"blue_fire": terrain[GridSpec.index(cell)] = TerrainDB.BLUE_FIRE
 	# 致死地形仍服从各场预算，不能因恢复旧版密度堵死通路。
 	if lethal_budget > 0 and String(cfg.get("region", "")) == "火谷":
@@ -289,6 +289,12 @@ static func _adjacent_water(terrain: Array, cell: Vector2i) -> bool:
 		if TerrainDB.is_water_body(int(terrain[GridSpec.index(near)])):
 			return true
 	return false
+
+
+static func generated_grass(seed_value: int, cell: Vector2i) -> int:
+	# Keep the grass roll separate from the map RNG sequence.
+	var roll := posmod(hash("%d:%d:%d" % [seed_value, cell.x, cell.y]), 3)
+	return TerrainDB.GRASS if roll == 0 else TerrainDB.SHALLOW_GRASS
 
 
 static func _weighted_pick(weights: Dictionary, rng: RandomNumberGenerator) -> String:
