@@ -184,11 +184,12 @@ func _area_and_forecast(t: TestContext) -> void:
 	var channeled := TestScenario.make_state(["rock_starter"], [["rock_wild1", Vector2i(5, 3)], ["rock_wild1", Vector2i(4, 3)]])
 	channeled.trainer().cell = Vector2i(0, 0)
 	channeled.unit_by_uid(1).cell = Vector2i(2, 3)
-	channeled.unit_by_uid(1).hp = 20
+	var enemy_rockfall := Balance.skill_damage_for_side(SkillDB.damage_of("rock_slide"), "enemy")
+	channeled.unit_by_uid(1).hp = enemy_rockfall
 	channeled.unit_by_uid(100).channel_lock_round = channeled.round
 	channeled.pending_casts.append({"uid": 100, "side": "enemy", "skill_id": "rock_slide", "cells": [Vector2i(2, 3)], "due_round": channeled.round})
 	var after_channel_plan := channeled.forecast()
-	t.eq(channeled.unit_by_uid(1).hp, 20, "预览蓄力先结算但不修改真实生命")
+	t.eq(channeled.unit_by_uid(1).hp, enemy_rockfall, "预览蓄力先结算但不修改真实生命")
 	t.eq(channeled.begin_enemy_phase(), after_channel_plan, "固定落点先结算后的敌方规划与提示一致")
 	t.eq(channeled.unit_by_uid(1).hp, 0, "真实结束回合先受到固定落点打击")
 

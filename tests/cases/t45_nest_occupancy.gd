@@ -34,7 +34,7 @@ func run(t: TestContext) -> void:
 		else:
 			result = SkillResolver.apply(state, caster, skill, entry, false)
 		t.check(bool(result.get("ok", false)), "%s可命中空置巢穴" % skill)
-		var expected := {"fire_seed": 11, "water_flow": 8, "flame_charge": 11, "rock_push": 13, "discharge": 13, "ice_shard": 11, "tree_wrath": 10, "rock_break": 10, "electric_arc": 10, "flame_jet": 13, "rock_create": 10, "fire_burst": 18, "rock_slide": 30, "earth_shake": 18, "lightning": 18, "tsunami": 0}
+		var expected := {"fire_seed": 11, "water_flow": 9, "flame_charge": 11, "rock_push": 11, "discharge": 11, "ice_shard": 11, "tree_wrath": 10, "rock_break": 10, "electric_arc": 10, "flame_jet": 13, "rock_create": 10, "fire_burst": 15, "rock_slide": 20, "earth_shake": 13, "lightning": 13, "tsunami": 0}
 		t.eq(state.nest["hp"], 100 - int(expected[skill]), "%s按技能威力伤巢" % skill)
 	var state := _state()
 	var unit := state.unit_by_uid(1)

@@ -1900,7 +1900,8 @@ static func _axis_dir(from: Vector2i, to: Vector2i) -> Vector2i:
 
 
 static func fireball_base_damage(caster: CombatUnit, center: bool) -> int:
-	return SkillDB.damage_of("fire_burst") + int(caster.upgrades.get("fireball_damage", 0)) if center else 9
+	var definition := SkillDB.get_def("fire_burst")
+	return SkillDB.damage_of("fire_burst") + int(caster.upgrades.get("fireball_damage", 0)) if center else int(definition.get("splash_damage", 0))
 static func _apply_skyfire(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var center: Vector2i = entry["cell"]
 	var cells: Array = [center]

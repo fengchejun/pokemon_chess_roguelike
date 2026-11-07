@@ -45,7 +45,7 @@ func _direct(t: TestContext) -> void:
 			_compare(t, state, skill, entry, int(pair[1]))
 
 func _areas(t: TestContext) -> void:
-	for pair in [["skyfire", 8], ["water_magic_burst", 11], ["ice_breath", 8], ["electric_spark", 8], ["windfire_breath", 12], ["flame_rush", 10]]:
+	for pair in [["skyfire", 8], ["water_magic_burst", 11], ["ice_breath", 8], ["electric_spark", 8], ["windfire_breath", 10], ["flame_rush", 10]]:
 		var skill := String(pair[0])
 		var state := _state(skill)
 		var entry: Dictionary = {"type": "cell", "cell": Vector2i(4, 3)}

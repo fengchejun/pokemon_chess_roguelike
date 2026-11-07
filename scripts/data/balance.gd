@@ -26,7 +26,7 @@ const MOVE_ROCK := 2
 const WATER_EXTRA_COST := 0 # 浅水在阶段交接时赋予浸湿；冰面滑入浅水在整轮结算时补发
 
 const COLLISION_DAMAGE := 5
-const PUSH_DAMAGE := 13
+const PUSH_DAMAGE := 11
 const PUSH_DISTANCE := 1
 const CHEST_BATTLE_CHANCE := 0.40
 const CHEST_EVENT_CHANCE := 0.70
@@ -59,7 +59,7 @@ static func burn_damage_for(max_hp: int) -> int:
 const MIRROR_WATER_MOON_ROUNDS := 3
 const MIRROR_WATER_DAMAGE_BONUS := 5
 
-# 战斗数值刻度：Lv1 普通敌人 20–30 HP，常规技能约 10–13 直伤。
+# 战斗数值刻度：Lv1 普通敌人 20–30 HP，常规技能约 9–13 直伤。
 # 敌人通常成群行动，单次技能伤害按此比例结算，避免放大数字后集火过猛。
 const ENEMY_SKILL_DAMAGE_RATIO := 0.7
 const SKILL_DAMAGE_UPGRADE := 5

@@ -31,7 +31,7 @@ func _water(t: TestContext) -> void:
 			caster.upgrades = {"water_flow_push": 0}
 		var entry := {"type": "cell", "cell": Vector2i(3, 3)}
 		var preview := state.preview_skill(caster, "water_flow", entry)
-		t.eq(preview["hits"][0]["damage"], 12 if upgraded else 8, "水炮基础与强化伤害")
+		t.eq(preview["hits"][0]["damage"], 13 if upgraded else 9, "水炮基础与强化伤害")
 		var result := state.cast_skill(caster, "water_flow", entry)
 		t.eq(result["hits"], preview["hits"], "水炮预览与实战一致")
 		t.eq(state.unit_by_uid(100).cell, Vector2i(4, 3), "强化不增加水炮击退")
@@ -58,16 +58,16 @@ func _fire(t: TestContext) -> void:
 		t.check(state.skill_targets(caster, "fire_burst").has({"type": "cell", "cell": Vector2i(4, 3)}), "火球保留越障选点")
 		state.nest["cell"] = Vector2i(5, 3)
 		var result := SkillResolver.resolve_channel(state, caster, "fire_burst", [Vector2i(4, 3)])
-		t.eq(200 - state.unit_by_uid(100).hp, 23 if upgraded else 18, "火球中心伤害")
-		t.eq(200 - state.unit_by_uid(101).hp, 9, "火球外围伤害不随强化提高")
-		t.eq(state.nest["hp"], 21, "火球外围伤巢9生命且只结算一次")
+		t.eq(200 - state.unit_by_uid(100).hp, 20 if upgraded else 15, "火球中心伤害")
+		t.eq(200 - state.unit_by_uid(101).hp, 8, "火球外围伤害不随强化提高")
+		t.eq(state.nest["hp"], 22, "火球外围伤巢8生命且只结算一次")
 		t.eq(result["area_cells"].size(), 9, "火球仍为九宫格")
 	var covered := _state("fire_burst", [["rock_wild1", Vector2i(4, 3)]])
 	covered.nest["cell"] = Vector2i(4, 3)
 	covered.relocate_nest_occupants()
 	covered.unit_by_uid(100).hp = 1
 	SkillResolver.resolve_channel(covered, covered.unit_by_uid(1), "fire_burst", [Vector2i(4, 3)])
-	t.eq(covered.nest["hp"], 12, "敌人位于巢穴邻格时火球中心仍伤巢18生命")
+	t.eq(covered.nest["hp"], 15, "敌人位于巢穴邻格时火球中心仍伤巢15生命")
 	var ai := _state("fire_burst", [["fire_wild1", Vector2i(4, 3)]])
 	ai.unit_by_uid(100).skills = ["fire_burst"]
 	ai.unit_by_uid(1).hp = 100
@@ -259,7 +259,7 @@ func _ui(t: TestContext) -> void:
 	screen.state.unit_by_uid(1).upgrades["electric_arc_damage"] = 3
 	t.check(screen._skill_tag("electric_arc", screen.state.unit_by_uid(1)).contains("伤害 13"), "技能面板放电强化伤害准确")
 	screen.state.unit_by_uid(1).upgrades["fireball_damage"] = 5
-	t.check(screen._skill_tag("fire_burst", screen.state.unit_by_uid(1)).contains("中心 23 · 外围 9"), "技能面板区分火球中心与外围")
+	t.check(screen._skill_tag("fire_burst", screen.state.unit_by_uid(1)).contains("中心 20 · 外围 8"), "技能面板区分火球中心与外围")
 	var feedbacks: Array = []
 	screen.state.feedback.connect(func(event):
 		if event["kind"] == "experience":

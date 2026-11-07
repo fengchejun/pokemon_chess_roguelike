@@ -1009,8 +1009,6 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 			damage,
 			3 + (2 if int(unit.upgrades.get("water_drop_stone_damage", 0)) > 0 else 0),
 		])
-	elif skill_id == "fire_burst" and int(unit.upgrades.get("fireball_damage", 0)) > 0:
-		parts.append("伤害 %d · 中心 %d" % [damage, Balance.skill_damage_for_side(base_damage + int(unit.upgrades["fireball_damage"]), unit.side)])
 	elif skill_id == "double_cast" and int(unit.upgrades.get("double_cast_range", 0)) > 0:
 		parts.append("相邻双目标")
 	elif damage > 0:

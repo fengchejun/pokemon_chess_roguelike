@@ -5,7 +5,7 @@ func run(t: TestContext) -> void:
 	_check_skill(t, "flame_jet", Vector2i(6, 3), 10)
 	_check_skill(t, "ice_breath", Vector2i(5, 3), 8)
 	_check_skill(t, "electric_spark", Vector2i(6, 3), 8)
-	_check_skill(t, "windfire_breath", Vector2i(5, 2), 12)
+	_check_skill(t, "windfire_breath", Vector2i(5, 2), 10)
 	t.finish()
 
 

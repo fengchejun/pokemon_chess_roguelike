@@ -42,8 +42,11 @@ func _growth(t: TestContext) -> void:
 	t.eq(raw.nest["hp"], 23, "直接伤害按数值扣血")
 	var high := _state()
 	var rockfall := SkillResolver.resolve_channel(high, high.unit_by_uid(1), "rock_slide", [high.nest["cell"]])
-	t.check(not high.nest["alive"], "无守护时30点岩崩可摧毁第一层巢穴")
+	t.eq(high.nest["hp"], 10, "无守护时20点岩崩对第一层巢穴造成全额伤害")
+	t.check(high.nest["alive"], "单次岩崩不再直接摧毁第一层巢穴")
 	t.eq(rockfall["nests_damaged"].size(), 1, "巢穴只命中一次")
+	SkillResolver.resolve_channel(high, high.unit_by_uid(1), "rock_slide", [high.nest["cell"]])
+	t.check(not high.nest["alive"], "第二次岩崩完成毁巢")
 	t.eq(high.all_rewards().filter(func(p): return p.get("id", "").begins_with("nest:")).size(), 1, "毁巢奖励点只掉落一次")
 
 func _sharing(t: TestContext) -> void:
