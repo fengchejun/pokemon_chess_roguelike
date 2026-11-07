@@ -1057,6 +1057,24 @@ static func _apply_direct_nest(state: BattleState, caster: CombatUnit, skill_id:
 		if caster.hp <= 0:
 			summary["self_death"] = true
 			state.kill_unit(caster, "燃尽反噬", caster.side, caster.uid)
+	_apply_nest_hit_healing(state, caster, skill_id, summary)
+
+
+static func _apply_nest_hit_healing(state: BattleState, caster: CombatUnit, skill_id: String, summary: Dictionary) -> void:
+	if caster == null or not caster.is_alive():
+		return
+	var healing := 0
+	if skill_id == "drain":
+		healing = Balance.DRAIN_HEAL
+	elif skill_id == "furnace_fist":
+		healing = 5 + int(caster.upgrades.get("furnace_fist_healing", 0))
+	var healed := mini(caster.max_hp - caster.hp, healing)
+	if healed <= 0:
+		return
+	caster.hp += healed
+	summary["heal"] = {"uid": caster.uid, "amount": healed}
+	state.feedback_heal(caster, healed)
+	state.log_event("%s通过%s回复%d HP。" % [caster.display_name, SkillDB.name_of(skill_id), healed])
 
 
 static func _hit_nest(state: BattleState, caster: CombatUnit, cell: Vector2i, summary: Dictionary, amount: int = 1, guard_base: int = -1, base_upgraded: bool = false) -> bool:

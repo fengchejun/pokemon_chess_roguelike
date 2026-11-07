@@ -6,6 +6,7 @@ func run(t: TestContext) -> void:
 	_areas(t)
 	_limits(t)
 	_special(t)
+	_nest_healing(t)
 	t.finish()
 
 func _state(skill: String, origin: Vector2i = Vector2i(3, 3)) -> BattleState:
@@ -118,3 +119,23 @@ func _special(t: TestContext) -> void:
 	# Main impact travels along row 2; its side fragment reaches the nest in row 3.
 	side_nest.unit_by_uid(1).cell = Vector2i(1, 2)
 	_compare(t, side_nest, "rock_blast", {"type": "unit", "unit": target.uid, "cell": target.cell}, 3)
+
+func _nest_healing(t: TestContext) -> void:
+	for skill in ["drain", "furnace_fist"]:
+		var state := _state(skill)
+		var caster := state.unit_by_uid(1)
+		caster.hp = 5
+		if skill == "furnace_fist":
+			caster.upgrades["furnace_fist_healing"] = 3
+		var entry := _entry(state, skill)
+		t.check(not entry.is_empty(), "%s可选择巢穴并触发自身回复" % skill)
+		if entry.is_empty():
+			continue
+		state.preview_skill(caster, skill, entry)
+		t.eq(caster.hp, 5, "%s预攻巢不提前回复生命" % skill)
+		var result := SkillResolver.apply(state, caster, skill, entry, false)
+		var expected_heal := Balance.DRAIN_HEAL if skill == "drain" else 8
+		t.eq(caster.hp, 5 + expected_heal, "%s攻巢后按技能规则回复生命" % skill)
+		var heal = result.get("heal")
+		var healed := int(heal.get("amount", 0)) if heal is Dictionary else 0
+		t.eq(healed, expected_heal, "%s攻巢结果记录回复量" % skill)
