@@ -723,14 +723,14 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		return summary
 	if String(def.get("kind", "")) == "unit" and String(target_entry.get("type", "")) == "cell" and state.obstacle_durability.has(target_entry["cell"]):
 		var terrain := state.terrain_at(target_entry["cell"])
-		var pushable := (skill_id in ["rock_push", "push"] and terrain == TerrainDB.OBSTACLE) or (skill_id == "rock_push" and terrain == TerrainDB.ROCK_MOUNTAIN)
+		var pushable := skill_id in ["rock_push", "push"] and terrain == TerrainDB.OBSTACLE
 		if pushable and not state.is_chest_cell(target_entry["cell"]):
 			var pushed := PushResolver.push_obstacle(state, caster, target_entry["cell"])
 			summary["obstacle_push"] = pushed
 			summary["obstacles_damaged"].append({"cell": target_entry["cell"], "damage": pushed["damage"], "destroyed": pushed["destroyed"]})
 			summary["hits"].append_array(pushed["hits"])
 			summary["terrain_changes"].append_array(pushed["terrain_changes"])
-			summary["text"] = ("推击岩山：" if terrain == TerrainDB.ROCK_MOUNTAIN else "推击岩障：耐久 -1；") + ("填成易碎格" if pushed["filled"] else "推动一格" if pushed["moved"] else "原地破碎" if pushed["destroyed"] else "撞击单位，留在原格" if not pushed["hits"].is_empty() else "前方受阻")
+			summary["text"] = "推击岩障：耐久 -1；" + ("填成易碎格" if pushed["filled"] else "推动一格" if pushed["moved"] else "原地破碎" if pushed["destroyed"] else "撞击单位，留在原格" if not pushed["hits"].is_empty() else "前方受阻")
 		else:
 			_hit_obstacle(state, target_entry["cell"], summary, caster.side, skill_id == "rock_break" or skill_id == "rock_smash")
 		if SkillDB.battle_limit_of(skill_id) > 0:
@@ -1031,7 +1031,7 @@ static func _hit_obstacle(state: BattleState, cell: Vector2i, summary: Dictionar
 	var actual := before - int(state.obstacle_durability.get(cell, 0))
 	summary["obstacles_damaged"].append({"cell": cell, "damage": actual, "destroyed": destroyed})
 	if state.terrain_at(cell) == TerrainDB.ROCK_MOUNTAIN:
-		summary["text"] = "岩山无限耐久，只有碎岩可以破坏。"
+		summary["text"] = "岩山还需 %d 次碎岩。" % int(state.obstacle_durability[cell])
 	else:
 		summary["text"] = "障碍耐久 −%d%s" % [actual, "，障碍被破坏" if destroyed else ""]
 	state.log_event("(%d,%d) %s" % [cell.x, cell.y, summary["text"]])

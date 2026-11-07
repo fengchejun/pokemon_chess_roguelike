@@ -3,7 +3,7 @@ const ROCK := Vector2i(4, 3)
 const DEST := Vector2i(5, 3)
 
 func run(t: TestContext) -> void:
-	t.begin("岩山无限耐久、推移及限定生成")
+	t.begin("岩山不可推动、两次碎岩破坏及限定生成")
 	var map := TestScenario.make_map(TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[ROCK, TerrainDB.ROCK_MOUNTAIN], [DEST, TerrainDB.DEEP],
 	]))
@@ -19,20 +19,25 @@ func run(t: TestContext) -> void:
 	state.set_terrain(ROCK, TerrainDB.WATER)
 	t.eq(state.terrain_at(ROCK), TerrainDB.ROCK_MOUNTAIN, "地形改写不能绕过岩山耐久")
 	t.check(not MapGenerator.apply_modification(map, ROCK, "clear"), "整备开垦不能移除岩山")
-	var preview := state.preview_skill(actor, "rock_push", entry)
-	t.check(preview.get("obstacle_push", {}).get("moved", false), "推击预览显示岩山可移动")
-	t.eq(state.terrain_at(ROCK), TerrainDB.ROCK_MOUNTAIN, "预览不移动实际岩山")
-	var result := SkillResolver.apply(state, actor, "rock_push", entry, false)
-	t.check(result.get("obstacle_push", {}).get("moved", false), "实际推击移动岩山")
-	t.eq(state.terrain_at(ROCK), TerrainDB.PLAIN, "岩山离开后恢复原地形")
-	t.eq(state.terrain_at(DEST), TerrainDB.ROCK_MOUNTAIN, "推入深水也不会消耗岩山")
+	t.eq(state.obstacle_durability[ROCK], 2, "岩山初始需要两次碎岩")
+	var push := SkillResolver.apply(state, actor, "rock_push", entry, false)
+	t.check(not push.get("obstacle_push", {}).get("moved", false), "岩系推击无法移动岩山")
+	t.check(not PushResolver.push_obstacle(state, actor, ROCK).get("moved", false), "直接推障入口也不能搬动岩山")
+	t.eq(state.terrain_at(ROCK), TerrainDB.ROCK_MOUNTAIN, "岩山留在原地")
+	t.eq(state.terrain_at(DEST), TerrainDB.DEEP, "相邻深水保持原样")
+	t.eq(state.obstacle_durability[ROCK], 2, "推击不扣岩山耐久")
+	state.obstacle_origin[ROCK] = TerrainDB.DEEP
+	var preview := state.preview_skill(actor, "rock_break", entry)
+	t.eq(preview["obstacles_damaged"][0]["damage"], 1, "碎岩预览显示只扣一点耐久")
+	t.eq(state.obstacle_durability[ROCK], 2, "预览不改变实际耐久")
+	t.check(SkillResolver.apply(state, actor, "rock_break", entry, false).get("ok", false), "第一次碎岩可选中岩山")
+	t.eq(state.terrain_at(ROCK), TerrainDB.ROCK_MOUNTAIN, "第一次碎岩后仍有岩山")
 	var restored := BattleSnapshot.load_state(BattleSnapshot.save_state(state))
-	t.eq(restored.obstacle_origin[DEST], TerrainDB.DEEP, "岩山位置与覆盖的深水随快照保留")
+	t.eq(restored.obstacle_durability[ROCK], 1, "第一次碎岩后的耐久随快照保留")
 	var breaker := restored.unit_by_uid(1)
-	var break_result := SkillResolver.apply(restored, breaker, "rock_break", {"type": "cell", "cell": DEST}, false)
-	t.check(break_result.get("ok", false), "碎岩可选中岩山")
-	t.eq(restored.terrain_at(DEST), TerrainDB.DEEP, "碎岩破坏岩山后露出深水")
-	t.check(not restored.obstacle_durability.has(DEST), "碎岩后清除岩山障碍")
+	t.check(SkillResolver.apply(restored, breaker, "rock_break", entry, false).get("ok", false), "第二次碎岩可选中岩山")
+	t.eq(restored.terrain_at(ROCK), TerrainDB.DEEP, "第二次碎岩破坏岩山后露出原底层")
+	t.check(not restored.obstacle_durability.has(ROCK), "第二次碎岩后清除岩山障碍")
 
 	var central := 0
 	var total := 0

@@ -314,7 +314,10 @@ func load_map(map_data: Dictionary) -> void:
 	obstacle_expire_round = {}
 	obstacle_reward_origins = {}
 	for cell in map_data.get("obstacle_cells", []):
-		obstacle_durability[cell] = Balance.TREE_DURABILITY if terrain_at(cell) == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
+		match terrain_at(cell):
+			TerrainDB.TREE: obstacle_durability[cell] = Balance.TREE_DURABILITY
+			TerrainDB.ROCK_MOUNTAIN: obstacle_durability[cell] = Balance.ROCK_MOUNTAIN_DURABILITY
+			_: obstacle_durability[cell] = Balance.OBSTACLE_DURABILITY
 	electric_flowers = map_data.get("electric_flowers", {}).duplicate()
 	for cell in electric_flowers:
 		obstacle_durability[cell] = electric_flower_max_hp(cell)
@@ -408,11 +411,11 @@ func terrain_at(cell: Vector2i) -> int:
 	return int(terrain[GridSpec.index(cell)])
 
 
-func set_terrain(cell: Vector2i, value: int, move_or_break_mountain: bool = false) -> void:
+func set_terrain(cell: Vector2i, value: int, break_mountain: bool = false) -> void:
 	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return
 	var previous := terrain_at(cell)
-	if previous == TerrainDB.ROCK_MOUNTAIN and not move_or_break_mountain:
+	if previous == TerrainDB.ROCK_MOUNTAIN and not break_mountain:
 		return
 	var was_vines := previous == TerrainDB.VINES
 	terrain[GridSpec.index(cell)] = value
@@ -1521,7 +1524,8 @@ func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "", skil
 	if mountain and (skill_id != "rock_break" or amount <= 0):
 		log_event("岩山未受损，只有碎岩可以破坏它。")
 		return false
-	var left := 0 if mountain else int(obstacle_durability[cell]) - amount
+	var durability_damage := 1 if mountain else amount
+	var left := int(obstacle_durability[cell]) - durability_damage
 	if left <= 0:
 		claim_obstacle_essence(cell, source_side)
 		var drop_food := node_kind != "" and terrain_at(cell) == TerrainDB.TREE and terrain_rng.randf() < 0.25 and not food_cells.has(cell)
@@ -1538,7 +1542,7 @@ func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "", skil
 		log_event("障碍被破坏，恢复为%s。" % TerrainDB.name_of(origin))
 		return true
 	obstacle_durability[cell] = left
-	log_event("障碍耐久 -%d（剩 %d）。" % [amount, left])
+	log_event("障碍耐久 -%d（剩 %d）。" % [durability_damage, left])
 	return false
 
 
@@ -2119,7 +2123,7 @@ func end_enemy_phase() -> void:
 
 
 func _end_enemy_phase_rules() -> void:
-	if ended:
+	if ended or GridSpec.is_inside(boss_portal_cell):
 		return
 	_finish_status_effects("enemy")
 	if ended:
@@ -2147,7 +2151,7 @@ func _finish_round() -> void:
 		unit.fresh_spawn = false
 	if ended:
 		phase = PHASE_ENDED
-	else:
+	elif not GridSpec.is_inside(boss_portal_cell):
 		start_round()
 
 
@@ -2451,41 +2455,61 @@ func _player_unit_at(cell: Vector2i) -> CombatUnit:
 	return null
 
 
-func reward_safe_portal_cell(preferred: Vector2i) -> Vector2i:
-	if not all_rewards().any(func(point): return point.get("cell") == preferred and point.get("state") in ["map", "guarding"]):
+func reward_safe_portal_cell(preferred: Vector2i, require_trainer_access: bool = false) -> Vector2i:
+	if not require_trainer_access and not all_rewards().any(func(point): return point.get("cell") == preferred and point.get("state") in ["map", "guarding"]):
 		return preferred
+	var actor := trainer() if require_trainer_access else null
+	var fallback := preferred
 	var cells := GridSpec.all_cells()
 	cells.sort_custom(func(a, b):
 		var da := GridSpec.manhattan(a, preferred)
 		var db := GridSpec.manhattan(b, preferred)
 		return da < db if da != db else a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
 	for cell in cells:
-		if is_nest_cell(cell) or is_interaction_cell(cell) or terrain_blocks_move(cell) or not TerrainDB.can_stand(terrain_at(cell), "rock"):
+		if is_nest_cell(cell) or is_interaction_cell(cell):
 			continue
 		if all_rewards().any(func(point): return point.get("cell") == cell and point.get("state") in ["map", "guarding"]):
 			continue
 		var occupant := unit_at(cell)
 		if occupant != null and occupant.side == "player":
 			continue
+		if actor != null and fallback == preferred and GridSpec.manhattan(actor.cell, cell) == 1:
+			fallback = cell
+		if terrain_blocks_move(cell) or not TerrainDB.can_stand(terrain_at(cell), "rock"):
+			continue
+		if actor != null and not _trainer_can_approach_portal(actor, cell):
+			continue
 		return cell
-	return preferred
+	return fallback
+
+
+func _trainer_can_approach_portal(actor: CombatUnit, cell: Vector2i) -> bool:
+	for near in GridSpec.neighbors4(cell):
+		if is_nest_cell(near) or terrain_blocks_move(near) or move_cost_for(actor, near) < 0:
+			continue
+		if PathFinder.path_distance(self, actor.cell, near, actor.element, actor.has_buff("flight")) < (1 << 30):
+			return true
+	return false
 
 
 func check_battle_end() -> bool:
 	try_release_boss()
-	if not ended and is_free_exploration():
+	if ended:
+		return true
+	var full_clear_boss := exploration_v2 and exploration_role in ["boss", "hunt"]
+	if full_clear_boss and not GridSpec.is_inside(boss_portal_cell) and battle_objective_met():
+		var defeated_boss := unit_by_uid(boss_uid)
+		var preferred := defeated_boss.cell if defeated_boss != null else Vector2i(GridSpec.W >> 1, GridSpec.H >> 1)
+		boss_portal_cell = reward_safe_portal_cell(preferred, true)
+		log_event("战场已清理。训练师走到传送门相邻格后，可互动前往下一层。")
+	if is_free_exploration():
 		if not exploration_started:
 			exploration_started = true
 			reset_exploration_actions()
 			_pickups()
 			log_event("进入自由探索：回合停止计数，可无限移动与施法；恢复技能禁用。")
 		return false
-	if ended:
-		return true
-	if exploration_v2 and exploration_role in ["boss", "hunt"]:
-		if battle_objective_met():
-			end_battle("victory")
-			return true
+	if full_clear_boss:
 		return false
 	if boss_uid >= 0:
 		var boss := unit_by_uid(boss_uid)
@@ -2848,7 +2872,7 @@ func clone() -> BattleState:
 
 
 func is_free_exploration() -> bool:
-	return node_kind == "event" or (node_kind == "battle" and battle_objective_met()) or (node_kind == "boss" and GridSpec.is_inside(boss_portal_cell))
+	return node_kind == "event" or (node_kind == "battle" and battle_objective_met()) or GridSpec.is_inside(boss_portal_cell)
 
 
 func recovery_skill_blocked(skill_id: String) -> bool:

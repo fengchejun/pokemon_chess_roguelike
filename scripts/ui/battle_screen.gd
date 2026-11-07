@@ -513,7 +513,8 @@ func _update_header() -> void:
 	if state.sheltered_boss() != null:
 		objective_label.text = "首领已回巢 · 巢内庇护\n摧毁主巢穴（剩余 %d HP）\n破巢后可继续攻击或捕获。" % int(state.nest.get("hp", 0))
 	if GridSpec.is_inside(state.boss_portal_cell):
-		objective_label.text = "首领已击败 · 敌军撤离\n训练师相邻后，点击传送门或行动按钮前往下一层。"
+		objective_label.text = "战场已清理，传送门已开启。" if state.exploration_v2 else "首领已击败 · 敌军撤离"
+		objective_label.text += "\n训练师相邻后，点击传送门或行动按钮前往下一层。"
 	elif not state.is_free_exploration() and state.round >= 7:
 		objective_label.text += "\n" + ("天雷已锁定 %d 格：本轮末落雷，伤害为最大生命50%%，可误伤敌人。" % state.storm_strikes.size() if not state.storm_strikes.is_empty() else "第8轮末开始预告天雷，可移动躲避。")
 	if state.is_free_exploration():
@@ -527,8 +528,8 @@ func _update_header() -> void:
 			objective_label.text = "野生捕捉\n第%d/%d回合 · 野生%d只\n攻击或投球惊动全场\n撤离点停到下次行动即逃脱" % [state.round, state.capture_deadline, state.alive_enemy_count()]
 		elif state.exploration_role == "treasure":
 			objective_label.text = "宝箱解谜\n利用技能和地形到达宝箱\n地形变化与损耗保留\n可暂时离开，准备后回访"
-		elif state.exploration_role == "hunt":
-			objective_label.text = "强制追猎 · 敌方全员黑化\n不能撤退，清场后通过本层\n敌人 %d" % state.alive_enemy_count()
+		elif state.exploration_role == "hunt" and not GridSpec.is_inside(state.boss_portal_cell):
+			objective_label.text = "强制追猎 · 敌方全员黑化\n不能撤退，清场后开启传送门\n敌人 %d" % state.alive_enemy_count()
 	if state.is_camp_map:
 		if state.is_free_exploration():
 			objective_label.text = "营地 · 自由布置\n可移动、施法、返回区域\n食物 %d · 原质 %d" % [app.run.total_food(), app.run.essence]
@@ -1434,8 +1435,10 @@ func _show_terrain(cell: Vector2i) -> void:
 	if value == TerrainDB.ICE:
 		lines.append("冰面：每次整轮末最多随机冻结一格相邻浅水或深水；新冰下一轮才会扩张。")
 		lines.append("单位本轮在冰面留下位移方向时，蓝色箭头指向回合末滑行格；红色表示致死落点，灰色止步标记表示被挡住。")
-	if state.obstacle_durability.has(cell) and not state.is_chest_cell(cell) and not state.electric_flowers.has(cell) and value != TerrainDB.ROCK_MOUNTAIN:
+	if state.obstacle_durability.has(cell) and not state.is_chest_cell(cell) and not state.electric_flowers.has(cell):
 		var max_hp := Balance.TREE_DURABILITY if value == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
+		if value == TerrainDB.ROCK_MOUNTAIN:
+			max_hp = Balance.ROCK_MOUNTAIN_DURABILITY
 		var facility_id := state.camp_facility_at(cell)
 		if facility_id != "":
 			max_hp = int(state.camp_facilities[facility_id]["max_hp"])

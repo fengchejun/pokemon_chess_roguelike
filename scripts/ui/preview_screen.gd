@@ -392,7 +392,7 @@ func _mod_hover_text(cell: Vector2i) -> String:
 		return "【%s】该格受保护（部署区 / 巢穴 / 奖励 / 果实），不能改造。" % tool_name
 	var terrain := int(map["terrain"][GridSpec.index(cell)])
 	if terrain == TerrainDB.ROCK_MOUNTAIN:
-		return TerrainDB.DESCRIPTIONS[TerrainDB.ROCK_MOUNTAIN]
+		return "%s（剩余耐久 %d/%d）" % [TerrainDB.DESCRIPTIONS[TerrainDB.ROCK_MOUNTAIN], int(map.get("obstacle_durability", {}).get(cell, Balance.ROCK_MOUNTAIN_DURABILITY)), Balance.ROCK_MOUNTAIN_DURABILITY]
 	var from_terrain := int(rule.get("ok_from", TerrainDB.PLAIN))
 	var to_terrain := int(rule.get("to", TerrainDB.PLAIN))
 	var accepts_ice := terrain == TerrainDB.ICE and mod_kind in ["water", "grass", "rock"]

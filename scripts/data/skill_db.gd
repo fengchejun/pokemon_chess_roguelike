@@ -18,7 +18,7 @@ const DEFS := {
 	"mirror_water_moon": {"name": "镜花水月", "element": "water", "kind": "self", "damage": 0, "ranged": false, "battle_limit": 1, "category": "special", "desc": "水系特殊技能，每场限用一次。施加持续三回合的镜花水月：可移动到任意未被占用的浅水或深水格且不消耗普通移动机会；水系技能基础直伤 +5。施放时使全场敌人浸湿一回合；首次受到实际伤害时提前结束状态并免疫该次伤害。"},
 	"tsunami": {"name": "海啸", "element": "water", "kind": "direction", "damage": 18, "ranged": true, "channel": true, "desc": "选择方向警示前方宽 5、长 5 的固定区域；下次本方阶段开始，对区域内当时站在水格上的敌方单位造成 18 点基础直伤；施法者该阶段不能行动。"},
 	"rock_push": {"name": "推击", "element": "rock", "kind": "unit", "range": 1, "damage": 13, "ranged": false, "desc": "对相邻单位造成13点基础伤害并推开一格；直接推击岩障先扣1耐久，存活时推一格，撞单位造成碰撞伤害，填入深水、岩浆、深坑则变为易碎格。"},
-	"rock_break": {"name": "碎岩", "element": "rock", "kind": "unit", "range": 2, "damage": 10, "ranged": true, "desc": "曼哈顿 2 格内攻击单位造成 10 点基础伤害，命中障碍直接摧毁；攻击冰冻目标时伤害三倍并解除冰冻。"},
+	"rock_break": {"name": "碎岩", "element": "rock", "kind": "unit", "range": 2, "damage": 10, "ranged": true, "desc": "曼哈顿 2 格内攻击单位造成 10 点基础伤害，命中普通障碍直接摧毁，命中岩山扣1点耐久；攻击冰冻目标时伤害三倍并解除冰冻。"},
 	"rock_slide": {"name": "岩崩", "element": "rock", "kind": "cell", "range": 3, "damage": 30, "ranged": true, "channel": true, "desc": "锁定曼哈顿 3 格内一格；下次本方阶段开始，对该格当时的单位造成 30 点基础伤害，可误伤友军。"},
 	"earth_shake": {"name": "撼地", "element": "rock", "kind": "direction", "damage": 18, "ranged": true, "channel": true, "desc": "蓄力锁定前方 3×3 格；下一本方阶段开始，对范围内敌人造成 18 点基础伤害，摧毁岩障和树木；平地变易碎地块、易碎地块变深坑。破障格本次不再改变地形，站在塌陷格上的地面单位立即坠落。"},
 	"lightning": {"name": "打雷", "element": "electric", "kind": "self", "damage": 18, "ranged": true, "channel": true, "desc": "锁定全场所有敌方单位当前格子；下次本方阶段开始，对固定落点上的单位造成 18 点基础伤害并感电，可误伤友军。"},

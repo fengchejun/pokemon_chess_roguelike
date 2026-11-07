@@ -85,6 +85,21 @@ func run(t: TestContext) -> void:
 	t.check(run_state.region_data.is_empty() and app.current_screen.name == "FloorThemeScreen", "选主题前续档不会提前生成楼层")
 	var chosen_theme := String(run_state.offered_floor_themes[0])
 	t.check(run_state.choose_floor_theme(chosen_theme) and run_state.get_region().theme == chosen_theme, "选定主题后按实际主题生成地图")
+	var boss_region: RegionState = run_state.get_region()
+	boss_region.active_node = "boss"
+	run_state.region_data = boss_region.to_dict()
+	app.show_preview([1, 2, 3])
+	app.current_screen._on_start()
+	var boss_battle: BattleState = app.current_screen.state
+	for enemy in boss_battle.alive_units("enemy"):
+		enemy.hp = 0
+	t.check(not boss_battle.check_battle_end() and not GridSpec.is_inside(boss_battle.boss_portal_cell), "普通 Boss 战仍需清除存活的巢穴")
+	boss_battle.stop_nests()
+	boss_battle.phase = BattleState.PHASE_ENEMY
+	var final_round := boss_battle.round
+	boss_battle.end_enemy_phase()
+	t.check(not boss_battle.ended and GridSpec.is_inside(boss_battle.boss_portal_cell), "普通 Boss 在环境结算清场后也保留战场")
+	t.check(boss_battle.phase == BattleState.PHASE_PLAYER and boss_battle.round == final_round, "开门后回合停止，交还我方操作")
 	run_state.floor_themes = ["fire", "water", "grass"]
 	for floor in 3:
 		run_state.battle_index = floor * Balance.BATTLES_PER_FLOOR
@@ -108,8 +123,19 @@ func run(t: TestContext) -> void:
 		for enemy in hunt.alive_units("enemy"):
 			enemy.hp = 0
 		hunt.stop_nests()
-		t.check(hunt.check_battle_end() and hunt.end_reason == "victory", "清场后结束追猎")
-		app.finish_battle(hunt)
+		t.check(not hunt.check_battle_end() and GridSpec.is_inside(hunt.boss_portal_cell), "三层追猎均在清场后开启传送门")
+		var trainer := hunt.trainer()
+		if not hunt.can_interact_at(hunt.boss_portal_cell):
+			var reachable := hunt.move_options(trainer)
+			var neighbors := GridSpec.neighbors4(hunt.boss_portal_cell).filter(func(cell): return reachable.has(cell))
+			t.check(not neighbors.is_empty(), "生成的追猎地图传送门可达")
+			if not neighbors.is_empty():
+				t.check(hunt.move_unit(trainer, neighbors[0]), "训练师移动到传送门旁")
+		app.current_screen.playback.finish_all()
+		app.current_screen.battle_notice.finish_all()
+		app.current_screen._on_board_clicked(hunt.boss_portal_cell)
+		t.check(hunt.ended and hunt.end_reason == "victory", "传送门触发追猎结算")
+		app.current_screen.report_end_now()
 		while run_state.pending_reward_choices > 0:
 			var choices := run_state.reward_choices()
 			if choices.is_empty() or not run_state.choose_reward(choices[0]):

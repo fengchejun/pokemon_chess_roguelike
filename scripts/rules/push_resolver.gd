@@ -95,16 +95,14 @@ static func _summarize_collision(state, summary: Dictionary, target: CombatUnit,
 static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i) -> Dictionary:
 	var result := {"from": cell, "to": cell, "damage": 0, "destroyed": false, "moved": false, "filled": false, "blocked": false, "hits": [], "terrain_changes": []}
 	var source_terrain := state.terrain_at(cell)
-	var mountain := source_terrain == TerrainDB.ROCK_MOUNTAIN
-	if state.is_chest_cell(cell) or source_terrain not in [TerrainDB.OBSTACLE, TerrainDB.ROCK_MOUNTAIN] or not state.obstacle_durability.has(cell) or GridSpec.manhattan(caster.cell, cell) != 1:
+	if state.is_chest_cell(cell) or source_terrain != TerrainDB.OBSTACLE or not state.obstacle_durability.has(cell) or GridSpec.manhattan(caster.cell, cell) != 1:
 		return result
 	var name := TerrainDB.name_of(source_terrain)
-	if not mountain:
-		result["damage"] = 1
-		result["destroyed"] = state.damage_obstacle(cell, 1, caster.side)
-		state._relay_feedback("damage", "岩障耐久 -1", 1, cell, -1)
-		if result["destroyed"]:
-			return result
+	result["damage"] = 1
+	result["destroyed"] = state.damage_obstacle(cell, 1, caster.side)
+	state._relay_feedback("damage", "岩障耐久 -1", 1, cell, -1)
+	if result["destroyed"]:
+		return result
 	if state.camp_facility_at(cell) != "":
 		result["blocked"] = true
 		return result
@@ -127,7 +125,7 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 		state.log_event("%s撞上 %s 后留在原格。" % [name, occupant.display_name])
 		return result
 	var destination := state.terrain_at(next)
-	if TerrainDB.is_lethal(destination) and not mountain:
+	if TerrainDB.is_lethal(destination):
 		state.damage_obstacle(cell, int(state.obstacle_durability[cell]), caster.side)
 		state.set_terrain(next, TerrainDB.FRAGILE)
 		result["to"] = next
@@ -137,7 +135,7 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 		state.log_event("岩障填入%s，目标格变为易碎地块。" % TerrainDB.name_of(destination))
 		state._relay_feedback("terrain", "填成易碎格", 0, next, -1)
 		return result
-	if not TerrainDB.can_stand(destination, "rock") and not (mountain and TerrainDB.is_lethal(destination)):
+	if not TerrainDB.can_stand(destination, "rock"):
 		result["blocked"] = true
 		return result
 	var hp := int(state.obstacle_durability[cell])
@@ -152,7 +150,7 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 	state.obstacle_expire_round.erase(cell)
 	state.obstacle_reward_origins.erase(cell)
 	state.natural_essence_cells.erase(cell)
-	state.set_terrain(cell, origin, mountain)
+	state.set_terrain(cell, origin)
 	state.set_terrain(next, source_terrain)
 	state.steam_cells.erase(next)
 	state.burning_sources.erase(next)
