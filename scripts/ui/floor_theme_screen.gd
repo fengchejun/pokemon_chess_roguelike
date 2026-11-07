@@ -60,7 +60,7 @@ func _ready() -> void:
 
 func _terrain_hint(theme_id: String) -> String:
 	match theme_id:
-		"fire": return "地貌倾向：岩障、树木与可燃草丛；可能出现熔岩。"
+		"fire": return "地貌倾向：蓝火与岩障较多，水和草较少，也可能出现熔岩。"
 		"water": return "地貌倾向：成片浅水及少量深水；可与电、冰技能联动。"
 		"grass": return "地貌倾向：草丛与树木较多，火焰容易改变通路。"
 		"rock": return "地貌倾向：岩障与易碎地块较多，绕行和破障更重要。"

@@ -30,14 +30,15 @@ func run(t: TestContext) -> void:
 	var battle: BattleState = app.current_screen.state
 	t.eq(battle.food_cells, first_food, "首访粮食与预览一致")
 	t.eq(battle.merchant["cell"], first_merchant, "首访商人与预览一致")
-	battle.food_cells = [Vector2i(5, 4)]
+	var saved_food: Vector2i = GridSpec.all_cells().filter(func(cell): return battle.food_cell_valid(cell) and battle.unit_at(cell) == null)[0]
+	battle.food_cells = [saved_food]
 	battle.reward["state"] = "carried"
 	region = app.run.get_region()
 	region.store_battle(merchant_id, battle)
 	app.run.region_data = region.to_dict()
 	app.show_preview([1, 2, 3])
 	preview = app.current_screen
-	t.eq(preview.board.food_cells, [Vector2i(5, 4)], "重访预览显示尚未拾取的粮食")
+	t.eq(preview.board.food_cells, [saved_food], "重访预览显示尚未拾取的粮食")
 	t.eq(preview.board.reward["state"], "carried", "已拾取奖励不重新显示为地图奖励")
 	t.check(preview.board.nest.is_empty() and GridSpec.is_inside(preview.board.merchant_cell), "重访收集区只显示商人")
 	region = app.run.get_region()

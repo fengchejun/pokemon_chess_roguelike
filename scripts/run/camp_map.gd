@@ -20,6 +20,7 @@ static func ensure(run: RunState) -> BattleState:
 		}
 		for facility in state.camp_facilities.values():
 			var cell: Vector2i = facility["cell"]
+			state.electric_flowers.erase(cell)
 			state.terrain[GridSpec.index(cell)] = TerrainDB.OBSTACLE
 			state.obstacle_durability[cell] = facility["max_hp"]
 			state.obstacle_origin.erase(cell)
@@ -55,17 +56,17 @@ static func open(run: RunState) -> BattleState:
 	var occupied := {}
 	# 先恢复原站位，再为新增成员寻找可站立的随机空格。
 	for unit in players:
-		if positions.has(unit.uid) and not occupied.has(positions[unit.uid]) and not state.is_nest_cell(positions[unit.uid]) and TerrainDB.can_stand(state.terrain_at(positions[unit.uid]), unit.element):
+		if positions.has(unit.uid) and not occupied.has(positions[unit.uid]) and not state.is_nest_cell(positions[unit.uid]) and not state.terrain_blocks_move(positions[unit.uid]) and TerrainDB.can_stand(state.terrain_at(positions[unit.uid]), unit.element):
 			unit.cell = positions[unit.uid]
 			state.units.append(unit)
 			occupied[unit.cell] = true
 	for unit in players:
 		if state.units.has(unit):
 			continue
-		var choices: Array = cells.filter(func(cell): return not occupied.has(cell) and not state.is_nest_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), unit.element))
+		var choices: Array = cells.filter(func(cell): return not occupied.has(cell) and not state.is_nest_cell(cell) and not state.terrain_blocks_move(cell) and TerrainDB.can_stand(state.terrain_at(cell), unit.element))
 		if choices.is_empty():
 			# 极端布置堵满地图时，只清出新成员脚下的一格，保留设施。
-			choices = cells.filter(func(cell): return not occupied.has(cell) and state.camp_facility_at(cell) == "" and not state.is_nest_cell(cell))
+			choices = cells.filter(func(cell): return not occupied.has(cell) and state.camp_facility_at(cell) == "" and not state.electric_flowers.has(cell) and not state.is_nest_cell(cell))
 			state.set_terrain(choices[0], TerrainDB.PLAIN)
 			choices = [choices[0]]
 		unit.cell = choices[rng.randi_range(0, choices.size() - 1)]

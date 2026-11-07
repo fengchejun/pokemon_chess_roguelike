@@ -50,6 +50,9 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 			summary["collisions"].append({"kind": "nest", "cell": next})
 			state.log_event("%s 被巢穴边界挡住，不能被推上巢穴格。" % target.display_name)
 			break
+		if state.terrain_blocks_move(next):
+			_summarize_collision(state, summary, target, null, next, collision_bonus, source_side, source_uid, other_relic_bonus)
+			break
 		if not target.has_buff("flight") and TerrainDB.is_lethal(terrain) and (terrain != TerrainDB.DEEP or target.element != "water"):
 			target.last_move_direction = direction
 			target.cell = next
@@ -58,9 +61,6 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 			summary["moved"] = true
 			summary["to"] = next
 			summary["death"] = true
-			break
-		if TerrainDB.blocks_move(terrain):
-			_summarize_collision(state, summary, target, null, next, collision_bonus, source_side, source_uid, other_relic_bonus)
 			break
 		target.cell = next
 		target.last_move_direction = direction
@@ -105,7 +105,7 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 		result["blocked"] = true
 		return result
 	var next: Vector2i = cell + (cell - caster.cell)
-	if not GridSpec.is_inside(next) or state.is_nest_cell(next) or state.is_interaction_cell(next) or TerrainDB.blocks_move(state.terrain_at(next)):
+	if not GridSpec.is_inside(next) or state.is_nest_cell(next) or state.is_interaction_cell(next) or state.terrain_blocks_move(next):
 		result["blocked"] = true
 		state.log_event("岩障前方受阻，留在原格。")
 		return result

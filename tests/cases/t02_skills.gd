@@ -161,7 +161,7 @@ func _t_rain_dance(t: TestContext) -> void:
 	water_mon.cell = Vector2i(1, 3)
 	var result := SkillResolver.apply(state, water_mon, "rain_dance", {"type": "cell", "cell": Vector2i(3, 3)}, false)
 	t.check(bool(result["ok"]), "造雨术施放成功")
-	t.eq(state.terrain_at(Vector2i(3, 2)), TerrainDB.WATER, "草丛变水面")
+	t.eq(state.terrain_at(Vector2i(3, 2)), TerrainDB.GRASS, "造雨保留原有草丛")
 	t.eq(state.terrain_at(Vector2i(4, 4)), TerrainDB.OBSTACLE, "跳过障碍")
 	t.eq(state.terrain_at(Vector2i(2, 4)), TerrainDB.LAVA, "跳过熔岩")
 	t.eq(state.terrain_at(Vector2i(2, 3)), TerrainDB.WATER, "平地变水面")

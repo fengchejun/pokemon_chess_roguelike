@@ -104,7 +104,7 @@ static func choose_battle_cell(state: BattleState, positions: Dictionary = {}) -
 		if GridSpec.manhattan(trainer.cell, cell) >= 2 and not state.deploy_area.has(cell) and not positions.values().has(cell) and not state.food_cells.has(cell) and not state.is_nest_cell(cell):
 			return cell
 	for cell in GridSpec.neighbors4(trainer.cell):
-		if state.unit_at(cell) == null and not state.deploy_area.has(cell) and not state.is_nest_cell(cell) and TerrainDB.can_stand(state.terrain_at(cell), ""):
+		if state.unit_at(cell) == null and not state.deploy_area.has(cell) and not state.is_nest_cell(cell) and not state.terrain_blocks_move(cell) and TerrainDB.can_stand(state.terrain_at(cell), ""):
 			return cell
 	return Vector2i(-1, -1)
 

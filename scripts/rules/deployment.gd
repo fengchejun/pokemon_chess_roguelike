@@ -6,6 +6,8 @@ static func legal(map: Dictionary, enemies: Array, unit: CombatUnit, cell: Vecto
 		return false
 	if (map.get("nest_cells", [map["nest_cell"]]) as Array).has(cell) or cell == map.get("merchant_cell", Vector2i(-1, -1)) or cell == map.get("portal_cell", Vector2i(-1, -1)) or cell == map.get("mentor_cell", Vector2i(-1, -1)):
 		return false
+	if map.get("electric_flowers", {}).has(cell):
+		return false
 	var terrain := int(map["terrain"][GridSpec.index(cell)])
 	return TerrainDB.can_stand(terrain, unit.element) or (unit.has_buff("flight") and terrain != TerrainDB.OBSTACLE and terrain != TerrainDB.TREE)
 

@@ -257,7 +257,7 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 				var db := GridSpec.manhattan(b, original)
 				return da < db if da != db else a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
 			for cell in cells:
-				if not occupied.has(cell) and not battle.is_interaction_cell(cell) and not battle.is_nest_cell(cell) and TerrainDB.can_stand(battle.terrain_at(cell), fresh.element):
+				if not occupied.has(cell) and not battle.is_interaction_cell(cell) and not battle.is_nest_cell(cell) and not battle.terrain_blocks_move(cell) and TerrainDB.can_stand(battle.terrain_at(cell), fresh.element):
 					fresh.cell = cell
 					occupied[cell] = true
 					break
@@ -287,7 +287,7 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 		var candidates: Array = battle.deploy_cells.duplicate()
 		candidates.append_array(GridSpec.all_cells())
 		for cell in candidates:
-			if battle.unit_at(cell) == null and not battle.is_interaction_cell(cell) and not battle.is_nest_cell(cell) and TerrainDB.can_stand(battle.terrain_at(cell), player.element):
+			if battle.unit_at(cell) == null and not battle.is_interaction_cell(cell) and not battle.is_nest_cell(cell) and not battle.terrain_blocks_move(cell) and TerrainDB.can_stand(battle.terrain_at(cell), player.element):
 				player.cell = cell
 				battle.units.append(player)
 				placed = true

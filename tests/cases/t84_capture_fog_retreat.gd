@@ -84,7 +84,8 @@ func run(t: TestContext) -> void:
 		t.eq(map["terrain"][GridSpec.index(Vector2i(3, 3))], TerrainDB.DEEP, "保护解谜深水主障碍")
 		for cell in Balance.DEPLOY_AREA:
 			t.check(TerrainDB.can_stand(map["terrain"][GridSpec.index(cell)], "fire"), "部署区始终可站立")
-	t.eq(found.size(), TerrainDB.ALL.size(), "全部地形类型均可由完整池出现")
+	var expected_types := TerrainDB.ALL.size() if app.run.current_theme() == "fire" else TerrainDB.ALL.size() - 1
+	t.eq(found.size(), expected_types, "宝箱装饰池按主题保留地形类型")
 	# 横幅结束后刷新按钮，不会把正常离开永远锁成灰色。
 	var board_state := TestScenario.make_state(["fire_starter"], [])
 	board_state.node_kind = "event"

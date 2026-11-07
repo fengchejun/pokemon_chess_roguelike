@@ -1416,8 +1416,10 @@ func _show_terrain(cell: Vector2i) -> void:
 	var terrain_name := "宝箱（耐久1，不可站立）" if state.is_chest_cell(cell) else "巢穴（不可站立）" if state.is_nest_cell(cell) else TerrainDB.name_of(value)
 	var description := "宝箱阻挡移动和射线，飞行可越过但不能停留；命中一次攻击后留下奖励点。" if state.is_chest_cell(cell) else "独立巢穴格，不叠加其他地形；地面不能通过，飞行可越过但不能停留。" if state.is_nest_cell(cell) else String(TerrainDB.DESCRIPTIONS.get(value, ""))
 	var lines: Array = ["地块 (%d,%d)：%s" % [cell.x, cell.y, terrain_name], description]
+	if state.electric_flowers.has(cell):
+		lines.append("电电花：耐久 %d/%d，不能站立。非火招式命中时麻痹%s，火系命中时对八邻造成最大生命10%%伤害。" % [int(state.obstacle_durability[cell]), state.electric_flower_max_hp(cell), "八邻" if TerrainDB.is_water_body(value) else "四邻"])
 	var selected := state.unit_by_uid(selected_uid)
-	var move_cost := -1 if state.is_nest_cell(cell) or state.is_chest_cell(cell) else state.move_cost_for(selected, cell) if selected != null else TerrainDB.move_cost(value, "")
+	var move_cost := -1 if state.is_nest_cell(cell) or state.is_chest_cell(cell) or state.electric_flowers.has(cell) else state.move_cost_for(selected, cell) if selected != null else TerrainDB.move_cost(value, "")
 	lines.append("移动消耗：%s" % (str(move_cost) if move_cost >= 0 else "不可进入"))
 	if state.is_interaction_cell(cell):
 		lines.append(("传送门" if cell == state.boss_portal_cell else "商人") + "：此格不能站立；训练师相邻后，点击设施或选择训练师行动栏中的互动按钮。")
@@ -1431,7 +1433,7 @@ func _show_terrain(cell: Vector2i) -> void:
 	if value == TerrainDB.ICE:
 		lines.append("冰面：每次整轮末最多随机冻结一格相邻浅水或深水；新冰下一轮才会扩张。")
 		lines.append("单位本轮在冰面留下位移方向时，蓝色箭头指向回合末滑行格；红色表示致死落点，灰色止步标记表示被挡住。")
-	if state.obstacle_durability.has(cell) and not state.is_chest_cell(cell):
+	if state.obstacle_durability.has(cell) and not state.is_chest_cell(cell) and not state.electric_flowers.has(cell):
 		var max_hp := Balance.TREE_DURABILITY if value == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
 		var facility_id := state.camp_facility_at(cell)
 		if facility_id != "":

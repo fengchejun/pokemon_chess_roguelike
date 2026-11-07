@@ -244,6 +244,7 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 			terrain[GridSpec.index(obstacle)] = TerrainDB.OBSTACLE
 		map["terrain"] = terrain
 		map["steam_cells"] = {}
+		map["electric_flowers"] = {}
 		map["chests"] = {Vector2i(6, 3): true}
 		map["obstacle_cells"] = GridSpec.all_cells().filter(func(cell): return TerrainDB.blocks_move(terrain[GridSpec.index(cell)]))
 		if variant == 0:
@@ -277,9 +278,12 @@ static func decorate_terrain(run: RunState, map: Dictionary, kind: String) -> vo
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("landscape:%d:%s:%d" % [run.seed, run.get_region().active_node, run.get_region().nodes[run.get_region().active_node]["visits"]])
 	var candidates: Array = GridSpec.all_cells().filter(func(cell): return not reserved.has(cell))
+	var pool := TerrainDB.ALL.duplicate()
+	if run.current_theme() != "fire":
+		pool.erase(TerrainDB.BLUE_FIRE)
 	for index in mini(10, candidates.size()):
 		var cell: Vector2i = candidates.pop_at(rng.randi_range(0, candidates.size() - 1))
-		map["terrain"][GridSpec.index(cell)] = TerrainDB.ALL[rng.randi_range(0, TerrainDB.ALL.size() - 1)]
+		map["terrain"][GridSpec.index(cell)] = pool[rng.randi_range(0, pool.size() - 1)]
 	# 清理生成器可能留在受保护遭遇格上的岩石/致死地形。
 	for cell in map.get("fixed_deploy_area", []) + GridSpec.all_cells().filter(func(c): return kind == "treasure" and c.x in [2, 4]) + [Vector2i(5, 2), Vector2i(6, 3), Vector2i(5, 4)]:
 		if not map.get("chests", {}).has(cell): map["terrain"][GridSpec.index(cell)] = TerrainDB.PLAIN

@@ -490,7 +490,7 @@ func place_region_enemies(cfg: Dictionary, map_data: Dictionary) -> Dictionary:
 	var pairs: Array = result.get("enemies", [])
 	var used: Array = []
 	for pair in pairs:
-		if GridSpec.is_inside(pair[1]) and TerrainDB.can_stand(int(map_data["terrain"][GridSpec.index(pair[1])]), SpeciesDB.element_of(String(pair[0]))) and not used.has(pair[1]) and not (map_data.get("nest_cells", [map_data["nest_cell"]]) as Array).has(pair[1]):
+		if GridSpec.is_inside(pair[1]) and not map_data.get("electric_flowers", {}).has(pair[1]) and TerrainDB.can_stand(int(map_data["terrain"][GridSpec.index(pair[1])]), SpeciesDB.element_of(String(pair[0]))) and not used.has(pair[1]) and not (map_data.get("nest_cells", [map_data["nest_cell"]]) as Array).has(pair[1]):
 			used.append(pair[1])
 		else:
 			pair[1] = Vector2i(-1, -1)
@@ -498,7 +498,7 @@ func place_region_enemies(cfg: Dictionary, map_data: Dictionary) -> Dictionary:
 		if GridSpec.is_inside(pair[1]):
 			continue
 		for cell in GridSpec.all_cells():
-			if cell.x < 4 or used.has(cell) or (map_data.get("nest_cells", [map_data["nest_cell"]]) as Array).has(cell) or (map_data.get("deploy_cells", []) as Array).has(cell):
+			if cell.x < 4 or map_data.get("electric_flowers", {}).has(cell) or used.has(cell) or (map_data.get("nest_cells", [map_data["nest_cell"]]) as Array).has(cell) or (map_data.get("deploy_cells", []) as Array).has(cell):
 				continue
 			if TerrainDB.can_stand(int(map_data["terrain"][GridSpec.index(cell)]), SpeciesDB.element_of(String(pair[0]))):
 				pair[1] = cell

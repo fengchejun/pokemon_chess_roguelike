@@ -81,6 +81,7 @@ var camp_facilities: Dictionary = {}
 var obstacle_durability: Dictionary = {}
 var obstacle_origin: Dictionary = {}
 var obstacle_expire_round: Dictionary = {}
+var electric_flowers: Dictionary = {}
 var burning_cells: Dictionary = {}
 var burning_origin: Dictionary = {}
 var burning_forced: Dictionary = {}
@@ -278,7 +279,7 @@ func try_release_boss() -> void:
 		var db := GridSpec.manhattan(b, origin)
 		return da < db if da != db else _cell_order(a) < _cell_order(b))
 	for cell in candidates:
-		if unit_at(cell) != null or is_interaction_cell(cell) or is_nest_cell(cell) or TerrainDB.blocks_move(terrain_at(cell)) or not TerrainDB.can_stand(terrain_at(cell), boss.element):
+		if unit_at(cell) != null or is_interaction_cell(cell) or is_nest_cell(cell) or terrain_blocks_move(cell) or not TerrainDB.can_stand(terrain_at(cell), boss.element):
 			continue
 		boss.cell = cell
 		boss.sheltered = false
@@ -314,6 +315,10 @@ func load_map(map_data: Dictionary) -> void:
 	obstacle_reward_origins = {}
 	for cell in map_data.get("obstacle_cells", []):
 		obstacle_durability[cell] = Balance.TREE_DURABILITY if terrain_at(cell) == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
+	electric_flowers = map_data.get("electric_flowers", {}).duplicate()
+	for cell in electric_flowers:
+		obstacle_durability[cell] = electric_flower_max_hp(cell)
+	obstacle_durability.merge(map_data.get("obstacle_durability", {}), true)
 	natural_essence_cells = obstacle_durability.keys().duplicate()
 	nest = {
 		"cell": map_data["nest_cell"],
@@ -334,6 +339,7 @@ func load_map(map_data: Dictionary) -> void:
 	extra_rewards = map_data.get("extra_rewards", []).duplicate(true)
 	chests = map_data.get("chests", {}).duplicate()
 	for cell in chests:
+		electric_flowers.erase(cell)
 		terrain[GridSpec.index(cell)] = TerrainDB.OBSTACLE
 		obstacle_durability[cell] = 1
 		natural_essence_cells.erase(cell)
@@ -353,7 +359,7 @@ func normalize_nest_terrain() -> void:
 		if not GridSpec.is_inside(cell):
 			continue
 		terrain[GridSpec.index(cell)] = TerrainDB.PLAIN
-		for effects_by_cell in [obstacle_durability, obstacle_origin, obstacle_expire_round, burning_cells, burning_sources, steam_cells, vine_origin, vine_expire_round, obstacle_reward_origins]:
+		for effects_by_cell in [electric_flowers, obstacle_durability, obstacle_origin, obstacle_expire_round, burning_cells, burning_sources, steam_cells, vine_origin, vine_expire_round, obstacle_reward_origins]:
 			effects_by_cell.erase(cell)
 		natural_essence_cells.erase(cell)
 
@@ -373,12 +379,15 @@ func clear_node_temporaries() -> void:
 		if origin == TerrainDB.VINES:
 			origin = int(vine_origin.get(cell, TerrainDB.PLAIN))
 		if not is_nest_cell(cell):
+			var previous := terrain_at(cell)
 			terrain[GridSpec.index(cell)] = origin
-		obstacle_durability.erase(cell)
+			_adjust_electric_flower_hp(cell, previous, origin)
+		if not electric_flowers.has(cell):
+			obstacle_durability.erase(cell)
+			natural_essence_cells.erase(cell)
 		obstacle_origin.erase(cell)
 		obstacle_expire_round.erase(cell)
 		obstacle_reward_origins.erase(cell)
-		natural_essence_cells.erase(cell)
 		vine_origin.erase(cell)
 		vine_expire_round.erase(cell)
 		burning_cells.erase(cell)
@@ -400,8 +409,10 @@ func terrain_at(cell: Vector2i) -> int:
 func set_terrain(cell: Vector2i, value: int) -> void:
 	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return
-	var was_vines := terrain_at(cell) == TerrainDB.VINES
+	var previous := terrain_at(cell)
+	var was_vines := previous == TerrainDB.VINES
 	terrain[GridSpec.index(cell)] = value
+	_adjust_electric_flower_hp(cell, previous, value)
 	if was_vines and value != TerrainDB.VINES:
 		vine_origin.erase(cell)
 		vine_expire_round.erase(cell)
@@ -420,7 +431,7 @@ func set_terrain(cell: Vector2i, value: int) -> void:
 			occupant.vine_ticks = 0
 		if occupant != null and not occupant.has_buff("flight") and TerrainDB.is_lethal(value) and (value != TerrainDB.DEEP or occupant.element != "water"):
 			kill_unit(occupant, "藤蔓消失后落入" + TerrainDB.name_of(value))
-	if value != TerrainDB.GRASS and value != TerrainDB.VINES and value != TerrainDB.TREE:
+	if not TerrainDB.is_flammable(value):
 		burning_cells.erase(cell)
 		burning_origin.erase(cell)
 		burning_forced.erase(cell)
@@ -445,7 +456,9 @@ func ignite(cell: Vector2i, source_side: String = "", force: bool = false) -> bo
 	if not GridSpec.is_inside(cell):
 		return false
 	var current_terrain := terrain_at(cell)
-	var flammable := current_terrain == TerrainDB.GRASS or current_terrain == TerrainDB.VINES or current_terrain == TerrainDB.TREE
+	if current_terrain == TerrainDB.BLUE_FIRE:
+		return false
+	var flammable := TerrainDB.is_flammable(current_terrain)
 	if not flammable and not force:
 		return false
 	var was_burning := burning_cells.has(cell)
@@ -602,8 +615,26 @@ func is_chest_cell(cell: Vector2i) -> bool:
 	return chests.has(cell)
 
 
+func terrain_blocks_move(cell: Vector2i) -> bool:
+	return electric_flowers.has(cell) or TerrainDB.blocks_move(terrain_at(cell))
+
+
+func _adjust_electric_flower_hp(cell: Vector2i, previous: int, next: int) -> void:
+	if electric_flowers.has(cell) and TerrainDB.is_grass(previous) != TerrainDB.is_grass(next):
+		var bonus := 1 if TerrainDB.is_grass(next) else -1
+		obstacle_durability[cell] = maxi(1, int(obstacle_durability[cell]) + bonus)
+
+
+func electric_flower_max_hp(cell: Vector2i) -> int:
+	return 2 if TerrainDB.is_grass(terrain_at(cell)) else 1
+
+
+func is_burning_ground(cell: Vector2i) -> bool:
+	return burning_cells.has(cell) or terrain_at(cell) == TerrainDB.BLUE_FIRE
+
+
 func is_blocking_ray(cell: Vector2i) -> bool:
-	if TerrainDB.blocks_rays(terrain_at(cell)):
+	if terrain_blocks_move(cell):
 		return true
 	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return true
@@ -702,7 +733,7 @@ func active_summon(owner_uid: int) -> CombatUnit:
 
 
 func summon_tree(owner: CombatUnit, cell: Vector2i) -> CombatUnit:
-	if owner == null or not owner.is_alive() or active_summon(owner.uid) != null or not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or is_nest_cell(cell) or not TerrainDB.can_stand(terrain_at(cell), "grass"):
+	if owner == null or not owner.is_alive() or active_summon(owner.uid) != null or not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or is_nest_cell(cell) or terrain_blocks_move(cell) or not TerrainDB.can_stand(terrain_at(cell), "grass"):
 		return null
 	if owner.side == "player" and is_nest_cell(cell):
 		return null
@@ -931,7 +962,7 @@ func _find_capture_join_cell(unit: CombatUnit) -> Vector2i:
 	for cell in candidates:
 		if cell == unit.cell or unit_at(cell) != null or is_nest_cell(cell) or is_interaction_cell(cell):
 			continue
-		if TerrainDB.can_stand(terrain_at(cell), unit.element):
+		if not terrain_blocks_move(cell) and TerrainDB.can_stand(terrain_at(cell), unit.element):
 			return cell
 	return Vector2i(-1, -1)
 
@@ -1182,7 +1213,7 @@ func apply_burn(target: CombatUnit, source: CombatUnit) -> bool:
 func apply_burning_ground(unit: CombatUnit) -> bool:
 	if unit == null or not unit.is_alive() or unit.has_buff("flight"):
 		return false
-	if unit.burn_ticks > 0 or not burning_cells.has(unit.cell):
+	if unit.burn_ticks > 0 or not is_burning_ground(unit.cell):
 		return false
 	if not apply_burn(unit, null):
 		return false
@@ -1419,7 +1450,9 @@ func claim_obstacle_essence(cell: Vector2i, source_side: String) -> void:
 	obstacle_reward_origins.erase(cell)
 
 
-func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "") -> bool:
+func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "", skill_id: String = "", summary: Dictionary = {}) -> bool:
+	if electric_flowers.has(cell) and amount > 0:
+		return _hit_electric_flower(cell, amount, source_side, skill_id, summary)
 	var facility_id := camp_facility_at(cell)
 	if facility_id != "" and amount > 0:
 		var left := maxi(0, int(obstacle_durability.get(cell, 0)) - amount)
@@ -1463,6 +1496,47 @@ func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "") -> b
 	obstacle_durability[cell] = left
 	log_event("障碍耐久 -%d（剩 %d）。" % [amount, left])
 	return false
+
+
+func _hit_electric_flower(cell: Vector2i, amount: int, source_side: String, skill_id: String, summary: Dictionary) -> bool:
+	var remaining := maxi(0, int(obstacle_durability[cell]) - amount)
+	if remaining == 0:
+		claim_obstacle_essence(cell, source_side)
+		obstacle_durability.erase(cell)
+		electric_flowers.erase(cell)
+	else:
+		obstacle_durability[cell] = remaining
+	log_event("电电花耐久剩余 %d。" % remaining)
+	if skill_id.is_empty():
+		return remaining == 0
+	var fire_hit := SkillDB.element_of(skill_id) == "fire"
+	var wide := fire_hit or TerrainDB.is_water_body(terrain_at(cell))
+	var adjacent := GridSpec.neighbors8(cell) if wide else GridSpec.neighbors4(cell)
+	log_event("电电花%s。" % ("向八邻爆燃" if fire_hit else "释放闪电"))
+	for near in adjacent:
+		var target := unit_at(near)
+		if target == null:
+			continue
+		var damage := 0
+		var killed := false
+		var statuses: Array = []
+		if fire_hit:
+			var hit := damage_unit(null, target, ceili(target.max_hp * 0.10), {
+				"no_element": true, "ignore_grass_cover": true,
+				"cause": "电电花爆燃", "killer_side": source_side, "killer_uid": int(summary.get("caster_uid", -1)),
+			})
+			damage = int(hit.get("amount", 0))
+			killed = bool(hit.get("killed", false))
+		else:
+			# 敌方行动后立即跨轮，需保留到下一次我方行动。
+			var ticks := 2 if phase == PHASE_ENEMY and target.side == "player" else 1
+			if apply_paralysis(target, ticks):
+				statuses.append("麻痹")
+				emit_feedback(target, "status", "麻痹 1 回合")
+		if summary.has("hits"):
+			summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": near,
+				"damage": damage, "killed": killed, "modifier": 0, "statuses": statuses, "push": null})
+	return remaining == 0
 
 
 func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = Vector2i(-1, -1)) -> bool:
@@ -1537,7 +1611,7 @@ func relocate_nest_occupants() -> void:
 			var db := GridSpec.manhattan(b, origin)
 			return da < db if da != db else _cell_order(a) < _cell_order(b))
 		for cell in candidates:
-			if is_nest_cell(cell) or is_interaction_cell(cell) or unit_at(cell) != null or TerrainDB.blocks_move(terrain_at(cell)) or not TerrainDB.can_stand(terrain_at(cell), unit.element):
+			if is_nest_cell(cell) or is_interaction_cell(cell) or unit_at(cell) != null or terrain_blocks_move(cell) or not TerrainDB.can_stand(terrain_at(cell), unit.element):
 				continue
 			unit.cell = cell
 			unit.last_move_direction = Vector2i.ZERO
@@ -1545,7 +1619,7 @@ func relocate_nest_occupants() -> void:
 
 
 func place_temp_obstacle(cell: Vector2i, origin: int, expire_round: int) -> void:
-	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
+	if electric_flowers.has(cell) or is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return
 	natural_essence_cells.erase(cell)
 	obstacle_reward_origins.erase(cell)
@@ -1865,11 +1939,11 @@ func _try_spawn_wave(target: Dictionary = {}) -> void:
 	for cell in candidates:
 		if not GridSpec.is_inside(cell):
 			continue
-		if is_interaction_cell(cell) or is_nest_cell(cell) or TerrainDB.blocks_move(terrain_at(cell)):
+		if is_interaction_cell(cell) or is_nest_cell(cell) or terrain_blocks_move(cell):
 			continue
 		if unit_at(cell) != null:
 			continue
-		if not TerrainDB.can_stand(terrain_at(cell), SpeciesDB.element_of(species_id)):
+		if terrain_blocks_move(cell) or not TerrainDB.can_stand(terrain_at(cell), SpeciesDB.element_of(species_id)):
 			continue
 		var enemy := CombatUnit.make(species_id, "enemy", next_enemy_uid)
 		next_enemy_uid += 1
@@ -2192,7 +2266,7 @@ func ice_slide_outcome(unit: CombatUnit) -> Dictionary:
 	var next: Vector2i = unit.cell + unit.last_move_direction
 	var blocked := not GridSpec.is_inside(next)
 	if not blocked:
-		blocked = unit_at(next) != null or is_interaction_cell(next) or is_nest_cell(next) or TerrainDB.blocks_move(terrain_at(next))
+		blocked = unit_at(next) != null or is_interaction_cell(next) or is_nest_cell(next) or terrain_blocks_move(next)
 	var lethal := false
 	if not blocked:
 		lethal = TerrainDB.is_lethal(terrain_at(next)) and (terrain_at(next) != TerrainDB.DEEP or unit.element != "water")
@@ -2222,29 +2296,35 @@ func _settle_ice_slides() -> void:
 
 
 func _settle_burning_cells() -> void:
-	var current := burning_cells.keys().duplicate()
+	var current := burning_cells.keys()
+	for cell in GridSpec.all_cells():
+		if terrain_at(cell) == TerrainDB.BLUE_FIRE and not current.has(cell):
+			current.append(cell)
 	var newly_lit: Array = []
 	var spread_sources := {}
 	for cell in current:
 		for near in GridSpec.neighbors4(cell):
-			if not burning_cells.has(near) and (terrain_at(near) == TerrainDB.GRASS or terrain_at(near) == TerrainDB.VINES or terrain_at(near) == TerrainDB.TREE):
+			if not burning_cells.has(near) and TerrainDB.is_flammable(terrain_at(near)):
 				newly_lit.append(near)
 				spread_sources[near] = burning_sources.get(cell, "")
+		if terrain_at(cell) == TerrainDB.BLUE_FIRE:
+			continue
 		var occupant := unit_at(cell)
 		if occupant == null and is_nest_cell(cell):
 			damage_nest(1, String(burning_sources.get(cell, "")), cell)
 		burning_cells[cell] = int(burning_cells[cell]) - 1
 		if int(burning_cells[cell]) <= 0:
-			claim_obstacle_essence(cell, String(burning_sources.get(cell, "")))
+			if not electric_flowers.has(cell):
+				claim_obstacle_essence(cell, String(burning_sources.get(cell, "")))
 			burning_sources.erase(cell)
 			burning_cells.erase(cell)
 			var was_vines := terrain_at(cell) == TerrainDB.VINES
 			var forced := bool(burning_forced.get(cell, false))
 			var origin := int(burning_origin.get(cell, TerrainDB.PLAIN))
-			var restored := origin if forced and origin not in [TerrainDB.GRASS, TerrainDB.VINES, TerrainDB.TREE] else (int(vine_origin.get(cell, TerrainDB.PLAIN)) if was_vines else TerrainDB.PLAIN)
+			var restored := origin if forced and not TerrainDB.is_flammable(origin) else (int(vine_origin.get(cell, TerrainDB.PLAIN)) if was_vines else TerrainDB.PLAIN)
 			burning_origin.erase(cell)
 			burning_forced.erase(cell)
-			if restored not in [TerrainDB.OBSTACLE, TerrainDB.TREE]:
+			if restored not in [TerrainDB.OBSTACLE, TerrainDB.TREE] and not electric_flowers.has(cell):
 				obstacle_durability.erase(cell)
 			if was_vines:
 				log_event("藤蔓烧尽，(%d,%d) 恢复为%s。" % [cell.x, cell.y, TerrainDB.name_of(restored)])
@@ -2332,7 +2412,7 @@ func reward_safe_portal_cell(preferred: Vector2i) -> Vector2i:
 		var db := GridSpec.manhattan(b, preferred)
 		return da < db if da != db else a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
 	for cell in cells:
-		if is_nest_cell(cell) or is_interaction_cell(cell) or not TerrainDB.can_stand(terrain_at(cell), "rock"):
+		if is_nest_cell(cell) or is_interaction_cell(cell) or terrain_blocks_move(cell) or not TerrainDB.can_stand(terrain_at(cell), "rock"):
 			continue
 		if all_rewards().any(func(point): return point.get("cell") == cell and point.get("state") in ["map", "guarding"]):
 			continue
@@ -2468,7 +2548,7 @@ func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) 
 		if not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or is_nest_cell(cell) or species_pool.is_empty():
 			continue
 		var species_id := String(species_pool[next_enemy_uid % species_pool.size()])
-		if not TerrainDB.can_stand(terrain_at(cell), SpeciesDB.element_of(species_id)):
+		if terrain_blocks_move(cell) or not TerrainDB.can_stand(terrain_at(cell), SpeciesDB.element_of(species_id)):
 			continue
 		var enemy := CombatUnit.make(species_id, "enemy", next_enemy_uid)
 		next_enemy_uid += 1
@@ -2661,6 +2741,7 @@ func clone() -> BattleState:
 	copy.obstacle_durability = obstacle_durability.duplicate()
 	copy.obstacle_origin = obstacle_origin.duplicate()
 	copy.obstacle_expire_round = obstacle_expire_round.duplicate()
+	copy.electric_flowers = electric_flowers.duplicate()
 	copy.burning_cells = burning_cells.duplicate()
 	copy.burning_origin = burning_origin.duplicate()
 	copy.burning_forced = burning_forced.duplicate()
@@ -2763,7 +2844,7 @@ func stop_nests() -> void:
 		current["pending_waves"] = 0
 
 func food_cell_valid(cell: Vector2i) -> bool:
-	return GridSpec.is_inside(cell) and not all_nests().any(func(current): return current["cell"] == cell) and not deploy_area.has(cell) and not is_interaction_cell(cell) and not all_rewards().any(func(point): return point.get("cell") == cell and point.get("state") in ["map", "guarding"]) and terrain_at(cell) in [TerrainDB.PLAIN, TerrainDB.GRASS, TerrainDB.WATER, TerrainDB.ICE]
+	return GridSpec.is_inside(cell) and not all_nests().any(func(current): return current["cell"] == cell) and not deploy_area.has(cell) and not electric_flowers.has(cell) and not is_interaction_cell(cell) and not all_rewards().any(func(point): return point.get("cell") == cell and point.get("state") in ["map", "guarding"]) and terrain_at(cell) in [TerrainDB.PLAIN, TerrainDB.GRASS, TerrainDB.SHALLOW_GRASS, TerrainDB.WATER, TerrainDB.ICE]
 
 func seed_initial_food() -> void:
 	for cell in GridSpec.all_cells():
@@ -2850,6 +2931,8 @@ func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: D
 	amount = maxi(0, amount)
 	if amount > 0 and source != null and not bool(opts.get("no_element", false)) and target.has_buff("direct_guard") and not bool(opts.get("conductive", false)):
 		amount = maxi(0, amount - Balance.DIRECT_GUARD_REDUCTION)
+	if target_in_grass and not bool(opts.get("ignore_grass_cover", false)):
+		amount = roundi(amount * 0.9)
 	return amount
 
 

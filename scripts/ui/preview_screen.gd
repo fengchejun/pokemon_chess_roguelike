@@ -60,6 +60,7 @@ func _ready() -> void:
 		if saved != null:
 			persistent_node = true
 			map["terrain"] = saved.terrain.duplicate()
+			map["electric_flowers"] = saved.electric_flowers.duplicate()
 			map["camp_facilities"] = saved.camp_facilities.duplicate(true)
 			map["obstacle_durability"] = saved.obstacle_durability.duplicate()
 			map["nest_cell"] = saved.nest["cell"]
@@ -385,13 +386,18 @@ func _mod_hover_text(cell: Vector2i) -> String:
 		if run.region_mode and run.get_region().node_mode(run.get_region().active_node) == "event":
 			return "该格为后续占领事件保留，暂不能改造。"
 		return "巢穴不可站立或叠加其他地形；每两轮在上下左右空格生成增援，无空格则积压，出生轮待机。巢穴三层生命30/50/70；邻接敌人可消耗技能机会守护，巢穴承担一半伤害，其余由有效守军均分，持续到下次敌方阶段。第9轮起出生的增援击杀无经验。"
+	if map.get("electric_flowers", {}).has(cell):
+		return "电电花 · 底层%s。招式命中会释放闪电或触发爆燃。" % TerrainDB.name_of(int(map["terrain"][GridSpec.index(cell)]))
 	if MapGenerator.mod_protected(map, cell):
 		return "【%s】该格受保护（部署区 / 巢穴 / 奖励 / 果实），不能改造。" % tool_name
 	var terrain := int(map["terrain"][GridSpec.index(cell)])
 	var from_terrain := int(rule.get("ok_from", TerrainDB.PLAIN))
 	var to_terrain := int(rule.get("to", TerrainDB.PLAIN))
 	var accepts_ice := terrain == TerrainDB.ICE and mod_kind in ["water", "grass", "rock"]
-	if terrain != from_terrain and not accepts_ice:
+	var waters_grass_or_fire := mod_kind == "water" and terrain in [TerrainDB.SHALLOW_GRASS, TerrainDB.BLUE_FIRE]
+	if waters_grass_or_fire:
+		to_terrain = TerrainDB.water_result(terrain)
+	if terrain != from_terrain and not accepts_ice and not waters_grass_or_fire:
 		return "【%s】需要%s（当前：%s），该格不能改造。" % [
 			tool_name, "平地/冰面" if mod_kind in ["water", "grass", "rock"] else TerrainDB.name_of(from_terrain), TerrainDB.name_of(terrain),
 		]
@@ -503,7 +509,7 @@ func _refresh() -> void:
 	for button in mod_buttons.values():
 		(button as Button).disabled = run.mod_points() <= 0 or mod_used >= run.mod_points()
 	var lethal: int = map["terrain"].filter(func(tile): return TerrainDB.is_lethal(tile)).size()
-	var obstacle_count: int = (map.get("obstacle_cells", []) as Array).size()
+	var obstacle_count: int = (map.get("obstacle_cells", []) as Array).filter(func(cell): return not map.get("electric_flowers", {}).has(cell)).size() + map.get("electric_flowers", {}).size()
 	hint_label.text = hint_label.text if hint_label.text != "" else "致死地形 %d 格｜障碍 %d 格（种子可复现）" % [lethal, obstacle_count]
 
 

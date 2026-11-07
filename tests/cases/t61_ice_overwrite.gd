@@ -39,10 +39,10 @@ func _water(t: TestContext) -> void:
 	var vine := _state("grass_starter")
 	vine.place_temp_vines(Vector2i(3, 3))
 	SkillResolver._convert_to_water(vine, Vector2i(3, 3), {"terrain_changes": []})
-	t.check(not vine.vine_origin.has(Vector2i(3, 3)), "水覆盖冰面上的临时藤蔓时清除旧底层记录")
+	t.check(vine.vine_origin.has(Vector2i(3, 3)), "铺水保留临时藤蔓及其冰面底层")
 	vine.round = 2
 	vine._settle_temp_vines()
-	t.eq(vine.terrain_at(Vector2i(3, 3)), TerrainDB.WATER, "藤蔓到期不会把永久水格改回冰")
+	t.eq(vine.terrain_at(Vector2i(3, 3)), TerrainDB.ICE, "未被铺水覆盖的藤蔓到期后恢复冰面")
 
 func _vines(t: TestContext) -> void:
 	var state := _state("grass_starter")

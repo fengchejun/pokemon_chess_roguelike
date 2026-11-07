@@ -11,11 +11,11 @@ const REGION_WEIGHTS := {
 	"草原": {"ground": 49, "water": 12, "fragile": 5, "rock": 8, "plant": 10, "grass": 16},
 	"溪谷": {"ground": 49, "water": 22, "fragile": 5, "rock": 8, "plant": 10, "grass": 6},
 	"密林": {"ground": 42, "water": 8, "fragile": 4, "rock": 8, "plant": 22, "grass": 16},
-	"火谷": {"ground": 49, "water": 8, "fragile": 5, "rock": 17, "plant": 13, "grass": 8},
+	"火谷": {"ground": 49, "water": 4, "fragile": 5, "rock": 20, "plant": 11, "grass": 4, "blue_fire": 7},
 	"岩窟": {"ground": 52, "water": 8, "fragile": 8, "rock": 20, "plant": 8, "grass": 4},
 	"深潭": {"ground": 45, "water": 27, "fragile": 5, "rock": 9, "plant": 8, "grass": 6},
 }
-const WEIGHT_ORDER := ["ground", "water", "fragile", "rock", "plant", "grass"]
+const WEIGHT_ORDER := ["ground", "water", "fragile", "rock", "plant", "grass", "blue_fire"]
 
 
 static func generate(run_seed: int, battle_index: int, salt: int = 0, environment_deck: Array = [], theme_id: String = "", nest_count: int = -1) -> Dictionary:
@@ -27,6 +27,7 @@ static func generate(run_seed: int, battle_index: int, salt: int = 0, environmen
 	for attempt in 64:
 		var result := _attempt(rng, cfg, lethal_budget, environment_deck)
 		if not result.is_empty() and _has_landscape_pair(result["terrain"]) and randomize_nests(result, cfg, rng):
+			_add_electric_flowers(result, cfg, rng)
 			result["region"] = String(cfg.get("region", "?"))
 			result["battle_index"] = battle_index
 			result["theme_id"] = theme_id
@@ -34,9 +35,36 @@ static func generate(run_seed: int, battle_index: int, salt: int = 0, environmen
 			return result
 	var fallback := _fallback(cfg)
 	randomize_nests(fallback, cfg, rng)
+	_add_electric_flowers(fallback, cfg, rng)
 	fallback["battle_index"] = battle_index
 	fallback["theme_id"] = theme_id
 	return fallback
+
+
+static func _add_electric_flowers(map: Dictionary, cfg: Dictionary, rng: RandomNumberGenerator) -> void:
+	var flowers := {}
+	map["electric_flowers"] = flowers
+	var count := rng.randi_range(0, 2)
+	if count == 0:
+		return
+	var required: Array = map.get("nest_cells", []).duplicate()
+	required.append(map["reward_cell"])
+	for pair in cfg.get("enemies", []):
+		required.append(pair[1])
+	var terrain: Array = map["terrain"]
+	var candidates := GridSpec.all_cells().filter(func(cell):
+		var base := int(terrain[GridSpec.index(cell)])
+		return not mod_protected(map, cell) and not required.has(cell) and not TerrainDB.blocks_move(base)
+	)
+	var blocked := terrain.duplicate()
+	while flowers.size() < count and not candidates.is_empty():
+		var cell: Vector2i = candidates.pop_at(rng.randi_range(0, candidates.size() - 1))
+		var index := GridSpec.index(cell)
+		blocked[index] = TerrainDB.OBSTACLE
+		if _validate(blocked, required):
+			flowers[cell] = true
+		else:
+			blocked[index] = terrain[index]
 
 
 static func terrain_counts(map: Dictionary) -> Dictionary:
@@ -44,7 +72,7 @@ static func terrain_counts(map: Dictionary) -> Dictionary:
 	for value in map.get("terrain", []):
 		match int(value):
 			TerrainDB.WATER: counts["water"] += 1
-			TerrainDB.GRASS: counts["grass"] += 1
+			TerrainDB.GRASS, TerrainDB.SHALLOW_GRASS: counts["grass"] += 1
 			TerrainDB.OBSTACLE: counts["rock"] += 1
 	counts["rock"] = maxi(0, int(counts["rock"]) - (map.get("chests", {}) as Dictionary).size())
 	counts["steam"] = (map.get("steam_cells", {}) as Dictionary).size()
@@ -182,16 +210,17 @@ static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget:
 
 static func _scatter(terrain: Array, protected: Dictionary, rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget: int, deck: Array) -> void:
 	var weights: Dictionary = REGION_WEIGHTS.get(String(cfg.get("region", "草原")), REGION_WEIGHTS["草原"]).duplicate()
+	var fire_valley := String(cfg.get("region", "")) == "火谷"
 	var card_weights := MapCardDB.weights(deck)
 	for key in ["water", "grass", "rock"]:
-		weights[key] = int(weights[key]) + int(card_weights.get(key, 0))
-	var water_clump := 12 + (12 if deck.has("water") and deck.has("rock") else 0) + (20 if deck.has("water") and deck.has("electric") else 0)
+		weights[key] = int(weights.get(key, 0)) + int(card_weights.get(key, 0))
+	var water_clump := (5 if fire_valley else 12) + (12 if deck.has("water") and deck.has("rock") else 0) + (20 if deck.has("water") and deck.has("electric") else 0)
 	for cell in GridSpec.all_cells():
 		if protected.has(cell):
 			continue
 		var local: Dictionary = weights.duplicate()
 		if cell.x >= 2 and cell.x <= 5 and cell.y >= 2 and cell.y <= 5:
-			local["grass"] = int(local["grass"]) + 12
+			local["grass"] = int(local["grass"]) + (4 if fire_valley else 12)
 		if _adjacent_water(terrain, cell):
 			local["water"] = int(local["water"]) + water_clump
 			if deck.has("water") and deck.has("rock"):
@@ -201,7 +230,8 @@ static func _scatter(terrain: Array, protected: Dictionary, rng: RandomNumberGen
 			"fragile": terrain[GridSpec.index(cell)] = TerrainDB.FRAGILE
 			"rock": terrain[GridSpec.index(cell)] = TerrainDB.OBSTACLE
 			"plant": terrain[GridSpec.index(cell)] = TerrainDB.TREE
-			"grass": terrain[GridSpec.index(cell)] = TerrainDB.GRASS
+			"grass": terrain[GridSpec.index(cell)] = TerrainDB.SHALLOW_GRASS if posmod(hash("%d:%d:%d" % [rng.seed, cell.x, cell.y]), 2) == 0 else TerrainDB.GRASS
+			"blue_fire": terrain[GridSpec.index(cell)] = TerrainDB.BLUE_FIRE
 	# 致死地形仍服从各场预算，不能因恢复旧版密度堵死通路。
 	if lethal_budget > 0 and String(cfg.get("region", "")) == "火谷":
 		for _n in mini(2, lethal_budget):
@@ -218,10 +248,10 @@ static func _adjacent_water(terrain: Array, cell: Vector2i) -> bool:
 static func _weighted_pick(weights: Dictionary, rng: RandomNumberGenerator) -> String:
 	var total := 0
 	for key in WEIGHT_ORDER:
-		total += int(weights[key])
+		total += int(weights.get(key, 0))
 	var roll := rng.randi_range(1, total)
 	for key in WEIGHT_ORDER:
-		roll -= int(weights[key])
+		roll -= int(weights.get(key, 0))
 		if roll <= 0:
 			return key
 	return "ground"
@@ -346,6 +376,8 @@ static func _fallback(cfg: Dictionary) -> Dictionary:
 
 
 static func mod_protected(map: Dictionary, cell: Vector2i) -> bool:
+	if map.get("electric_flowers", {}).has(cell):
+		return true
 	var protected_cells: Array = []
 	protected_cells.append_array(map.get("deploy_area", Balance.DEPLOY_AREA))
 	protected_cells.append_array(map.get("nest_cells", [map["nest_cell"]]))
@@ -362,9 +394,9 @@ static func apply_modification(map: Dictionary, cell: Vector2i, kind: String) ->
 	var value := int(terrain[GridSpec.index(cell)])
 	match kind:
 		"water":
-			if value not in [TerrainDB.PLAIN, TerrainDB.ICE]:
+			if value not in [TerrainDB.PLAIN, TerrainDB.ICE, TerrainDB.SHALLOW_GRASS, TerrainDB.BLUE_FIRE]:
 				return false
-			terrain[GridSpec.index(cell)] = TerrainDB.WATER
+			terrain[GridSpec.index(cell)] = TerrainDB.water_result(value)
 		"grass":
 			if value not in [TerrainDB.PLAIN, TerrainDB.ICE]:
 				return false
@@ -431,6 +463,8 @@ static func _has_landscape_pair(terrain: Array) -> bool:
 
 static func _nests_accessible(map: Dictionary, cells: Array) -> bool:
 	var blocked: Array = map["terrain"].duplicate()
+	for cell in map.get("electric_flowers", {}):
+		blocked[GridSpec.index(cell)] = TerrainDB.OBSTACLE
 	for cell in cells:
 		blocked[GridSpec.index(cell)] = TerrainDB.OBSTACLE
 	for cell in cells:
@@ -469,7 +503,7 @@ static func populate_treasure(map: Dictionary, cfg: Dictionary, seed_value: int,
 	var count := 2 if rng.randf() < Balance.CHEST_DOUBLE_CHANCE else 1
 	var cells: Array = []
 	for cell in GridSpec.all_cells():
-		if int(map["terrain"][GridSpec.index(cell)]) != TerrainDB.PLAIN or (map.get("deploy_area", Balance.DEPLOY_AREA) as Array).has(cell) or cell == map.get("merchant_cell", Vector2i(-1, -1)) or cell == map.get("portal_cell", Vector2i(-1, -1)):
+		if map.get("electric_flowers", {}).has(cell) or int(map["terrain"][GridSpec.index(cell)]) != TerrainDB.PLAIN or (map.get("deploy_area", Balance.DEPLOY_AREA) as Array).has(cell) or cell == map.get("merchant_cell", Vector2i(-1, -1)) or cell == map.get("portal_cell", Vector2i(-1, -1)):
 			continue
 		if (map.get("nest_cells", [map["nest_cell"]]) as Array).has(cell) or enemies.any(func(pair): return pair[1] == cell):
 			continue

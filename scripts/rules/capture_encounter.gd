@@ -85,7 +85,11 @@ static func prepare_map(map: Dictionary) -> void:
 	# 用最少的地形修整保证陆地通路，中央仍保留障碍，不再清空整列。
 	map["capture_exits"] = EXITS.duplicate()
 	var required: Array = EXITS + [Vector2i(5, 2), Vector2i(6, 3), Vector2i(5, 4)]
-	for cell in EXITS: map["terrain"][GridSpec.index(cell)] = TerrainDB.PLAIN
+	var flowers: Dictionary = map.get("electric_flowers", {})
+	for cell in EXITS:
+		map["terrain"][GridSpec.index(cell)] = TerrainDB.PLAIN
+	for cell in required:
+		flowers.erase(cell)
 	for goal in required:
 		var frontier: Array = [Vector2i(1, 3)]
 		var costs := {Vector2i(1, 3): 0}
@@ -98,12 +102,13 @@ static func prepare_map(map: Dictionary) -> void:
 				var next: Vector2i = current + dir
 				if not GridSpec.is_inside(next) or map.get("chests", {}).has(next): continue
 				var terrain: int = map["terrain"][GridSpec.index(next)]
-				var cost: int = costs[current] + (8 if TerrainDB.blocks_move(terrain) or TerrainDB.is_lethal(terrain) else 1)
+				var cost: int = costs[current] + (8 if flowers.has(next) or TerrainDB.blocks_move(terrain) or TerrainDB.is_lethal(terrain) else 1)
 				if cost < int(costs.get(next, 1 << 30)):
 					costs[next] = cost
 					routes[next] = routes[current] + [next]
 					if not frontier.has(next): frontier.append(next)
 		for cell in routes.get(goal, []):
+			flowers.erase(cell)
 			var terrain: int = map["terrain"][GridSpec.index(cell)]
 			if TerrainDB.blocks_move(terrain) or TerrainDB.is_lethal(terrain): map["terrain"][GridSpec.index(cell)] = TerrainDB.PLAIN
 	map["obstacle_cells"] = GridSpec.all_cells().filter(func(cell): return TerrainDB.blocks_move(map["terrain"][GridSpec.index(cell)]))

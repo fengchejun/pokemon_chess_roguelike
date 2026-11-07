@@ -9,6 +9,7 @@ const TILE := 72.0
 
 var terrain: Array = []
 var obstacle_durability: Dictionary = {}
+var electric_flowers: Dictionary = {}
 var burning_cells: Dictionary = {}
 var steam_cells: Dictionary = {}
 var vine_origin: Dictionary = {}
@@ -62,6 +63,7 @@ func set_from_state(state: BattleState) -> void:
 	extraction_cells = state.extraction_cells.duplicate() if state.uses_extraction() else []
 	capture_exits = state.capture_exits.duplicate()
 	obstacle_durability = state.obstacle_durability.duplicate()
+	electric_flowers = state.electric_flowers.duplicate()
 	burning_cells = state.burning_cells.duplicate()
 	steam_cells = state.steam_cells.duplicate()
 	vine_origin = state.vine_origin.duplicate()
@@ -108,6 +110,9 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	vine_expire_round = {}
 	for cell in map.get("obstacle_cells", []):
 		obstacle_durability[cell] = Balance.TREE_DURABILITY if terrain[GridSpec.index(cell)] == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
+	electric_flowers = map.get("electric_flowers", {}).duplicate()
+	for cell in electric_flowers:
+		obstacle_durability[cell] = 2 if TerrainDB.is_grass(terrain[GridSpec.index(cell)]) else 1
 	obstacle_durability.merge(map.get("obstacle_durability", {}), true)
 	nest = {
 		"cell": map.get("nest_cell", Vector2i(-1, -1)),
@@ -196,6 +201,14 @@ func _draw() -> void:
 			if steam_cells.has(cell):
 				draw_circle(rect.position + Vector2(28, 25), 17.0, Color(0.92, 0.94, 0.96, 0.38))
 				draw_circle(rect.position + Vector2(46, 42), 13.0, Color(0.92, 0.94, 0.96, 0.33))
+	for cell in electric_flowers:
+		var center := cell_center(cell)
+		draw_line(center + Vector2(0, 7), center + Vector2(0, 24), Color("263f2e"), 5)
+		draw_circle(center, 19, Color("4c421b"))
+		for offset in [Vector2(-9, 0), Vector2(9, 0), Vector2(0, -9), Vector2(0, 9)]:
+			draw_circle(center + offset, 8, Color("f4ca51"))
+		draw_polyline(PackedVector2Array([center + Vector2(3, -10), center + Vector2(-5, 1), center + Vector2(4, 1), center + Vector2(-3, 11)]), Color("594216"), 3)
+		draw_string(font, center + Vector2(20, -16), str(obstacle_durability.get(cell, 0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("fff0ad"))
 	for cell in extraction_cells:
 		var zone := Rect2(Vector2(cell) * TILE + Vector2(3,3), Vector2.ONE * (TILE - 6))
 		draw_rect(zone, Color(0.25, 0.85, 0.72, 0.18))
@@ -304,6 +317,15 @@ func _draw_terrain(rect: Rect2, value: int) -> void:
 			for line_index in 2:
 				var y := rect.position.y + 24.0 + line_index * 24.0
 				draw_line(Vector2(rect.position.x + 10, y), Vector2(rect.position.x + 62, y), Color(0.6, 0.8, 1.0, 0.28), 2.0)
+		TerrainDB.BLUE_FIRE:
+			var base := rect.position + Vector2(36, 50)
+			draw_colored_polygon(PackedVector2Array([base + Vector2(-16, -4), base + Vector2(-11, -19), base + Vector2(-3, -15), base + Vector2(4, -34), base + Vector2(16, -12), base + Vector2(12, 2), base + Vector2(-6, 6)]), Color("46a7f3"))
+			draw_colored_polygon(PackedVector2Array([base + Vector2(-6, 2), base + Vector2(1, -15), base + Vector2(8, -5), base + Vector2(5, 3)]), Color("c0efff"))
+		TerrainDB.SHALLOW_GRASS:
+			for offset in [16, 36, 56]:
+				var tuft := rect.position + Vector2(offset, 48)
+				draw_line(tuft, tuft + Vector2(-4, -6), Color("527646"), 2)
+				draw_line(tuft, tuft + Vector2(4, -8), Color("527646"), 2)
 		TerrainDB.GRASS:
 			for tuft in 3:
 				var base := rect.position + Vector2(14 + tuft * 20, 48)

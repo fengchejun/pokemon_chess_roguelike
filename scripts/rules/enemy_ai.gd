@@ -195,7 +195,7 @@ static func _decide(work: BattleState, unit: CombatUnit, cast_counts: Dictionary
 
 static func _spawn_terrain_options(state: BattleState, cell: Vector2i, terrain: int) -> int:
 	var count := 0
-	if state.is_interaction_cell(cell) or state.is_nest_cell(cell) or TerrainDB.blocks_move(terrain):
+	if state.is_interaction_cell(cell) or state.is_nest_cell(cell) or state.electric_flowers.has(cell) or TerrainDB.blocks_move(terrain):
 		return 0
 	for species_id in state.reinforcement_pool:
 		if TerrainDB.can_stand(terrain, SpeciesDB.element_of(species_id)):

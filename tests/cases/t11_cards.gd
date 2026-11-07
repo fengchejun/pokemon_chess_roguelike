@@ -80,7 +80,7 @@ func _t_grass_duel(t: TestContext) -> void:
 	var player2 := state2.unit_by_uid(1)
 	player2.cell = Vector2i(2, 3)
 	SkillResolver.apply(state2, state2.unit_by_uid(100), "rock_smash", {"type": "unit", "unit": player2.uid, "cell": player2.cell}, false)
-	t.eq(player2.hp, hp_before - Balance.skill_damage_for_side(SkillDB.damage_of("rock_smash"), "enemy"), "对照：无卡时承受完整远程伤害")
+	t.eq(player2.hp, hp_before - roundi(Balance.skill_damage_for_side(SkillDB.damage_of("rock_smash"), "enemy") * 0.9), "无卡时仅计算草丛基础减伤")
 	# 站在草丛中：造成的直接伤害 +5
 	var terrain3 := TestScenario.with_cells(TestScenario.plain_terrain(), [
 		[Vector2i(0, 3), TerrainDB.GRASS],
