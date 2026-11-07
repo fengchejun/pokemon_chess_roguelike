@@ -20,6 +20,29 @@ var notifications: Array = []
 var at_camp_scene: bool = false
 
 
+static func inferred_node_type(id: String) -> String:
+	if id == "camp":
+		return "camp"
+	if id == "boss":
+		return "boss"
+	if id.begins_with("battle_"):
+		return "battle"
+	return "event"
+
+
+func node_type(id: String) -> String:
+	if not nodes.has(id):
+		return ""
+	var node = nodes[id]
+	if not node is Dictionary:
+		return inferred_node_type(id)
+	var kind := String(node.get("type", inferred_node_type(id)))
+	if not NODE_TYPES.has(kind):
+		kind = inferred_node_type(id)
+	node["type"] = kind
+	return kind
+
+
 static func create_floor(floor_value: int, theme_value: String) -> RegionState:
 	var specifications: Array = [{"id": "camp", "type": "camp"}, {"id": "event_1", "type": "event"}, {"id": "event_2", "type": "event"}, {"id": "boss", "type": "boss"}]
 	for index in range(1, 6):
@@ -57,8 +80,16 @@ static func create(floor_value: int, theme_value: String, specifications: Array)
 func node_mode(id: String) -> String:
 	if not nodes.has(id):
 		return ""
-	var node: Dictionary = nodes[id]
-	return String(node.get("mode", "event" if node["type"] == "battle" and bool(node["cleared"]) else node["type"]))
+	var node = nodes[id]
+	if not node is Dictionary:
+		return inferred_node_type(id)
+	var kind := node_type(id)
+	var default_mode := "event" if kind == "battle" and bool(node.get("cleared", false)) else kind
+	var mode := String(node.get("mode", default_mode))
+	if not NODE_TYPES.has(mode):
+		mode = default_mode
+	node["mode"] = mode
+	return mode
 
 
 func display_name(id: String) -> String:
@@ -74,13 +105,17 @@ func display_name(id: String) -> String:
 func record_entry(id: String) -> bool:
 	if visit_pending or not nodes.has(id):
 		return false
-	if not bool(nodes[id].get("unlocked", true)):
+	var node = nodes[id]
+	if not node is Dictionary:
 		return false
-	if nodes[id]["type"] == "boss" and bool(nodes[id]["cleared"]):
+	var kind := node_type(id)
+	if not bool(node.get("unlocked", true)):
 		return false
-	if nodes[id]["type"] != "boss":
+	if kind == "boss" and bool(node.get("cleared", false)):
+		return false
+	if kind != "boss":
 		visits += 1
-	nodes[id]["visits"] = int(nodes[id]["visits"]) + 1
+	node["visits"] = int(node.get("visits", 0)) + 1
 	active_node = id
 	_apply_pressure()
 	at_camp_scene = node_mode(id) == "camp"
@@ -100,13 +135,23 @@ func complete_visit() -> Array:
 
 
 func unlock_neighbors(id: String) -> void:
-	for neighbor in nodes[id].get("links", []):
+	if not nodes.has(id) or not nodes[id] is Dictionary:
+		return
+	var links = nodes[id].get("links", [])
+	if not links is Array:
+		nodes[id]["links"] = []
+		return
+	for neighbor in links:
+		if not nodes.has(neighbor) or not nodes[neighbor] is Dictionary:
+			continue
 		if not bool(nodes[neighbor].get("unlocked", false)):
 			notifications.append("已解锁：%s" % display_name(String(neighbor)))
 		nodes[neighbor]["unlocked"] = true
 
 
 func _occupy(id: String) -> void:
+	if not nodes.has(id) or not nodes[id] is Dictionary:
+		return
 	var node: Dictionary = nodes[id]
 	node["mode"] = "battle"
 	node["cleared"] = false
@@ -121,6 +166,8 @@ func occupy_all(preserve_node: String = "") -> void:
 	at_camp_scene = false
 	for id in nodes:
 		if id != "boss":
+			if not nodes[id] is Dictionary:
+				continue
 			if id == preserve_node:
 				nodes[id]["mode"] = "battle"
 				nodes[id]["cleared"] = false
@@ -132,6 +179,8 @@ func occupy_all(preserve_node: String = "") -> void:
 
 func apply_timed_pressure(id: String) -> void:
 	if not nodes.has(id):
+		return
+	if not nodes[id] is Dictionary:
 		return
 	nodes[id]["corrupted"] = true
 	if floor_index >= 2:
@@ -149,6 +198,8 @@ func repair_early_occupation() -> void:
 	camp_invaded = false
 	at_camp_scene = false
 	for id in nodes:
+		if not nodes[id] is Dictionary:
+			continue
 		var node: Dictionary = nodes[id]
 		node["pending_garrison"] = false
 		node["pending_replenish"] = false
@@ -184,6 +235,8 @@ func next_pressure_text() -> String:
 func store_battle(id: String, battle: BattleState) -> bool:
 	if not nodes.has(id) or battle == null:
 		return false
+	if not nodes[id] is Dictionary:
+		return false
 	var node: Dictionary = nodes[id]
 	if not ["battle", "boss", "event"].has(node_mode(id)):
 		return false
@@ -193,16 +246,17 @@ func store_battle(id: String, battle: BattleState) -> bool:
 	node["snapshot"] = Snapshot.save_state(persisted)
 	if battle.ended and battle.end_reason in ["victory", "explored"]:
 		unlock_neighbors(id)
-	if node["type"] == "boss":
+	var kind := node_type(id)
+	if kind == "boss":
 		var boss := battle.unit_by_uid(battle.boss_uid)
 		node["cleared"] = boss != null and (not boss.is_alive() or boss.side == "player")
 	elif node_mode(id) == "battle":
 		node["cleared"] = battle.battle_objective_met()
 		if bool(node["cleared"]):
-			node["mode"] = "camp" if node["type"] == "camp" else "event"
+			node["mode"] = "camp" if kind == "camp" else "event"
 			node["pending_garrison"] = false
 			node["pending_replenish"] = false
-			if node["type"] == "camp":
+			if kind == "camp":
 				camp_invaded = false
 				notifications.append("营地驻军已清除，食物回复服务重新开放。")
 		elif battle.end_reason == "escape":
@@ -216,9 +270,12 @@ func store_battle(id: String, battle: BattleState) -> bool:
 
 
 func load_battle(id: String) -> BattleState:
-	if not nodes.has(id) or (nodes[id]["snapshot"] as Dictionary).is_empty():
+	if not nodes.has(id) or not nodes[id] is Dictionary:
 		return null
-	var battle := Snapshot.load_state(nodes[id]["snapshot"])
+	var snapshot = nodes[id].get("snapshot", {})
+	if not snapshot is Dictionary or (snapshot as Dictionary).is_empty():
+		return null
+	var battle := Snapshot.load_state(snapshot)
 	if battle != null and (corrupted or bool(nodes[id].get("corrupted", false))):
 		battle.corruption_active = true
 		for unit in battle.units:
@@ -335,16 +392,50 @@ static func from_dict(data: Dictionary) -> RegionState:
 	region.theme = String(data.get("theme", ""))
 	region.visits = int(data.get("visits", 0))
 	region.active_node = String(data.get("active_node", ""))
-	region.nodes = (data.get("nodes", {}) as Dictionary).duplicate(true)
+	var supplied_nodes = data.get("nodes", {})
+	if not supplied_nodes is Dictionary:
+		supplied_nodes = {}
+	var template := create_floor(region.floor_index, region.theme)
+	region.nodes = template.nodes.duplicate(true) if template != null else {}
+	for raw_id in supplied_nodes:
+		var id := String(raw_id)
+		var raw_node = supplied_nodes[raw_id]
+		if not raw_node is Dictionary:
+			continue
+		var node: Dictionary = region.nodes.get(id, {}).duplicate(true)
+		node.merge((raw_node as Dictionary).duplicate(true), true)
+		var kind := String(node.get("type", inferred_node_type(id)))
+		if not NODE_TYPES.has(kind):
+			kind = inferred_node_type(id)
+		node["type"] = kind
+		var cleared := bool(node.get("cleared", false))
+		var default_mode := "event" if kind == "battle" and cleared else kind
+		var mode := String(node.get("mode", default_mode))
+		if not NODE_TYPES.has(mode):
+			mode = default_mode
+		node["mode"] = mode
+		node["visits"] = maxi(0, int(node.get("visits", 0)))
+		node["cleared"] = cleared
+		node["withdrawn"] = bool(node.get("withdrawn", false))
+		node["pending_garrison"] = bool(node.get("pending_garrison", false))
+		node["pending_replenish"] = bool(node.get("pending_replenish", false))
+		node["unlocked"] = bool(node.get("unlocked", id == "camp"))
+		if not (node.get("links", []) is Array):
+			node["links"] = []
+		if not (node.get("snapshot", {}) is Dictionary):
+			node["snapshot"] = {}
+		region.nodes[id] = node
 	region.visit_pending = bool(data.get("visit_pending", false))
 	region.support_triggered = bool(data.get("support_triggered", false))
 	region.corrupted = bool(data.get("corrupted", region.visits >= Balance.CORRUPTION_VISITS))
 	region.boss_level_bonus = int(data.get("boss_level_bonus", 0))
 	region.camp_invaded = bool(data.get("camp_invaded", false))
-	region.notifications = (data.get("notifications", []) as Array).duplicate()
+	var supplied_notifications = data.get("notifications", [])
+	region.notifications = supplied_notifications.duplicate() if supplied_notifications is Array else []
 	region.at_camp_scene = bool(data.get("at_camp_scene", false))
-	for id in region.nodes:
-		var node: Dictionary = region.nodes[id]
-		if not node.has("mode"):
-			node["mode"] = "event" if node["type"] == "battle" and bool(node.get("cleared", false)) else node["type"]
+	if not region.nodes.has(region.active_node):
+		region.active_node = "camp" if region.nodes.has("camp") else ""
+		region.visit_pending = false
+	if region.node_mode(region.active_node) != "camp":
+		region.at_camp_scene = false
 	return region

@@ -1208,16 +1208,24 @@ static func from_dict(data: Dictionary) -> RunState:
 	var old_hp_scale := version <= 11
 	run.seed = int(data.get("seed", 0))
 	run.region_mode = bool(data.get("region_mode", false))
-	run.region_data = (data.get("region_data", {}) as Dictionary).duplicate(true)
-	run.pending_region_entry_backup = (data.get("pending_region_entry_backup", {}) as Dictionary).duplicate(true)
+	var saved_region = data.get("region_data", {})
+	var saved_region_backup = data.get("pending_region_entry_backup", {})
+	run.region_data = saved_region.duplicate(true) if saved_region is Dictionary else {}
+	run.pending_region_entry_backup = saved_region_backup.duplicate(true) if saved_region_backup is Dictionary else {}
 	if not run.region_data.is_empty():
 		var repaired_region = Region.from_dict(run.region_data)
-		repaired_region.repair_early_occupation()
-		run.region_data = repaired_region.to_dict()
+		if repaired_region != null:
+			repaired_region.repair_early_occupation()
+			run.region_data = repaired_region.to_dict()
+		else:
+			run.region_data = {}
 	if not run.pending_region_entry_backup.is_empty():
 		var repaired_backup = Region.from_dict(run.pending_region_entry_backup)
-		repaired_backup.repair_early_occupation()
-		run.pending_region_entry_backup = repaired_backup.to_dict()
+		if repaired_backup != null:
+			repaired_backup.repair_early_occupation()
+			run.pending_region_entry_backup = repaired_backup.to_dict()
+		else:
+			run.pending_region_entry_backup = {}
 	run.pending_region_battle_index = int(data.get("pending_region_battle_index", 0))
 	run.food = maxi(0, int(data.get("food", 3)))
 	run.food_inventory = (data.get("food_inventory", {"basic": run.food}) as Dictionary).duplicate()
