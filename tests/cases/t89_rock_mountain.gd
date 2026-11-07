@@ -39,20 +39,28 @@ func run(t: TestContext) -> void:
 	t.eq(restored.terrain_at(ROCK), TerrainDB.DEEP, "第二次碎岩破坏岩山后露出原底层")
 	t.check(not restored.obstacle_durability.has(ROCK), "第二次碎岩后清除岩山障碍")
 
-	var central := 0
-	var total := 0
+	var maps_with_central_mountains := 0
+	var observed_counts := {}
 	for seed_value in range(1, 61):
 		var rock_map := MapGenerator.generate(seed_value, 0, 0, [], "rock")
 		var fire_map := MapGenerator.generate(seed_value, 0, 0, [], "fire")
 		t.check(not fire_map["terrain"].has(TerrainDB.ROCK_MOUNTAIN), "非岩系常规地图不生成岩山")
 		var mountains: int = rock_map["terrain"].count(TerrainDB.ROCK_MOUNTAIN)
-		t.check(mountains <= 1, "岩系地图最多一座岩山")
-		total += mountains
-		for cell in MapGenerator.CENTER_CELLS:
-			if rock_map["terrain"][GridSpec.index(cell)] == TerrainDB.ROCK_MOUNTAIN:
-				central += 1
+		t.check(mountains <= 4, "岩系地图最多四座岩山")
+		observed_counts[mountains] = true
+		if MapGenerator.CENTER_CELLS.any(func(cell): return rock_map["terrain"][GridSpec.index(cell)] == TerrainDB.ROCK_MOUNTAIN):
+			maps_with_central_mountains += 1
+		var required: Array = rock_map["nest_cells"].duplicate()
+		required.append(rock_map["reward_cell"])
+		for pair in BattleDB.config_for(0, seed_value, "rock")["enemies"]:
+			required.append(pair[1])
+		var terrain: Array = rock_map["terrain"].duplicate()
+		for cell in rock_map["electric_flowers"]:
+			terrain[GridSpec.index(cell)] = TerrainDB.OBSTACLE
+		t.check(MapGenerator._validate(terrain, required), "多座岩山与电电花不会截断关键路线")
 		for cell in rock_map["obstacle_cells"]:
 			if rock_map["terrain"][GridSpec.index(cell)] == TerrainDB.ROCK_MOUNTAIN:
 				t.check(GridSpec.neighbors4(cell).all(func(near): return not TerrainDB.blocks_move(rock_map["terrain"][GridSpec.index(near)]) and not rock_map["electric_flowers"].has(near)), "岩山独立于其他障碍")
-	t.check(total >= 50 and central > total / 2, "岩山在岩系地图常见且多数位于中心四格（%d/%d）" % [central, total])
+	t.check([1, 2, 3, 4].all(func(count): return observed_counts.has(count)), "随机岩窟可实际生成一到四座岩山")
+	t.check(maps_with_central_mountains >= 50, "岩窟通常仍有岩山位于中心四格")
 	t.finish()

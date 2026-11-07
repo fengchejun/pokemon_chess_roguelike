@@ -156,6 +156,7 @@ func run(t: TestContext) -> void:
 		t.check(map["chests"].has(Vector2i(6, 3)), "各结构均生成可拾取的宝箱")
 		var terrain: Array = map["terrain"]
 		if variant == 0:
+			t.eq(terrain.count(TerrainDB.ROCK_MOUNTAIN), 4, "隔水藏珍保留四座岩山")
 			t.check(not can_reach_chest(terrain, "fire", true) and not can_reach_chest(terrain, "water", false) and can_reach_chest(terrain, "water", true), "隔水藏珍需过河并打开岩山")
 		elif variant == 1:
 			t.check(not can_reach_chest(terrain, "fire", false) and can_reach_chest(terrain, "fire", true), "岩垒需破障才可进入")

@@ -16,6 +16,7 @@ const REGION_WEIGHTS := {
 	"深潭": {"ground": 45, "water": 27, "fragile": 5, "rock": 9, "plant": 8, "grass": 6},
 }
 const WEIGHT_ORDER := ["ground", "water", "fragile", "rock", "plant", "grass", "blue_fire"]
+const MAX_ROCK_MOUNTAINS := 4
 
 
 static func generate(run_seed: int, battle_index: int, salt: int = 0, environment_deck: Array = [], theme_id: String = "", nest_count: int = -1) -> Dictionary:
@@ -27,7 +28,7 @@ static func generate(run_seed: int, battle_index: int, salt: int = 0, environmen
 	for attempt in 64:
 		var result := _attempt(rng, cfg, lethal_budget, environment_deck)
 		if not result.is_empty() and _has_landscape_pair(result["terrain"]) and randomize_nests(result, cfg, rng):
-			_add_rock_mountain(result, cfg, rng)
+			_add_rock_mountains(result, cfg, rng)
 			_add_electric_flowers(result, cfg, rng)
 			result["region"] = String(cfg.get("region", "?"))
 			result["battle_index"] = battle_index
@@ -36,17 +37,20 @@ static func generate(run_seed: int, battle_index: int, salt: int = 0, environmen
 			return result
 	var fallback := _fallback(cfg)
 	randomize_nests(fallback, cfg, rng)
-	_add_rock_mountain(fallback, cfg, rng)
+	_add_rock_mountains(fallback, cfg, rng)
 	_add_electric_flowers(fallback, cfg, rng)
 	fallback["battle_index"] = battle_index
 	fallback["theme_id"] = theme_id
 	return fallback
 
 
-static func _add_rock_mountain(map: Dictionary, cfg: Dictionary, rng: RandomNumberGenerator) -> void:
-	if cfg.get("region", "") != "岩窟" or map["terrain"].has(TerrainDB.ROCK_MOUNTAIN):
+static func _add_rock_mountains(map: Dictionary, cfg: Dictionary, rng: RandomNumberGenerator) -> void:
+	if cfg.get("region", "") != "岩窟":
 		return
 	var terrain: Array = map["terrain"]
+	var remaining_count := rng.randi_range(1, MAX_ROCK_MOUNTAINS) - terrain.count(TerrainDB.ROCK_MOUNTAIN)
+	if remaining_count <= 0:
+		return
 	var required: Array = map.get("nest_cells", []).duplicate()
 	required.append(map["reward_cell"])
 	for pair in cfg.get("enemies", []):
@@ -70,8 +74,11 @@ static func _add_rock_mountain(map: Dictionary, cfg: Dictionary, rng: RandomNumb
 		terrain[index] = TerrainDB.ROCK_MOUNTAIN
 		if _validate(terrain, required) and _nests_accessible(map, map.get("nest_cells", [])):
 			map["obstacle_cells"].append(cell)
-			return
-		terrain[index] = TerrainDB.PLAIN
+			remaining_count -= 1
+			if remaining_count == 0:
+				return
+		else:
+			terrain[index] = TerrainDB.PLAIN
 
 
 static func _add_electric_flowers(map: Dictionary, cfg: Dictionary, rng: RandomNumberGenerator) -> void:
