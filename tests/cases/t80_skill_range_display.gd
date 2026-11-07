@@ -49,6 +49,7 @@ func run(t: TestContext) -> void:
 			expected = _frozen_ground_area(state, caster)
 		t.check(not expected.is_empty(), "%s存在可显示范围" % skill)
 		t.eq(_cell_keys(screen.board.area_cells), _cell_keys(expected), "%s瞄准时显示完整方向范围" % skill)
+		t.check(screen.hint_label.text.contains("橙色作用格"), "%s提示可点击橙色作用格" % skill)
 	app.queue_free()
 	t.finish()
 

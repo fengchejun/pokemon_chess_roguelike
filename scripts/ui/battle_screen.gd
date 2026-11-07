@@ -17,6 +17,7 @@ var viewed_enemy_uid: int = 0
 var action_mode: String = "main" # main / move / skills；仅界面状态，不写入战斗快照。
 var aim_skill: String = ""
 var aim_entries: Array = []
+var aim_direction_by_cell: Dictionary = {}
 var aim_cells: Array = []
 var aim_first_uid: int = 0
 var capture_mode := false
@@ -1722,6 +1723,7 @@ func _on_skill_pressed(skill_id: String) -> void:
 		_clear_aim()
 		return
 	aim_skill = skill_id
+	aim_direction_by_cell.clear()
 	aim_cells = []
 	aim_first_uid = 0
 	capture_mode = false
@@ -1753,7 +1755,8 @@ func _on_skill_pressed(skill_id: String) -> void:
 						board.area_cells.append(reach)
 	if SkillDB.kind_of(skill_id) == "direction":
 		board.area_cells = _directional_aim_area(unit, skill_id)
-	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
+	var aim_hint := "点击金色方向格或橙色作用格" if SkillDB.kind_of(skill_id) == "direction" else "点击金色格"
+	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。%s；右键或 Esc 取消。" % [SkillDB.name_of(skill_id), aim_hint]
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_rebuild_skill_buttons()
 	_position_action_panel()
@@ -1762,6 +1765,7 @@ func _on_skill_pressed(skill_id: String) -> void:
 
 func _directional_aim_area(unit: CombatUnit, skill_id: String) -> Array:
 	var cells: Array = []
+	aim_direction_by_cell.clear()
 	for entry in aim_entries:
 		if String(entry.get("type", "")) != "dir":
 			continue
@@ -1770,8 +1774,13 @@ func _directional_aim_area(unit: CombatUnit, skill_id: String) -> Array:
 			continue
 		for key in ["area_cells", "ray_cells"]:
 			for cell in preview.get(key, []):
-				if GridSpec.is_inside(cell) and not cells.has(cell):
+				if not GridSpec.is_inside(cell):
+					continue
+				if not cells.has(cell):
 					cells.append(cell)
+				var anchor_distance := GridSpec.manhattan(cell, entry["cell"])
+				if not aim_direction_by_cell.has(cell) or anchor_distance < GridSpec.manhattan(cell, aim_direction_by_cell[cell]["cell"]):
+					aim_direction_by_cell[cell] = entry
 	return cells
 
 
@@ -1784,6 +1793,7 @@ func _on_capture_pressed() -> void:
 	capture_mode = true
 	aim_skill = ""
 	aim_cells = []
+	aim_direction_by_cell.clear()
 	aim_first_uid = 0
 	board.clear_overlays()
 	for enemy in _capture_targets(trainer):
@@ -1800,6 +1810,7 @@ func _clear_aim() -> void:
 		return
 	aim_skill = ""
 	aim_cells = []
+	aim_direction_by_cell.clear()
 	aim_first_uid = 0
 	capture_mode = false
 	aim_entries = []
@@ -1855,6 +1866,8 @@ func _find_entry(cell: Vector2i) -> Dictionary:
 		var entry_cell: Vector2i = entry.get("cell", Vector2i(-1, -1))
 		if entry_cell == cell:
 			return entry
+	if aim_skill != "" and aim_direction_by_cell.has(cell):
+		return aim_direction_by_cell[cell]
 	return {}
 
 
@@ -1941,6 +1954,7 @@ func do_cast(skill_id: String, entry: Dictionary) -> bool:
 		return false
 	aim_skill = ""
 	aim_entries = []
+	aim_direction_by_cell.clear()
 	aim_cells = []
 	aim_first_uid = 0
 	capture_mode = false
