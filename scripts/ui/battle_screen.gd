@@ -1208,14 +1208,7 @@ func _request_portal() -> void:
 	if not state.can_interact_at(state.boss_portal_cell):
 		hint_label.text = "训练师需走到传送门相邻格才能进入。"
 		return
-	if app.run.storage.is_empty():
-		_enter_boss_portal()
-		return
-	_show_modal("前往下一层", "营地留守的 %d 只宝可梦将被抛弃，无法进入永久收藏。确认前往下一层？" % app.run.storage.size())
-	var confirm := UIKit.small_button("确认前往下一层")
-	confirm.name = "ConfirmPortalButton"
-	confirm.pressed.connect(_enter_boss_portal)
-	modal_layer.get_child(0).get_child(0).add_child(confirm)
+	_enter_boss_portal()
 
 func _enter_boss_portal() -> void:
 	if busy or _playback_active() or not state.can_interact_at(state.boss_portal_cell):

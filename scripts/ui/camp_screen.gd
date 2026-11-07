@@ -83,7 +83,7 @@ func _open_storage() -> void:
 	dialog.add_child(scroll)
 	var column := UIKit.vbox(8)
 	scroll.add_child(column)
-	column.add_child(UIKit.wrapped("选择营地成员与背包成员交换。进入下一层时，留在营地的成员将被抛弃，无法进入永久收藏。", 15))
+	column.add_child(UIKit.wrapped("选择营地成员与背包成员交换。仓库成员会随本局跨层保留，可在后续营地继续交换。", 15))
 	for stored in app.run.storage:
 		column.add_child(UIKit.label("营地：%s HP %d/%d" % [SpeciesDB.name_of(String(stored["species_id"])), int(stored["hp"]), app.run.monster_max_hp(stored)], 16, UIKit.ACCENT))
 		for member in app.run.carried:

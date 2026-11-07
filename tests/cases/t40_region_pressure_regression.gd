@@ -135,8 +135,8 @@ func run(t: TestContext) -> void:
 	while boss_app.run.pending_reward_choices > 0:
 		boss_app.run.choose_reward(String(boss_app.run.reward_choices()[0]))
 	boss_app.continue_after_settlement()
-	t.check(boss_app.run.storage.is_empty(), "进入下一层后丢弃营地留守成员")
-	t.check(boss_app.collection.owned.all(func(entry): return String(entry.get("source", "")) != abandoned_source), "本局留守成员不进入永久收藏")
+	t.eq(boss_app.run.storage.size(), 2, "进入下一层后仓库成员保留")
+	t.check(boss_app.collection.owned.any(func(entry): return String(entry.get("source", "")) == abandoned_source), "留守成员保留在永久收藏记录")
 	t.check(not boss_app.collection.record_by_id(previous_collection_id).is_empty(), "已有永久收藏不会因留守被删除")
 	boss_app.queue_free()
 	var support_app = _new_app(t, 74)

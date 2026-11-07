@@ -85,10 +85,7 @@ func _boss_to_third_floor(t: TestContext) -> void:
 	var continue_button: Button = app.current_screen.find_child("ContinueButton", true, false)
 	t.check(continue_button != null and not continue_button.disabled, "首领结算可继续")
 	continue_button.pressed.emit()
-	var confirm: Button = app.current_screen.find_child("ConfirmNextFloorButton", true, false)
-	t.check(confirm != null, "场景内显示下一层确认")
-	if confirm != null:
-		confirm.pressed.emit()
-	t.eq(app.current_screen.name, "FloorThemeScreen", "确认后进入第三层主题选择")
-	t.eq(app.run.floor_index(), 2, "确认后楼层索引为第三层")
+	t.eq(app.current_screen.name, "FloorThemeScreen", "首领后直接进入第三层主题选择")
+	t.eq(app.run.floor_index(), 2, "直接进入后楼层索引为第三层")
+	t.eq(app.run.storage.size(), 1, "仓库成员跨层保留")
 	app.queue_free()

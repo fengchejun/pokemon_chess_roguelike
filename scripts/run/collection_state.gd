@@ -170,7 +170,7 @@ func absorb_run(run: RunState) -> int:
 		var source := "run:%d:%d" % [run.seed, int(uid)]
 		owned = owned.filter(func(entry): return String(entry.get("source", "")) != source)
 	var added := 0
-	for group in ([run.carried] if run.region_mode else [run.carried, run.storage]):
+	for group in [run.carried, run.storage]:
 		for record in group:
 			if bool(record.get("debug_spawned", false)):
 				continue
