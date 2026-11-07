@@ -9,6 +9,7 @@ func make_app(t: TestContext):
 	app.run.region_mode = true
 	app.run.options["exploration_v2"] = true
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
+	app.run.region_data = Flow.create(0, app.run.current_theme()).to_dict()
 	app.show_region()
 	return app
 
@@ -69,7 +70,7 @@ func run(t: TestContext) -> void:
 	var offers: Array = run.get_region().nodes["battle_5"]["offers"]
 	app.current_screen.find_child("EventRelic_" + offers[0], true, false).pressed.emit()
 	finish(app)
-	# 首战验证：新流程无巢穴、低压两名敌人，完成后开启路线。
+	# 首战验证：新流程无巢穴、三名敌人，完成后开启路线。
 	var pre_battle = run.get_region()
 	pre_battle.nodes["battle_1"]["unlocked"] = true
 	run.region_data = pre_battle.to_dict()
@@ -78,7 +79,7 @@ func run(t: TestContext) -> void:
 	app.current_screen._on_start()
 	var state: BattleState = app.current_screen.state
 	t.check(state.exploration_v2 and not state.has_live_nests(), "首战无巢穴")
-	t.eq(state.alive_enemy_count(), 2, "首战只有两名敌人")
+	t.eq(state.alive_enemy_count(), 3, "首战有三名敌人")
 	var original_map := MapGenerator.generate(run.seed, run.battle_index, 0, [], run.current_theme(), 1)
 	t.eq(state.terrain, original_map["terrain"], "首战完整保留原有主题地形生成结果")
 	t.check(state.alive_units("enemy").all(func(u): return u.max_hp == 16 and u.skills.size() == 1), "首战敌人生命与技能压低")

@@ -3,11 +3,12 @@ extends RefCounted
 const ACTIONS := Balance.EXPLORATION_ACTIONS
 const POSITIONS := {"battle_1": Vector2i(0, 0), "battle_2": Vector2i(1, 0), "event_2": Vector2i(2, 0), "empty_1": Vector2i(3, 0), "empty_2": Vector2i(0, 1), "event_1": Vector2i(1, 1), "boss": Vector2i(2, 1), "battle_3": Vector2i(3, 1), "camp": Vector2i(0, 2), "battle_5": Vector2i(1, 2), "battle_4": Vector2i(2, 2), "empty_3": Vector2i(3, 2), "empty_4": Vector2i(0, 3), "capture_3": Vector2i(1, 3), "group_2": Vector2i(2, 3), "empty_5": Vector2i(3, 3)}
 const ROLES := {"camp": "camp", "battle_1": "starter", "battle_2": "capture", "event_2": "shop", "boss": "boss", "battle_3": "capture", "event_1": "group", "battle_5": "request", "battle_4": "treasure", "empty_1": "empty", "empty_2": "empty", "empty_3": "empty", "empty_4": "empty", "empty_5": "empty", "capture_3": "capture", "group_2": "group"}
-const NAMES := {"camp": "营地", "starter": "林缘试炼", "capture": "野生栖息地", "shop": "旅行商店", "boss": "本层首领", "group": "嬉戏的宝可梦", "request": "训练家的委托", "treasure": "隔水藏珍", "hunt": "追猎", "empty": "林间空地"}
+const NAMES := {"camp": "营地", "starter": "林缘试炼", "battle": "普通战斗", "capture": "野生栖息地", "shop": "旅行商店", "boss": "本层首领", "group": "嬉戏的宝可梦", "request": "训练家的委托", "treasure": "隔水藏珍", "hunt": "追猎", "empty": "林间空地"}
 
 static func active(run: RunState) -> bool:
-	return bool(run.options.get("exploration_v2", false)) and run.floor_index() == 0
+	return bool(run.options.get("exploration_v2", false))
 
+# Original prototype layout retained for regression fixtures and legacy coordinates.
 static func create(floor_value: int, theme: String) -> RegionState:
 	var region := RegionState.new()
 	region.floor_index = floor_value
@@ -22,6 +23,137 @@ static func create(floor_value: int, theme: String) -> RegionState:
 		region.nodes[pair[1]]["links"].append(pair[0])
 	region.unlock_neighbors("camp")
 	return region
+
+static func generate(floor_value: int, theme: String, run_seed: int) -> RegionState:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("region:%d:%d" % [run_seed, floor_value])
+	var region := RegionState.new()
+	region.floor_index = floor_value
+	region.theme = theme
+	region.flow_version = 2
+	region.active_node = "camp"
+	var centers := [Vector2i(1, 1), Vector2i(2, 1), Vector2i(1, 2), Vector2i(2, 2)]
+	var boss_cell: Vector2i = centers[rng.randi_range(0, centers.size() - 1)]
+	var edge: Array = []
+	for y in 4:
+		for x in 4:
+			if x in [0, 3] or y in [0, 3]:
+				edge.append(Vector2i(x, y))
+	var camp_cell: Vector2i = edge[rng.randi_range(0, edge.size() - 1)]
+	var cells := [camp_cell]
+	var target_count := rng.randi_range(14, 15)
+	# Grow a connected set while reserving the center boss cell.
+	while cells.size() < target_count - 1:
+		var frontier: Array = []
+		for cell in cells:
+			for next in adjacent_cells(cell):
+				if next != boss_cell and not cells.has(next) and not frontier.has(next):
+					frontier.append(next)
+		cells.append(frontier[rng.randi_range(0, frontier.size() - 1)])
+	var links := {camp_cell: []}
+	var queue := [camp_cell]
+	while not queue.is_empty():
+		var cell: Vector2i = queue.pop_front()
+		var neighbors := adjacent_cells(cell)
+		while not neighbors.is_empty():
+			var next: Vector2i = neighbors.pop_at(rng.randi_range(0, neighbors.size() - 1))
+			if cells.has(next) and not links.has(next):
+				links[next] = [cell]
+				links[cell].append(next)
+				queue.append(next)
+	# A reachable boss entrance cannot depend on completing a commission.
+	var starter_cell: Vector2i = links[camp_cell][0]
+	var leaves := cells.filter(func(cell): return cell != camp_cell and cell != starter_cell and links[cell].size() == 1)
+	var request_cell: Vector2i = leaves[rng.randi_range(0, leaves.size() - 1)]
+	var boss_neighbors := adjacent_cells(boss_cell).filter(func(cell): return links.has(cell) and cell != request_cell)
+	var entrance: Vector2i = boss_neighbors[rng.randi_range(0, boss_neighbors.size() - 1)]
+	links[boss_cell] = [entrance]
+	links[entrance].append(boss_cell)
+	var spare_edges: Array = []
+	for cell in cells:
+		for next in adjacent_cells(cell):
+			if links.has(next) and next != boss_cell and not links[cell].has(next) and (cell.y * 4 + cell.x) < (next.y * 4 + next.x):
+				spare_edges.append([cell, next])
+	for i in mini(rng.randi_range(2, 4), spare_edges.size()):
+		var pair: Array = spare_edges.pop_at(rng.randi_range(0, spare_edges.size() - 1))
+		links[pair[0]].append(pair[1])
+		links[pair[1]].append(pair[0])
+	var ids := ["battle_2", "battle_3", "capture_3", "event_1", "group_2", "event_2", "shop_2", "battle_4", "combat_1", "combat_2"]
+	if target_count == 15:
+		ids.append("combat_3")
+	var by_cell := {camp_cell: "camp", boss_cell: "boss", starter_cell: "battle_1", request_cell: "battle_5"}
+	for cell in cells:
+		if not by_cell.has(cell):
+			by_cell[cell] = ids.pop_at(rng.randi_range(0, ids.size() - 1))
+	for cell in by_cell:
+		var id: String = by_cell[cell]
+		var kind: String = ROLES.get(id, "shop" if id == "shop_2" else "battle")
+		var type := "event"
+		if kind in ["camp", "boss"]:
+			type = kind
+		elif kind in ["starter", "battle", "capture"]:
+			type = "battle"
+		region.nodes[id] = {
+			"type": type, "mode": type, "role": kind, "position": [cell.x, cell.y],
+			"visits": 1 if id == "camp" else 0, "revealed": id in ["camp", "boss"],
+			"unlocked": id == "camp", "passable": id == "camp", "cleared": false,
+			"done": false, "snapshot": {}, "links": links[cell].map(func(next): return by_cell[next]),
+			"pending_garrison": false, "pending_replenish": false,
+		}
+	region.nodes["battle_5"]["commission"] = commission(run_seed, floor_value, theme)
+	region.nodes["battle_4"]["puzzle"] = posmod(hash("puzzle:%d" % run_seed) + floor_value, 4)
+	region.unlock_neighbors("camp")
+	return region
+
+static func adjacent_cells(cell: Vector2i) -> Array:
+	var result: Array = []
+	for step in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+		var next: Vector2i = cell + step
+		if next.x in range(4) and next.y in range(4):
+			result.append(next)
+	return result
+
+static func position(id: String, node: Dictionary) -> Vector2i:
+	var coords: Array = node.get("position", [])
+	if coords.size() == 2:
+		return Vector2i(int(coords[0]), int(coords[1]))
+	return POSITIONS.get(id, Vector2i(-1, -1))
+
+static func commission(run_seed: int, floor_value: int, theme: String) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("commission:%d:%d" % [run_seed, floor_value])
+	var tier := rng.randi_range(1, 3)
+	var primary: Array = BattleDB.THEMES.get(theme, BattleDB.THEMES["grass"])["primary"]
+	var species := String(primary[rng.randi_range(0, primary.size() - 1)])
+	var element := SpeciesDB.element_of(species)
+	var skill := ""
+	if tier == 3:
+		var base := SpeciesDB.skills_of(species)
+		var candidates := SkillDB.learnable_ids_for(element).filter(func(id): return not base.has(id) and not SkillDB.is_special(id))
+		if candidates.is_empty():
+			candidates = base
+		skill = candidates[rng.randi_range(0, candidates.size() - 1)]
+	return {"tier": tier, "species": species, "element": element, "skill": skill}
+
+static func request_terms(node: Dictionary, theme: String) -> Dictionary:
+	return node.get("commission", {"tier": 2, "species": request_species(theme), "skill": ""})
+
+static func request_matches(terms: Dictionary, member: Dictionary) -> bool:
+	var species := String(member["species_id"])
+	if int(terms["tier"]) == 1:
+		return SpeciesDB.element_of(species) == terms["element"]
+	if species != terms["species"]:
+		return false
+	return int(terms["tier"]) != 3 or member.get("equipped_skills", []).has(terms["skill"])
+
+static func request_description(terms: Dictionary) -> String:
+	var tier := int(terms["tier"])
+	if tier == 1:
+		return "一档 · 任意%s系宝可梦" % Elements.name_of(terms["element"])
+	var species := SpeciesDB.name_of(terms["species"])
+	if tier == 2:
+		return "二档 · %s" % species
+	return "三档 · 携带「%s」的%s" % [SkillDB.name_of(terms["skill"]), species]
 
 static func role(run: RunState) -> String:
 	var region = run.get_region()
@@ -40,7 +172,13 @@ static func configure(run: RunState, cfg: Dictionary) -> Dictionary:
 	rng.seed = hash("encounter:%d:%s:%d" % [run.seed, region.active_node, visit])
 	var pool: Array = BattleDB.THEMES.get(region.theme, BattleDB.THEMES["grass"])["primary"].duplicate()
 	pool.append_array(["water_wild1", "electric_wild1", "grass_wild1", "rock_wild1"])
-	var count := 2 if kind in ["starter", "group"] else 4 if kind == "hunt" else 3
+	var count := 3
+	if kind in ["starter", "battle"]:
+		count += region.floor_index
+	elif kind == "group":
+		count = 2
+	elif kind == "hunt":
+		count = 4
 	var pairs: Array = []
 	for index in count:
 		pairs.append([pool[rng.randi_range(0, pool.size() - 1)], Vector2i(5 + index % 2, 2 + index)])
@@ -53,6 +191,20 @@ static func configure(run: RunState, cfg: Dictionary) -> Dictionary:
 	result["enemy_level_bonus"] = 1 if kind == "hunt" else 0
 	return result
 
+const PUZZLE_NAMES := ["隔水藏珍", "岩垒藏珍", "断崖藏珍", "熔沟藏珍"]
+const PUZZLE_HINTS := [
+	"深水横断棋盘。利用水系伙伴或地形技能到达对岸。",
+	"宝箱四周有岩障。先破开一个入口，再取走箱内奖励。",
+	"两列深坑之间只留下一条易碎通路。留意技能落点，避免击碎脚下的路。",
+	"熔沟间有两条通路。可绕行上侧，也可破开下侧岩门。",
+]
+
+static func puzzle_description(node: Dictionary) -> String:
+	return PUZZLE_HINTS[int(node.get("puzzle", 0))] + " 可暂离，地形和损耗保留。"
+
+static func puzzle_name(node: Dictionary) -> String:
+	return PUZZLE_NAMES[int(node.get("puzzle", 0))]
+
 static func prepare_map(run: RunState, map: Dictionary) -> void:
 	var kind := role(run)
 	if kind not in ["boss", "hunt"]:
@@ -61,14 +213,41 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 		map["nest_cell"] = Vector2i(-1, -1)
 		map["nest_alive"] = false
 	if kind == "treasure":
+		var region = run.get_region()
+		var variant := int(region.nodes[region.active_node].get("puzzle", 0))
 		var terrain: Array = []
-		for cell in GridSpec.all_cells():
-			terrain.append(TerrainDB.DEEP if cell.x == 3 else TerrainDB.PLAIN)
-		map["terrain"] = terrain
-		map["chests"] = {Vector2i(6, 3): true}
-		map["obstacle_cells"] = [Vector2i(5, 3), Vector2i(6, 2)]
-		for obstacle in map["obstacle_cells"]:
+		terrain.resize(GridSpec.W * GridSpec.H)
+		terrain.fill(TerrainDB.PLAIN)
+		var obstacles: Array = []
+		match variant:
+			0:
+				for y in GridSpec.H:
+					terrain[GridSpec.index(Vector2i(3, y))] = TerrainDB.DEEP
+				obstacles = [Vector2i(5, 3), Vector2i(6, 2)]
+			1:
+				obstacles = GridSpec.neighbors4(Vector2i(6, 3))
+				for y in [0, 1, 5, 6]:
+					terrain[GridSpec.index(Vector2i(3, y))] = TerrainDB.TREE
+			2:
+				for y in GridSpec.H:
+					for x in [3, 4]:
+						terrain[GridSpec.index(Vector2i(x, y))] = TerrainDB.FRAGILE if y == 4 else TerrainDB.PIT
+				terrain[GridSpec.index(Vector2i(5, 4))] = TerrainDB.ICE
+			3:
+				for y in GridSpec.H:
+					if y in [1, 5]:
+						continue
+					for x in [3, 4]:
+						terrain[GridSpec.index(Vector2i(x, y))] = TerrainDB.LAVA
+				obstacles = [Vector2i(4, 5), Vector2i(5, 2)]
+		for obstacle in obstacles:
 			terrain[GridSpec.index(obstacle)] = TerrainDB.OBSTACLE
+		map["terrain"] = terrain
+		map["steam_cells"] = {}
+		map["chests"] = {Vector2i(6, 3): true}
+		map["obstacle_cells"] = GridSpec.all_cells().filter(func(cell): return TerrainDB.blocks_move(terrain[GridSpec.index(cell)]))
+		if variant == 0:
+			decorate_terrain(run, map, kind)
 		map["reward"] = {"state": "absent", "cell": Vector2i(-1, -1)}
 		map["extra_rewards"] = []
 		map["food_cells"] = []
@@ -76,7 +255,7 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 		map["deploy_area"] = Balance.DEPLOY_AREA.duplicate()
 	if kind == "capture":
 		map["fixed_deploy_area"] = Balance.DEPLOY_AREA.duplicate()
-	if kind in ["starter", "group"]:
+	if kind in ["starter", "battle", "group"]:
 		# 普通遭遇保留原生成器的地形，只清除这类节点不提供的宝箱奖励。
 		map["chests"] = {}
 		map["extra_rewards"] = []
@@ -84,8 +263,6 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 		map["food_cells"] = []
 		map["treasure_generated"] = true
 
-	if kind == "treasure":
-		decorate_terrain(run, map, kind)
 	if kind == "capture":
 		preload("res://scripts/rules/capture_encounter.gd").prepare_map(map)
 
@@ -120,7 +297,7 @@ static func prepare_state(run: RunState, state: BattleState) -> void:
 	if state.exploration_role == "capture":
 		state.capture_deadline = Balance.CAPTURE_ENCOUNTER_ROUNDS
 		state.capture_exits = preload("res://scripts/rules/capture_encounter.gd").EXITS.duplicate()
-	if state.exploration_role == "starter":
+	if state.exploration_role == "starter" and run.floor_index() == 0:
 		for enemy in state.alive_units("enemy"):
 			enemy.max_hp = 16
 			enemy.hp = 16

@@ -7,6 +7,7 @@ func app_for(t: TestContext):
 	t.tree.root.add_child(app)
 	app.begin_new_run_with_collection(CollectionState.defaults().select_records([1, 2, 3]))
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
+	app.run.region_data = Flow.create(0, app.run.current_theme()).to_dict()
 	app.show_region()
 	return app
 

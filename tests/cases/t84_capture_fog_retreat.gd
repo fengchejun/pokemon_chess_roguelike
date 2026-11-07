@@ -39,6 +39,7 @@ func run(t: TestContext) -> void:
 	app.run.region_mode = true
 	app.run.options["exploration_v2"] = true
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
+	app.run.region_data = Flow.create(0, app.run.current_theme()).to_dict()
 	app.show_region()
 	var region = app.run.get_region()
 	t.check(region.nodes["battle_5"]["unlocked"] and region.nodes["battle_5"]["revealed"], "邻接委托点亮即揭示类型")

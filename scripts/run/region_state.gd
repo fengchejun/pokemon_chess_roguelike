@@ -66,6 +66,8 @@ func node_mode(id: String) -> String:
 
 func display_name(id: String) -> String:
 	if flow_version == 2:
+		if nodes[id].get("role") == "treasure":
+			return preload("res://scripts/run/exploration_flow.gd").puzzle_name(nodes[id])
 		return String(preload("res://scripts/run/exploration_flow.gd").NAMES.get(nodes[id].get("role", ""), id))
 	if id == "camp":
 		return "营地（敌军占领）" if node_mode(id) == "battle" else "营地"
@@ -183,7 +185,7 @@ func store_battle(id: String, battle: BattleState) -> bool:
 		unlock_neighbors(id)
 	if flow_version == 2:
 		if battle.ended and battle.end_reason in ["victory", "explored"]:
-			if node.get("role") in ["starter", "boss", "hunt", "group"] and battle.battle_objective_met():
+			if node.get("role") in ["starter", "battle", "boss", "hunt", "group"] and battle.battle_objective_met():
 				node["cleared"] = true
 				node["passable"] = true
 				node["done"] = true

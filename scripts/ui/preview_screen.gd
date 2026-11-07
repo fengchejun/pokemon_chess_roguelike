@@ -47,6 +47,8 @@ func _ready() -> void:
 		var active_id: String = run.get_region().active_node
 		if active_id.begins_with("event_"):
 			map_salt = 100 + int(active_id.trim_prefix("event_"))
+		elif active_id.begins_with("combat_"):
+			map_salt = 200 + int(active_id.trim_prefix("combat_"))
 	var nest_count := 1
 	map = MapGenerator.generate(run.seed, run.battle_index, map_salt, [], run.current_theme(), nest_count)
 	if run.region_mode:
@@ -84,7 +86,7 @@ func _ready() -> void:
 	if run.region_mode and run.get_region().flow_version == 2:
 		if not persistent_node:
 			preload("res://scripts/run/exploration_flow.gd").prepare_map(run, map)
-	if run.preview_used_reward_item.begins_with("map:"):
+	if run.preview_used_reward_item.begins_with("map:") and not _is_puzzle():
 		card_result = MapGenerator.generate_card_preview(run.seed, run.battle_index, run.preview_used_reward_item.trim_prefix("map:"), map)
 		map = (card_result["map"] as Dictionary).duplicate(true)
 	_prepare_treasure()
@@ -130,7 +132,12 @@ func _ready() -> void:
 	board.cell_hovered.connect(_on_cell_hovered)
 	board_host.add_child(board)
 	board_host.resized.connect(_layout_preview_board)
-	preview.add_child(UIKit.wrapped("绿框：部署/撤离区（区外队员撤离损失25%最大生命，可能濒死并掉落奖励） · 蓝框：部署选位 · 紫色：巢穴 · ★：奖励 · 粮：食物；悬停单位查看招式。", 12))
+	var legend := "蓝框：部署选位 · 紫色：巢穴 · ★：奖励 · 粮：食物。悬停单位查看招式。"
+	if _uses_extraction_in_preview():
+		legend = "绿框：撤离区（区外队员撤离损失25%最大生命）。" + legend
+	elif _is_puzzle():
+		legend = "宝箱解谜可直接离开，回访保留现场。" + legend
+	preview.add_child(UIKit.wrapped(legend, 12))
 	deployment_toggle = UIKit.small_button("部署选位 · 点击单位，再点击蓝框格")
 	deployment_toggle.name = "DeploymentModeButton"
 	deployment_toggle.pressed.connect(func() -> void:
@@ -263,6 +270,9 @@ func _on_use_reward_item() -> void:
 		hint_label.text = "请先选择一张背包里的消耗品。"
 		return
 	var reward_id := String(run.reward_inventory[index])
+	if reward_id.begins_with("map:") and _is_puzzle():
+		hint_label.text = "宝箱谜题使用固定结构，不能用地形卡重抽。可以使用技能或地形改造。"
+		return
 	if not run.use_reward_item_in_preview(reward_id):
 		hint_label.text = "本场已经使用过消耗品，或这张卡已不在背包。"
 		return
@@ -404,6 +414,23 @@ func _on_reset() -> void:
 	_refresh()
 
 
+func _uses_extraction_in_preview() -> bool:
+	var run: RunState = app.run
+	if int(run.battle_config().get("boss_index", -1)) >= 0:
+		return false
+	if not run.region_mode:
+		return true
+	var region = run.get_region()
+	if region.node_mode(region.active_node) != "battle":
+		return false
+	return region.flow_version != 2 or not region.nodes[region.active_node].get("role", "") in ["capture", "group"]
+
+
+func _is_puzzle() -> bool:
+	var run: RunState = app.run
+	return run.region_mode and run.get_region().flow_version == 2 and preload("res://scripts/run/exploration_flow.gd").role(run) == "treasure"
+
+
 func _prepare_treasure() -> void:
 	if persistent_node or (app.run.region_mode and app.run.get_region().flow_version == 2):
 		return
@@ -465,7 +492,7 @@ func _refresh() -> void:
 			map["mentor_cell"] = Vector2i(point[0], point[1]) if point[0] >= 0 else SkillMentor.choose_cell(sample, deploy_positions)
 		else:
 			map["mentor_cell"] = Vector2i(-1, -1)
-	map["extraction_cells"] = BattleState.extraction_area(map) if int(run.battle_config().get("boss_index", -1)) < 0 else []
+	map["extraction_cells"] = BattleState.extraction_area(map) if _uses_extraction_in_preview() else []
 	board.set_map_preview(map, deploy_enemies + deploy_players)
 	board.selected_uid = deploy_selected_uid
 	if start_button != null:
@@ -475,7 +502,7 @@ func _refresh() -> void:
 	mod_count_label.text = "剩余改造次数：%d / %d" % [maxi(0, run.mod_points() - mod_used), run.mod_points()]
 	for button in mod_buttons.values():
 		(button as Button).disabled = run.mod_points() <= 0 or mod_used >= run.mod_points()
-	var lethal := int(map.get("lethal_count", 0))
+	var lethal: int = map["terrain"].filter(func(tile): return TerrainDB.is_lethal(tile)).size()
 	var obstacle_count: int = (map.get("obstacle_cells", []) as Array).size()
 	hint_label.text = hint_label.text if hint_label.text != "" else "致死地形 %d 格｜障碍 %d 格（种子可复现）" % [lethal, obstacle_count]
 

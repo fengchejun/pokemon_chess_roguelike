@@ -309,6 +309,8 @@ func choose_floor_theme(theme_id: String) -> bool:
 	if not needs_theme_choice() or not offered_floor_themes.has(theme_id):
 		return false
 	floor_themes.append(theme_id)
+	if not region_data.is_empty() and region_data.get("theme", "") == "" and int(region_data.get("visits", 0)) == 0:
+		region_data.clear()
 	offered_floor_themes.clear()
 	return true
 
@@ -321,7 +323,7 @@ func current_theme() -> String:
 
 func get_region():
 	if region_data.is_empty():
-		region_data = (preload("res://scripts/run/exploration_flow.gd").create(floor_index(), current_theme()) if bool(options.get("exploration_v2", false)) and floor_index() == 0 else Region.create_floor(floor_index(), current_theme())).to_dict()
+		region_data = (preload("res://scripts/run/exploration_flow.gd").generate(floor_index(), current_theme(), seed) if bool(options.get("exploration_v2", false)) else Region.create_floor(floor_index(), current_theme())).to_dict()
 	var region = Region.from_dict(region_data)
 	if region.flow_version != 2:
 		Merchant.ensure_region(region, seed)
@@ -348,6 +350,8 @@ func enter_region_node(id: String) -> bool:
 	var kind := region.node_mode(id)
 	if kind == "battle" or kind == "boss":
 		var slot := 5 if kind == "boss" else maxi(0, int(id.trim_prefix("battle_")) - 1)
+		if id.begins_with("combat_"):
+			slot = int(id.trim_prefix("combat_")) - 1
 		battle_index = region.floor_index * 6 + slot
 		apply_floor_level_caps()
 	return true
@@ -456,6 +460,8 @@ func battle_config() -> Dictionary:
 		elif region.active_node != "":
 			var source: Array = cfg["enemies"]
 			var count := 5 if region.active_node == "boss" and region.support_triggered else 3
+			if region.flow_version != 2 and bool(options.get("exploration_v2", false)) and region.active_node != "boss":
+				count += region.floor_index
 			var chosen: Array = []
 			if region.active_node == "boss":
 				var boss_index := clampi(int(cfg.get("boss_index", 0)), 0, source.size() - 1)

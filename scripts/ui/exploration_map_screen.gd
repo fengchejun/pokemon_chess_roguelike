@@ -14,7 +14,7 @@ func _ready() -> void:
 	margin.add_child(column)
 	var row := UIKit.hbox(16)
 	column.add_child(row)
-	row.add_child(UIKit.title("第1层 · 探索路线", 26))
+	row.add_child(UIKit.title("第%d层 · 探索路线" % (region.floor_index + 1), 26))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spacer)
@@ -32,7 +32,9 @@ func _ready() -> void:
 	column.add_child(graph)
 	graph.resized.connect(_layout_nodes)
 	graph.draw.connect(_draw_links)
-	for id in Flow.POSITIONS:
+	for id in region.nodes:
+		if id == "hunt":
+			continue
 		var node: Dictionary = region.nodes[id]
 		var known: bool = bool(node.get("unlocked", false)) or int(node.get("visits", 0)) > 0 or id == "boss"
 		var available: bool = node.get("unlocked", false)
@@ -60,13 +62,17 @@ func _ready() -> void:
 	call_deferred("_layout_nodes")
 
 func _layout_nodes() -> void:
-	for id in Flow.POSITIONS:
-		var cell: Vector2i = Flow.POSITIONS[id]
+	for id in region.nodes:
+		if id == "hunt":
+			continue
+		var cell: Vector2i = Flow.position(id, region.nodes[id])
 		graph.get_node("Node_" + id).position = Vector2(0.02 + cell.x * 0.32, 0.02 + cell.y * 0.32) * (graph.size - Vector2(196, 70))
 	graph.queue_redraw()
 
 func _draw_links() -> void:
-	for id in Flow.POSITIONS:
+	for id in region.nodes:
+		if id == "hunt":
+			continue
 		for other in region.nodes[id]["links"]:
 			if id > other:
 				continue
@@ -80,7 +86,9 @@ func _confirm_entry(id: String) -> void:
 	var dialog := ConfirmationDialog.new()
 	var known: bool = bool(node.get("unlocked", false)) or int(node.get("visits", 0)) > 0 or id == "boss"
 	dialog.title = "前往" + (region.display_name(id) if known else "未知地点")
-	var detail: String = {"starter": "少量普通敌人，无巢穴。清场后打通分支；可由训练师前往绿色撤离区撤退，区外伙伴承受原有扣血代价。", "capture": "固定出现3只野生宝可梦；攻击或尝试捕捉会惊动全场，抵达撤离点后停留至下次行动即可逃脱。第8回合结束剩余目标全部逃跑，也可随时直接离开。", "group": "可以玩耍、喂食，或主动选择战斗；事件战斗可直接离开，未胜利不发放挑战奖励。", "request": "训练家寻找%s，可先离开准备。" % SpeciesDB.name_of(Flow.request_species(region.theme)), "shop": "查看商品、买卖遗物和强化技能；库存不会因回访刷新。", "camp": "消耗食物休息、取用共享仓库、调整队伍。", "treasure": "宝箱隔在深水另一侧。可使用水系伙伴、移动或地形技能解谜；地形变化和损耗保留。", "boss": "敌方约2级，岩系首领带两名同伴，擅长近距离推击与碎岩。不能撤退，需清空敌人与巢穴后通关。"}.get(role, "")
+	var detail: String = {"starter": "少量普通敌人，无巢穴。清场后打通分支；可由训练师前往绿色撤离区撤退，区外伙伴承受原有扣血代价。", "capture": "固定出现3只野生宝可梦；攻击或尝试捕捉会惊动全场，抵达撤离点后停留至下次行动即可逃脱。第8回合结束剩余目标全部逃跑，也可随时直接离开。", "group": "可以玩耍、喂食，或主动选择战斗；事件战斗可直接离开，未胜利不发放挑战奖励。", "request": "%s。只接收随身成员，可先离开准备。" % Flow.request_description(Flow.request_terms(node, region.theme)), "shop": "查看商品、买卖遗物和强化技能；库存不会因回访刷新。", "camp": "消耗食物休息、取用共享仓库、调整队伍。", "treasure": Flow.puzzle_description(node), "boss": "岩系首领带两名同伴，擅长近距离推击与碎岩。不能撤退，需清空敌人与巢穴后通关。"}.get(role, "")
+	if role in ["starter", "battle"]:
+		detail = "%d 名普通敌人，无巢穴。清场后打通分支。未清场可从绿色撤离区撤退。" % (3 + region.floor_index)
 	dialog.dialog_text = (detail if known else "这里尚未点亮，节点内容仍未知。") + "\n确认进入消耗1行动；取消不消耗。"
 	dialog.confirmed.connect(func() -> void: app.enter_region_node(id))
 	dialog.canceled.connect(func() -> void: dialog.queue_free())

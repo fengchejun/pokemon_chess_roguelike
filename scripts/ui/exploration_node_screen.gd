@@ -100,11 +100,17 @@ func refresh() -> void:
 					node["battle_selected"] = true
 					run.region_data = region.to_dict(); app.autosave(); app.show_prep())
 		"request":
-			var requested: String = Flow.request_species(region.theme)
-			column.add_child(UIKit.wrapped("训练家希望得到一只%s（本层常见物种）。交付后该成员将永久离队；奖励24原质、3份食物和一件可选遗物。可以先离开寻找。" % SpeciesDB.name_of(requested), 17))
+			var terms := Flow.request_terms(node, region.theme)
+			var reward := request_reward(int(terms["tier"]))
+			var reward_text := "%d 原质与 %d 份食物" % [reward.x, reward.y]
+			if int(terms["tier"]) > 1:
+				reward_text += "，另选一件遗物"
+			column.add_child(UIKit.wrapped("%s。奖励 %s。仅接收随身成员，交付后该成员永久离队。可以先离开寻找。" % [Flow.request_description(terms), reward_text], 17))
 			if not node.get("done", false):
-				for record in run.carried + run.storage:
-					if String(record["species_id"]) != requested: continue
+				var candidates := run.carried.filter(func(record): return Flow.request_matches(terms, record))
+				if candidates.is_empty():
+					column.add_child(UIKit.wrapped("当前没有符合要求的随身成员。", 14))
+				for record in candidates:
 					var uid := int(record["uid"])
 					button("交付 %s · Lv.%d（永久离队）" % [SpeciesDB.name_of(record["species_id"]), int(record["level"])], "Deliver_%d" % uid, func() -> void:
 						var confirm := ConfirmationDialog.new()
@@ -112,7 +118,7 @@ func refresh() -> void:
 						confirm.confirmed.connect(func() -> void: deliver(uid))
 						confirm.canceled.connect(func() -> void: confirm.queue_free())
 						add_child(confirm); confirm.popup_centered())
-				column.add_child(UIKit.wrapped("未完成委托会挡住这条分支的后续地点。", 14))
+				column.add_child(UIKit.wrapped("交付后会点亮委托节点相邻的道路。", 14))
 			else:
 				column.add_child(UIKit.label("委托已完成，后方道路已开放。"))
 
@@ -137,19 +143,33 @@ func award(run: RunState, region, node: Dictionary) -> void:
 	if not node["reward_pending"]: run.essence += 12
 	persist(region)
 
+func request_reward(tier: int) -> Vector2i:
+	return [Vector2i(12, 1), Vector2i(24, 3), Vector2i(48, 6)][tier - 1]
+
 func deliver(uid: int) -> void:
 	var run: RunState = app.run
 	var region = run.get_region()
 	var node: Dictionary = region.nodes[region.active_node]
-	if node.get("done", false): return
-	var found := false
-	for group in [run.carried, run.storage]:
-		for index in group.size():
-			if int(group[index]["uid"]) == uid and group[index]["species_id"] == Flow.request_species(region.theme):
-				group.remove_at(index); found = true; break
-	if not found: return
-	run.essence += 24; run.add_food("basic", 3)
-	award(run, region, node)
+	if node.get("role") != "request" or node.get("done", false):
+		return
+	var terms := Flow.request_terms(node, region.theme)
+	for index in run.carried.size():
+		var record: Dictionary = run.carried[index]
+		if int(record["uid"]) != uid or not Flow.request_matches(terms, record):
+			continue
+		run.carried.remove_at(index)
+		var tier := int(terms["tier"])
+		var reward := request_reward(tier)
+		run.essence += reward.x
+		run.add_food("basic", reward.y)
+		if tier > 1:
+			award(run, region, node)
+		else:
+			node["done"] = true
+			node["passable"] = true
+			region.unlock_neighbors(region.active_node)
+			persist(region)
+		return
 
 func _camp(run: RunState, region) -> void:
 	column.add_child(UIKit.wrapped("营地服务不消耗额外行动。共享仓库成员跨层保留。", 16))
@@ -171,7 +191,7 @@ func _shop(run: RunState, region) -> void:
 	var node: Dictionary = region.nodes[region.active_node]
 	if not node.has("stock"):
 		var stock := {"food": 6, "potion": 2, "capture_aid": 2}
-		for relic in RelicDB.offer(run.seed, 0, 501, {}): stock["relic:" + relic] = 1
+		for relic in RelicDB.offer(run.seed, region.floor_index, 501 if region.active_node == "event_2" else 502, {}): stock["relic:" + relic] = 1
 		node["stock"] = stock
 		run.region_data = region.to_dict(); app.autosave()
 	for product in node["stock"]:

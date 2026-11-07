@@ -179,7 +179,7 @@ func continue_run(path: String = SaveSystem.DEFAULT_PATH) -> void:
 		show_menu()
 		return
 	run = loaded
-	if run.region_mode and run.get_region().flow_version == 2 and run.get_region().visit_pending and run.battle_snapshot.is_empty() and not run.settlement_pending:
+	if run.region_mode and not run.region_data.is_empty() and run.get_region().flow_version == 2 and run.get_region().visit_pending and run.battle_snapshot.is_empty() and not run.settlement_pending:
 		var region = run.get_region()
 		if region.nodes[region.active_node].get("role") in ["camp", "shop", "group", "request", "empty"]:
 			_switch(preload("res://scripts/ui/exploration_node_screen.gd").new())
@@ -328,7 +328,7 @@ func show_region() -> void:
 			region.active_node = "hunt"
 			region.visit_pending = true
 			run.region_data = region.to_dict()
-			run.battle_index = 5
+			run.battle_index = region.floor_index * Balance.BATTLES_PER_FLOOR + Balance.BATTLES_PER_FLOOR - 1
 			run.pending_region_entry_backup.clear()
 			autosave()
 			show_prep()
@@ -400,8 +400,8 @@ func enter_region_node(id: String) -> void:
 		if role == "capture":
 			region.nodes[id]["snapshot"] = {}
 			run.region_data = region.to_dict()
-		if role in ["camp", "shop", "group", "request", "empty"] or (role == "starter" and region.nodes[id].get("done", false)):
-			if role == "starter":
+		if role in ["camp", "shop", "group", "request", "empty"] or (role in ["starter", "battle"] and region.nodes[id].get("done", false)):
+			if role in ["starter", "battle"]:
 				region.complete_visit(); run.region_data = region.to_dict(); autosave(); show_region()
 			else:
 				_switch(preload("res://scripts/ui/exploration_node_screen.gd").new())
@@ -531,7 +531,7 @@ func finish_battle(battle: BattleState) -> void:
 	if run.region_mode and run.get_region().flow_version == 2:
 		var region = run.get_region()
 		var node: Dictionary = region.nodes[region.active_node]
-		if battle.end_reason == "victory" and battle.battle_objective_met() and node.get("role") in ["starter", "boss", "hunt", "group"] and not node.get("challenge_reward_claimed", false):
+		if battle.end_reason == "victory" and battle.battle_objective_met() and node.get("role") in ["starter", "battle", "boss", "hunt", "group"] and not node.get("challenge_reward_claimed", false):
 			run.pending_bonus_choices += 2 if node.get("role") in ["boss", "hunt"] else 1
 			node["challenge_reward_claimed"] = true
 			run.region_data = region.to_dict()
