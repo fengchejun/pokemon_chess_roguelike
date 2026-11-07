@@ -55,4 +55,13 @@ func _run() -> void:
 	app.current_screen._on_start()
 	await create_timer(1.5).timeout
 	await shot("07_capture")
+	var state: BattleState = app.current_screen.state
+	state.damage_unit(state.unit_by_uid(1), state.alive_units("enemy")[0], 1, {"no_element": true})
+	state.begin_enemy_phase()
+	while not state.enemy_phase_finished(): state.step_enemy_phase()
+	state.end_enemy_phase()
+	app.current_screen.playback.finish_all()
+	app.current_screen.battle_notice.finish_all()
+	app.current_screen._refresh_after_action()
+	await shot("08_escape")
 	quit()

@@ -83,6 +83,7 @@ static func attempt(state, trainer: CombatUnit, target: CombatUnit, forced_roll:
 	## forced_roll ≥ 0 时使用指定骰值（测试用），否则从战斗内可复现的捕获随机数取。
 	if not can_attempt(state, trainer, target):
 		return {"ok": false}
+	preload("res://scripts/rules/capture_encounter.gd").alert(state)
 	var chance := chance_for(state, target)
 	state.capture_aid = false
 	var roll := forced_roll

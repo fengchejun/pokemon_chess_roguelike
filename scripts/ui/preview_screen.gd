@@ -419,7 +419,7 @@ func _refresh() -> void:
 	if run.region_mode and run.get_region().flow_version == 2:
 		var role: String = preload("res://scripts/run/exploration_flow.gd").role(run)
 		if role == "capture":
-			map["deploy_area"] = [Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(4, 2)]
+			map["deploy_area"] = Balance.DEPLOY_AREA.duplicate()
 	_prepare_treasure()
 	deploy_enemies = _preview_units(run)
 	deploy_players = run.build_deploy_units(deploy_uids)

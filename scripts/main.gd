@@ -200,6 +200,9 @@ func continue_run(path: String = SaveSystem.DEFAULT_PATH) -> void:
 			show_camp()
 		else:
 			restored.retreat_disabled = bool(run.options.get("exploration_v2", false))
+			if restored.exploration_v2 and restored.exploration_role == "capture":
+				restored.capture_deadline = Balance.CAPTURE_ENCOUNTER_ROUNDS
+				if restored.capture_exits.is_empty(): restored.capture_exits = preload("res://scripts/rules/capture_encounter.gd").EXITS.duplicate()
 			var screen: Control = BattleScreen.new()
 			screen.state = restored
 			_switch(screen)

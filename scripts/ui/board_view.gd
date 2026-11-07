@@ -30,6 +30,7 @@ var merchant_cell := Vector2i(-1, -1)
 var units: Array = []
 var deploy_cells: Array = []
 var extraction_cells: Array = []
+var capture_exits: Array = []
 var ice_slides: Array = []
 
 var camp_facilities: Dictionary = {}
@@ -59,7 +60,8 @@ func set_from_state(state: BattleState) -> void:
 		return
 	camp_facilities = state.camp_facilities.duplicate(true)
 	terrain = state.terrain.duplicate()
-	extraction_cells = state.extraction_cells.duplicate() if state.node_kind != "boss" and state.boss_uid < 0 else []
+	extraction_cells = state.extraction_cells.duplicate() if not state.retreat_disabled and state.node_kind != "boss" and state.boss_uid < 0 else []
+	capture_exits = state.capture_exits.duplicate()
 	obstacle_durability = state.obstacle_durability.duplicate()
 	burning_cells = state.burning_cells.duplicate()
 	steam_cells = state.steam_cells.duplicate()
@@ -96,6 +98,7 @@ func set_from_state(state: BattleState) -> void:
 func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	camp_facilities = map.get("camp_facilities", {}).duplicate(true)
 	extraction_cells = map.get("extraction_cells", []).duplicate()
+	capture_exits = map.get("capture_exits", []).duplicate()
 	nest_guard_counts.clear()
 	storm_strikes = map.get("storm_strikes", []).duplicate(true)
 	terrain = (map.get("terrain", []) as Array).duplicate()
@@ -202,6 +205,11 @@ func _draw() -> void:
 		draw_rect(zone, Color(0.25, 0.85, 0.72, 0.18))
 		draw_rect(zone, Color("62d8be"), false, 2.0)
 		draw_string(font, zone.position + Vector2(3,14), "撤离", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("8cf7d9"))
+	for cell in capture_exits:
+		var zone := Rect2(Vector2(cell) * TILE + Vector2(3, 3), Vector2.ONE * (TILE - 6))
+		draw_rect(zone, Color(1.0, 0.6, 0.2, 0.23))
+		draw_rect(zone, Color("ffb35c"), false, 2.0)
+		draw_string(font, zone.position + Vector2(3, 14), "野生撤离", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("ffcc88"))
 	# 覆盖层：移动范围 / 攻击范围 / 区域 / 射线
 	for cell in movement_cells:
 		_draw_fill(cell, Color(0.35, 0.6, 1.0, 0.28))

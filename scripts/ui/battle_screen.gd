@@ -525,7 +525,7 @@ func _update_header() -> void:
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
 	if state.exploration_v2:
 		if state.exploration_role == "capture":
-			objective_label.text = "限时捕捉\n第%d/%d回合 · 野生%d只\n最后一回合结束后逃跑\n目标全部解决或到时后结算" % [state.round, state.capture_deadline, state.alive_enemy_count()]
+			objective_label.text = "野生捕捉\n第%d/%d回合 · 野生%d只\n攻击或投球惊动全场\n撤离点停到下次行动即逃脱" % [state.round, state.capture_deadline, state.alive_enemy_count()]
 		elif state.exploration_role == "treasure":
 			objective_label.text = "宝箱解谜\n利用技能和地形到达宝箱\n地形变化与损耗保留\n可暂时离开，准备后回访"
 		elif state.exploration_role == "hunt":
@@ -693,6 +693,8 @@ func _update_unit_card() -> void:
 		var skill_reason := _skill_phase_block_reason(unit)
 		lines.append("本回合技能：%s" % ("可用" if skill_reason == "" else "不可用（%s）" % skill_reason))
 	if unit.side == "enemy":
+		if state.exploration_v2 and state.exploration_role == "capture":
+			lines.append("逃跑状态：" + ("撤离点等待中，下次行动逃脱" if state.capture_exit_wait.has(unit.uid) else "受惊，正向撤离点逃跑" if state.capture_alerted else "尚未受惊，保持待机"))
 		var low_hp_rules := bool(state.capture_options.get("capture_low_hp", false))
 		lines.append("捕捉支援：4格内%d只我方宝可梦，额外+%d个百分点（最多30）；不计训练师和召唤物。" % [CaptureSystem.support_count(state, unit), mini(30, 10 * CaptureSystem.support_count(state, unit))])
 		lines.append("捕获概率：%d%%（训练家在周围两格可尝试%s）" % [

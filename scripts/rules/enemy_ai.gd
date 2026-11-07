@@ -9,6 +9,8 @@ const PRIORITY_POKEMON := 100
 
 
 static func plan(state: BattleState) -> Array:
+	if preload("res://scripts/rules/capture_encounter.gd").active(state):
+		return preload("res://scripts/rules/capture_encounter.gd").plan(state)
 	var work := state.clone()
 	var actions: Array = []
 	var cast_counts: Dictionary = {}

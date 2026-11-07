@@ -619,6 +619,13 @@ static func apply(state: BattleState, caster: CombatUnit, skill_id: String, targ
 		state.presentation_started.emit({"kind": "skill", "uid": caster.uid if caster != null else -1, "skill": skill_id, "release": state.is_free_exploration() and bool(SkillDB.get_def(skill_id).get("channel", false)), "target": target_entry.duplicate(true)})
 	state._boss_effect_depth += 1
 	var result := _apply_rules(state, caster, skill_id, target_entry, preview)
+	if bool(result.get("ok", false)) and caster != null and caster.side == "player":
+		var hit_enemy: bool = result.get("hits", []).any(func(hit):
+			var unit := state.unit_by_uid(int(hit.get("uid", -1)))
+			return unit != null and unit.side == "enemy")
+		var direct := state.unit_by_uid(int(target_entry.get("unit", -1)))
+		if hit_enemy or (direct != null and direct.side == "enemy"):
+			preload("res://scripts/rules/capture_encounter.gd").alert(state)
 	if bool(result.get("guard_intercepted", false)):
 		result["text"] = String(result.get("text", "")) + "（巢穴承受一半，其余由守军分担）"
 	state._boss_effect_depth -= 1

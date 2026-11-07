@@ -56,7 +56,7 @@ func run(t: TestContext) -> void:
 	finish(app)
 	app.enter_region_node("battle_5")
 	t.check(not run.get_region().nodes["battle_4"]["unlocked"], "未交付委托挡住分支")
-	run.carried.append(run._make_record("water_wild1", 10))
+	run.carried.append(run._make_record(preload("res://scripts/run/exploration_flow.gd").request_species(run.get_region().theme), 10))
 	app.current_screen.refresh()
 	var uid := int(run.carried.back()["uid"])
 	app.current_screen.deliver(uid)
@@ -94,13 +94,13 @@ func run(t: TestContext) -> void:
 	app.show_preview([1, 2, 3])
 	app.current_screen._on_start()
 	state = app.current_screen.state
-	t.check(state.alive_enemy_count() >= 1 and state.alive_enemy_count() <= 3 and not state.has_live_nests(), "捕捉刷新1到3只且无巢穴")
+	t.check(state.alive_enemy_count() == 3 and not state.has_live_nests(), "捕捉固定三只且无巢穴")
 	t.check(not state.can_leave_node() and not state.can_escape(), "捕捉未完成前不能撤退")
-	for i in 3:
+	for i in Balance.CAPTURE_ENCOUNTER_ROUNDS:
 		state.begin_enemy_phase()
 		while not state.enemy_phase_finished(): state.step_enemy_phase()
 		state.end_enemy_phase()
-	t.check(state.ended and state.end_reason == "explored", "第三回合结束野生目标逃走")
+	t.check(state.ended and state.end_reason == "explored", "第八回合结束野生目标逃走")
 	app.finish_battle(state)
 	while run.pending_reward_choices > 0: run.choose_reward(run.reward_choices()[0])
 	resolve_growth(run)

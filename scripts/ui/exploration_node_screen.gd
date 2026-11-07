@@ -100,10 +100,11 @@ func refresh() -> void:
 					node["battle_selected"] = true
 					run.region_data = region.to_dict(); app.autosave(); app.show_prep())
 		"request":
-			column.add_child(UIKit.wrapped("训练家希望得到一只可达鸭。交付后该成员将永久离队；奖励24原质、3份食物和一件可选遗物。可以先离开寻找。", 17))
+			var requested: String = Flow.request_species(region.theme)
+			column.add_child(UIKit.wrapped("训练家希望得到一只%s（本层常见物种）。交付后该成员将永久离队；奖励24原质、3份食物和一件可选遗物。可以先离开寻找。" % SpeciesDB.name_of(requested), 17))
 			if not node.get("done", false):
 				for record in run.carried + run.storage:
-					if String(record["species_id"]) != "water_wild1": continue
+					if String(record["species_id"]) != requested: continue
 					var uid := int(record["uid"])
 					button("交付 %s · Lv.%d（永久离队）" % [SpeciesDB.name_of(record["species_id"]), int(record["level"])], "Deliver_%d" % uid, func() -> void:
 						var confirm := ConfirmationDialog.new()
@@ -144,7 +145,7 @@ func deliver(uid: int) -> void:
 	var found := false
 	for group in [run.carried, run.storage]:
 		for index in group.size():
-			if int(group[index]["uid"]) == uid and group[index]["species_id"] == "water_wild1":
+			if int(group[index]["uid"]) == uid and group[index]["species_id"] == Flow.request_species(region.theme):
 				group.remove_at(index); found = true; break
 	if not found: return
 	run.essence += 24; run.add_food("basic", 3)

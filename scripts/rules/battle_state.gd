@@ -72,6 +72,9 @@ var exploration_v2 := false
 var exploration_role := ""
 var preserve_node_terrain := false
 var capture_deadline := 0
+var capture_exits: Array = []
+var capture_alerted := false
+var capture_exit_wait: Dictionary = {}
 var retreat_disabled := false
 var is_camp_map := false
 var camp_facilities: Dictionary = {}
@@ -948,6 +951,8 @@ func enforce_player_nest_landing_rule() -> void:
 func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictionary) -> Dictionary:
 	if target == null or not target.is_on_board() or base <= 0:
 		return {"amount": 0, "killed": false}
+	if source != null and source.side == "player" and target.side == "enemy":
+		preload("res://scripts/rules/capture_encounter.gd").alert(self)
 	var break_frozen := target.frozen and bool(opts.get("break_frozen", false))
 	var was_frozen_before_hit := target.frozen
 	var hit_element := String(opts.get("element", ""))
@@ -1355,6 +1360,7 @@ func apply_vine_bind(unit: CombatUnit) -> void:
 
 
 func apply_vine_on_landing(unit: CombatUnit, after_movement: bool = true) -> void:
+	if unit != null: capture_exit_wait.erase(unit.uid)
 	if unit != null and unit.guard_nest.x >= 0 and GridSpec.manhattan(unit.cell, unit.guard_nest) != 1:
 		unit.guard_charge = false
 	_refresh_reward_guard()
@@ -1950,6 +1956,9 @@ func _step_enemy_phase_rules() -> Dictionary:
 	_pending_index += 1
 	var unit := unit_by_uid(int(action.get("uid", -1)))
 	if unit == null or not unit.is_on_board():
+		return action
+	if bool(action.get("capture_flee", false)):
+		preload("res://scripts/rules/capture_encounter.gd").act(self, unit, action)
 		return action
 	var path: Array = action.get("move_path", [])
 	for cell in path:
@@ -2640,6 +2649,9 @@ func clone() -> BattleState:
 	copy.exploration_role = exploration_role
 	copy.retreat_disabled = retreat_disabled
 	copy.capture_deadline = capture_deadline
+	copy.capture_exits = capture_exits.duplicate()
+	copy.capture_alerted = capture_alerted
+	copy.capture_exit_wait = capture_exit_wait.duplicate(true)
 	copy.preserve_node_terrain = preserve_node_terrain
 	copy.is_camp_map = is_camp_map
 	copy.camp_facilities = camp_facilities.duplicate(true)
