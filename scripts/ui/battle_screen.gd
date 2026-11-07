@@ -519,7 +519,7 @@ func _update_header() -> void:
 	if state.is_free_exploration():
 		objective_label.text += "\n自由探索 · 无限行动 · 禁用直接治疗"
 	objective_label.text += "\n宝箱 %d · 待拾 %d · 我持 %d · 敌持 %d" % [state.chests.size(), state.all_rewards().filter(func(p): return p.get("state") in ["map", "guarding"]).size(), state.reward_count_held("player"), state.reward_count_held("enemy")]
-	if not state.can_leave_node() and state.node_kind != "boss" and state.boss_uid < 0:
+	if not state.can_leave_node() and state.uses_extraction():
 		objective_label.text += "\n部署/撤离区：绿色框\n区外%d名：撤离损失25%%最大生命" % state.escape_stragglers().size()
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
 	if state.exploration_v2:
@@ -1080,10 +1080,8 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 func _update_action_buttons() -> void:
 	if leave_node_button != null:
 		leave_node_button.text = "返回区域" if state.can_leave_node() else "首领战不可撤退" if state.node_kind == "boss" or state.boss_uid >= 0 else "撤退" if state.can_escape() else "前往撤离区"
-		leave_node_button.tooltip_text = "首领战必须击败或捕获首领。" if state.node_kind == "boss" or state.boss_uid >= 0 else "训练家进入部署/撤离区后可撤离；区外队员损失25%最大生命，可能濒死；濒死者奖励留原地。"
-		if state.retreat_disabled and not state.can_leave_node():
-			leave_node_button.text = "不可撤退 · 等待完成遭遇"
-			leave_node_button.tooltip_text = "本次遭遇不能提前退出；完成目标或捕捉时限结束后结算。"
+		leave_node_button.tooltip_text = "首领战与追猎必须完成清场，不能撤退。" if state.is_boss_encounter() else "训练家进入部署/撤离区后可撤离；区外队员损失25%最大生命，可能濒死；濒死者奖励留原地。" if state.uses_extraction() else "可直接离开当前节点，保留已获得的捕获和奖励，不产生撤离区扣血。"
+
 		leave_node_button.disabled = busy or _playback_active() or state.ended or not (state.can_leave_node() or state.can_escape())
 	if end_turn_button != null:
 		end_turn_button.disabled = busy or state.ended or state.is_free_exploration() or state.phase != BattleState.PHASE_PLAYER

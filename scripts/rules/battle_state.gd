@@ -2386,12 +2386,17 @@ func battle_objective_met() -> bool:
 	return alive_enemy_count() == 0 and not has_live_nests()
 
 
+func is_boss_encounter() -> bool:
+	return node_kind == "boss" or boss_uid >= 0 or (exploration_v2 and exploration_role in ["boss", "hunt"])
+
+
+func uses_extraction() -> bool:
+	return not is_boss_encounter() and node_kind in ["", "battle"] and not (exploration_v2 and exploration_role in ["capture", "group"])
+
+
 func can_leave_node() -> bool:
-	if exploration_v2 and exploration_role == "treasure":
-		return not ended and phase == PHASE_PLAYER
-	if exploration_v2 and exploration_role == "capture":
-		return not ended and phase == PHASE_PLAYER and battle_objective_met()
-	return not ended and phase == PHASE_PLAYER and (node_kind == "event" or (node_kind == "battle" and alive_enemy_count() == 0 and not has_live_nests()))
+	if ended or phase != PHASE_PLAYER or is_boss_encounter(): return false
+	return not uses_extraction() or battle_objective_met()
 
 
 static func extraction_area(map: Dictionary) -> Array:
@@ -2399,10 +2404,8 @@ static func extraction_area(map: Dictionary) -> Array:
 
 
 func can_escape() -> bool:
-	if retreat_disabled:
-		return false
 	var actor := trainer()
-	return not ended and phase == PHASE_PLAYER and node_kind != "boss" and boss_uid < 0 and actor != null and actor.is_alive() and extraction_cells.has(actor.cell)
+	return not ended and phase == PHASE_PLAYER and uses_extraction() and actor != null and actor.is_alive() and extraction_cells.has(actor.cell)
 
 
 func escape_stragglers() -> Array:
@@ -2426,7 +2429,7 @@ func leave_node(emergency: bool = false) -> bool:
 		end_battle("explored")
 		return true
 	if can_leave_node():
-		end_battle("explored" if node_kind == "event" else "victory")
+		end_battle("victory" if node_kind == "battle" and battle_objective_met() else "explored")
 	elif can_escape():
 		var missing := escape_stragglers()
 		if not missing.is_empty() and not emergency:

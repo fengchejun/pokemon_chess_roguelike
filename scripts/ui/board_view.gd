@@ -59,7 +59,7 @@ func set_from_state(state: BattleState) -> void:
 		return
 	camp_facilities = state.camp_facilities.duplicate(true)
 	terrain = state.terrain.duplicate()
-	extraction_cells = state.extraction_cells.duplicate() if not state.retreat_disabled and state.node_kind != "boss" and state.boss_uid < 0 else []
+	extraction_cells = state.extraction_cells.duplicate() if state.uses_extraction() else []
 	capture_exits = state.capture_exits.duplicate()
 	obstacle_durability = state.obstacle_durability.duplicate()
 	burning_cells = state.burning_cells.duplicate()

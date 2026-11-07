@@ -62,13 +62,14 @@ func run(t: TestContext) -> void:
 	t.check(region2.nodes["battle_5"]["revealed"], "普通事件相邻点亮即揭示类型")
 	region2.complete_visit(); app.run.region_data = region2.to_dict(); app.show_region()
 	t.check(app.current_screen.find_child("Node_event_1", true, false).text.contains("嬉戏"), "去过的事件显示实际类型")
-	# 底层不能通过按钮之外的接口提前撤退；解谜例外。
+	# 普通战斗需撤离点，捕捉与解谜可直接离开。
 	var capture := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 6)]])
 	capture.exploration_v2 = true; capture.exploration_role = "capture"; capture.retreat_disabled = true
 	capture.stop_nests()
-	t.check(not capture.can_escape() and not capture.can_leave_node() and not capture.leave_node(true), "捕捉未完成不能主动撤离")
-	capture.exploration_role = "starter"
-	t.check(not capture.can_escape() and not capture.leave_node(true), "普通实战也不能紧急撤退")
+	t.check(not capture.can_escape() and capture.can_leave_node() and capture.leave_node(), "捕捉未完成也可直接离开")
+	capture.ended = false; capture.phase = BattleState.PHASE_PLAYER
+	capture.exploration_role = "starter"; capture.node_kind = "battle"; capture.trainer().cell = Vector2i(3, 3)
+	t.check(not capture.can_escape() and not capture.leave_node(true), "普通战斗离开撤离区不能撤退")
 	capture.exploration_role = "treasure"; capture.node_kind = "event"
 	t.check(capture.can_leave_node() and capture.leave_node(), "解谜仍可暂离")
 	# 各种地形跨种子可出现，部署格和对岸解法不被随机装饰封死。
@@ -95,13 +96,13 @@ func run(t: TestContext) -> void:
 	screen.battle_notice.advance(2.0)
 	t.check(not screen.leave_node_button.disabled, "横幅结束后离开按钮自动恢复")
 	# 老版当前流程快照缺少新字段时，继续冒险也强制应用新规则。
-	capture.ended = false; capture.exploration_role = "capture"; capture.node_kind = "battle"
+	capture.ended = false; capture.phase = BattleState.PHASE_PLAYER; capture.exploration_role = "capture"; capture.node_kind = "battle"
 	app.run.battle_snapshot = BattleSnapshot.save_state(capture)
 	app.run.battle_snapshot["fields"].erase("retreat_disabled")
 	var path := "res://.test_feedback_retreat.json"
 	SaveSystem.save_run(app.run, path)
 	app.continue_run(path)
-	t.check(app.current_screen.state.retreat_disabled and not app.current_screen.state.can_escape(), "旧快照读档后也禁止提前撤退")
+	t.check(not app.current_screen.state.retreat_disabled and app.current_screen.state.can_leave_node(), "旧快照读档后捕捉也允许直接离开")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	app.free()
 	t.finish()

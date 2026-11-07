@@ -110,8 +110,8 @@ static func decorate_terrain(run: RunState, map: Dictionary, kind: String) -> vo
 
 static func prepare_state(run: RunState, state: BattleState) -> void:
 	state.exploration_v2 = true
-	state.retreat_disabled = true
 	state.exploration_role = role(run)
+	state.retreat_disabled = state.is_boss_encounter()
 	if state.exploration_role == "treasure":
 		state.preserve_node_terrain = true
 		state.node_kind = "event"

@@ -80,7 +80,7 @@ func _confirm_entry(id: String) -> void:
 	var dialog := ConfirmationDialog.new()
 	var known: bool = bool(node.get("unlocked", false)) or int(node.get("visits", 0)) > 0 or id == "boss"
 	dialog.title = "前往" + (region.display_name(id) if known else "未知地点")
-	var detail: String = {"starter": "少量普通敌人，无巢穴。清场后打通分支。", "capture": "固定出现3只野生宝可梦；攻击或尝试捕捉会惊动全场，抵达撤离点后停留至下次行动即可逃脱。第8回合结束剩余目标全部逃跑，不能提前退出。", "group": "可以玩耍、喂食，或主动选择战斗。", "request": "训练家寻找%s，可先离开准备。" % SpeciesDB.name_of(Flow.request_species(region.theme)), "shop": "查看商品、买卖遗物和强化技能；库存不会因回访刷新。", "camp": "消耗食物休息、取用共享仓库、调整队伍。", "treasure": "宝箱隔在深水另一侧。可使用水系伙伴、移动或地形技能解谜；地形变化和损耗保留。", "boss": "敌方约2级，岩系首领带两名同伴，擅长近距离推击与碎岩。不能撤退，需清空敌人与巢穴后通关。"}.get(role, "")
+	var detail: String = {"starter": "少量普通敌人，无巢穴。清场后打通分支；可由训练师前往绿色撤离区撤退，区外伙伴承受原有扣血代价。", "capture": "固定出现3只野生宝可梦；攻击或尝试捕捉会惊动全场，抵达撤离点后停留至下次行动即可逃脱。第8回合结束剩余目标全部逃跑，也可随时直接离开。", "group": "可以玩耍、喂食，或主动选择战斗；事件战斗可直接离开，未胜利不发放挑战奖励。", "request": "训练家寻找%s，可先离开准备。" % SpeciesDB.name_of(Flow.request_species(region.theme)), "shop": "查看商品、买卖遗物和强化技能；库存不会因回访刷新。", "camp": "消耗食物休息、取用共享仓库、调整队伍。", "treasure": "宝箱隔在深水另一侧。可使用水系伙伴、移动或地形技能解谜；地形变化和损耗保留。", "boss": "敌方约2级，岩系首领带两名同伴，擅长近距离推击与碎岩。不能撤退，需清空敌人与巢穴后通关。"}.get(role, "")
 	dialog.dialog_text = (detail if known else "这里尚未点亮，节点内容仍未知。") + "\n确认进入消耗1行动；取消不消耗。"
 	dialog.confirmed.connect(func() -> void: app.enter_region_node(id))
 	dialog.canceled.connect(func() -> void: dialog.queue_free())
