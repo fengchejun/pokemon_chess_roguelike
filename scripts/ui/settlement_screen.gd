@@ -323,6 +323,7 @@ func _show_capture_step(run: RunState) -> void:
 			_show_next_step()
 	)
 	choice_box.add_child(to_storage)
+	choice_box.add_child(UIKit.wrapped("仓库成员会随本局跨层保留，但本局结束时默认被抛弃；结束时仍留在仓库者不会自动进入永久收藏。", 13, UIKit.BAD))
 	if not storage_room:
 		choice_box.add_child(UIKit.label("仓库已满：放生一名仓库成员后可继续放入：", 13, UIKit.BAD))
 		for record in run.storage.slice(0, mini(10, run.storage.size())):

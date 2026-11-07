@@ -55,7 +55,7 @@ func _ready() -> void:
 	var storage_column := UIKit.vbox(4)
 	storage_box.add_child(storage_column)
 	storage_column.add_child(UIKit.label("仓库（%d/%d）" % [run.storage.size(), Balance.STORAGE_LIMIT], 17, UIKit.ACCENT))
-	storage_column.add_child(UIKit.wrapped("仓库成员不参战、不受战损；本局暂无可用的调换入口。", 13))
+	storage_column.add_child(UIKit.wrapped("仓库成员不参战、不受战损；本局暂无可用的调换入口。仓库成员虽可跨层保留，但本局结束时默认被抛弃，想稳定保留下局使用需在营地换入携带名单。", 13, UIKit.BAD))
 	right.add_child(storage_box)
 	var next_supply := _next_supply(run)
 	var hint := UIKit.label("", 14, UIKit.TEXT_DIM)

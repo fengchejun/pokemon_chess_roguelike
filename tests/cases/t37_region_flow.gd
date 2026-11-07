@@ -118,6 +118,9 @@ func run(t: TestContext) -> void:
 	t.check(not camp_run.camp_swap(stored_uid, before_uid), "离开营地后不能交换")
 	var collection := CollectionState.defaults()
 	collection.absorb_run(camp_run)
-	t.check(collection.owned.any(func(entry): return String(entry.get("source", "")) == "run:915:%d" % before_uid), "仓库成员登记永久收藏")
+	var stored_source := "run:915:%d" % before_uid
+	t.check(collection.owned.all(func(entry): return String(entry.get("source", "")) != stored_source), "普通结算不登记仓库成员")
+	collection.absorb_run(camp_run, [before_uid])
+	t.check(collection.owned.any(func(entry): return String(entry.get("source", "")) == stored_source), "最终明确选择后可登记仓库成员")
 	app.queue_free()
 	t.finish()

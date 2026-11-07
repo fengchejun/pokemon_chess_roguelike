@@ -111,7 +111,7 @@ func _confirm_entry(id: String) -> void:
 	var kind: String = region.node_mode(id)
 	var details: String = "营地：篝火休息与宝可梦互动。" if kind == "camp" else "首领：击败或捕获后开启传送门；第8轮末起预告天雷，无回合上限。" if kind == "boss" else "收集区：无限行动，可随时离开；禁止恢复技能。" if kind == "event" else "战斗区：清空敌人与巢穴后无限探索；第8轮末起预告天雷，可主动撤离，重访补足4名。"
 	if kind == "boss" and app.run.carried.size() >= Balance.CARRIED_LIMIT:
-		details += "\n背包已满：本战新捕获的宝可梦将送往营地，并在本局后续楼层保留。"
+		details += "\n背包已满：本战新捕获的宝可梦将送往营地，并在本局后续楼层保留；本局结束时未换入携带名单者默认被抛弃。"
 	if bool(node.get("pending_replenish", false)):
 		details += "\n本次进场补足 4 名敌人。"
 	if bool(node.get("pending_garrison", false)):

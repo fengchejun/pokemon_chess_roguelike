@@ -147,11 +147,11 @@ func show_skill_stats() -> void:
 
 
 func start_new_run() -> void:
-	## 主菜单放弃旧存档时，先登记身上与仓库的成员，避免覆盖单槽本局存档后丢失已收容的怪物。
+	## 主菜单放弃旧存档时只登记携带队伍；未在最终结算勾选的仓库成员视为抛弃。
 	if autosave_enabled and SaveSystem.has_save():
 		var previous := SaveSystem.load_run()
 		if previous != null:
-			collection.absorb_run(previous)
+			collection.settle_run(previous)
 			collection.save()
 		else:
 			# 当前流程无法续读的旧本局文件必须先留底，避免新局自动存档覆盖。
@@ -521,6 +521,26 @@ func show_run_end() -> void:
 			collection.save()
 			autosave()
 	_switch(RunEndScreen.new())
+
+
+func resolve_run_end_storage(retained_storage_uids: Array) -> Dictionary:
+	## 最终结局确认：携带队伍必然保留，仓库只有明确勾选者进入永久收藏。
+	if run == null or collection == null:
+		return {"ok": false, "reason": "本局或永久收藏尚未就绪。"}
+	var retained: Array = []
+	for record in run.storage:
+		var uid := int(record.get("uid", -1))
+		if retained_storage_uids.has(uid) and not retained.has(uid):
+			retained.append(uid)
+	var discarded := run.storage.size() - retained.size()
+	var added := 0
+	if not run.debug_tainted:
+		added = collection.settle_run(run, retained)
+		if autosave_enabled and not collection.save():
+			return {"ok": false, "reason": "永久收藏写入失败，请重试。"}
+	run.storage.clear()
+	autosave()
+	return {"ok": true, "added": added, "retained": retained.size(), "discarded": discarded}
 
 
 func end_run_to_menu() -> void:
