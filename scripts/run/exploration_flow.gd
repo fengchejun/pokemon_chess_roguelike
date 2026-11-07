@@ -77,18 +77,14 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 	if kind == "capture":
 		map["fixed_deploy_area"] = Balance.DEPLOY_AREA.duplicate()
 	if kind in ["starter", "group"]:
-		# 先用开阔地形验证首战/群体战节奏，不叠加致死地形和巢穴压力。
-		map["terrain"] = []
-		for cell in GridSpec.all_cells():
-			map["terrain"].append(TerrainDB.GRASS if cell.x >= 6 and cell.y % 2 == 0 else TerrainDB.PLAIN)
-		map["obstacle_cells"] = []
+		# 普通遭遇保留原生成器的地形，只清除这类节点不提供的宝箱奖励。
 		map["chests"] = {}
 		map["extra_rewards"] = []
 		map["reward"] = {"state": "absent", "cell": Vector2i(-1, -1)}
 		map["food_cells"] = []
 		map["treasure_generated"] = true
 
-	if kind in ["capture", "treasure"]:
+	if kind == "treasure":
 		decorate_terrain(run, map, kind)
 	if kind == "capture":
 		preload("res://scripts/rules/capture_encounter.gd").prepare_map(map)

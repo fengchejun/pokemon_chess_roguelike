@@ -31,7 +31,7 @@ func run(t: TestContext) -> void:
 	target.hp = 1
 	state.capture_aid = true
 	t.check(CaptureSystem.chance_for(state, target) <= 1.0, "总概率不超过100%")
-	# 新开局未知节点只显示连线/可达性，通知与确认框不泄露类型。
+	# 点亮即可看内容；未点亮仍未知，旧存档只有unlocked也应显示。
 	var app = load("res://scripts/main.gd").new()
 	app.autosave_enabled = false
 	t.tree.root.add_child(app)
@@ -41,12 +41,17 @@ func run(t: TestContext) -> void:
 	app.run.choose_floor_theme(String(app.run.offered_floor_themes[0]))
 	app.show_region()
 	var region = app.run.get_region()
-	t.check(region.nodes["battle_5"]["unlocked"] and not region.nodes["battle_5"]["revealed"], "邻接委托已点亮但未知类型")
+	t.check(region.nodes["battle_5"]["unlocked"] and region.nodes["battle_5"]["revealed"], "邻接委托点亮即揭示类型")
 	var node_button: Button = app.current_screen.find_child("Node_battle_5", true, false)
-	t.check(node_button.text.contains("未知地点") and not node_button.text.contains("委托"), "地图不提前泄露委托")
+	t.check(node_button.text.contains("委托"), "地图显示已点亮委托内容")
+	t.check(app.current_screen.find_child("Node_battle_1", true, false).text.contains("未知地点"), "未点亮普通战斗仍隐藏类型")
+	region.nodes["battle_5"]["revealed"] = false
+	app.run.region_data = region.to_dict()
+	app.show_region()
+	t.check(app.current_screen.find_child("Node_battle_5", true, false).text.contains("委托"), "旧存档已解锁但未揭示也能看到内容")
 	app.current_screen._confirm_entry("battle_5")
 	var dialogs: Array = app.current_screen.get_children().filter(func(child): return child is ConfirmationDialog)
-	t.check(dialogs.back().title.contains("未知地点") and not dialogs.back().dialog_text.contains("可达鸭"), "确认框不泄露未知事件")
+	t.check(dialogs.back().title.contains("委托") and dialogs.back().dialog_text.contains(SpeciesDB.name_of(Flow.request_species(region.theme))), "确认框可预先查看已点亮事件要求")
 	app.enter_region_node("empty_2")
 	var region2 = app.run.get_region()
 	t.check(region2.nodes["event_1"]["unlocked"], "到达空地可探索相邻普通事件")
@@ -54,7 +59,7 @@ func run(t: TestContext) -> void:
 	app.enter_region_node("event_1")
 	region2 = app.run.get_region()
 	t.check(region2.nodes["battle_5"]["unlocked"], "普通事件进入后点亮邻接节点")
-	t.check(not region2.nodes["battle_5"]["revealed"], "点亮不等于揭示类型")
+	t.check(region2.nodes["battle_5"]["revealed"], "普通事件相邻点亮即揭示类型")
 	region2.complete_visit(); app.run.region_data = region2.to_dict(); app.show_region()
 	t.check(app.current_screen.find_child("Node_event_1", true, false).text.contains("嬉戏"), "去过的事件显示实际类型")
 	# 底层不能通过按钮之外的接口提前撤退；解谜例外。

@@ -64,4 +64,10 @@ func _run() -> void:
 	app.current_screen.battle_notice.finish_all()
 	app.current_screen._refresh_after_action()
 	await shot("08_escape")
+	app.run.battle_snapshot = {}
+	region = app.run.get_region(); region.complete_visit()
+	region.nodes["battle_1"]["unlocked"] = true
+	app.run.region_data = region.to_dict()
+	app.enter_region_node("battle_1"); app.show_preview([1, 2, 3])
+	await shot("09_starter_preview")
 	quit()

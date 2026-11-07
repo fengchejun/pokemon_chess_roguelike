@@ -79,6 +79,8 @@ func run(t: TestContext) -> void:
 	var state: BattleState = app.current_screen.state
 	t.check(state.exploration_v2 and not state.has_live_nests(), "首战无巢穴")
 	t.eq(state.alive_enemy_count(), 2, "首战只有两名敌人")
+	var original_map := MapGenerator.generate(run.seed, run.battle_index, 0, [], run.current_theme(), 1)
+	t.eq(state.terrain, original_map["terrain"], "首战完整保留原有主题地形生成结果")
 	t.check(state.alive_units("enemy").all(func(u): return u.max_hp == 16 and u.skills.size() == 1), "首战敌人生命与技能压低")
 	for enemy in state.alive_units("enemy"):
 		state.kill_unit(enemy, "测试", "player", 1)

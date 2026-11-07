@@ -87,7 +87,9 @@ func run(t: TestContext) -> void:
 			var cfg := Flow.configure(run, {})
 			t.eq(cfg["enemies"].size(), 3, "每次固定三只")
 			var map := MapGenerator.generate(seed_value, 0)
+			var original_terrain: Array = map["terrain"].duplicate()
 			Flow.prepare_map(run, map)
+			t.check(GridSpec.all_cells().all(func(cell): return map["terrain"][GridSpec.index(cell)] == original_terrain[GridSpec.index(cell)] or map["terrain"][GridSpec.index(cell)] == TerrainDB.PLAIN), "捕捉区只作必要通路修整，不再额外随机覆盖地形")
 			t.eq(map["fixed_deploy_area"], Balance.DEPLOY_AREA, "部署范围使用左侧正常区域")
 			var board := make_state(); board.terrain = map["terrain"]
 			for cell in [Vector2i(5, 2), Vector2i(6, 3), Vector2i(5, 4)] + Encounter.EXITS:
