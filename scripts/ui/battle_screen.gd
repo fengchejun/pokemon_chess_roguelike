@@ -479,7 +479,7 @@ func _add_battle_xp_bar(unit: CombatUnit) -> void:
 func _update_header() -> void:
 	var state := _display_state()
 	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
-	var region_name := ("捕捉栖息地" if state.exploration_role == "capture" else "宝箱解谜" if state.exploration_role == "treasure" else "追猎" if state.exploration_role == "hunt" else "首领挑战" if state.exploration_role == "boss" else "普通战斗" if state.exploration_role == "battle" else "群体遭遇" if state.exploration_role == "group" else "林缘试炼") if state.exploration_v2 else ("营地" if state.is_free_exploration() else "营地防守") if state.is_camp_map else "收集区" if state.node_kind == "event" else "首领区" if state.node_kind == "boss" else "%d/6 战" % (BattleDB.local_battle_of(state.battle_index) + 1)
+	var region_name := ("捕捉栖息地" if state.exploration_role == "capture" else "宝箱解谜" if state.exploration_role == "treasure" else "追猎" if state.exploration_role == "hunt" else "首领挑战" if state.exploration_role == "boss" else "精英战斗" if state.exploration_role == "elite" else "普通战斗" if state.exploration_role == "battle" else "群体遭遇" if state.exploration_role == "group" else "林缘试炼") if state.exploration_v2 else ("营地" if state.is_free_exploration() else "营地防守") if state.is_camp_map else "收集区" if state.node_kind == "event" else "首领区" if state.node_kind == "boss" else "%d/6 战" % (BattleDB.local_battle_of(state.battle_index) + 1)
 	round_label.text = "第 %d 层 · %s\n第 %d 回合 · %s" % [BattleDB.floor_of(state.battle_index) + 1, region_name, maxi(1, state.round), phase_text]
 	var reward_text := ""
 	match String(state.reward.get("state", "")):
@@ -768,7 +768,8 @@ func _rebuild_skill_buttons() -> void:
 			var id := String(item_id)
 			var button := UIKit.small_button("%s ×%d" % [Merchant.ITEMS[id][0], int(app.run.trainer_items.get(id, 0))])
 			button.tooltip_text = Merchant.ITEMS[id][2]
-			button.disabled = (id == "potion" and state.is_free_exploration()) or int(app.run.trainer_items.get(id, 0)) <= 0 or unit.capture_used or not unit.can_act_skill() or (id == "capture_aid" and state.capture_aid)
+			var free_heal: bool = id == "potion" and state.is_free_exploration()
+			button.disabled = int(app.run.trainer_items.get(id, 0)) <= 0 or (not free_heal and (unit.capture_used or not unit.can_act_skill())) or (id == "capture_aid" and state.capture_aid)
 			if id == "potion" and state.alive_units("player").filter(func(target): return Merchant.item_target_valid(state, target)).is_empty():
 				button.disabled = true
 				button.tooltip_text += "\n当前没有可治疗目标。"

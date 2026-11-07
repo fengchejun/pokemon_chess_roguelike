@@ -21,6 +21,10 @@ func _ready() -> void:
 	var team := UIKit.small_button("查看队伍")
 	team.pressed.connect(_show_team)
 	row.add_child(team)
+	var bag := UIKit.small_button("道具背包")
+	bag.name = "OpenItemBag"
+	bag.pressed.connect(func() -> void: app._switch(preload("res://scripts/ui/item_bag_screen.gd").new()))
+	row.add_child(bag)
 	var menu := UIKit.small_button("保存并返回菜单")
 	menu.pressed.connect(func() -> void: app.autosave(); app.show_menu())
 	row.add_child(menu)
@@ -87,8 +91,14 @@ func _confirm_entry(id: String) -> void:
 	var known: bool = bool(node.get("unlocked", false)) or int(node.get("visits", 0)) > 0 or id == "boss"
 	dialog.title = "前往" + (region.display_name(id) if known else "未知地点")
 	var detail: String = {"starter": "少量普通敌人，无巢穴。清场后打通分支；可由训练师前往绿色撤离区撤退，区外伙伴承受原有扣血代价。", "capture": "固定出现3只野生宝可梦；攻击或尝试捕捉会惊动全场，抵达撤离点后停留至下次行动即可逃脱。第8回合结束剩余目标全部逃跑，也可随时直接离开。", "group": "可以玩耍、喂食，或主动选择战斗；事件战斗可直接离开，未胜利不发放挑战奖励。", "request": "%s。只接收随身成员，可先离开准备。" % Flow.request_description(Flow.request_terms(node, region.theme)), "shop": "查看商品、买卖遗物和强化技能；库存不会因回访刷新。", "camp": "消耗食物休息、取用共享仓库、调整队伍。", "treasure": Flow.puzzle_description(node), "boss": "岩系首领带两名同伴，擅长近距离推击与碎岩。不能撤退，需清空敌人与巢穴后通关。"}.get(role, "")
-	if role in ["starter", "battle"]:
+	if role in ["starter", "battle", "elite"]:
 		detail = "%d 名普通敌人，无巢穴。清场后打通分支。未清场可从绿色撤离区撤退。" % (3 + region.floor_index)
+	if role == "elite":
+		detail += " 敌人等级比本层普通战斗高 1 级。"
+	elif role == "item_shop":
+		detail = "购买补给、道具及遗物，可出售遗物。回访不补货。"
+	elif role == "skill_shop":
+		detail = "强化招式或购买技能书。回访不补货。"
 	dialog.dialog_text = (detail if known else "这里尚未点亮，节点内容仍未知。") + "\n确认进入消耗1行动；取消不消耗。"
 	dialog.confirmed.connect(func() -> void: app.enter_region_node(id))
 	dialog.canceled.connect(func() -> void: dialog.queue_free())

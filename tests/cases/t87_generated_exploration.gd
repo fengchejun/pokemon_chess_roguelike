@@ -35,7 +35,12 @@ func run(t: TestContext) -> void:
 			var region := Flow.generate(floor, "fire", seed_value)
 			var nodes := region.nodes
 			t.check(nodes.size() in [14, 15], "4×4 只生成14或15个实际节点")
-			t.eq(nodes.values().filter(func(n): return n["role"] == "shop").size(), 2, "每层恰有两个商店")
+			t.eq(nodes.values().filter(func(n): return n["role"] == "item_shop").size(), 1, "每层一个道具商店")
+			t.eq(nodes.values().filter(func(n): return n["role"] == "skill_shop").size(), 1, "每层一个技能商店")
+			t.eq(nodes.values().filter(func(n): return n["role"] == "capture").size(), 1, "每层一个野生栖息地")
+			t.eq(nodes.values().filter(func(n): return n["role"] == "elite").size(), 1, "每层一个精英战")
+			t.eq(nodes.values().filter(func(n): return n["role"] == "battle").size(), nodes.size() - 9, "空出的名额换成普通战斗")
+			t.eq(nodes.values().filter(func(n): return n["role"] == "group").size(), 1, "每层群体事件不重复")
 			t.check(not nodes.values().any(func(n): return n["role"] == "empty"), "没有可进入的空节点")
 			t.eq(distances(region).size(), nodes.size(), "全图连通")
 			var reachable := distances(region, "battle_5")

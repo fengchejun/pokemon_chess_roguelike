@@ -84,7 +84,11 @@ func run(t: TestContext) -> void:
 	target.cell = trainer.cell + Vector2i.RIGHT
 	state.set_terrain(target.cell, TerrainDB.PLAIN)
 	target.hp = 1
-	t.check(not Merchant.use_item(app.run, state, "potion", target.uid)["ok"], "自由探索禁止治疗药")
+	t.check(Merchant.use_item(app.run, state, "potion", target.uid)["ok"], "自由探索可使用治疗药")
+	t.eq(target.hp, 16, "非战斗棋盘恢复15HP")
+	t.check(not trainer.skill_used and not trainer.capture_used, "自由探索用药不占战斗行动")
+	app.run.trainer_items["potion"] = 1
+	target.hp = 1
 	state.node_kind = "battle"
 	state.nest["alive"] = true
 	state.add_garrison(1, ["rock_wild1"])

@@ -1,9 +1,11 @@
 extends RefCounted
 
+const EVENT_NODES := {"group": "event_1", "request": "battle_5"}
+const MAX_EVENTS := 3
 const ACTIONS := Balance.EXPLORATION_ACTIONS
 const POSITIONS := {"battle_1": Vector2i(0, 0), "battle_2": Vector2i(1, 0), "event_2": Vector2i(2, 0), "empty_1": Vector2i(3, 0), "empty_2": Vector2i(0, 1), "event_1": Vector2i(1, 1), "boss": Vector2i(2, 1), "battle_3": Vector2i(3, 1), "camp": Vector2i(0, 2), "battle_5": Vector2i(1, 2), "battle_4": Vector2i(2, 2), "empty_3": Vector2i(3, 2), "empty_4": Vector2i(0, 3), "capture_3": Vector2i(1, 3), "group_2": Vector2i(2, 3), "empty_5": Vector2i(3, 3)}
 const ROLES := {"camp": "camp", "battle_1": "starter", "battle_2": "capture", "event_2": "shop", "boss": "boss", "battle_3": "capture", "event_1": "group", "battle_5": "request", "battle_4": "treasure", "empty_1": "empty", "empty_2": "empty", "empty_3": "empty", "empty_4": "empty", "empty_5": "empty", "capture_3": "capture", "group_2": "group"}
-const NAMES := {"camp": "营地", "starter": "林缘试炼", "battle": "普通战斗", "capture": "野生栖息地", "shop": "旅行商店", "boss": "本层首领", "group": "嬉戏的宝可梦", "request": "训练家的委托", "treasure": "隔水藏珍", "hunt": "追猎", "empty": "林间空地"}
+const NAMES := {"camp": "营地", "starter": "林缘试炼", "battle": "普通战斗", "elite": "精英战斗", "item_shop": "道具商店", "skill_shop": "技能商店", "capture": "野生栖息地", "shop": "旅行商店", "boss": "本层首领", "group": "嬉戏的宝可梦", "request": "训练家的委托", "treasure": "隔水藏珍", "hunt": "追猎", "empty": "林间空地"}
 
 static func active(run: RunState) -> bool:
 	return bool(run.options.get("exploration_v2", false))
@@ -62,8 +64,8 @@ static func generate(floor_value: int, theme: String, run_seed: int) -> RegionSt
 				links[cell].append(next)
 				queue.append(next)
 	# A reachable boss entrance cannot depend on completing a commission.
-	var starter_cell: Vector2i = links[camp_cell][0]
-	var leaves := cells.filter(func(cell): return cell != camp_cell and cell != starter_cell and links[cell].size() == 1)
+	var first_battle_cell: Vector2i = links[camp_cell][0]
+	var leaves := cells.filter(func(cell): return cell != camp_cell and cell != first_battle_cell and links[cell].size() == 1)
 	var request_cell: Vector2i = leaves[rng.randi_range(0, leaves.size() - 1)]
 	var boss_neighbors := adjacent_cells(boss_cell).filter(func(cell): return links.has(cell) and cell != request_cell)
 	var entrance: Vector2i = boss_neighbors[rng.randi_range(0, boss_neighbors.size() - 1)]
@@ -78,20 +80,32 @@ static func generate(floor_value: int, theme: String, run_seed: int) -> RegionSt
 		var pair: Array = spare_edges.pop_at(rng.randi_range(0, spare_edges.size() - 1))
 		links[pair[0]].append(pair[1])
 		links[pair[1]].append(pair[0])
-	var ids := ["battle_2", "battle_3", "capture_3", "event_1", "group_2", "event_2", "shop_2", "battle_4", "combat_1", "combat_2"]
-	if target_count == 15:
-		ids.append("combat_3")
-	var by_cell := {camp_cell: "camp", boss_cell: "boss", starter_cell: "battle_1", request_cell: "battle_5"}
+	var roles := {"battle_1": "battle", "battle_2": "capture", "elite_1": "elite",
+		"event_2": "item_shop", "shop_2": "skill_shop", "battle_4": "treasure",
+		"camp": "camp", "boss": "boss", "battle_5": "request"}
+	var ids := ["battle_2", "elite_1", "event_2", "shop_2", "battle_4"]
+	var event_types := EVENT_NODES.keys()
+	event_types.erase("request")
+	for index in mini(MAX_EVENTS - 1, event_types.size()):
+		var event_type: String = event_types.pop_at(rng.randi_range(0, event_types.size() - 1))
+		var event_id: String = EVENT_NODES[event_type]
+		roles[event_id] = event_type
+		ids.append(event_id)
+	for index in target_count - 4 - ids.size():
+		var combat_id := "combat_%d" % (index + 1)
+		ids.append(combat_id)
+		roles[combat_id] = "battle"
+	var by_cell := {camp_cell: "camp", boss_cell: "boss", first_battle_cell: "battle_1", request_cell: "battle_5"}
 	for cell in cells:
 		if not by_cell.has(cell):
 			by_cell[cell] = ids.pop_at(rng.randi_range(0, ids.size() - 1))
 	for cell in by_cell:
 		var id: String = by_cell[cell]
-		var kind: String = ROLES.get(id, "shop" if id == "shop_2" else "battle")
+		var kind: String = roles[id]
 		var type := "event"
 		if kind in ["camp", "boss"]:
 			type = kind
-		elif kind in ["starter", "battle", "capture"]:
+		elif kind in ["battle", "elite", "capture"]:
 			type = "battle"
 		region.nodes[id] = {
 			"type": type, "mode": type, "role": kind, "position": [cell.x, cell.y],
@@ -173,7 +187,7 @@ static func configure(run: RunState, cfg: Dictionary) -> Dictionary:
 	var pool: Array = BattleDB.THEMES.get(region.theme, BattleDB.THEMES["grass"])["primary"].duplicate()
 	pool.append_array(["water_wild1", "electric_wild1", "grass_wild1", "rock_wild1"])
 	var count := 3
-	if kind in ["starter", "battle"]:
+	if kind in ["starter", "battle", "elite"]:
 		count += region.floor_index
 	elif kind == "group":
 		count = 2
@@ -184,11 +198,11 @@ static func configure(run: RunState, cfg: Dictionary) -> Dictionary:
 		pairs.append([pool[rng.randi_range(0, pool.size() - 1)], Vector2i(5 + index % 2, 2 + index)])
 	if kind in ["boss", "hunt"]:
 		pairs[0][0] = "rock_wild1"
-	result["enemies"] = [] if kind in ["treasure", "camp", "shop", "request"] or (kind == "group" and not bool(node.get("battle_selected", false))) else pairs
+	result["enemies"] = [] if kind in ["treasure", "camp", "shop", "item_shop", "skill_shop", "request"] or (kind == "group" and not bool(node.get("battle_selected", false))) else pairs
 	result["reinforce"] = pool if kind in ["boss", "hunt"] else []
 	result["boss_index"] = 0 if kind in ["boss", "hunt"] else -1
 	result["corrupted"] = kind == "hunt"
-	result["enemy_level_bonus"] = 1 if kind == "hunt" else 0
+	result["enemy_level_bonus"] = 1 if kind in ["hunt", "elite"] else 0
 	return result
 
 const PUZZLE_NAMES := ["隔水藏珍", "岩垒藏珍", "断崖藏珍", "熔沟藏珍"]
@@ -256,7 +270,7 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 		map["deploy_area"] = Balance.DEPLOY_AREA.duplicate()
 	if kind == "capture":
 		map["fixed_deploy_area"] = Balance.DEPLOY_AREA.duplicate()
-	if kind in ["starter", "battle", "group"]:
+	if kind in ["starter", "battle", "elite", "group"]:
 		# 普通遭遇保留原生成器的地形，只清除这类节点不提供的宝箱奖励。
 		map["chests"] = {}
 		map["extra_rewards"] = []

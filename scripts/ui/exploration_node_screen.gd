@@ -26,6 +26,13 @@ func _ready() -> void:
 	return_button.name = "ReturnToRegion"
 	return_button.pressed.connect(leave)
 	header.add_child(return_button)
+	var bag := UIKit.small_button("道具背包")
+	bag.name = "OpenItemBag"
+	bag.pressed.connect(func() -> void:
+		var screen = load("res://scripts/ui/item_bag_screen.gd").new()
+		screen.return_to_node = true
+		app._switch(screen))
+	header.add_child(bag)
 	resources_label = UIKit.label("", 18, UIKit.ACCENT)
 	page.add_child(resources_label)
 	var scroll := UIKit.scroll()
@@ -81,7 +88,7 @@ func refresh() -> void:
 	match role:
 		"empty": column.add_child(UIKit.wrapped("林间空地上没有新的遭遇。附近道路已经揭示，可以返回地图选择下一处地点。", 17))
 		"camp": _camp(run, region)
-		"shop": _shop(run, region)
+		"shop", "item_shop", "skill_shop": _shop(run, region)
 		"group":
 			column.add_child(UIKit.wrapped("一群宝可梦围着树果嬉戏。你可以接近它们，也可以先去准备食物再回来。", 17))
 			if node.get("done", false):
@@ -190,21 +197,48 @@ func _camp(run: RunState, region) -> void:
 func _shop(run: RunState, region) -> void:
 	var node: Dictionary = region.nodes[region.active_node]
 	if not node.has("stock"):
-		var stock := {"food": 6, "potion": 2, "capture_aid": 2}
-		for relic in RelicDB.offer(run.seed, region.floor_index, 501 if region.active_node == "event_2" else 502, {}): stock["relic:" + relic] = 1
+		var stock := {}
+		if node["role"] == "skill_shop":
+			var pool: Array = []
+			for member in run.carried:
+				for skill in run.available_new_skills(int(member["uid"])):
+					if not pool.has(skill):
+						pool.append(skill)
+			if pool.size() < 3:
+				for element in Elements.LIST:
+					for skill in SkillDB.learnable_ids_for(element):
+						if not SkillDB.is_special(skill) and not pool.has(skill):
+							pool.append(skill)
+			var rng := RandomNumberGenerator.new()
+			rng.seed = hash("skill-shop:%d:%d" % [run.seed, region.floor_index])
+			for index in mini(3, pool.size()):
+				stock[Merchant.BOOK_PREFIX + String(pool.pop_at(rng.randi_range(0, pool.size() - 1)))] = 1
+		else:
+			stock = {"food": 6, "potion": 2, "capture_aid": 2}
+			for relic in RelicDB.offer(run.seed, region.floor_index, 501, {}):
+				stock["relic:" + relic] = 1
 		node["stock"] = stock
 		run.region_data = region.to_dict(); app.autosave()
 	for product in node["stock"]:
 		var id: String = product
 		var relic := id.trim_prefix("relic:")
-		var price := 16 if id.begins_with("relic:") else 3 if id == "food" else int(Merchant.ITEMS[id][1])
-		var title := RelicDB.display_name_of(relic) if id.begins_with("relic:") else "基础食物" if id == "food" else String(Merchant.ITEMS[id][0])
-		button("购买%s · %d原质 · 剩余%d" % [title, price, int(node["stock"][id])], "Buy_" + id, func() -> void: buy(id), run.essence < price or int(node["stock"][id]) <= 0 or (id.begins_with("relic:") and RelicDB.rank(run.relic_stacks, relic) >= 3))
-	for relic_id in run.relic_stacks:
-		var relic: String = relic_id
-		if RelicDB.rank(run.relic_stacks, relic) <= 0: continue
-		button("出售一级%s · 获得8原质" % RelicDB.name_of(relic), "Sell_" + relic, func() -> void:
-			run.relic_stacks[relic] -= 1; run.essence += 8; app.autosave(); refresh())
+		var price := _price(id)
+		var title: String
+		if id.begins_with(Merchant.BOOK_PREFIX):
+			title = "技能书 · " + SkillDB.name_of(id.trim_prefix(Merchant.BOOK_PREFIX))
+		elif id.begins_with("relic:"):
+			title = RelicDB.display_name_of(relic)
+		else:
+			title = "基础食物" if id == "food" else String(Merchant.ITEMS[id][0])
+		button("购买%s · %d原质 · 剩余%d" % [title, price, int(node["stock"][id])], "Buy_" + id.replace(":", "_"), func() -> void: buy(id), run.essence < price or int(node["stock"][id]) <= 0 or (id.begins_with("relic:") and RelicDB.rank(run.relic_stacks, relic) >= 3))
+	if node["role"] != "skill_shop":
+		for relic_id in run.relic_stacks:
+			var relic: String = relic_id
+			if RelicDB.rank(run.relic_stacks, relic) <= 0: continue
+			button("出售一级%s · 获得8原质" % RelicDB.name_of(relic), "Sell_" + relic, func() -> void:
+				run.relic_stacks[relic] -= 1; run.essence += 8; app.autosave(); refresh())
+	if node["role"] == "item_shop":
+		return
 	for record in run.carried:
 		for skill in record.get("equipped_skills", []):
 			var uid := int(record["uid"]); var id: String = skill
@@ -214,11 +248,18 @@ func _shop(run: RunState, region) -> void:
 				if run.essence >= cost and run.apply_merchant_skill_upgrade(uid, id): run.essence -= cost
 				app.autosave(); refresh(), run.essence < cost)
 
+func _price(id: String) -> int:
+	if id.begins_with(Merchant.BOOK_PREFIX):
+		return Merchant.BOOK_PRICE
+	if id.begins_with("relic:"):
+		return 16
+	return 3 if id == "food" else int(Merchant.ITEMS.get(id, ["", 999])[1])
+
 func buy(id: String) -> void:
 	var run: RunState = app.run
 	var region = run.get_region()
 	var node: Dictionary = region.nodes[region.active_node]
-	var price := 16 if id.begins_with("relic:") else 3 if id == "food" else int(Merchant.ITEMS.get(id, ["", 999])[1])
+	var price := _price(id)
 	if int(node.get("stock", {}).get(id, 0)) <= 0 or run.essence < price: return
 	if id.begins_with("relic:"):
 		var relic := id.trim_prefix("relic:")

@@ -4,10 +4,41 @@ extends RefCounted
 const RARITIES := {"common": ["普通", 10], "rare": ["稀有", 15], "precious": ["珍稀", 25]}
 const ITEMS := {"potion": ["治疗药", 5, "恢复三格内一个存活己方单位15 HP，不能复活。"], "capture_aid": ["捕获辅助", 6, "本次探索下一次捕获概率增加20个百分点。"]}
 
+const BOOK_PREFIX := "skill_book:"
+const BOOK_PRICE := 18
+
+static func use_skill_book(run: RunState, skill_id: String, uid: int) -> bool:
+	var id := BOOK_PREFIX + skill_id
+	var member := run.record_by_uid(uid)
+	if member.is_empty() or int(run.trainer_items.get(id, 0)) <= 0 or not run.available_new_skills(uid).has(skill_id):
+		return false
+	var known: Array = member.get("known_skills", []).duplicate()
+	var equipped: Array = member.get("equipped_skills", []).duplicate()
+	known.append(skill_id)
+	if equipped.size() < RunState.MAX_EQUIPPED_SKILLS:
+		equipped.append(skill_id)
+	member["known_skills"] = known
+	member["equipped_skills"] = equipped
+	run.trainer_items[id] -= 1
+	return true
+
+static func use_potion_outside_battle(run: RunState, uid: int) -> bool:
+	if int(run.trainer_items.get("potion", 0)) <= 0:
+		return false
+	if uid == Balance.TRAINER_UID:
+		if run.trainer_hp <= 0 or run.trainer_hp >= run.trainer_max_hp():
+			return false
+		run.trainer_hp = mini(run.trainer_max_hp(), run.trainer_hp + 15)
+	else:
+		var member := run.record_by_uid(uid)
+		if member.is_empty() or int(member["hp"]) <= 0 or int(member["hp"]) >= run.monster_max_hp(member):
+			return false
+		member["hp"] = mini(run.monster_max_hp(member), int(member["hp"]) + 15)
+	run.trainer_items["potion"] -= 1
+	return true
+
 static func item_target_valid(state: BattleState, target: CombatUnit) -> bool:
 	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
-	if state.is_free_exploration():
-		return false
 	if target == null or not target.is_alive() or target.side != "player" or target.hp >= target.max_hp or GridSpec.manhattan(trainer.cell, target.cell) > 3:
 		return false
 	var delta := target.cell - trainer.cell
@@ -20,7 +51,8 @@ static func item_target_valid(state: BattleState, target: CombatUnit) -> bool:
 
 static func use_item(run: RunState, state: BattleState, id: String, target_uid: int = -1) -> Dictionary:
 	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
-	if state.ended or state.phase != BattleState.PHASE_PLAYER or trainer == null or not trainer.is_alive() or not trainer.can_act_skill() or trainer.capture_used or trainer.channel_lock_round == state.round or not ITEMS.has(id) or int(run.trainer_items.get(id, 0)) <= 0:
+	var free_heal := id == "potion" and state.is_free_exploration()
+	if state.ended or state.phase != BattleState.PHASE_PLAYER or trainer == null or not trainer.is_alive() or (not free_heal and (not trainer.can_act_skill() or trainer.capture_used or trainer.channel_lock_round == state.round)) or not ITEMS.has(id) or int(run.trainer_items.get(id, 0)) <= 0:
 		return {"ok": false, "reason": "道具不足或训练师本回合无法行动。"}
 	if id == "potion":
 		var target := state.unit_by_uid(target_uid)
@@ -34,8 +66,9 @@ static func use_item(run: RunState, state: BattleState, id: String, target_uid: 
 			return {"ok": false, "reason": "捕获辅助已经生效。"}
 		state.capture_aid = true
 	state.commit_actions()
-	trainer.skill_used = true
-	trainer.capture_used = true
+	if not free_heal:
+		trainer.skill_used = true
+		trainer.capture_used = true
 	run.trainer_items[id] -= 1
 	state.log_event("训练师使用了%s。" % ITEMS[id][0])
 	return {"ok": true, "reason": "道具使用成功。"}

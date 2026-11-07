@@ -90,7 +90,7 @@ func record_entry(id: String) -> bool:
 			return false
 		visits += 1
 		nodes[id]["revealed"] = true
-		if nodes[id].get("role") in ["capture", "group", "shop", "camp", "treasure", "empty"]:
+		if nodes[id].get("role") in ["capture", "group", "shop", "item_shop", "skill_shop", "camp", "treasure", "empty"]:
 			nodes[id]["passable"] = true
 			unlock_neighbors(id)
 	elif nodes[id]["type"] != "boss":
@@ -185,7 +185,7 @@ func store_battle(id: String, battle: BattleState) -> bool:
 		unlock_neighbors(id)
 	if flow_version == 2:
 		if battle.ended and battle.end_reason in ["victory", "explored"]:
-			if node.get("role") in ["starter", "battle", "boss", "hunt", "group"] and battle.battle_objective_met():
+			if node.get("role") in ["starter", "battle", "elite", "boss", "hunt", "group"] and battle.battle_objective_met():
 				node["cleared"] = true
 				node["passable"] = true
 				node["done"] = true

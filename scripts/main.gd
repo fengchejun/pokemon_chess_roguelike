@@ -181,7 +181,7 @@ func continue_run(path: String = SaveSystem.DEFAULT_PATH) -> void:
 	run = loaded
 	if run.region_mode and not run.region_data.is_empty() and run.get_region().flow_version == 2 and run.get_region().visit_pending and run.battle_snapshot.is_empty() and not run.settlement_pending:
 		var region = run.get_region()
-		if region.nodes[region.active_node].get("role") in ["camp", "shop", "group", "request", "empty"]:
+		if region.nodes[region.active_node].get("role") in ["camp", "shop", "item_shop", "skill_shop", "group", "request", "empty"]:
 			_switch(preload("res://scripts/ui/exploration_node_screen.gd").new())
 		else:
 			show_prep()
@@ -400,8 +400,8 @@ func enter_region_node(id: String) -> void:
 		if role == "capture":
 			region.nodes[id]["snapshot"] = {}
 			run.region_data = region.to_dict()
-		if role in ["camp", "shop", "group", "request", "empty"] or (role in ["starter", "battle"] and region.nodes[id].get("done", false)):
-			if role in ["starter", "battle"]:
+		if role in ["camp", "shop", "item_shop", "skill_shop", "group", "request", "empty"] or (role in ["starter", "battle", "elite"] and region.nodes[id].get("done", false)):
+			if role in ["starter", "battle", "elite"]:
 				region.complete_visit(); run.region_data = region.to_dict(); autosave(); show_region()
 			else:
 				_switch(preload("res://scripts/ui/exploration_node_screen.gd").new())
@@ -461,7 +461,7 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 			region.nodes[node_id]["pending_garrison"] = false
 		if bool(region.nodes[node_id].get("pending_replenish", false)):
 			region.nodes[node_id]["pending_replenish"] = false
-		state.set_enemy_level_bonus(run.invasion_level_bonus)
+		state.set_enemy_level_bonus(int(cfg.get("enemy_level_bonus", run.invasion_level_bonus)))
 		state.boss_power_percent = 0
 		if (region.nodes[node_id]["snapshot"] as Dictionary).is_empty():
 			state.seed_initial_food()
@@ -531,7 +531,7 @@ func finish_battle(battle: BattleState) -> void:
 	if run.region_mode and run.get_region().flow_version == 2:
 		var region = run.get_region()
 		var node: Dictionary = region.nodes[region.active_node]
-		if battle.end_reason == "victory" and battle.battle_objective_met() and node.get("role") in ["starter", "battle", "boss", "hunt", "group"] and not node.get("challenge_reward_claimed", false):
+		if battle.end_reason == "victory" and battle.battle_objective_met() and node.get("role") in ["starter", "battle", "elite", "boss", "hunt", "group"] and not node.get("challenge_reward_claimed", false):
 			run.pending_bonus_choices += 2 if node.get("role") in ["boss", "hunt"] else 1
 			node["challenge_reward_claimed"] = true
 			run.region_data = region.to_dict()
