@@ -102,6 +102,8 @@ static func prepare_map(map: Dictionary) -> void:
 				var next: Vector2i = current + dir
 				if not GridSpec.is_inside(next) or map.get("chests", {}).has(next): continue
 				var terrain: int = map["terrain"][GridSpec.index(next)]
+				if terrain == TerrainDB.ROCK_MOUNTAIN and next != goal:
+					continue
 				var cost: int = costs[current] + (8 if flowers.has(next) or TerrainDB.blocks_move(terrain) or TerrainDB.is_lethal(terrain) else 1)
 				if cost < int(costs.get(next, 1 << 30)):
 					costs[next] = cost

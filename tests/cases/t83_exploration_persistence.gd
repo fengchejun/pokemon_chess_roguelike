@@ -79,11 +79,14 @@ func run(t: TestContext) -> void:
 	app.current_screen._on_start()
 	state = app.current_screen.state
 	t.eq(state.terrain_at(Vector2i(3, 3)), TerrainDB.ICE, "离开回访保留冰面改造")
-	t.eq(state.obstacle_durability[Vector2i(5, 3)], 1, "回访不刷新岩障耐久")
+	t.eq(state.terrain_at(Vector2i(5, 3)), TerrainDB.ROCK_MOUNTAIN, "回访保留未被普通攻击破坏的岩山")
 	var water := state.unit_by_uid(2)
 	water.cell = Vector2i(4, 3)
 	water.skills = ["water_flow"]
-	state.damage_obstacle(Vector2i(5, 3), 1, "player")
+	var breaker := state.unit_by_uid(1)
+	breaker.cell = Vector2i(4, 2)
+	breaker.skills = ["rock_break"]
+	t.check(state.cast_skill(breaker, "rock_break", {"type": "cell", "cell": Vector2i(5, 3)}).get("ok", false), "碎岩打开宝箱外围的岩山")
 	var entry := {"type": "cell", "cell": Vector2i(6, 3)}
 	t.check(state.cast_skill(water, "water_flow", entry).get("ok", false), "实际技能打开宝箱")
 	t.check(state.chests.is_empty() and not state.all_rewards().is_empty(), "开箱产生实际宝藏奖励点")

@@ -9,7 +9,7 @@ static func legal(map: Dictionary, enemies: Array, unit: CombatUnit, cell: Vecto
 	if map.get("electric_flowers", {}).has(cell):
 		return false
 	var terrain := int(map["terrain"][GridSpec.index(cell)])
-	return TerrainDB.can_stand(terrain, unit.element) or (unit.has_buff("flight") and terrain != TerrainDB.OBSTACLE and terrain != TerrainDB.TREE)
+	return TerrainDB.can_stand(terrain, unit.element) or (unit.has_buff("flight") and not TerrainDB.blocks_move(terrain))
 
 static func distance(cell: Vector2i) -> int:
 	var result := 100

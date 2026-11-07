@@ -16,8 +16,9 @@ const VINES := 9
 const TREE := 10
 const SHALLOW_GRASS := 11
 const BLUE_FIRE := 12
+const ROCK_MOUNTAIN := 13
 
-const ALL := [PLAIN, WATER, DEEP, GRASS, OBSTACLE, LAVA, FRAGILE, PIT, ICE, VINES, TREE, SHALLOW_GRASS, BLUE_FIRE]
+const ALL := [PLAIN, WATER, DEEP, GRASS, OBSTACLE, LAVA, FRAGILE, PIT, ICE, VINES, TREE, SHALLOW_GRASS, BLUE_FIRE, ROCK_MOUNTAIN]
 
 const NAMES := {
 	PLAIN: "平地",
@@ -27,7 +28,7 @@ const NAMES := {
 	OBSTACLE: "障碍",
 	LAVA: "熔岩",
 	FRAGILE: "易碎地块", PIT: "深坑", ICE: "冰面", VINES: "藤蔓",
-	TREE: "树木", SHALLOW_GRASS: "浅草", BLUE_FIRE: "蓝火",
+	TREE: "树木", SHALLOW_GRASS: "浅草", BLUE_FIRE: "蓝火", ROCK_MOUNTAIN: "岩山",
 }
 
 const COLORS := {
@@ -39,7 +40,7 @@ const COLORS := {
 	LAVA: Color(0.86, 0.33, 0.14),
 	FRAGILE: Color(0.72, 0.58, 0.43), PIT: Color(0.13, 0.12, 0.18), ICE: Color(0.66, 0.88, 0.98), VINES: Color(0.22, 0.56, 0.30),
 	TREE: Color(0.22, 0.43, 0.22),
-	SHALLOW_GRASS: Color("98b76c"), BLUE_FIRE: Color("274e79"),
+	SHALLOW_GRASS: Color("98b76c"), BLUE_FIRE: Color("274e79"), ROCK_MOUNTAIN: Color("776b64"),
 }
 
 const DESCRIPTIONS := {
@@ -54,6 +55,7 @@ const DESCRIPTIONS := {
 	ICE: "可站立；回合末按最后位移方向滑行一格。每轮结算时每块旧冰面最多随机冻结一格相邻水域，新冰下一轮才能继续扩张。",
 	VINES: "可站立的可燃藤蔓；进入时使地面单位获得禁锢。技能生成的藤蔓下轮末恢复原地貌，燃烧可提前移除。",
 	SHALLOW_GRASS: "可燃浅草。铺水会使它生长为草丛。",
+	ROCK_MOUNTAIN: "无限耐久，阻挡移动和射线。岩系推击可移一格，只有碎岩可以破坏。",
 	BLUE_FIRE: "持续燃烧的地面，会灼烧地面单位并引燃邻接可燃地形，覆盖地形后熄灭。",
 	TREE: "独立树木：阻挡移动与射线，耐久 1；受 1 点物体伤害即被摧毁。火球术仍可越过。",
 }
@@ -72,11 +74,11 @@ static func is_lethal(terrain: int) -> bool:
 
 
 static func blocks_move(terrain: int) -> bool:
-	return terrain == OBSTACLE or terrain == TREE
+	return terrain in [OBSTACLE, TREE, ROCK_MOUNTAIN]
 
 
 static func blocks_rays(terrain: int) -> bool:
-	return terrain == OBSTACLE or terrain == TREE
+	return terrain in [OBSTACLE, TREE, ROCK_MOUNTAIN]
 
 
 static func can_stand(terrain: int, element: String) -> bool:

@@ -21,7 +21,7 @@ func can_reach_chest(terrain: Array, element: String, break_rocks: bool) -> bool
 			return true
 		for next in GridSpec.neighbors4(cell):
 			var tile: int = terrain[GridSpec.index(next)]
-			if not seen.has(next) and (TerrainDB.can_stand(tile, element) or (break_rocks and tile == TerrainDB.OBSTACLE)):
+			if not seen.has(next) and (TerrainDB.can_stand(tile, element) or (break_rocks and tile in [TerrainDB.OBSTACLE, TerrainDB.ROCK_MOUNTAIN])):
 				seen[next] = true
 				queue.append(next)
 	return false
@@ -125,7 +125,7 @@ func run(t: TestContext) -> void:
 		t.check(map["chests"].has(Vector2i(6, 3)), "各结构均生成可拾取的宝箱")
 		var terrain: Array = map["terrain"]
 		if variant == 0:
-			t.check(not can_reach_chest(terrain, "fire", false) and can_reach_chest(terrain, "water", false), "深水挡住地面队伍，水系有路线")
+			t.check(not can_reach_chest(terrain, "fire", true) and not can_reach_chest(terrain, "water", false) and can_reach_chest(terrain, "water", true), "隔水藏珍需过河并打开岩山")
 		elif variant == 1:
 			t.check(not can_reach_chest(terrain, "fire", false) and can_reach_chest(terrain, "fire", true), "岩垒需破障才可进入")
 		else:

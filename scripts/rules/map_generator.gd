@@ -27,6 +27,7 @@ static func generate(run_seed: int, battle_index: int, salt: int = 0, environmen
 	for attempt in 64:
 		var result := _attempt(rng, cfg, lethal_budget, environment_deck)
 		if not result.is_empty() and _has_landscape_pair(result["terrain"]) and randomize_nests(result, cfg, rng):
+			_add_rock_mountain(result, cfg, rng)
 			_add_electric_flowers(result, cfg, rng)
 			result["region"] = String(cfg.get("region", "?"))
 			result["battle_index"] = battle_index
@@ -35,10 +36,42 @@ static func generate(run_seed: int, battle_index: int, salt: int = 0, environmen
 			return result
 	var fallback := _fallback(cfg)
 	randomize_nests(fallback, cfg, rng)
+	_add_rock_mountain(fallback, cfg, rng)
 	_add_electric_flowers(fallback, cfg, rng)
 	fallback["battle_index"] = battle_index
 	fallback["theme_id"] = theme_id
 	return fallback
+
+
+static func _add_rock_mountain(map: Dictionary, cfg: Dictionary, rng: RandomNumberGenerator) -> void:
+	if cfg.get("region", "") != "岩窟" or map["terrain"].has(TerrainDB.ROCK_MOUNTAIN):
+		return
+	var terrain: Array = map["terrain"]
+	var required: Array = map.get("nest_cells", []).duplicate()
+	required.append(map["reward_cell"])
+	for pair in cfg.get("enemies", []):
+		required.append(pair[1])
+	var candidates := CENTER_CELLS.duplicate()
+	var remaining := GridSpec.all_cells().filter(func(cell): return not CENTER_CELLS.has(cell))
+	# Seeded order inside each distance band keeps central tiles preferred.
+	for i in range(candidates.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var temp: Vector2i = candidates[i]
+		candidates[i] = candidates[j]
+		candidates[j] = temp
+	remaining.sort_custom(func(a, b): return GridSpec.manhattan(a, Vector2i(3, 3)) < GridSpec.manhattan(b, Vector2i(3, 3)))
+	candidates.append_array(remaining)
+	for cell in candidates:
+		var index := GridSpec.index(cell)
+		if mod_protected(map, cell) or required.has(cell) or terrain[index] != TerrainDB.PLAIN:
+			continue
+		if GridSpec.neighbors4(cell).any(func(near): return TerrainDB.blocks_move(terrain[GridSpec.index(near)])):
+			continue
+		terrain[index] = TerrainDB.ROCK_MOUNTAIN
+		if _validate(terrain, required) and _nests_accessible(map, map.get("nest_cells", [])):
+			map["obstacle_cells"].append(cell)
+			return
+		terrain[index] = TerrainDB.PLAIN
 
 
 static func _add_electric_flowers(map: Dictionary, cfg: Dictionary, rng: RandomNumberGenerator) -> void:
@@ -54,7 +87,9 @@ static func _add_electric_flowers(map: Dictionary, cfg: Dictionary, rng: RandomN
 	var terrain: Array = map["terrain"]
 	var candidates := GridSpec.all_cells().filter(func(cell):
 		var base := int(terrain[GridSpec.index(cell)])
-		return not mod_protected(map, cell) and not required.has(cell) and not TerrainDB.blocks_move(base)
+		return not mod_protected(map, cell) and not required.has(cell) and not TerrainDB.blocks_move(base) and not GridSpec.neighbors4(cell).any(
+			func(near): return terrain[GridSpec.index(near)] == TerrainDB.ROCK_MOUNTAIN
+		)
 	)
 	var blocked := terrain.duplicate()
 	while flowers.size() < count and not candidates.is_empty():
@@ -160,7 +195,15 @@ static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget:
 	for cell in enemy_cells:
 		protected[cell] = true
 	protected[nest_cell] = true
-	_scatter(terrain, protected, rng, cfg, lethal_budget, environment_deck)
+	var mountain_cell := Vector2i(-1, -1)
+	if cfg.get("region", "") == "岩窟":
+		var centers := CENTER_CELLS.filter(func(cell): return not protected.has(cell))
+		if not centers.is_empty():
+			mountain_cell = centers[rng.randi_range(0, centers.size() - 1)]
+			protected[mountain_cell] = true
+	_scatter(terrain, protected, rng, cfg, lethal_budget, environment_deck, mountain_cell)
+	if GridSpec.is_inside(mountain_cell):
+		terrain[GridSpec.index(mountain_cell)] = TerrainDB.ROCK_MOUNTAIN
 	_convert_deep(terrain, protected, rng, lethal_budget)
 	var reward := _pick_cell(rng, terrain, protected, func(cell: Vector2i) -> bool:
 		return int(terrain[GridSpec.index(cell)]) == TerrainDB.PLAIN and cell.x >= 3
@@ -208,7 +251,7 @@ static func _attempt(rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget:
 	}
 
 
-static func _scatter(terrain: Array, protected: Dictionary, rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget: int, deck: Array) -> void:
+static func _scatter(terrain: Array, protected: Dictionary, rng: RandomNumberGenerator, cfg: Dictionary, lethal_budget: int, deck: Array, mountain_cell: Vector2i) -> void:
 	var weights: Dictionary = REGION_WEIGHTS.get(String(cfg.get("region", "草原")), REGION_WEIGHTS["草原"]).duplicate()
 	var fire_valley := String(cfg.get("region", "")) == "火谷"
 	var card_weights := MapCardDB.weights(deck)
@@ -225,6 +268,9 @@ static func _scatter(terrain: Array, protected: Dictionary, rng: RandomNumberGen
 			local["water"] = int(local["water"]) + water_clump
 			if deck.has("water") and deck.has("rock"):
 				local["rock"] = int(local["rock"]) + 12
+		if GridSpec.is_inside(mountain_cell) and GridSpec.manhattan(cell, mountain_cell) == 1:
+			local["rock"] = 0
+			local["plant"] = 0
 		match _weighted_pick(local, rng):
 			"water": terrain[GridSpec.index(cell)] = TerrainDB.WATER
 			"fragile": terrain[GridSpec.index(cell)] = TerrainDB.FRAGILE
@@ -407,7 +453,7 @@ static func apply_modification(map: Dictionary, cell: Vector2i, kind: String) ->
 			terrain[GridSpec.index(cell)] = TerrainDB.OBSTACLE
 			(map["obstacle_cells"] as Array).append(cell)
 		"clear":
-			if not TerrainDB.blocks_move(value):
+			if not TerrainDB.blocks_move(value) or value == TerrainDB.ROCK_MOUNTAIN:
 				return false
 			terrain[GridSpec.index(cell)] = TerrainDB.PLAIN
 			(map["obstacle_cells"] as Array).erase(cell)

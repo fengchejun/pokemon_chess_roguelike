@@ -406,10 +406,12 @@ func terrain_at(cell: Vector2i) -> int:
 	return int(terrain[GridSpec.index(cell)])
 
 
-func set_terrain(cell: Vector2i, value: int) -> void:
+func set_terrain(cell: Vector2i, value: int, move_or_break_mountain: bool = false) -> void:
 	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return
 	var previous := terrain_at(cell)
+	if previous == TerrainDB.ROCK_MOUNTAIN and not move_or_break_mountain:
+		return
 	var was_vines := previous == TerrainDB.VINES
 	terrain[GridSpec.index(cell)] = value
 	_adjust_electric_flower_hp(cell, previous, value)
@@ -435,14 +437,14 @@ func set_terrain(cell: Vector2i, value: int) -> void:
 		burning_cells.erase(cell)
 		burning_origin.erase(cell)
 		burning_forced.erase(cell)
-	if value == TerrainDB.OBSTACLE or value == TerrainDB.TREE:
+	if TerrainDB.blocks_move(value):
 		steam_cells.erase(cell)
 	if value == TerrainDB.VINES:
 		apply_vine_bind(unit_at(cell))
 
 
 func place_temp_vines(cell: Vector2i) -> void:
-	if is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
+	if terrain_at(cell) == TerrainDB.ROCK_MOUNTAIN or is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return
 	if terrain_at(cell) != TerrainDB.VINES:
 		vine_origin[cell] = terrain_at(cell)
@@ -456,7 +458,7 @@ func ignite(cell: Vector2i, source_side: String = "", force: bool = false) -> bo
 	if not GridSpec.is_inside(cell):
 		return false
 	var current_terrain := terrain_at(cell)
-	if current_terrain == TerrainDB.BLUE_FIRE:
+	if current_terrain in [TerrainDB.BLUE_FIRE, TerrainDB.ROCK_MOUNTAIN]:
 		return false
 	var flammable := TerrainDB.is_flammable(current_terrain)
 	if not flammable and not force:
@@ -1477,7 +1479,11 @@ func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "", skil
 		return true
 	if not obstacle_durability.has(cell):
 		return false
-	var left := int(obstacle_durability[cell]) - amount
+	var mountain := terrain_at(cell) == TerrainDB.ROCK_MOUNTAIN
+	if mountain and (skill_id != "rock_break" or amount <= 0):
+		log_event("岩山未受损，只有碎岩可以破坏它。")
+		return false
+	var left := 0 if mountain else int(obstacle_durability[cell]) - amount
 	if left <= 0:
 		claim_obstacle_essence(cell, source_side)
 		var drop_food := node_kind != "" and terrain_at(cell) == TerrainDB.TREE and terrain_rng.randf() < 0.25 and not food_cells.has(cell)
@@ -1488,7 +1494,7 @@ func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "", skil
 		var origin := int(obstacle_origin.get(cell, TerrainDB.PLAIN))
 		obstacle_origin.erase(cell)
 		obstacle_expire_round.erase(cell)
-		set_terrain(cell, origin)
+		set_terrain(cell, origin, mountain)
 		if drop_food and food_cell_valid(cell):
 			food_cells.append(cell)
 		log_event("障碍被破坏，恢复为%s。" % TerrainDB.name_of(origin))
@@ -1619,7 +1625,7 @@ func relocate_nest_occupants() -> void:
 
 
 func place_temp_obstacle(cell: Vector2i, origin: int, expire_round: int) -> void:
-	if electric_flowers.has(cell) or is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
+	if terrain_at(cell) == TerrainDB.ROCK_MOUNTAIN or electric_flowers.has(cell) or is_nest_cell(cell) or is_chest_cell(cell) or camp_facility_at(cell) != "":
 		return
 	natural_essence_cells.erase(cell)
 	obstacle_reward_origins.erase(cell)

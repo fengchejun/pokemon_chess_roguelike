@@ -94,20 +94,24 @@ static func _summarize_collision(state, summary: Dictionary, target: CombatUnit,
 ## 推击直接命中岩障：先损伤，再搬运；不用于其他击退技能。
 static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i) -> Dictionary:
 	var result := {"from": cell, "to": cell, "damage": 0, "destroyed": false, "moved": false, "filled": false, "blocked": false, "hits": [], "terrain_changes": []}
-	if state.is_chest_cell(cell) or state.terrain_at(cell) != TerrainDB.OBSTACLE or not state.obstacle_durability.has(cell) or GridSpec.manhattan(caster.cell, cell) != 1:
+	var source_terrain := state.terrain_at(cell)
+	var mountain := source_terrain == TerrainDB.ROCK_MOUNTAIN
+	if state.is_chest_cell(cell) or source_terrain not in [TerrainDB.OBSTACLE, TerrainDB.ROCK_MOUNTAIN] or not state.obstacle_durability.has(cell) or GridSpec.manhattan(caster.cell, cell) != 1:
 		return result
-	result["damage"] = 1
-	result["destroyed"] = state.damage_obstacle(cell, 1, caster.side)
-	state._relay_feedback("damage", "岩障耐久 -1", 1, cell, -1)
-	if result["destroyed"]:
-		return result
+	var name := TerrainDB.name_of(source_terrain)
+	if not mountain:
+		result["damage"] = 1
+		result["destroyed"] = state.damage_obstacle(cell, 1, caster.side)
+		state._relay_feedback("damage", "岩障耐久 -1", 1, cell, -1)
+		if result["destroyed"]:
+			return result
 	if state.camp_facility_at(cell) != "":
 		result["blocked"] = true
 		return result
 	var next: Vector2i = cell + (cell - caster.cell)
 	if not GridSpec.is_inside(next) or state.is_nest_cell(next) or state.is_interaction_cell(next) or state.terrain_blocks_move(next):
 		result["blocked"] = true
-		state.log_event("岩障前方受阻，留在原格。")
+		state.log_event("%s前方受阻，留在原格。" % name)
 		return result
 	var occupant := state.unit_at(next)
 	if occupant != null:
@@ -117,13 +121,13 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 			if occupant.side == "enemy":
 				amount += 4 * RelicDB.rank(state.relic_stacks, "wall_crash")
 		state.emit_collision(null, cell, next, occupant.uid, cell, "rock")
-		var hit := state.damage_unit(null, occupant, amount, {"no_element": true, "collision": true, "cause": "岩障碰撞", "killer_side": caster.side, "killer_uid": caster.uid})
+		var hit := state.damage_unit(null, occupant, amount, {"no_element": true, "collision": true, "cause": name + "碰撞", "killer_side": caster.side, "killer_uid": caster.uid})
 		result["hits"].append({"uid": occupant.uid, "name": occupant.display_name, "cell": next, "damage": int(hit.get("amount", 0)), "killed": bool(hit.get("killed", false)), "modifier": 0, "statuses": [], "push": null})
 		result["blocked"] = true
-		state.log_event("岩障撞上 %s 后留在原格。" % occupant.display_name)
+		state.log_event("%s撞上 %s 后留在原格。" % [name, occupant.display_name])
 		return result
 	var destination := state.terrain_at(next)
-	if TerrainDB.is_lethal(destination):
+	if TerrainDB.is_lethal(destination) and not mountain:
 		state.damage_obstacle(cell, int(state.obstacle_durability[cell]), caster.side)
 		state.set_terrain(next, TerrainDB.FRAGILE)
 		result["to"] = next
@@ -133,7 +137,7 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 		state.log_event("岩障填入%s，目标格变为易碎地块。" % TerrainDB.name_of(destination))
 		state._relay_feedback("terrain", "填成易碎格", 0, next, -1)
 		return result
-	if not TerrainDB.can_stand(destination, "rock"):
+	if not TerrainDB.can_stand(destination, "rock") and not (mountain and TerrainDB.is_lethal(destination)):
 		result["blocked"] = true
 		return result
 	var hp := int(state.obstacle_durability[cell])
@@ -148,8 +152,8 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 	state.obstacle_expire_round.erase(cell)
 	state.obstacle_reward_origins.erase(cell)
 	state.natural_essence_cells.erase(cell)
-	state.set_terrain(cell, origin)
-	state.set_terrain(next, TerrainDB.OBSTACLE)
+	state.set_terrain(cell, origin, mountain)
+	state.set_terrain(next, source_terrain)
 	state.steam_cells.erase(next)
 	state.burning_sources.erase(next)
 	state.obstacle_durability[next] = hp
@@ -161,6 +165,6 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 		state.obstacle_reward_origins[next] = reward_origin
 	result["moved"] = true
 	result["to"] = next
-	state.log_event("岩障被推至 (%d,%d)，剩余 %d 耐久。" % [next.x, next.y, hp])
-	state._relay_feedback("terrain", "岩障移动", 0, next, -1)
+	state.log_event("%s被推至 (%d,%d)。" % [name, next.x, next.y])
+	state._relay_feedback("terrain", name + "移动", 0, next, -1)
 	return result

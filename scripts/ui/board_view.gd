@@ -336,6 +336,11 @@ func _draw_terrain(rect: Rect2, value: int) -> void:
 			draw_rect(Rect2(rect.position + Vector2(8, 8), rect.size - Vector2(16, 16)), Color(0.30, 0.26, 0.23))
 			draw_rect(Rect2(rect.position + Vector2(8, 8), rect.size - Vector2(16, 16)), Color(0.55, 0.49, 0.44), false, 3.0)
 			draw_line(rect.position + Vector2(18, 50), rect.position + Vector2(34, 22), Color(0.6, 0.54, 0.48), 2.0)
+		TerrainDB.ROCK_MOUNTAIN:
+			var origin := rect.position
+			draw_colored_polygon(PackedVector2Array([origin + Vector2(6, 60), origin + Vector2(26, 28), origin + Vector2(35, 12), origin + Vector2(54, 32), origin + Vector2(66, 60)]), Color("493f3c"))
+			draw_colored_polygon(PackedVector2Array([origin + Vector2(6, 60), origin + Vector2(35, 12), origin + Vector2(39, 44), origin + Vector2(31, 60)]), Color("b1a093"))
+			draw_string(ThemeDB.fallback_font, origin + Vector2(50, 22), "∞", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color("ffefc7"))
 		TerrainDB.TREE:
 			draw_rect(Rect2(rect.position + Vector2(32, 42), Vector2(9, 24)), Color(0.35, 0.22, 0.12))
 			draw_circle(rect.position + Vector2(36, 29), 22.0, Color(0.13, 0.36, 0.16))

@@ -1433,7 +1433,7 @@ func _show_terrain(cell: Vector2i) -> void:
 	if value == TerrainDB.ICE:
 		lines.append("冰面：每次整轮末最多随机冻结一格相邻浅水或深水；新冰下一轮才会扩张。")
 		lines.append("单位本轮在冰面留下位移方向时，蓝色箭头指向回合末滑行格；红色表示致死落点，灰色止步标记表示被挡住。")
-	if state.obstacle_durability.has(cell) and not state.is_chest_cell(cell) and not state.electric_flowers.has(cell):
+	if state.obstacle_durability.has(cell) and not state.is_chest_cell(cell) and not state.electric_flowers.has(cell) and value != TerrainDB.ROCK_MOUNTAIN:
 		var max_hp := Balance.TREE_DURABILITY if value == TerrainDB.TREE else Balance.OBSTACLE_DURABILITY
 		var facility_id := state.camp_facility_at(cell)
 		if facility_id != "":

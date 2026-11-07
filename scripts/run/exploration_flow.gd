@@ -193,7 +193,7 @@ static func configure(run: RunState, cfg: Dictionary) -> Dictionary:
 
 const PUZZLE_NAMES := ["隔水藏珍", "岩垒藏珍", "断崖藏珍", "熔沟藏珍"]
 const PUZZLE_HINTS := [
-	"深水横断棋盘。利用水系伙伴或地形技能到达对岸。",
+	"深水横断棋盘。过河后，侧推或碎岩打开宝箱四周的岩山。",
 	"宝箱四周有岩障。先破开一个入口，再取走箱内奖励。",
 	"两列深坑之间只留下一条易碎通路。留意技能落点，避免击碎脚下的路。",
 	"熔沟间有两条通路。可绕行上侧，也可破开下侧岩门。",
@@ -223,7 +223,7 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 			0:
 				for y in GridSpec.H:
 					terrain[GridSpec.index(Vector2i(3, y))] = TerrainDB.DEEP
-				obstacles = [Vector2i(5, 3), Vector2i(6, 2)]
+				obstacles = GridSpec.neighbors4(Vector2i(6, 3))
 			1:
 				obstacles = GridSpec.neighbors4(Vector2i(6, 3))
 				for y in [0, 1, 5, 6]:
@@ -241,7 +241,7 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 						terrain[GridSpec.index(Vector2i(x, y))] = TerrainDB.LAVA
 				obstacles = [Vector2i(4, 5), Vector2i(5, 2)]
 		for obstacle in obstacles:
-			terrain[GridSpec.index(obstacle)] = TerrainDB.OBSTACLE
+			terrain[GridSpec.index(obstacle)] = TerrainDB.ROCK_MOUNTAIN if variant == 0 else TerrainDB.OBSTACLE
 		map["terrain"] = terrain
 		map["steam_cells"] = {}
 		map["electric_flowers"] = {}
@@ -272,6 +272,7 @@ static func decorate_terrain(run: RunState, map: Dictionary, kind: String) -> vo
 	var reserved: Array = Balance.DEPLOY_AREA.duplicate()
 	reserved.append_array(map.get("fixed_deploy_area", []))
 	reserved.append_array(map.get("obstacle_cells", []))
+	reserved.append_array(GridSpec.neighbors8(Vector2i(6, 3)))
 	reserved.append_array([Vector2i(5, 2), Vector2i(6, 3), Vector2i(5, 4), Vector2i(5, 3), Vector2i(6, 4), Vector2i(7, 3)])
 	for cell in GridSpec.all_cells():
 		if kind == "treasure" and cell.x in [2, 3, 4]: reserved.append(cell)
@@ -279,6 +280,7 @@ static func decorate_terrain(run: RunState, map: Dictionary, kind: String) -> vo
 	rng.seed = hash("landscape:%d:%s:%d" % [run.seed, run.get_region().active_node, run.get_region().nodes[run.get_region().active_node]["visits"]])
 	var candidates: Array = GridSpec.all_cells().filter(func(cell): return not reserved.has(cell))
 	var pool := TerrainDB.ALL.duplicate()
+	pool.erase(TerrainDB.ROCK_MOUNTAIN)
 	if run.current_theme() != "fire":
 		pool.erase(TerrainDB.BLUE_FIRE)
 	for index in mini(10, candidates.size()):
