@@ -32,7 +32,7 @@ func _ready() -> void:
 	team_button.pressed.connect(_show_team)
 	header.add_child(team_button)
 	column.add_child(UIKit.wrapped("移动%d次｜%s｜首领驻军%d名 · 敌人等级+%d" % [region.visits, region.next_pressure_text(), 5 if region.support_triggered else 3, app.run.invasion_level_bonus], 16, UIKit.ACCENT))
-	column.add_child(UIKit.wrapped("初始营地邻区已解锁。可进入任意已解锁区域；确认进入才计移动，首领除外。正式战斗无回合上限；第8轮末敌军黑化并全面占领（包括营地），天雷照常预告。第11次移动全图黑化；夺回营地恢复食物回复。胜利后自由探索；主动撤离不解锁邻区。", 14))
+	column.add_child(UIKit.wrapped("初始营地邻区已解锁。可进入任意已解锁区域；确认进入才计移动，首领除外。正式战斗无回合上限；第8轮末敌军黑化，第三层才全面占领，天雷照常预告。第11次移动全图黑化；夺回营地恢复食物回复。胜利后自由探索；主动撤离不解锁邻区。", 14))
 	graph = Control.new()
 	graph.name = "AreaGraph"
 	graph.custom_minimum_size.y = 350
@@ -46,8 +46,6 @@ func _ready() -> void:
 		var status := "未解锁" if not unlocked else "当前位置" if region.active_node == id else "敌军撤离" if bool(node.get("withdrawn", false)) else "已清空" if bool(node.get("cleared", false)) and region.node_mode(id) == "event" else "已探索" if int(node.get("visits", 0)) > 0 else "待探索"
 		if node.has("merchant") and int(node.get("visits", 0)) > 0:
 			status += " · 商人" if region.node_mode(id) == "event" else " · 商人暂停交易"
-		if unlocked and node.has("mentor"):
-			status += " · 技能导师" if region.node_mode(id) == "event" else " · 导师暂停服务"
 		if unlocked and (region.corrupted or bool(node.get("corrupted", false))) and region.node_mode(id) in ["battle", "boss"]:
 			status += " · 黑化"
 		var button := UIKit.button("%s\n%s" % [region.display_name(String(id)), status], 17)

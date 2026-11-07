@@ -491,7 +491,7 @@ func _update_header() -> void:
 	if state.corruption_active:
 		objective_label.text += "\n敌军黑化：生命/威力+10%\n击杀无经验 · 天雷仍生效"
 	elif not state.is_free_exploration():
-		objective_label.text += "\n第8轮末黑化并全面占领"
+		objective_label.text += "\n第8轮末敌军黑化；第三层才全面占领"
 	if state.has_live_nests():
 		var guards := 0
 		for current in state.all_nests():
@@ -820,11 +820,6 @@ func _rebuild_skill_buttons() -> void:
 			merchant_action.name = "MerchantInteractButton"
 			merchant_action.pressed.connect(_interact_with_merchant)
 			skill_box.add_child(merchant_action)
-		if not state.mentor.is_empty() and state.can_interact_at(state.mentor["cell"]):
-			var training := UIKit.small_button("向技能导师学习强化")
-			training.name = "MentorInteractButton"
-			training.pressed.connect(_show_mentor)
-			skill_box.add_child(training)
 		if state.can_interact_at(state.boss_portal_cell):
 			var portal_action := UIKit.small_button("进入传送门")
 			portal_action.name = "PortalInteractButton"
@@ -1159,12 +1154,7 @@ func _on_board_clicked(cell: Vector2i) -> void:
 		_use_trainer_item(item_aim, target.uid if target != null else -1)
 		return
 	if aim_skill == "" and not capture_mode and state.is_interaction_cell(cell):
-		if not state.mentor.is_empty() and cell == state.mentor["cell"]:
-			if state.can_interact_at(cell):
-				_show_mentor()
-			else:
-				hint_label.text = "导师暂停服务，清场后恢复。" if state.node_kind != "event" else "训练家需走到导师相邻格。"
-		elif cell == state.boss_portal_cell:
+		if cell == state.boss_portal_cell:
 			_request_portal()
 		else:
 			selected_uid = 0
@@ -1520,38 +1510,6 @@ func _use_trainer_item(id: String, uid: int = -1) -> void:
 		_clear_aim()
 		app.sync_and_save(state)
 		refresh_all()
-
-
-func _show_mentor(message: String = "") -> void:
-	if state.mentor.is_empty() or not state.can_interact_at(state.mentor["cell"]):
-		return
-	var price := SkillMentor.cost(state.mentor)
-	_show_modal("技能导师 · 本次%d原质" % price, message)
-	var content = modal_layer.get_child(0).get_child(0)
-	var scroll = content.get_child(1)
-	for child in scroll.get_children():
-		scroll.remove_child(child)
-		child.queue_free()
-	var list := UIKit.vbox(7)
-	scroll.add_child(list)
-	list.add_child(UIKit.wrapped(message if message != "" else "选择携带队伍的已学招式，每招每局强化一次。成功后下次费用增加8原质。", 14))
-	var count := 0
-	for record in app.run.carried:
-		var uid := int(record["uid"])
-		for upgrade_id in app.run.available_monster_upgrades(uid):
-			var info := RunState.upgrade_info(upgrade_id)
-			var skill := String(info["requires_skill"])
-			var button := UIKit.button("%s · %s\n%s · %d原质" % [SpeciesDB.name_of(record["species_id"]), SkillDB.name_of(skill), info["desc"], price], 14)
-			button.name = "MentorTrain_%d_%s" % [uid, skill]
-			button.disabled = app.run.essence < price
-			button.pressed.connect(func() -> void:
-				var result: Dictionary = app.mentor_train(state, uid, skill)
-				_refresh_after_action()
-				_show_mentor(result["reason"]))
-			list.add_child(button)
-			count += 1
-	if count == 0:
-		list.add_child(UIKit.label("携带队伍没有可强化的已学招式。", 14))
 
 
 func _show_merchant(message: String = "") -> void:

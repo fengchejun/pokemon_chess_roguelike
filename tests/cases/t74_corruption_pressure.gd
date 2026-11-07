@@ -10,11 +10,12 @@ func run(t: TestContext) -> void:
 	_persistence(t)
 	t.finish()
 
-func _run_state() -> RunState:
+func _run_state(floor: int = 0) -> RunState:
 	var run := RunState.new_run(7401)
 	run.region_mode = true
+	run.battle_index = floor * Balance.BATTLES_PER_FLOOR
 	run.choose_floor_theme(String(run.offered_floor_themes[0]))
-	var region = run.get_region()
+	var region = RegionState.create_floor(floor, run.current_theme())
 	for node in region.nodes.values():
 		node["unlocked"] = true
 	region.active_node = "battle_1"
@@ -134,7 +135,7 @@ func _movement(t: TestContext) -> void:
 	t.eq(run.invasion_level_bonus, 1, "旧的区域等级增长仍跨层保留")
 
 func _occupation(t: TestContext) -> void:
-	var run := _run_state()
+	var run := _run_state(2)
 	var region = run.get_region()
 	region.nodes["battle_2"]["cleared"] = true
 	region.nodes["battle_2"]["mode"] = "event"

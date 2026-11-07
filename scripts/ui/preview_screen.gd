@@ -58,7 +58,6 @@ func _ready() -> void:
 			map["nest_cell"] = saved.nest["cell"]
 			map["nest_cells"] = saved.all_nests().map(func(current): return current["cell"])
 			map["nests"] = saved.all_nests().duplicate(true)
-			map["mentor_cell"] = saved.mentor.get("cell", Vector2i(-1, -1))
 			map["merchant_cell"] = saved.merchant.get("cell", Vector2i(-1, -1))
 			map["portal_cell"] = saved.boss_portal_cell
 			map["nest_exits"] = []
@@ -442,17 +441,6 @@ func _refresh() -> void:
 			map["nests"] = []
 	if run.region_mode:
 		var region = run.get_region()
-		if region.nodes[region.active_node].has("mentor"):
-			var sample := BattleState.new()
-			sample.node_kind = region.node_mode(region.active_node)
-			var cfg := run.place_region_enemies(run.battle_config(), map) if sample.node_kind != "event" else {"enemies": []}
-			sample.setup(map, cfg, run.seed, run.battle_index, run.build_deploy_units(deploy_uids), {}, {}, [])
-			var data: Dictionary = region.nodes[region.active_node]["mentor"]
-			var point: Array = data["cell"]
-			sample.food_cells = map.get("food_cells", []).duplicate()
-			map["mentor_cell"] = Vector2i(point[0], point[1]) if point[0] >= 0 else SkillMentor.choose_cell(sample, deploy_positions)
-		else:
-			map["mentor_cell"] = Vector2i(-1, -1)
 	map["extraction_cells"] = BattleState.extraction_area(map) if int(run.battle_config().get("boss_index", -1)) < 0 else []
 	board.set_map_preview(map, deploy_enemies + deploy_players)
 	board.selected_uid = deploy_selected_uid

@@ -130,6 +130,36 @@ func occupy_all(preserve_node: String = "") -> void:
 	notifications.append("战斗超过8轮：敌军全面占领营地及已清理节点；夺回营地后恢复食物回复服务，首领驻军+2。")
 
 
+func apply_timed_pressure(id: String) -> void:
+	if not nodes.has(id):
+		return
+	nodes[id]["corrupted"] = true
+	if floor_index >= 2:
+		occupy_all(id)
+		return
+	# 前两层的长战斗只黑化当前节点，全面占领从第三层开始。
+	notifications.append("第8轮结束：本场敌军黑化，但前两层不会触发全面占领。")
+
+
+func repair_early_occupation() -> void:
+	# 修复旧存档中第8轮在前两层错误触发的全面占领。
+	if floor_index >= 2 or not support_triggered:
+		return
+	support_triggered = false
+	camp_invaded = false
+	at_camp_scene = false
+	for id in nodes:
+		var node: Dictionary = nodes[id]
+		node["pending_garrison"] = false
+		node["pending_replenish"] = false
+		if String(node.get("type", "")) == "camp":
+			node["mode"] = "camp"
+			node["cleared"] = true
+		elif String(node.get("type", "")) == "event":
+			node["mode"] = "event"
+	notifications.append("旧存档已修复：前两层不再因第8轮战斗全面占领节点。")
+
+
 func _apply_pressure() -> void:
 	if active_node == "boss":
 		return
@@ -145,6 +175,8 @@ func _apply_pressure() -> void:
 
 func next_pressure_text() -> String:
 	if not corrupted:
+		if floor_index < 2:
+			return "再移动%d次全图黑化；第8轮只黑化当前战斗，第三层才全面占领" % maxi(0, Balance.CORRUPTION_VISITS - visits)
 		return "再移动%d次全图黑化；战斗第8轮末全面占领" % maxi(0, Balance.CORRUPTION_VISITS - visits)
 	return "全图已黑化；再移动%d次等级+1" % maxi(0, 11 + boss_level_bonus * 3 - visits)
 

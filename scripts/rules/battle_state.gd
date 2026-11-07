@@ -89,7 +89,7 @@ var storm_last_round: int = 0
 var boss_retreat_used: bool = false
 var _boss_effect_depth: int = 0
 var boss_portal_cell: Vector2i = Vector2i(-1, -1)
-var mentor: Dictionary = {}
+var mentor: Dictionary = {} # 旧存档兼容字段；导师机制已删除。
 var merchant: Dictionary = {}
 var essence_earned: int = 0
 var essence_applied: int = 0
@@ -327,8 +327,6 @@ func load_map(map_data: Dictionary) -> void:
 		terrain[GridSpec.index(cell)] = TerrainDB.OBSTACLE
 		obstacle_durability[cell] = 1
 		natural_essence_cells.erase(cell)
-	if GridSpec.is_inside(map_data.get("mentor_cell", Vector2i(-1, -1))):
-		mentor = {"cell": map_data["mentor_cell"], "services": 0}
 	fruits = []
 
 
@@ -597,11 +595,11 @@ func is_blocking_ray(cell: Vector2i) -> bool:
 
 
 func is_interaction_cell(cell: Vector2i) -> bool:
-	return (GridSpec.is_inside(boss_portal_cell) and cell == boss_portal_cell) or (not mentor.is_empty() and cell == mentor["cell"]) or (node_kind == "event" and not merchant.is_empty() and cell == merchant["cell"])
+	return (GridSpec.is_inside(boss_portal_cell) and cell == boss_portal_cell) or (node_kind == "event" and not merchant.is_empty() and cell == merchant["cell"])
 
 func can_interact_at(cell: Vector2i) -> bool:
 	var actor := trainer()
-	return not ended and phase == PHASE_PLAYER and is_interaction_cell(cell) and (mentor.is_empty() or cell != mentor["cell"] or node_kind == "event") and actor != null and actor.is_alive() and GridSpec.manhattan(actor.cell, cell) == 1
+	return not ended and phase == PHASE_PLAYER and is_interaction_cell(cell) and actor != null and actor.is_alive() and GridSpec.manhattan(actor.cell, cell) == 1
 
 
 func move_cost_for(unit: CombatUnit, cell: Vector2i) -> int:
@@ -2104,7 +2102,7 @@ func _trigger_timed_corruption() -> void:
 		if unit.side == "enemy" and unit.is_alive():
 			unit.set_corrupted(true)
 			emit_feedback(unit, "buff", "黑化 · 生命与威力+10%")
-	log_event("第8轮已结束：敌军黑化，最大生命与技能威力+10%，击杀无经验；本层节点将被全面占领。")
+	log_event("第8轮已结束：敌军黑化，最大生命与技能威力+10%，击杀无经验；全面占领仅从第三层区域结算。")
 
 
 func _settle_storm() -> void:

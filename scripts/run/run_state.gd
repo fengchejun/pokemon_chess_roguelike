@@ -599,7 +599,7 @@ func sync_from_battle(battle: BattleState) -> void:
 		if region.nodes.has(region.active_node):
 			region.nodes[region.active_node]["corrupted"] = true
 		if not battle.occupation_applied:
-			region.occupy_all(region.active_node)
+			region.apply_timed_pressure(region.active_node)
 			battle.occupation_applied = true
 		region_data = region.to_dict()
 	essence += maxi(0, battle.essence_earned - battle.essence_applied)
@@ -1210,6 +1210,14 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.region_mode = bool(data.get("region_mode", false))
 	run.region_data = (data.get("region_data", {}) as Dictionary).duplicate(true)
 	run.pending_region_entry_backup = (data.get("pending_region_entry_backup", {}) as Dictionary).duplicate(true)
+	if not run.region_data.is_empty():
+		var repaired_region = Region.from_dict(run.region_data)
+		repaired_region.repair_early_occupation()
+		run.region_data = repaired_region.to_dict()
+	if not run.pending_region_entry_backup.is_empty():
+		var repaired_backup = Region.from_dict(run.pending_region_entry_backup)
+		repaired_backup.repair_early_occupation()
+		run.pending_region_entry_backup = repaired_backup.to_dict()
 	run.pending_region_battle_index = int(data.get("pending_region_battle_index", 0))
 	run.food = maxi(0, int(data.get("food", 3)))
 	run.food_inventory = (data.get("food_inventory", {"basic": run.food}) as Dictionary).duplicate()

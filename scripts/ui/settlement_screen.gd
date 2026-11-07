@@ -49,13 +49,7 @@ func _ready() -> void:
 	continue_button.pressed.connect(func() -> void:
 		var region = app.run.get_region() if app.run.region_mode else null
 		if region != null and region.active_node == "boss" and bool(region.nodes["boss"]["cleared"]) and not app.run.storage.is_empty():
-			var confirm := ConfirmationDialog.new()
-			confirm.title = "前往下一层"
-			confirm.dialog_text = "留在营地的 %d 只宝可梦将被抛弃，无法进入永久收藏。" % app.run.storage.size()
-			confirm.confirmed.connect(func() -> void: app.continue_after_settlement())
-			confirm.popup_hide.connect(func() -> void: confirm.queue_free())
-			add_child(confirm)
-			confirm.popup_centered()
+			_show_next_floor_confirmation()
 		else:
 			app.continue_after_settlement()
 	)
@@ -199,6 +193,21 @@ func _show_next_step() -> void:
 	step_label.text = "全部处理完成，可以进入下一场。"
 	choice_box.add_child(UIKit.wrapped("战斗结算顺序已完成：怪物经验 → 捕获 → 怪物升级 → 战后奖励 → 下一场准备。", 13))
 	continue_button.disabled = false
+
+
+func _show_next_floor_confirmation() -> void:
+	UIKit.clear_children(choice_box)
+	step_label.text = "前往下一层"
+	choice_box.add_child(UIKit.wrapped("留在营地的 %d 只宝可梦将被抛弃，无法进入永久收藏。确认后进入下一层主题选择。" % app.run.storage.size(), 14, UIKit.BAD))
+	var confirm := UIKit.button("确认前往下一层", 17)
+	confirm.name = "ConfirmNextFloorButton"
+	confirm.pressed.connect(func() -> void: app.continue_after_settlement())
+	choice_box.add_child(confirm)
+	var cancel := UIKit.small_button("暂不前往")
+	cancel.name = "CancelNextFloorButton"
+	cancel.pressed.connect(_show_next_step)
+	choice_box.add_child(cancel)
+	continue_button.disabled = true
 
 
 func _show_monster_level_step(run: RunState, entry: Dictionary, remaining: int) -> void:
