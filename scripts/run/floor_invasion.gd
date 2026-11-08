@@ -1,6 +1,7 @@
 extends RefCounted
 
 const MAX_CARRIERS := 4
+const BASE_DEFENSE := 26
 const DEFENSE_XP := 6
 
 
@@ -29,13 +30,29 @@ static func _matches(region: RegionState, id: String, skills: Array) -> bool:
 		return bool(definition.get("ranged", false)) and int(definition.get("damage", 0)) > 0)
 
 
-static func contribution(region: RegionState, assignment: Dictionary, member: Dictionary) -> int:
+static func breakdown(region: RegionState, assignment: Dictionary, member: Dictionary) -> Dictionary:
 	var ready := int(assignment["ready"])
 	var completed := region.visits - int(region.visit_pending)
-	if (completed < ready and not assignment.get("immediate", false)) or int(member.get("hp", 0)) <= 0:
-		return 0
+	var available := int(member.get("hp", 0)) > 0
+	var on_site := available and (completed >= ready or bool(assignment.get("immediate", false)))
+	var level_bonus := 2 * (int(member.get("level", 1)) - 1)
 	var bonus := 20 if _matches(region, assignment["node"], member.get("equipped_skills", [])) else 0
-	return 26 + 2 * (int(member.get("level", 1)) - 1) + bonus + mini(12, 3 * maxi(0, completed - ready))
+	var preparation := mini(12, 3 * maxi(0, completed - ready))
+	return {"ready": on_site, "base": BASE_DEFENSE, "level": level_bonus, "specialty": bonus, "preparation": preparation, "total": BASE_DEFENSE + level_bonus + bonus + preparation if on_site else 0}
+
+
+static func contribution(region: RegionState, assignment: Dictionary, member: Dictionary) -> int:
+	return int(breakdown(region, assignment, member)["total"])
+
+
+static func pressure(region: RegionState, id: String) -> int:
+	var location := 10 if id == "camp" else 15 if region.nodes[id].get("links", []).size() >= 3 else 0
+	return location + 5 * region.floor_index
+
+
+static func assignment_for(region: RegionState, id: String, carried: bool) -> Dictionary:
+	var immediate := carried and region.active_node == id
+	return {"node": id, "ready": region.visits + (0 if immediate else 1), "immediate": immediate}
 
 
 static func chance(run: RunState, region: RegionState, id: String) -> int:
@@ -44,8 +61,7 @@ static func chance(run: RunState, region: RegionState, id: String) -> int:
 		var assignment: Dictionary = region.garrisons[key]
 		if assignment["node"] == id:
 			total += contribution(region, assignment, run.owned_record_by_uid(int(key)))
-	var pressure := 10 if id == "camp" else 15 if region.nodes[id].get("links", []).size() >= 3 else 0
-	return clampi(total - pressure - 5 * region.floor_index, 0, 100)
+	return clampi(total - pressure(region, id), 0, 100)
 
 
 static func assign(run: RunState, id: String, uid: int) -> bool:
@@ -65,8 +81,7 @@ static func assign(run: RunState, id: String, uid: int) -> bool:
 	if carried and previous.is_empty() and not run.carried.any(func(record):
 		return int(record["uid"]) != uid and int(record["hp"]) > 0 and not region.garrisons.has(str(record["uid"]))):
 		return false
-	var immediate := carried and region.active_node == id
-	region.garrisons[key] = {"node": id, "ready": region.visits + (0 if immediate else 1), "immediate": immediate}
+	region.garrisons[key] = assignment_for(region, id, carried)
 	run.region_data = region.to_dict()
 	return true
 

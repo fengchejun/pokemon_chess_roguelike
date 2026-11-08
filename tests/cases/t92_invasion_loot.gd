@@ -8,6 +8,7 @@ const Loot = preload("res://scripts/run/battle_loot.gd")
 func run(t: TestContext) -> void:
 	t.begin("驻防时序、限时携带者与分级战利品")
 	_defense(t)
+	_garrison_map(t)
 	_carrier(t)
 	_loot(t)
 	t.finish()
@@ -64,6 +65,49 @@ func _defense(t: TestContext) -> void:
 	battle.end_battle("escape")
 	run_state.settle_battle(battle)
 	t.check(not stored_a.has("defense_locked_levels"), "该成员实际参战并撤退结算后解锁学招")
+
+
+func _garrison_map(t: TestContext) -> void:
+	var app = load("res://scripts/main.gd").new()
+	app.autosave_enabled = false
+	t.tree.root.add_child(app)
+	var run_state := RunState.new_run(92002)
+	app.run = run_state
+	run_state.region_mode = true
+	run_state.options["exploration_v2"] = true
+	run_state.floor_themes = ["grass"]
+	var region := Flow.generate(0, "grass", run_state.seed)
+	run_state.region_data = region.to_dict()
+	var uid := int(run_state.carried[0]["uid"])
+	app.show_region()
+	var screen = app.current_screen
+	var graph: Control = screen.find_child("FogMap", true, false)
+	var camp: Button = graph.get_node("Node_camp")
+	var movement_text := camp.text
+	var mode: Button = screen.find_child("OpenGarrisons", true, false)
+	mode.pressed.emit()
+	t.check(screen.garrison_mode and graph == screen.find_child("FogMap", true, false), "驻防复用同一个地图控件")
+	t.check(graph.get_node("Node_boss").disabled and camp.text.contains("0/3"), "驻防模式标出名额并禁用 Boss")
+	camp.pressed.emit()
+	var panel: Control = screen.get_node("GarrisonNodeDialog")
+	var details: Label = panel.find_child("GarrisonDetails_%d" % uid, true, false)
+	t.check(details.text.contains("基础 26") and details.text.contains("招式适配") and details.text.contains("准备"), "节点面板显示具体守备加成")
+	panel.find_child("GarrisonMember_%d" % uid, true, false).pressed.emit()
+	t.check(run_state.is_garrisoned(uid) and camp.text.contains("1/3"), "派驻立即更新地图人数")
+	t.eq(run_state.get_region().visits, 0, "点选节点与派驻均不消耗移动")
+	panel.find_child("GarrisonMember_%d" % uid, true, false).pressed.emit()
+	t.check(not run_state.is_garrisoned(uid) and camp.text.contains("0/3"), "撤回立即更新节点")
+	panel.find_child("CloseGarrisonNode", true, false).pressed.emit()
+	mode.pressed.emit()
+	t.check(not screen.garrison_mode and camp.text == movement_text, "可切回同一地图的移动模式")
+	app.enter_region_node("camp")
+	var node = app.current_screen
+	node.find_child("OpenGarrisons", true, false).pressed.emit()
+	var overlay: Control = node.get_node("GarrisonMap")
+	t.check(overlay.find_child("FogMap", true, false) != null and overlay.garrison_mode, "文字节点打开同款驻防地图")
+	overlay.find_child("OpenGarrisons", true, false).pressed.emit()
+	t.check(overlay.is_queued_for_deletion() and app.current_screen == node and run_state.get_region().visit_pending, "退出驻防回到原节点且保留本次访问")
+	app.free()
 
 
 func _carrier(t: TestContext) -> void:
