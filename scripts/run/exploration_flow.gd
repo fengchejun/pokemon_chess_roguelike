@@ -274,7 +274,7 @@ const PUZZLE_NAMES := ["隔水藏珍", "岩垒藏珍", "断崖藏珍", "熔沟�
 const PUZZLE_HINTS := [
 	"深水横断棋盘。过河后，对宝箱四周的任一岩山施放两次碎岩即可打开通路。",
 	"宝箱四周有岩障。先破开一个入口，再取走箱内奖励。",
-	"两列深坑之间只留下一条易碎通路。留意技能落点，避免击碎脚下的路。",
+	"断桥只剩靠近部署区的一格易碎地块。可以用地形技能补上缺口，或用能跨过深坑的伙伴抵达对岸。",
 	"熔沟间有两条通路。可绕行上侧，也可破开下侧岩门。",
 ]
 
@@ -310,7 +310,7 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 			2:
 				for y in GridSpec.H:
 					for x in [3, 4]:
-						terrain[GridSpec.index(Vector2i(x, y))] = TerrainDB.FRAGILE if y == 4 else TerrainDB.PIT
+						terrain[GridSpec.index(Vector2i(x, y))] = TerrainDB.FRAGILE if x == 3 and y == 4 else TerrainDB.PIT
 				terrain[GridSpec.index(Vector2i(5, 4))] = TerrainDB.ICE
 			3:
 				for y in GridSpec.H:

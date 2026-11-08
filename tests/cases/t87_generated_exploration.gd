@@ -173,8 +173,21 @@ func run(t: TestContext) -> void:
 			t.check(not can_reach_chest(terrain, "fire", true) and not can_reach_chest(terrain, "water", false) and can_reach_chest(terrain, "water", true), "隔水藏珍需过河并打开岩山")
 		elif variant == 1:
 			t.check(not can_reach_chest(terrain, "fire", false) and can_reach_chest(terrain, "fire", true), "岩垒需破障才可进入")
+		elif variant == 2:
+			t.check(not can_reach_chest(terrain, "fire", false), "断桥缺口挡住普通地面移动")
+			var caster := CombatUnit.make("ice_starter", "player", 1)
+			var state := BattleState.new()
+			state.node_kind = "event"
+			state.setup(map, {"enemies": []}, run_state.seed, 0, [caster], {}, {}, [])
+			Flow.prepare_state(run_state, state)
+			t.check(state.move_unit(caster, Vector2i(2, 4)), "施法者可走到断桥入口")
+			t.check(not state.move_options(caster).has(Vector2i(5, 4)), "普通移动入口无法直接到对岸")
+			var entry := {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(3, 4)}
+			t.check(state.cast_skill(caster, "frozen_ground", entry).get("ok", false), "可以用冰封大地补桥")
+			t.eq(state.terrain_at(Vector2i(4, 4)), TerrainDB.ICE, "断桥缺口被铺成冰面")
+			t.check(state.move_unit(caster, Vector2i(5, 4)), "补桥后可通过普通移动抵达对岸")
 		else:
-			t.check(can_reach_chest(terrain, "fire", false), "深坑桥和熔沟绕路可通行")
+			t.check(can_reach_chest(terrain, "fire", false), "熔沟保留可通行的绕路")
 
 	region.active_node = "battle_5"
 	var required := {"tier": 3, "species": "fire_wild1", "element": "fire", "skill": "flame_jet"}
