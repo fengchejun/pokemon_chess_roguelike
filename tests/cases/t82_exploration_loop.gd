@@ -35,7 +35,7 @@ func resolve_growth(run: RunState) -> void:
 			run.learn_monster_skill(uid, level, choices[0], equipped[0] if equipped.size() >= 3 else "")
 
 func run(t: TestContext) -> void:
-	t.begin("第一层迷雾、回访、事件、捕捉、追猎闭环")
+	t.begin("第一层迷雾、回访、事件、捕捉、入侵与夺回")
 	var app = make_app(t)
 	var run: RunState = app.run
 	var region = run.get_region()
@@ -67,8 +67,7 @@ func run(t: TestContext) -> void:
 	app.current_screen.deliver(uid)
 	t.eq(run.carried.size(), count, "交付不能重放")
 	t.eq(run.essence, reward_money, "不重复发原质")
-	var offers: Array = run.get_region().nodes["battle_5"]["offers"]
-	app.current_screen.find_child("EventRelic_" + offers[0], true, false).pressed.emit()
+	t.check(not run.relic_stacks.is_empty() and run.pending_reward_choices == 0, "委托遗物自动发放")
 	finish(app)
 	# 首战验证：新流程无巢穴、三名敌人，完成后开启路线。
 	var pre_battle = run.get_region()
@@ -79,9 +78,9 @@ func run(t: TestContext) -> void:
 	app.current_screen._on_start()
 	var state: BattleState = app.current_screen.state
 	t.check(state.exploration_v2 and not state.has_live_nests(), "首战无巢穴")
-	t.eq(state.alive_enemy_count(), 3, "首战有三名敌人")
-	var original_map := MapGenerator.generate(run.seed, run.battle_index, 0, [], run.current_theme(), 1)
-	t.eq(state.terrain, original_map["terrain"], "首战完整保留原有主题地形生成结果")
+	var extra := int(state.alive_units("enemy").any(func(enemy): return enemy.reward_carrier))
+	t.eq(state.alive_enemy_count() - extra, 3, "首战有三名基础敌人")
+	t.eq(state.chests.size(), 1, "普通战斗放置一个敌后宝箱")
 	t.check(state.alive_units("enemy").all(func(u): return u.max_hp == 16 and u.skills.size() == 1), "首战敌人生命与技能压低")
 	for enemy in state.alive_units("enemy"):
 		state.kill_unit(enemy, "测试", "player", 1)
@@ -117,18 +116,46 @@ func run(t: TestContext) -> void:
 	finish(app)
 	app.enter_region_node("event_2")
 	t.eq(run.get_region().nodes["event_2"]["stock"]["food"], stock, "回访库存保持")
-	# 最后一次行动不打断节点，回地图才追猎。
+	# 最后一次行动不打断节点，回地图才入侵。
 	region = run.get_region()
 	region.visits = 12
 	run.region_data = region.to_dict()
 	t.eq(app.current_screen.name, "NodeScreen", "行动耗尽不打断当前商店")
 	finish(app)
-	t.eq(run.get_region().active_node, "hunt", "结算完节点强制进入追猎")
+	region = run.get_region()
+	t.check(region.invaded and region.active_node == "event_2", "结算商店后在原地图触发入侵")
+	t.check(region.nodes["event_2"]["service_lost"] and not region.can_enter_after_invasion("boss"), "失守商店永久关闭且不能跳过前线")
+	var paths := {"event_2": ["event_2"]}
+	var queue := ["event_2"]
+	while not queue.is_empty() and not paths.has("boss"):
+		var origin: String = queue.pop_front()
+		for adjacent in region.nodes[origin]["links"]:
+			if not paths.has(adjacent):
+				paths[adjacent] = paths[origin] + [adjacent]
+				queue.append(adjacent)
+	var path: Array = paths["boss"]
+	for id in path.slice(0, -1):
+		app.enter_region_node(id)
+		app.show_preview([1, 2, 3])
+		app.current_screen._on_start()
+		state = app.current_screen.state
+		t.check(state.exploration_role == "recapture" and state.alive_units("enemy").all(func(u): return u.corrupted), "沿路线挑战开局黑化的驻军")
+		t.check(not state.storm_strikes.is_empty() and int(state.storm_strikes[0]["due_round"]) == 1, "夺回战第一轮就预告落雷")
+		for enemy in state.alive_units("enemy"):
+			state.kill_unit(enemy, "测试", "player", 1)
+		t.check(state.experience_gains.get(1, 0) > 0, "击败黑化驻军可获得经验")
+		state.check_battle_end()
+		t.check(state.leave_node(), "夺回胜利可离场")
+		app.finish_battle(state)
+		t.eq(run.pending_reward_choices, 0, "没带出宝箱时清场不送遗物")
+		resolve_growth(run)
+		app.continue_after_settlement()
+		t.check(run.get_region().nodes[id]["recaptured"], "夺回后重新通行")
+	app.enter_region_node("boss")
 	app.show_preview([1, 2, 3])
 	app.current_screen._on_start()
 	state = app.current_screen.state
-	t.check(state.exploration_role == "hunt" and state.alive_units("enemy").all(func(u): return u.corrupted), "追猎开局敌方全员黑化")
-	t.check(not state.can_escape() and not state.can_leave_node(), "追猎不能撤退")
+	t.check(state.exploration_role == "boss" and state.alive_units("enemy").all(func(enemy): return enemy.corrupted), "走通路线后可挑战黑化 Boss")
 	var boss := state.unit_by_uid(state.boss_uid)
 	state.kill_unit(boss, "测试", "player", 1)
 	state.check_battle_end()
@@ -158,7 +185,7 @@ func run(t: TestContext) -> void:
 	while run.pending_reward_choices > 0: run.choose_reward(run.reward_choices()[0])
 	resolve_growth(run)
 	app.continue_after_settlement()
-	t.eq(run.floor_index(), 1, "追猎胜利直接通过本层")
+	t.eq(run.floor_index(), 1, "入侵后仍可经 Boss 传送门过层")
 	t.check(run.storage.any(func(r): return int(r["uid"]) == stored_uid), "仓库成员跨层保留")
 	app.free()
 	t.finish()

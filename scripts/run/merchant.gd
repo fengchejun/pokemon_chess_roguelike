@@ -207,7 +207,7 @@ static func trade(run: RunState, state: BattleState, operation: String, id: Stri
 		run.essence += 8
 	elif operation == "monster":
 		var record := run.record_by_uid(int(id))
-		if record.is_empty() or quantity != 1 or String(record.get("species_id", "")) in ["trainer", "tree_summon"]:
+		if record.is_empty() or run.is_garrisoned(int(id)) or quantity != 1 or String(record.get("species_id", "")) in ["trainer", "tree_summon"]:
 			return {"ok": false, "reason": "只能出售背包宝可梦。"}
 		var remaining := run.carried.filter(func(member): return int(member["uid"]) != int(id) and int(member["hp"]) > 0)
 		if remaining.is_empty():

@@ -181,7 +181,7 @@ func continue_run(path: String = SaveSystem.DEFAULT_PATH) -> void:
 	run = loaded
 	if run.region_mode and not run.region_data.is_empty() and run.get_region().flow_version == 2 and run.get_region().visit_pending and run.battle_snapshot.is_empty() and not run.settlement_pending:
 		var region = run.get_region()
-		if region.nodes[region.active_node].get("role") in ["camp", "shop", "item_shop", "skill_shop", "group", "request", "empty"]:
+		if not region.nodes[region.active_node].get("occupied", false) and region.nodes[region.active_node].get("role") in ["camp", "shop", "item_shop", "skill_shop", "group", "request", "empty"]:
 			_switch(preload("res://scripts/ui/exploration_node_screen.gd").new())
 		else:
 			show_prep()
@@ -322,17 +322,8 @@ func show_region() -> void:
 		if region.active_node == "hunt" and not region.nodes["hunt"].get("cleared", false):
 			show_prep()
 			return
-		if not region.visit_pending and region.visits >= Balance.EXPLORATION_ACTIONS:
-			if not region.nodes.has("hunt"):
-				region.nodes["hunt"] = {"type": "boss", "mode": "boss", "role": "hunt", "visits": 1, "unlocked": true, "revealed": true, "cleared": false, "snapshot": {}, "links": []}
-			region.active_node = "hunt"
-			region.visit_pending = true
-			run.region_data = region.to_dict()
-			run.battle_index = region.floor_index * Balance.BATTLES_PER_FLOOR + Balance.BATTLES_PER_FLOOR - 1
-			run.pending_region_entry_backup.clear()
+		if preload("res://scripts/run/floor_invasion.gd").resolve(run, region):
 			autosave()
-			show_prep()
-			return
 		_switch(preload("res://scripts/ui/exploration_map_screen.gd").new())
 		return
 	_switch(RegionScreen.new())
@@ -397,6 +388,16 @@ func enter_region_node(id: String) -> void:
 	if run.get_region().flow_version == 2:
 		var region = run.get_region()
 		var role: String = region.nodes[id]["role"]
+		if region.nodes[id].get("occupied", false):
+			show_prep()
+			return
+		if region.nodes[id].get("recaptured", false):
+			region.complete_visit()
+			run.region_data = region.to_dict()
+			run.pending_region_entry_backup.clear()
+			autosave()
+			show_region()
+			return
 		if role == "capture":
 			region.nodes[id]["snapshot"] = {}
 			run.region_data = region.to_dict()
@@ -531,15 +532,15 @@ func finish_battle(battle: BattleState) -> void:
 	if run.region_mode and run.get_region().flow_version == 2:
 		var region = run.get_region()
 		var node: Dictionary = region.nodes[region.active_node]
-		if battle.end_reason == "victory" and battle.battle_objective_met() and node.get("role") in ["starter", "battle", "elite", "boss", "hunt", "group"] and not node.get("challenge_reward_claimed", false):
-			run.pending_bonus_choices += 2 if node.get("role") in ["boss", "hunt"] else 1
+		if battle.end_reason == "victory" and battle.battle_objective_met() and node.get("role") == "hunt" and not node.get("challenge_reward_claimed", false):
+			run.pending_bonus_choices += 2
 			node["challenge_reward_claimed"] = true
 			run.region_data = region.to_dict()
 	var outcome := run.settle_battle(battle)
 	if run.region_mode:
-		if battle.node_kind != "event" and not run.run_failed:
-			run.add_food("basic", 1)
 		var region = run.get_region()
+		if region.flow_version != 2 and battle.node_kind != "event" and not run.run_failed:
+			run.add_food("basic", 1)
 		region.store_battle(region.active_node, battle)
 		if bool(battle.reward.get("node_reward_available", false)):
 			region.nodes[region.active_node]["reward_claimed"] = true

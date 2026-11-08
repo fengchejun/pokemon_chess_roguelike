@@ -40,7 +40,9 @@ static func chance_for(state, target: CombatUnit) -> float:
 		return 0.0
 	var base := capture_chance(target, bool(state.capture_options.get("capture_low_hp", false)), int(state.debug_capture_percent))
 	# 调试指定概率仍覆盖自然概率，便于复现0%/100%等验收场景。
-	var support := minf(0.3, support_count(state, target) * 0.1) if int(state.debug_capture_percent) < 0 else 0.0
+	var allies := mini(3, support_count(state, target))
+	var per_ally := 0.1 + 0.02 * RelicDB.rank(state.relic_stacks, "companion_oath")
+	var support := allies * per_ally if int(state.debug_capture_percent) < 0 else 0.0
 	return minf(1.0, base + support + (0.2 if state.capture_aid else 0.0))
 
 

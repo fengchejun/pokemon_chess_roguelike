@@ -86,8 +86,9 @@ func run(t: TestContext) -> void:
 	var chosen_theme := String(run_state.offered_floor_themes[0])
 	t.check(run_state.choose_floor_theme(chosen_theme) and run_state.get_region().theme == chosen_theme, "选定主题后按实际主题生成地图")
 	var boss_region: RegionState = run_state.get_region()
-	boss_region.active_node = "boss"
+	boss_region.nodes["boss"]["unlocked"] = true
 	run_state.region_data = boss_region.to_dict()
+	app.enter_region_node("boss")
 	app.show_preview([1, 2, 3])
 	app.current_screen._on_start()
 	var boss_battle: BattleState = app.current_screen.state
@@ -100,6 +101,33 @@ func run(t: TestContext) -> void:
 	boss_battle.end_enemy_phase()
 	t.check(not boss_battle.ended and GridSpec.is_inside(boss_battle.boss_portal_cell), "普通 Boss 在环境结算清场后也保留战场")
 	t.check(boss_battle.phase == BattleState.PHASE_PLAYER and boss_battle.round == final_round, "开门后回合停止，交还我方操作")
+	t.check(not run_state.get_region().invaded, "提前打 Boss 未触发入侵")
+	var boss_chests := boss_battle.chests.keys()
+	t.eq(boss_chests.size(), 1, "Boss 后排固定一个宝箱")
+	if not boss_chests.is_empty():
+		var chest: Vector2i = boss_chests[0]
+		t.eq(boss_battle.chests[chest], "high", "Boss 宝箱是高级奖励")
+		boss_battle.damage_obstacle(chest, 1, "player")
+		t.check(boss_battle.move_unit(boss_battle.trainer(), chest), "清场后实际移动拾取高级奖励")
+	var boss_trainer := boss_battle.trainer()
+	if not boss_battle.can_interact_at(boss_battle.boss_portal_cell):
+		var reachable := boss_battle.move_options(boss_trainer)
+		var neighbors := GridSpec.neighbors4(boss_battle.boss_portal_cell).filter(func(cell): return reachable.has(cell))
+		if not neighbors.is_empty():
+			boss_battle.move_unit(boss_trainer, neighbors[0])
+	app.current_screen.playback.finish_all()
+	app.current_screen.battle_notice.finish_all()
+	app.current_screen._on_board_clicked(boss_battle.boss_portal_cell)
+	t.check(boss_battle.ended and boss_battle.end_reason == "victory", "提前击败 Boss 可通过实际传送门操作离场")
+	app.current_screen.report_end_now()
+	t.check(run_state.legendary_offers.size() == 1 and run_state.pending_reward_choices == 1, "带出的高级点兑换一次传奇三选一")
+	var paid := run_state.essence
+	run_state.settle_battle(boss_battle)
+	t.eq(run_state.essence, paid, "重复结算不会再发高级奖励")
+	if not run_state.legendary_offers.is_empty():
+		t.check(run_state.choose_reward(run_state.reward_choices()[0]), "提前过层可领取传奇遗物")
+	app.continue_after_settlement()
+	t.eq(run_state.floor_index(), 2, "提前过层进入下一层")
 	run_state.floor_themes = ["fire", "water", "grass"]
 	for floor in 3:
 		run_state.battle_index = floor * Balance.BATTLES_PER_FLOOR
@@ -109,39 +137,24 @@ func run(t: TestContext) -> void:
 		for id in ["battle_1", "combat_1"]:
 			region.active_node = id
 			run_state.region_data = region.to_dict()
-			t.eq(run_state.battle_config()["enemies"].size(), 3 + floor, "普通战斗按层生成3、4、5敌人")
+			var cfg := run_state.battle_config()
+			t.eq(cfg["enemies"].size() - int(not String(cfg["carrier_tier"]).is_empty()), 3 + floor, "普通战斗按层生成3、4、5名基础敌人")
 		region.visits = Balance.EXPLORATION_ACTIONS
 		run_state.region_data = region.to_dict()
 		app.show_region()
-		t.eq(run_state.get_region().active_node, "hunt", "各层行动用尽进入追猎")
-		t.eq(run_state.floor_index(), floor, "追猎不跳回第一层")
-		t.eq(run_state.battle_config()["enemies"].size(), 4, "追猎保持四个敌人")
-		app.show_preview([1, 2, 3])
-		app.current_screen._on_start()
-		var hunt: BattleState = app.current_screen.state
-		t.check(hunt.alive_units("enemy").all(func(enemy): return enemy.corrupted), "实际追猎开战全员黑化")
-		for enemy in hunt.alive_units("enemy"):
-			enemy.hp = 0
-		hunt.stop_nests()
-		t.check(not hunt.check_battle_end() and GridSpec.is_inside(hunt.boss_portal_cell), "三层追猎均在清场后开启传送门")
-		var trainer := hunt.trainer()
-		if not hunt.can_interact_at(hunt.boss_portal_cell):
-			var reachable := hunt.move_options(trainer)
-			var neighbors := GridSpec.neighbors4(hunt.boss_portal_cell).filter(func(cell): return reachable.has(cell))
-			t.check(not neighbors.is_empty(), "生成的追猎地图传送门可达")
-			if not neighbors.is_empty():
-				t.check(hunt.move_unit(trainer, neighbors[0]), "训练师移动到传送门旁")
-		app.current_screen.playback.finish_all()
-		app.current_screen.battle_notice.finish_all()
-		app.current_screen._on_board_clicked(hunt.boss_portal_cell)
-		t.check(hunt.ended and hunt.end_reason == "victory", "传送门触发追猎结算")
-		app.current_screen.report_end_now()
-		while run_state.pending_reward_choices > 0:
-			var choices := run_state.reward_choices()
-			if choices.is_empty() or not run_state.choose_reward(choices[0]):
+		region = run_state.get_region()
+		t.check(region.invaded and not region.nodes.has("hunt"), "三层均在行动耗尽后切换入侵")
+		t.eq(run_state.floor_index(), floor, "入侵保留当前楼层")
+		t.eq(region.nodes.values().filter(func(node): return node.get("invasion_carrier", false)).size(), 4, "全面失守时每层恰有四处军需")
+		while not region.can_enter_after_invasion("boss"):
+			var frontier: Array = region.nodes.keys().filter(func(id): return region.nodes[id].get("occupied", false) and region.can_enter_after_invasion(id))
+			t.check(not frontier.is_empty(), "全线失守仍有可夺回的前线")
+			if frontier.is_empty():
 				break
-		app.continue_after_settlement()
-		t.eq(run_state.battle_index, (floor + 1) * Balance.BATTLES_PER_FLOOR, "追猎结算进入下一层或通关")
+			var id: String = frontier[0]
+			region.nodes[id]["occupied"] = false
+			region.nodes[id]["passable"] = true
+		t.check(region.can_enter_after_invasion("boss"), "夺回路径能到达 Boss")
 
 
 	run_state.battle_index = 0

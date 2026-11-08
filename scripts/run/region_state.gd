@@ -10,6 +10,9 @@ var flow_version := 1
 var floor_index: int = 0
 var theme: String = ""
 var visits: int = 0
+var invaded := false
+var invasion_origin := ""
+var garrisons := {}
 var active_node: String = ""
 var nodes: Dictionary = {}
 var visit_pending: bool = false
@@ -80,19 +83,33 @@ func display_name(id: String) -> String:
 	return "%s %s" % ["战斗区" if id.begins_with("battle_") else "探索区", id.get_slice("_", 1)]
 
 
+func can_enter_after_invasion(id: String) -> bool:
+	if not nodes.has(id):
+		return false
+	var node: Dictionary = nodes[id]
+	if id == invasion_origin or node.get("passable", false):
+		return true
+	return node.get("links", []).any(func(neighbor): return bool(nodes[neighbor].get("passable", false)))
+
+
 func record_entry(id: String) -> bool:
 	if visit_pending or not nodes.has(id):
 		return false
-	if not bool(nodes[id].get("unlocked", true)) or (nodes[id].has("rare_species") and nodes[id].get("done", false)):
+	if invaded:
+		if not can_enter_after_invasion(id):
+			return false
+	elif not bool(nodes[id].get("unlocked", true)):
+		return false
+	if nodes[id].has("rare_species") and nodes[id].get("done", false) and not nodes[id].get("service_lost", false):
 		return false
 	if nodes[id]["type"] == "boss" and bool(nodes[id]["cleared"]):
 		return false
 	if flow_version == 2:
-		if visits >= Balance.EXPLORATION_ACTIONS or (int(nodes[id]["visits"]) == 0 and not bool(nodes[id].get("unlocked", false))):
+		if not invaded and visits >= Balance.EXPLORATION_ACTIONS:
 			return false
 		visits += 1
 		nodes[id]["revealed"] = true
-		if nodes[id].get("role") in ["capture", "group", "shop", "item_shop", "skill_shop", "camp", "treasure", "empty"]:
+		if not nodes[id].get("occupied", false) and not nodes[id].get("service_lost", false) and nodes[id].get("role") in ["capture", "group", "shop", "item_shop", "skill_shop", "camp", "treasure", "empty"]:
 			nodes[id]["passable"] = true
 			unlock_neighbors(id)
 	elif nodes[id]["type"] != "boss":
@@ -167,7 +184,7 @@ func _apply_pressure() -> void:
 
 func next_pressure_text() -> String:
 	if flow_version == 2:
-		return "剩余%d行动；耗尽并结算当前节点后进入全员黑化追猎" % maxi(0, Balance.EXPLORATION_ACTIONS - visits)
+		return "入侵已结算 · 可继续夺回节点并挑战 Boss" if invaded else "剩余%d行动；结算当前节点后触发入侵" % maxi(0, Balance.EXPLORATION_ACTIONS - visits)
 	if not corrupted:
 		return "再移动%d次全面占领；再移动%d次全图黑化" % [maxi(0, Balance.INVASION_VISITS - visits), maxi(0, Balance.CORRUPTION_VISITS - visits)] if not support_triggered else "敌军已入侵；再移动%d次全图黑化" % maxi(0, Balance.CORRUPTION_VISITS - visits)
 	return "全图已黑化；再移动%d次等级+1" % maxi(0, 11 + boss_level_bonus * 3 - visits)
@@ -186,6 +203,14 @@ func store_battle(id: String, battle: BattleState) -> bool:
 	if battle.ended and battle.end_reason in ["victory", "explored"]:
 		unlock_neighbors(id)
 	if flow_version == 2:
+		if node.get("occupied", false):
+			if battle.ended and battle.end_reason == "victory" and battle.battle_objective_met():
+				node["occupied"] = false
+				node["recaptured"] = true
+				node["done"] = true
+				node["cleared"] = true
+				node["passable"] = true
+			return true
 		if battle.ended and node.has("rare_species"):
 			node["done"] = true
 		if battle.ended and battle.end_reason in ["victory", "explored"]:
@@ -329,7 +354,7 @@ func resume_node(id: String, players: Array, cfg: Dictionary = {}) -> BattleStat
 
 
 func to_dict() -> Dictionary:
-	return {"flow_version": flow_version, "floor": floor_index, "theme": theme, "visits": visits, "active_node": active_node, "nodes": nodes.duplicate(true), "visit_pending": visit_pending, "support_triggered": support_triggered, "corrupted": corrupted, "boss_level_bonus": boss_level_bonus, "camp_invaded": camp_invaded, "notifications": notifications.duplicate(), "at_camp_scene": at_camp_scene}
+	return {"flow_version": flow_version, "floor": floor_index, "theme": theme, "visits": visits, "invaded": invaded, "invasion_origin": invasion_origin, "garrisons": garrisons.duplicate(true), "active_node": active_node, "nodes": nodes.duplicate(true), "visit_pending": visit_pending, "support_triggered": support_triggered, "corrupted": corrupted, "boss_level_bonus": boss_level_bonus, "camp_invaded": camp_invaded, "notifications": notifications.duplicate(), "at_camp_scene": at_camp_scene}
 
 
 static func from_dict(data: Dictionary) -> RegionState:
@@ -338,6 +363,9 @@ static func from_dict(data: Dictionary) -> RegionState:
 	region.floor_index = int(data.get("floor", 0))
 	region.theme = String(data.get("theme", ""))
 	region.visits = int(data.get("visits", 0))
+	region.invaded = bool(data.get("invaded", false))
+	region.invasion_origin = String(data.get("invasion_origin", ""))
+	region.garrisons = data.get("garrisons", {}).duplicate(true)
 	region.active_node = String(data.get("active_node", ""))
 	region.nodes = (data.get("nodes", {}) as Dictionary).duplicate(true)
 	region.visit_pending = bool(data.get("visit_pending", false))

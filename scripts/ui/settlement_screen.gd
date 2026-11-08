@@ -88,6 +88,8 @@ func _summary_box(run: RunState) -> Control:
 		lines.append("本场已入账的击杀、捕获经验保留；失败不追加战后目标经验。")
 	else:
 		lines.append("本场怪物经验合计：+%d（按击败、捕获与战场目标的实际贡献结算）" % int(outcome.get("exp", 0)))
+	if not outcome.get("loot", []).is_empty():
+		lines.append("战利品 · " + "、".join(outcome["loot"]))
 	if outcome.has("trainer_exp"):
 		var gained: Dictionary = outcome["trainer_exp"]
 		lines.append("训练家：Lv.%d · 累计经验 %d · 本场已保留 +%d" % [int(gained["level"]), int(gained["xp"]), int(gained["gained"])])
@@ -163,6 +165,8 @@ func _show_next_step() -> void:
 			choice_box.add_child(UIKit.wrapped("捕获了%s；换下的成员完整保留培养，送往共享仓库。" % SpeciesDB.name_of(String(incoming["species_id"])), 16))
 			for member in run.carried:
 				var uid := int(member["uid"])
+				if run.is_garrisoned(uid):
+					continue
 				var swap := UIKit.small_button("换下%s，带上新伙伴" % SpeciesDB.name_of(String(member["species_id"])))
 				swap.name = "CaptureSwap_%d" % uid
 				swap.pressed.connect(func() -> void:
@@ -213,12 +217,15 @@ func _show_next_step() -> void:
 			_show_next_step())
 		return
 	if run.pending_reward_choices > 0:
-		step_label.text = "战后奖励：三选一（剩余 %d 次）" % run.pending_reward_choices
-		choice_box.add_child(UIKit.wrapped("从三个完全随机的遗物中选择一个，效果持续到本局结束；同种遗物最多三级。怪物强化仍在升级时分别选择。", 13))
+		var legendary := not run.legendary_offers.is_empty()
+		step_label.text = "%s三选一（剩余 %d 次）" % ["传奇遗物" if legendary else "战后奖励", run.pending_reward_choices]
+		var prompt := "从高级奖励点的三个传奇遗物中选一件。满级遗物可折算为原质。" if legendary else "从本次旧版奖励的候选遗物中选一件，同种遗物最多三级。"
+		choice_box.add_child(UIKit.wrapped(prompt, 13))
 		for reward_id in run.reward_choices():
 			var id := String(reward_id)
 			var next_rank := RelicDB.rank(run.relic_stacks, id) + 1
-			var button := UIKit.button("%s · 取得后 %d/%d 级\n%s" % [RelicDB.display_name_of(id), next_rank, RelicDB.MAX_RANK, RelicDB.description_of(id)], 14)
+			var result := "已满级，兑换 16 原质" if next_rank > RelicDB.MAX_RANK else "取得后 %d/%d 级" % [next_rank, RelicDB.MAX_RANK]
+			var button := UIKit.button("%s · %s\n%s" % [RelicDB.display_name_of(id), result, RelicDB.description_of(id)], 14)
 			button.custom_minimum_size = Vector2(0, 76)
 			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			var normal_style := StyleBoxFlat.new()

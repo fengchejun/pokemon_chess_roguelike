@@ -76,6 +76,8 @@ func _ready() -> void:
 			map["reward"] = saved.reward.duplicate(true)
 			map["extra_rewards"] = saved.extra_rewards.duplicate(true)
 			map["chests"] = saved.chests.duplicate()
+			map["carrier_tier"] = saved.carrier_tier
+			map["carrier_turns_left"] = saved.carrier_turns_left
 			map["treasure_generated"] = true
 			map["food_cells"] = saved.food_cells.duplicate()
 			map["obstacle_cells"] = saved.obstacle_durability.keys()
@@ -370,6 +372,8 @@ func _on_cell_hovered(cell: Vector2i) -> void:
 			hint_label.text += " · 黑化：生命/威力+10%，击杀无经验"
 		if unit.reward_carrier:
 			hint_label.text += " · 携带奖励点"
+			if not String(map.get("carrier_tier", "")).is_empty():
+				hint_label.text += " · 剩余 %d 回合" % int(map.get("carrier_turns_left", 3))
 	else:
 		hint_label.text = _mod_hover_text(cell)
 	hint_label.add_theme_color_override("font_color", UIKit.TEXT)
@@ -381,7 +385,9 @@ func _mod_hover_text(cell: Vector2i) -> String:
 	var rule: Dictionary = MOD_RULES.get(mod_kind, {})
 	var tool_name := String(rule.get("name", mod_kind))
 	if (map.get("chests", {}) as Dictionary).has(cell):
-		return "宝箱：不可站立，命中一次攻击后破坏，在原格留下不可被攻击摧毁的奖励点。"
+		var tier = map["chests"][cell]
+		var name: String = preload("res://scripts/run/battle_loot.gd").POINT_NAMES.get(tier, "奖励点")
+		return "宝箱：不可站立，命中一次后破坏，在原格留下%s。" % name
 	if (map.get("nest_cells", [map.get("nest_cell", Vector2i(-1, -1))]) as Array).has(cell):
 		if run.region_mode and run.get_region().node_mode(run.get_region().active_node) == "event":
 			return "该格为后续占领事件保留，暂不能改造。"
@@ -431,7 +437,7 @@ func _uses_extraction_in_preview() -> bool:
 	var region = run.get_region()
 	if region.node_mode(region.active_node) != "battle":
 		return false
-	return region.flow_version != 2 or not region.nodes[region.active_node].get("role", "") in ["capture", "group"]
+	return region.flow_version != 2 or preload("res://scripts/run/exploration_flow.gd").role(run) not in ["capture", "group"]
 
 
 func _is_puzzle() -> bool:
@@ -440,9 +446,12 @@ func _is_puzzle() -> bool:
 
 
 func _prepare_treasure() -> void:
-	if persistent_node or (app.run.region_mode and app.run.get_region().flow_version == 2):
+	if persistent_node:
 		return
 	var run: RunState = app.run
+	if run.region_mode and run.get_region().flow_version == 2:
+		preload("res://scripts/run/exploration_flow.gd").prepare_battle_loot(run, map)
+		return
 	var region = run.get_region() if run.region_mode else null
 	var mode: String = region.node_mode(region.active_node) if region != null else "battle"
 	MapGenerator.populate_treasure(map, run.place_region_enemies(run.battle_config(), map), run.seed, run.battle_index, mode, region.active_node if region != null else "")

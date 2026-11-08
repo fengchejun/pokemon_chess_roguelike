@@ -27,6 +27,7 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 	var other_relic_bonus := 0
 	if source_side == "player" and target.side == "enemy":
 		other_relic_bonus += 4 * RelicDB.rank(state.relic_stacks, "wall_crash")
+		other_relic_bonus += 6 * RelicDB.rank(state.relic_stacks, "pulling_hammer")
 		collision_bonus += other_relic_bonus
 	for step in distance:
 		if not target.is_alive():
@@ -118,6 +119,7 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 			amount += int(state.effects.get("push_collision", 0))
 			if occupant.side == "enemy":
 				amount += 4 * RelicDB.rank(state.relic_stacks, "wall_crash")
+				amount += 6 * RelicDB.rank(state.relic_stacks, "pulling_hammer")
 		state.emit_collision(null, cell, next, occupant.uid, cell, "rock")
 		var hit := state.damage_unit(null, occupant, amount, {"no_element": true, "collision": true, "cause": name + "碰撞", "killer_side": caster.side, "killer_uid": caster.uid})
 		result["hits"].append({"uid": occupant.uid, "name": occupant.display_name, "cell": next, "damage": int(hit.get("amount", 0)), "killed": bool(hit.get("killed", false)), "modifier": 0, "statuses": [], "push": null})

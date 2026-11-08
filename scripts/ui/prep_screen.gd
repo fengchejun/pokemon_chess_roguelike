@@ -11,7 +11,7 @@ func _ready() -> void:
 	app.prep_deploy_preset = []
 	for record in app.run.carried:
 		var uid := int(record["uid"])
-		if deploy_selection.size() < MAX_DEPLOY and int(record["hp"]) > 0 and desired.has(uid):
+		if deploy_selection.size() < MAX_DEPLOY and int(record["hp"]) > 0 and desired.has(uid) and not app.run.is_garrisoned(uid):
 			deploy_selection.append(uid)
 	deploy_uids = deploy_selection.duplicate()
 	super._ready()
@@ -21,6 +21,11 @@ func _build_roster() -> Control:
 	var column := UIKit.vbox(8)
 	column.name = "TeamPreparationPanel"
 	column.add_child(UIKit.label("队伍与招式", 18, UIKit.ACCENT))
+	if app.run.region_mode and app.run.get_region().flow_version == 2 and not app.run.get_region().invaded:
+		column.add_child(preload("res://scripts/ui/garrison_dialog.gd").make_button(self, app, func() -> void:
+			deploy_selection = deploy_selection.filter(func(uid): return not app.run.is_garrisoned(uid))
+			deploy_uids = deploy_selection.duplicate()
+			show_prep_after_mode_change()))
 	column.add_child(UIKit.wrapped("训练师生命 %d/%d · 最多选择 %d 只出战；濒死成员不可选。" % [app.run.trainer_hp, app.run.trainer_max_hp(), MAX_DEPLOY], 13))
 	team_scroll = UIKit.scroll()
 	column.add_child(team_scroll)
@@ -55,6 +60,9 @@ func _team_row(record: Dictionary) -> Control:
 	if int(record["hp"]) <= 0:
 		box.disabled = true
 		box.tooltip_text = "濒死：在营地休息后恢复至半血。" if app.run.region_mode else "濒死：留守一场后恢复到 5 HP。"
+	if app.run.is_garrisoned(int(record["uid"])):
+		box.disabled = true
+		box.tooltip_text = "该伙伴正在驻防。"
 	box.toggled.connect(func(pressed: bool) -> void: _on_toggle(int(record["uid"]), pressed))
 	line.add_child(box)
 	check_boxes[int(record["uid"])] = box

@@ -149,7 +149,7 @@ static func _rare_habitat_site(region: RegionState) -> Array:
 				continue
 			for near in adjacent_cells(cell):
 				var anchor := String(occupied.get(near, ""))
-				if anchor in ["", "boss", "hunt"]:
+				if anchor in ["", "boss", "hunt"] or (region.invaded and not region.nodes[anchor].get("passable", false)):
 					continue
 				var distance := GridSpec.manhattan(near, shop)
 				if distance < closest:
@@ -161,7 +161,7 @@ static func _rare_habitat_site(region: RegionState) -> Array:
 static func intel_unavailable(region: RegionState) -> String:
 	if region.nodes.has(RARE_HABITAT):
 		return "本层已解锁过神秘栖息地。"
-	if region.visits >= Balance.EXPLORATION_ACTIONS:
+	if not region.invaded and region.visits >= Balance.EXPLORATION_ACTIONS:
 		return "本层行动已耗尽，无法前往神秘栖息地。"
 	if _rare_habitat_site(region).is_empty():
 		return "本层地图没有可以连接的空位。"
@@ -224,7 +224,8 @@ static func request_description(terms: Dictionary) -> String:
 
 static func role(run: RunState) -> String:
 	var region = run.get_region()
-	return String(region.nodes[region.active_node].get("role", ""))
+	var node: Dictionary = region.nodes[region.active_node]
+	return "recapture" if node.get("occupied", false) else String(node.get("role", ""))
 
 static func request_species(theme: String) -> String:
 	return String(BattleDB.THEMES.get(theme, BattleDB.THEMES["grass"])["primary"][0])
@@ -233,14 +234,14 @@ static func configure(run: RunState, cfg: Dictionary) -> Dictionary:
 	var result := cfg.duplicate(true)
 	var region = run.get_region()
 	var node: Dictionary = region.nodes[region.active_node]
-	var kind := String(node.get("role", ""))
+	var kind := role(run)
 	var visit := int(node["visits"])
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("encounter:%d:%s:%d" % [run.seed, region.active_node, visit])
 	var pool: Array = BattleDB.THEMES.get(region.theme, BattleDB.THEMES["grass"])["primary"].duplicate()
 	pool.append_array(["water_wild1", "electric_wild1", "grass_wild1", "rock_wild1"])
 	var count := 3
-	if kind in ["starter", "battle", "elite"]:
+	if kind in ["starter", "battle", "elite", "recapture"]:
 		count += region.floor_index
 	elif kind == "group":
 		count = 2
@@ -249,15 +250,24 @@ static func configure(run: RunState, cfg: Dictionary) -> Dictionary:
 	var pairs: Array = []
 	for index in count:
 		pairs.append([pool[rng.randi_range(0, pool.size() - 1)], Vector2i(5 + index % 2, 2 + index)])
-	if region.active_node == RARE_HABITAT:
+	if region.active_node == RARE_HABITAT and kind == "capture":
 		pairs = [[node["rare_species"], Vector2i(5, 2)]]
 	elif kind in ["boss", "hunt"]:
 		pairs[0][0] = "rock_wild1"
+	var carrier_tier := ""
+	if kind == "recapture" and node.get("invasion_carrier", false):
+		carrier_tier = "medium"
+	elif not region.invaded and kind in ["battle", "starter"] and posmod(hash("carrier:%d:%d:%s" % [run.seed, region.floor_index, region.active_node]), 100) < 15:
+		carrier_tier = "common"
+	if not carrier_tier.is_empty():
+		var index := pairs.size()
+		pairs.append([pool[rng.randi_range(0, pool.size() - 1)], Vector2i(5 + index % 2, 2 + index)])
+	result["carrier_tier"] = carrier_tier
 	result["enemies"] = [] if kind in ["treasure", "camp", "shop", "item_shop", "skill_shop", "request"] or (kind == "group" and not bool(node.get("battle_selected", false))) else pairs
 	result["reinforce"] = pool if kind in ["boss", "hunt"] else []
 	result["boss_index"] = 0 if kind in ["boss", "hunt"] else -1
-	result["corrupted"] = kind == "hunt"
-	result["enemy_level_bonus"] = 1 if kind in ["hunt", "elite"] else 0
+	result["corrupted"] = kind in ["hunt", "recapture"] or (kind == "boss" and region.invaded)
+	result["enemy_level_bonus"] = 1 if kind in ["hunt", "elite"] or (kind == "recapture" and node["role"] == "elite") else 0
 	return result
 
 const PUZZLE_NAMES := ["隔水藏珍", "岩垒藏珍", "断崖藏珍", "熔沟藏珍"]
@@ -314,7 +324,7 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 		map["terrain"] = terrain
 		map["steam_cells"] = {}
 		map["electric_flowers"] = {}
-		map["chests"] = {Vector2i(6, 3): true}
+		map["chests"] = {Vector2i(6, 3): "medium"}
 		map["obstacle_cells"] = GridSpec.all_cells().filter(func(cell): return TerrainDB.blocks_move(terrain[GridSpec.index(cell)]))
 		if variant == 0:
 			decorate_terrain(run, map, kind)
@@ -335,6 +345,77 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 
 	if kind == "capture":
 		preload("res://scripts/rules/capture_encounter.gd").prepare_map(map)
+
+static func prepare_battle_loot(run: RunState, map: Dictionary) -> void:
+	if map.get("battle_loot_generated", false):
+		return
+	var kind := role(run)
+	if kind not in ["starter", "battle", "elite", "group", "recapture", "boss"]:
+		return
+	var cfg := run.place_region_enemies(run.battle_config(), map)
+	var enemies: Array = cfg["enemies"]
+	if enemies.is_empty():
+		return
+	var region: RegionState = run.get_region()
+	var node: Dictionary = region.nodes[region.active_node]
+	var tier := "high" if kind == "boss" else "medium" if node["role"] == "elite" else "common"
+	var reserved: Array = map.get("deploy_area", []).duplicate()
+	reserved.append_array(map.get("nest_cells", []))
+	reserved.append_array(enemies.map(func(pair): return pair[1]))
+	var terrain: Array = map["terrain"]
+	var walkable := terrain.duplicate()
+	for cell in map.get("electric_flowers", {}):
+		walkable[GridSpec.index(cell)] = TerrainDB.OBSTACLE
+	var candidates := GridSpec.all_cells().filter(func(cell): return cell.x >= 4 and not reserved.has(cell))
+	candidates.sort_custom(func(a, b): return a.x > b.x if a.x != b.x else a.y < b.y)
+	for cell in candidates:
+		var index := GridSpec.index(cell)
+		if walkable[index] not in [TerrainDB.PLAIN, TerrainDB.GRASS, TerrainDB.SHALLOW_GRASS, TerrainDB.ICE, TerrainDB.BLUE_FIRE]:
+			continue
+		walkable[index] = TerrainDB.OBSTACLE
+		var accessible := GridSpec.neighbors4(cell).any(func(near): return MapGenerator._validate(walkable, [near]))
+		walkable[index] = terrain[index]
+		if not accessible:
+			continue
+		map["chests"] = {cell: tier}
+		break
+	if map.get("chests", {}).is_empty():
+		_place_accessible_chest(map, reserved, candidates, tier)
+	map["battle_loot_generated"] = true
+	var carrier_tier := String(cfg.get("carrier_tier", ""))
+	map["carrier_uid"] = 100 + enemies.size() - 1 if not carrier_tier.is_empty() else -1
+	map["carrier_tier"] = carrier_tier
+
+
+static func _place_accessible_chest(map: Dictionary, reserved: Array, candidates: Array, tier: String) -> void:
+	# 极端地图才开一条最短补救通路。部署、巢穴和敌人出生格保持原样。
+	var terrain: Array = map["terrain"]
+	var frontier: Array = Balance.DEPLOY_AREA.duplicate()
+	var previous := {}
+	for cell in frontier:
+		previous[cell] = cell
+	while not frontier.is_empty():
+		var cell: Vector2i = frontier.pop_front()
+		for near in GridSpec.neighbors4(cell):
+			if previous.has(near) or reserved.has(near):
+				continue
+			previous[near] = cell
+			frontier.append(near)
+	for cell in candidates:
+		if not previous.has(cell):
+			continue
+		map["chests"] = {cell: tier}
+		var step: Vector2i = previous[cell]
+		while previous[step] != step:
+			map["electric_flowers"].erase(step)
+			map.get("steam_cells", {}).erase(step)
+			terrain[GridSpec.index(step)] = TerrainDB.PLAIN
+			map["obstacle_cells"].erase(step)
+			map.get("tree_cells", []).erase(step)
+			step = previous[step]
+		map["electric_flowers"].erase(cell)
+		return
+
 
 static func decorate_terrain(run: RunState, map: Dictionary, kind: String) -> void:
 	# 完整地形池按种子抽取；保护部署点、遭遇起点与谜题既有解法，不强求每图全类型。
@@ -367,6 +448,8 @@ static func prepare_state(run: RunState, state: BattleState) -> void:
 	state.exploration_v2 = true
 	state.exploration_role = role(run)
 	state.retreat_disabled = state.is_boss_encounter()
+	if state.exploration_role == "recapture" and state.storm_strikes.is_empty():
+		state.mark_storm(1)
 	if state.exploration_role == "treasure":
 		state.preserve_node_terrain = true
 		state.node_kind = "event"

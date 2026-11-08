@@ -1322,7 +1322,10 @@ static func _apply_fire_amplify(state: BattleState, caster: CombatUnit, summary:
 		state.burning_sources.erase(cell)
 		summary["area_cells"].append(cell)
 		absorbed += 1
-	caster.fire_amp_stacks += absorbed * int(caster.upgrades.get("fire_amplify_power", Balance.SKILL_DAMAGE_UPGRADE))
+	var per_cell := int(caster.upgrades.get("fire_amplify_power", Balance.SKILL_DAMAGE_UPGRADE))
+	if caster.side == "player":
+		per_cell += 3 * RelicDB.rank(state.relic_stacks, "furnace_core")
+	caster.fire_amp_stacks += absorbed * per_cell
 	summary["text"] = "火焰增幅熄灭 %d 格火焰，当前蓄积 +%d 直伤。" % [absorbed, caster.fire_amp_stacks]
 	state.log_event(summary["text"])
 

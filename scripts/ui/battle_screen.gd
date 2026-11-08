@@ -479,7 +479,7 @@ func _add_battle_xp_bar(unit: CombatUnit) -> void:
 func _update_header() -> void:
 	var state := _display_state()
 	var phase_text: String = {"player": "我方行动", "enemy": "敌方行动", "settle": "结算", "ended": "战斗结束"}.get(state.phase, state.phase)
-	var region_name := ("捕捉栖息地" if state.exploration_role == "capture" else "宝箱解谜" if state.exploration_role == "treasure" else "追猎" if state.exploration_role == "hunt" else "首领挑战" if state.exploration_role == "boss" else "精英战斗" if state.exploration_role == "elite" else "普通战斗" if state.exploration_role == "battle" else "群体遭遇" if state.exploration_role == "group" else "林缘试炼") if state.exploration_v2 else ("营地" if state.is_free_exploration() else "营地防守") if state.is_camp_map else "收集区" if state.node_kind == "event" else "首领区" if state.node_kind == "boss" else "%d/6 战" % (BattleDB.local_battle_of(state.battle_index) + 1)
+	var region_name := ("捕捉栖息地" if state.exploration_role == "capture" else "宝箱解谜" if state.exploration_role == "treasure" else "追猎" if state.exploration_role == "hunt" else "首领挑战" if state.exploration_role == "boss" else "精英战斗" if state.exploration_role == "elite" else "夺回战" if state.exploration_role == "recapture" else "普通战斗" if state.exploration_role == "battle" else "群体遭遇" if state.exploration_role == "group" else "林缘试炼") if state.exploration_v2 else ("营地" if state.is_free_exploration() else "营地防守") if state.is_camp_map else "收集区" if state.node_kind == "event" else "首领区" if state.node_kind == "boss" else "%d/6 战" % (BattleDB.local_battle_of(state.battle_index) + 1)
 	round_label.text = "第 %d 层 · %s\n第 %d 回合 · %s" % [BattleDB.floor_of(state.battle_index) + 1, region_name, maxi(1, state.round), phase_text]
 	var reward_text := ""
 	match String(state.reward.get("state", "")):
@@ -517,6 +517,10 @@ func _update_header() -> void:
 		objective_label.text += "\n训练师相邻后，点击传送门或行动按钮前往下一层。"
 	elif not state.is_free_exploration() and state.round >= 7:
 		objective_label.text += "\n" + ("天雷已锁定 %d 格：本轮末落雷，伤害为最大生命50%%，可误伤敌人。" % state.storm_strikes.size() if not state.storm_strikes.is_empty() else "第8轮末开始预告天雷，可移动躲避。")
+	if state.exploration_role == "recapture" and not state.is_free_exploration():
+		objective_label.text += "\n夺回战 · 每轮末落雷（最大生命 50%）"
+	if state.carrier_turns_left > 0 and state.alive_units("enemy").any(func(enemy): return enemy.reward_carrier):
+		objective_label.text += "\n奖励携带者 · 还剩 %d 回合" % state.carrier_turns_left
 	if state.is_free_exploration():
 		objective_label.text += "\n自由探索 · 无限行动 · 禁用直接治疗"
 	objective_label.text += "\n宝箱 %d · 待拾 %d · 我持 %d · 敌持 %d" % [state.chests.size(), state.all_rewards().filter(func(p): return p.get("state") in ["map", "guarding"]).size(), state.reward_count_held("player"), state.reward_count_held("enemy")]
@@ -1456,7 +1460,9 @@ func _show_terrain(cell: Vector2i) -> void:
 		lines.append("巢穴不可站立或叠加其他地形；主动守护消耗技能机会，持续到下次敌方阶段。巢穴承担至少一半伤害，其余由四邻有效守军均分，不消耗拦截次数。")
 		lines.append("当前守军：%d 名；积压 %d 只。" % [state.nest_guard_charges(cell), int(state.nest_at_cell(cell).get("pending_waves", 0))])
 	if state.is_chest_cell(cell):
-		lines.append("命中一次攻击后破坏，原格生成奖励点；碰撞不损伤宝箱。")
+		var tier = state.chests[cell]
+		var name: String = preload("res://scripts/run/battle_loot.gd").POINT_NAMES.get(tier, "奖励点")
+		lines.append("命中一次攻击后破坏，原格生成%s。碰撞不损伤宝箱。" % name)
 	if state.all_rewards().any(func(p): return p.get("cell") == cell and p.get("state") in ["map", "guarding"]):
 		lines.append("奖励点不受攻击破坏；双方在本方回合末占点，守过对方行动阶段后携带。击杀敌方携带者可夺回。")
 	if cell == state.reward.get("cell", Vector2i(-1, -1)):

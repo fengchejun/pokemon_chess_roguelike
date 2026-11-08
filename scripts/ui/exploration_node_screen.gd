@@ -33,6 +33,8 @@ func _ready() -> void:
 		screen.return_to_node = true
 		app._switch(screen))
 	header.add_child(bag)
+	if not app.run.get_region().invaded:
+		header.add_child(preload("res://scripts/ui/garrison_dialog.gd").make_button(self, app, refresh))
 	resources_label = UIKit.label("", 18, UIKit.ACCENT)
 	page.add_child(resources_label)
 	var scroll := UIKit.scroll()
@@ -70,9 +72,9 @@ func refresh() -> void:
 	var node: Dictionary = region.nodes[region.active_node]
 	var role: String = node["role"]
 	title_label.text = region.display_name(region.active_node)
-	resources_label.text = "原质 %d · 食物 %d · 剩余行动 %d" % [run.essence, run.total_food(), maxi(0, Balance.EXPLORATION_ACTIONS - region.visits)]
+	resources_label.text = "原质 %d · 食物 %d · %s" % [run.essence, run.total_food(), region.next_pressure_text()]
 	return_button.disabled = bool(node.get("reward_pending", false))
-	return_button.tooltip_text = "先选择本次奖励，再返回地图。" if return_button.disabled else "结算当前节点后检查是否进入追猎。"
+	return_button.tooltip_text = "先选择本次奖励，再返回地图。" if return_button.disabled else "结算当前节点后检查楼层入侵。"
 	column.add_child(UIKit.wrapped(message, 16))
 	if node.get("reward_pending", false):
 		column.add_child(UIKit.wrapped("选择本次事件的遗物奖励，再结束这次行动。", 17))
@@ -99,7 +101,7 @@ func refresh() -> void:
 					run.essence += 4; run.add_food("basic", 1)
 					node["done"] = true
 					persist(region))
-				button("喂食2份食物：选择一件遗物", "FeedGroup", func() -> void:
+				button("喂食2份食物：获得一件随机普通遗物", "FeedGroup", func() -> void:
 					if node.get("done", false) or int(run.food_inventory.get("basic", 0)) < 2: return
 					run.food_inventory["basic"] -= 2; run.food = run.total_food()
 					award(run, region, node), int(run.food_inventory.get("basic", 0)) < 2)
@@ -111,10 +113,10 @@ func refresh() -> void:
 			var reward := request_reward(int(terms["tier"]))
 			var reward_text := "%d 原质与 %d 份食物" % [reward.x, reward.y]
 			if int(terms["tier"]) > 1:
-				reward_text += "，另选一件遗物"
+				reward_text += "，另得一件随机普通遗物"
 			column.add_child(UIKit.wrapped("%s。奖励 %s。仅接收随身成员，交付后该成员永久离队。可以先离开寻找。" % [Flow.request_description(terms), reward_text], 17))
 			if not node.get("done", false):
-				var candidates := run.carried.filter(func(record): return Flow.request_matches(terms, record))
+				var candidates := run.carried.filter(func(record): return not run.is_garrisoned(int(record["uid"])) and Flow.request_matches(terms, record))
 				if candidates.is_empty():
 					column.add_child(UIKit.wrapped("当前没有符合要求的随身成员。", 14))
 				for record in candidates:
@@ -144,10 +146,10 @@ func award(run: RunState, region, node: Dictionary) -> void:
 	node["done"] = true
 	node["passable"] = true
 	region.unlock_neighbors(region.active_node)
-	if not node.has("offers"):
-		node["offers"] = RelicDB.offer(run.seed, region.floor_index, region.nodes.keys().find(region.active_node), run.relic_stacks)
-	node["reward_pending"] = not node["offers"].is_empty()
-	if not node["reward_pending"]: run.essence += 12
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("event-loot:%d:%d:%s" % [run.seed, region.floor_index, region.active_node])
+	var relic := preload("res://scripts/run/battle_loot.gd").grant_random_relic(run, RelicDB.COMMON, rng)
+	message = "获得 %s。" % relic
 	persist(region)
 
 func request_reward(tier: int) -> Vector2i:
@@ -157,7 +159,7 @@ func deliver(uid: int) -> void:
 	var run: RunState = app.run
 	var region = run.get_region()
 	var node: Dictionary = region.nodes[region.active_node]
-	if node.get("role") != "request" or node.get("done", false):
+	if node.get("role") != "request" or node.get("done", false) or run.is_garrisoned(uid):
 		return
 	var terms := Flow.request_terms(node, region.theme)
 	for index in run.carried.size():

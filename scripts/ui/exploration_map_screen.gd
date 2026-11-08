@@ -21,6 +21,8 @@ func _ready() -> void:
 	var team := UIKit.small_button("查看队伍")
 	team.pressed.connect(_show_team)
 	row.add_child(team)
+	if not region.invaded:
+		row.add_child(preload("res://scripts/ui/garrison_dialog.gd").make_button(self, app, func() -> void: region = app.run.get_region()))
 	var bag := UIKit.small_button("道具背包")
 	bag.name = "OpenItemBag"
 	bag.pressed.connect(func() -> void: app._switch(preload("res://scripts/ui/item_bag_screen.gd").new()))
@@ -28,8 +30,8 @@ func _ready() -> void:
 	var menu := UIKit.small_button("保存并返回菜单")
 	menu.pressed.connect(func() -> void: app.autosave(); app.show_menu())
 	row.add_child(menu)
-	column.add_child(UIKit.label("剩余行动 %d/%d · 原质 %d · 食物 %d" % [maxi(0, Balance.EXPLORATION_ACTIONS - region.visits), Balance.EXPLORATION_ACTIONS, app.run.essence, app.run.total_food()], 20, UIKit.ACCENT))
-	column.add_child(UIKit.wrapped("连线始终可见；点亮后即可查看节点内容并进入，未点亮地点仍隐藏类型。处理拦路遭遇才能继续深入。去过的地点可直接回访，每次1行动。Boss位置已知，但仍需探索到达路线。行动耗尽：结算当前节点后强制追猎，敌方全员黑化，胜利可通过本层。", 15))
+	column.add_child(UIKit.label("%s · 原质 %d · 食物 %d" % [region.next_pressure_text(), app.run.essence, app.run.total_food()], 20, UIKit.ACCENT))
+	column.add_child(UIKit.wrapped("已知地点保留名称和连线。入侵后从保住的前线逐步夺回节点，失守服务在本层永久关闭。", 15))
 	graph = Control.new()
 	graph.name = "FogMap"
 	graph.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -41,12 +43,19 @@ func _ready() -> void:
 			continue
 		var node: Dictionary = region.nodes[id]
 		var known: bool = bool(node.get("unlocked", false)) or int(node.get("visits", 0)) > 0 or id == "boss"
-		var available: bool = node.get("unlocked", false)
+		var available: bool = region.can_enter_after_invasion(id) if region.invaded else node.get("unlocked", false)
+		known = known or available
 		var visited: bool = int(node["visits"]) > 0
 		var label: String = region.display_name(id) if known else "未知地点"
 		var status := "已到达 · 可回访" if visited else "已点亮 · 可探索" if available else "位置已知 · 尚未通路" if known else "未知"
 		if node.get("done", false):
 			status = "已完成"
+		if node.get("occupied", false) and known:
+			status = "敌军占领" + (" · 携带军需" if node.get("invasion_carrier", false) else "")
+		elif node.get("service_lost", false):
+			status = "已夺回 · 服务关闭"
+		elif node.get("defense", {}).get("held", false):
+			status += " · 已守住"
 		var button := UIKit.button("%s\n%s" % [label, status], 17)
 		var style := StyleBoxFlat.new()
 		style.bg_color = Color("283647") if available else Color("22252b")
@@ -58,7 +67,7 @@ func _ready() -> void:
 		button.add_theme_stylebox_override("disabled", style)
 		button.name = "Node_" + id
 		button.custom_minimum_size = Vector2(192, 66)
-		button.disabled = not available or (node.has("rare_species") and node.get("done", false))
+		button.disabled = not available or (node.has("rare_species") and node.get("done", false) and not node.get("service_lost", false))
 		var target: String = id
 		button.pressed.connect(func() -> void: _confirm_entry(target))
 		graph.add_child(button)
@@ -101,7 +110,11 @@ func _confirm_entry(id: String) -> void:
 		detail = "购买补给、道具及遗物，可出售遗物。回访不补货。"
 	elif role == "skill_shop":
 		detail = "强化招式或购买技能书。回访不补货。"
-	dialog.dialog_text = (detail if known else "这里尚未点亮，节点内容仍未知。") + "\n确认进入消耗1行动；取消不消耗。"
+	if node.get("occupied", false):
+		detail = "夺回战，敌军黑化。每轮预告并落雷。" + (" 有限时军需携带者。" if node.get("invasion_carrier", false) else "")
+	elif node.get("service_lost", false):
+		detail = "已夺回。原服务永久关闭，可通过此节点。"
+	dialog.dialog_text = (detail if known or region.invaded else "这里尚未点亮，节点内容仍未知。") + ("\n入侵已结算，可继续推进。" if region.invaded else "\n确认进入消耗1行动；取消不消耗。")
 	dialog.confirmed.connect(func() -> void: app.enter_region_node(id))
 	dialog.canceled.connect(func() -> void: dialog.queue_free())
 	add_child(dialog)

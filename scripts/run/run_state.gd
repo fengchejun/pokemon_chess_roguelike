@@ -153,6 +153,7 @@ var preview_used_reward_item: String = ""
 var preview_modifications: Array = []
 var preview_deploy_positions: Dictionary = {}
 var pending_reward_choices: int = 0
+var legendary_offers: Array = []
 var reward_choice_index: int = 0
 var settlement_pending: bool = false
 var last_settlement: Dictionary = {}
@@ -245,6 +246,10 @@ func record_by_uid(uid: int) -> Dictionary:
 		if int(record["uid"]) == uid:
 			return record
 	return {}
+
+
+func is_garrisoned(uid: int) -> bool:
+	return region_mode and not region_data.is_empty() and region_data.get("garrisons", {}).has(str(uid))
 
 
 func owned_record_by_uid(uid: int) -> Dictionary:
@@ -490,7 +495,7 @@ func place_region_enemies(cfg: Dictionary, map_data: Dictionary) -> Dictionary:
 	var pairs: Array = result.get("enemies", [])
 	var used: Array = []
 	for pair in pairs:
-		if GridSpec.is_inside(pair[1]) and not map_data.get("electric_flowers", {}).has(pair[1]) and TerrainDB.can_stand(int(map_data["terrain"][GridSpec.index(pair[1])]), SpeciesDB.element_of(String(pair[0]))) and not used.has(pair[1]) and not (map_data.get("nest_cells", [map_data["nest_cell"]]) as Array).has(pair[1]):
+		if GridSpec.is_inside(pair[1]) and not map_data.get("chests", {}).has(pair[1]) and not map_data.get("electric_flowers", {}).has(pair[1]) and TerrainDB.can_stand(int(map_data["terrain"][GridSpec.index(pair[1])]), SpeciesDB.element_of(String(pair[0]))) and not used.has(pair[1]) and not (map_data.get("nest_cells", [map_data["nest_cell"]]) as Array).has(pair[1]):
 			used.append(pair[1])
 		else:
 			pair[1] = Vector2i(-1, -1)
@@ -498,7 +503,7 @@ func place_region_enemies(cfg: Dictionary, map_data: Dictionary) -> Dictionary:
 		if GridSpec.is_inside(pair[1]):
 			continue
 		for cell in GridSpec.all_cells():
-			if cell.x < 4 or map_data.get("electric_flowers", {}).has(cell) or used.has(cell) or (map_data.get("nest_cells", [map_data["nest_cell"]]) as Array).has(cell) or (map_data.get("deploy_cells", []) as Array).has(cell):
+			if cell.x < 4 or map_data.get("chests", {}).has(cell) or map_data.get("electric_flowers", {}).has(cell) or used.has(cell) or (map_data.get("nest_cells", [map_data["nest_cell"]]) as Array).has(cell) or (map_data.get("deploy_cells", []) as Array).has(cell):
 				continue
 			if TerrainDB.can_stand(int(map_data["terrain"][GridSpec.index(cell)]), SpeciesDB.element_of(String(pair[0]))):
 				pair[1] = cell
@@ -558,15 +563,25 @@ func consume_selected_reward_item() -> String:
 
 
 func reward_choices() -> Array:
+	if not legendary_offers.is_empty():
+		return legendary_offers[0].duplicate()
 	return RelicDB.offer(seed, battle_index, reward_choice_index, relic_stacks)
 
 
 func choose_reward(reward_id: String) -> bool:
 	if pending_reward_choices <= 0 or not reward_choices().has(reward_id):
 		return false
-	if not RelicDB.DEFINITIONS.has(reward_id) or RelicDB.rank(relic_stacks, reward_id) >= RelicDB.MAX_RANK:
+	if not RelicDB.DEFINITIONS.has(reward_id):
 		return false
-	relic_stacks[reward_id] = RelicDB.rank(relic_stacks, reward_id) + 1
+	var rank := RelicDB.rank(relic_stacks, reward_id)
+	if rank >= RelicDB.MAX_RANK:
+		if legendary_offers.is_empty():
+			return false
+		essence += 16
+	else:
+		relic_stacks[reward_id] = rank + 1
+	if not legendary_offers.is_empty():
+		legendary_offers.pop_front()
 	pending_reward_choices -= 1
 	reward_choice_index += 1
 	return true
@@ -605,7 +620,7 @@ func build_deploy_units(deploy_uids: Array) -> Array:
 	units.append(trainer)
 	for uid in deploy_uids:
 		var record := record_by_uid(int(uid))
-		if record.is_empty():
+		if record.is_empty() or is_garrisoned(int(uid)):
 			continue
 		var unit := CombatUnit.make(String(record["species_id"]), "player", int(record["uid"]))
 		unit.upgrades = (record.get("upgrades", {}) as Dictionary).duplicate()
@@ -731,7 +746,7 @@ func capture_replace(replace_uid: int) -> bool:
 
 
 func camp_swap(carried_uid: int, stored_uid: int) -> bool:
-	if not camp_service_available("storage"):
+	if not camp_service_available("storage") or is_garrisoned(carried_uid) or is_garrisoned(stored_uid):
 		return false
 	if not region_mode or get_region().active_node != "camp" or not get_region().at_camp_scene:
 		return false
@@ -760,7 +775,7 @@ func capture_discard() -> void:
 
 
 func release_storage(uid: int) -> bool:
-	if camp_facility_destroyed("storage"):
+	if camp_facility_destroyed("storage") or is_garrisoned(uid):
 		return false
 	for index in storage.size():
 		if int(storage[index]["uid"]) == uid:
@@ -830,6 +845,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		# 本场尚未战后收容的捕获失效；此前已在名单或仓库的收藏保留。
 		pending_captures.clear()
 		pending_reward_choices = 0
+		legendary_offers.clear()
 		pending_bonus_choices = 0
 	var bonus_points := battle.earned_reward_points(true) if not failure else []
 	var bonus_count := bonus_points.size()
@@ -844,7 +860,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 				gains[id] = 0
 		var shared_bonus := 0
 		if bonus_earned:
-			shared_bonus += bonus_count
+			shared_bonus += bonus_points.filter(func(point): return String(point.get("tier", "")).is_empty()).size()
 		for current in battle.all_nests():
 			if bool(current.get("destroyed_by_player", false)):
 				var nest_bonus := Balance.EXP_PER_NEST
@@ -871,10 +887,23 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		if bool(entry.get("by_player", false)):
 			kills += 1
 	stats["kills"] = int(stats["kills"]) + kills
+	var loot := []
 	if bonus_earned:
-		pending_bonus_choices += bonus_count
 		for point in bonus_points:
 			point["credited"] = true
+			var tier := String(point.get("tier", ""))
+			if tier.is_empty():
+				pending_bonus_choices += 1
+			else:
+				var node_id := String(region_data.get("active_node", ""))
+				var key := "%d:%s:%s:%s" % [floor_index(), node_id, battle.exploration_role, point["id"]]
+				loot.append_array(preload("res://scripts/run/battle_loot.gd").redeem(self, tier, key))
+	outcome["loot"] = loot
+	if battle.exploration_v2 and battle.exploration_role in ["starter", "battle", "elite", "group", "recapture", "boss", "hunt"] and (battle.end_reason in ["victory", "escape"] or (battle.exploration_role == "group" and battle.end_reason == "explored")):
+		for uid in deployed_uids:
+			var member := record_by_uid(int(uid))
+			if not member.is_empty() and battle.unit_by_uid(int(uid)) != null:
+				member.erase("defense_locked_levels")
 	outcome["bonus_choice_earned"] = bonus_earned
 	outcome["bonus_choices_earned"] = bonus_count
 	pending_reward_choices += pending_bonus_choices
@@ -1002,7 +1031,7 @@ func _expected_level(record: Dictionary) -> int:
 		if int(record.get("level", 1)) < level:
 			break
 		if not (record.get("claimed_even_levels", []) as Array).has(level):
-			return level
+			return -1 if record.get("defense_locked_levels", []).has(level) else level
 	return -1
 
 
@@ -1054,6 +1083,8 @@ func pending_monster_levels() -> Array:
 				break
 			if (record.get("claimed_even_levels", []) as Array).has(level):
 				continue
+			if record.get("defense_locked_levels", []).has(level):
+				break
 			pending.append({"uid": int(record["uid"]), "level": level})
 	return pending
 
@@ -1215,7 +1246,7 @@ func to_dict() -> Dictionary:
 		"preview_used_reward_item": preview_used_reward_item,
 		"preview_modifications": preview_modifications.duplicate(true),
 		"preview_deploy_positions": BattleSnapshot.encode(preview_deploy_positions),
-		"pending_reward_choices": pending_reward_choices,
+		"pending_reward_choices": pending_reward_choices, "legendary_offers": legendary_offers.duplicate(true),
 		"reward_choice_index": reward_choice_index,
 		"settlement_pending": settlement_pending,
 		"last_settlement": last_settlement.duplicate(true),
@@ -1306,6 +1337,7 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.preview_modifications = (data.get("preview_modifications", []) as Array).duplicate(true)
 	run.preview_deploy_positions = BattleSnapshot.decode(data.get("preview_deploy_positions", {}))
 	run.pending_reward_choices = maxi(0, int(data.get("pending_reward_choices", 0)))
+	run.legendary_offers = data.get("legendary_offers", []).duplicate(true)
 	run.reward_choice_index = maxi(0, int(data.get("reward_choice_index", 0)))
 	run.settlement_pending = bool(data.get("settlement_pending", false))
 	run.last_settlement = (data.get("last_settlement", {}) as Dictionary).duplicate(true)

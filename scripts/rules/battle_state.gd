@@ -95,6 +95,8 @@ var speech_seen: Dictionary = {}
 var enemy_origins: Dictionary = {} # uid -> original node entry cell; persisted for revisits.
 var enemy_outcomes: Dictionary = {} # Defeat/capture is recorded once per enemy identity.
 var boss_uid: int = -1
+var carrier_turns_left := 0
+var carrier_tier := ""
 var storm_strikes: Array = [] # {cell, due_round}；属于独立环境威胁，不占吟唱名额。
 var storm_last_round: int = 0
 var boss_retreat_used: bool = false
@@ -174,6 +176,8 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	capture_options = capture_options_value.duplicate()
 	reinforcement_pool = pool_value.duplicate()
 	load_map(map_data)
+	carrier_tier = String(map_data.get("carrier_tier", ""))
+	carrier_turns_left = 0 if carrier_tier.is_empty() else 3
 	if node_kind == "boss" or int(cfg.get("boss_index", -1)) >= 0:
 		extra_nests.clear()
 	deploy_cells = map_data.get("deploy_cells", Balance.DEPLOY_CELLS.duplicate())
@@ -529,16 +533,16 @@ func reward_owner() -> CombatUnit:
 	return unit_by_uid(int(reward.get("owner_uid", -1)))
 
 
-func add_reward_point(cell: Vector2i, source_id: String) -> void:
+func add_reward_point(cell: Vector2i, source_id: String, tier: String = "") -> void:
 	if all_rewards().any(func(point): return point.get("id", "") == source_id):
 		return
-	var point := {"id": source_id, "state": "map", "cell": cell, "owner_uid": -1, "guard_uid": -1, "credited": false}
+	var point := {"id": source_id, "state": "map", "cell": cell, "owner_uid": -1, "guard_uid": -1, "credited": false, "tier": tier}
 	if reward.get("state", "absent") == "absent":
 		reward.merge(point, true)
 	else:
 		extra_rewards.append(point)
 	_relay_feedback("buff", "奖励点出现", 0, cell, -1)
-	log_event("(%d,%d) 出现奖励点，拾取并保住持有者后可兑换一次三选一。" % [cell.x, cell.y])
+	log_event("(%d,%d) 出现奖励点，拾取并让持有者存活离场可兑换战利品。" % [cell.x, cell.y])
 
 
 func damage_reward_at(_cell: Vector2i) -> void:
@@ -567,7 +571,7 @@ func _finish_reward_guard(side: String = "player") -> void:
 			point["state"] = "carried"
 			point["owner_uid"] = unit.uid
 			emit_feedback(unit, "buff", "获得战场奖励")
-			log_event(("%s 取得奖励点，存活离场可额外三选一。" if side == "player" else "%s 拾取并携带了奖励点，击杀后可夺回。") % unit.display_name)
+			log_event(("%s 取得奖励点，存活离场可兑换战利品。" if side == "player" else "%s 拾取并携带了奖励点，击杀后可夺回。") % unit.display_name)
 		else:
 			point["state"] = "map"
 			point["guard_uid"] = -1
@@ -826,7 +830,7 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 	if unit.side == "enemy" and unit.reward_carrier:
 		unit.reward_carrier = false
 		if not TerrainDB.is_lethal(terrain_kind):
-			add_reward_point(unit.cell, "enemy:%d" % unit.uid)
+			add_reward_point(unit.cell, "enemy:%d" % unit.uid, carrier_tier)
 	if unit.is_trainer:
 		unit.hp = 0
 		log_event("训练家落入致死地形，本局立即失败。")
@@ -835,7 +839,7 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 	unit.hp = 0
 	if unit.summon_owner_uid >= 0:
 		if unit.side == "enemy" and killer_side == "player":
-			award_battle_experience("kill:%d" % unit.uid, 0 if unit.corrupted else 1)
+			award_battle_experience("kill:%d" % unit.uid, 0 if unit.corrupted and not exploration_v2 else 1)
 		log_event("%s 消散（%s）。" % [unit.display_name, cause])
 		return
 	if unit.side == "player":
@@ -858,7 +862,7 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 		enemy_kills.append({
 			"uid": unit.uid,
 			"enemy_level": unit.enemy_level,
-			"xp_reward": 0 if unit.corrupted or (unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND) else Balance.xp_for_enemy_level(unit.enemy_level),
+			"xp_reward": 0 if (unit.corrupted and not exploration_v2) or (unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND) else Balance.xp_for_enemy_level(unit.enemy_level),
 			"corrupted": unit.corrupted,
 			"species_id": unit.species_id,
 			"by_player": killer_side == "player",
@@ -1508,6 +1512,7 @@ func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "", skil
 		log_event("%s耐久剩余%d；被毁后本层永久失去服务。" % [camp_facilities[facility_id]["name"], left])
 		return left == 0
 	if amount > 0 and is_chest_cell(cell):
+		var contents = chests[cell]
 		chests.erase(cell)
 		obstacle_origin.erase(cell)
 		obstacle_expire_round.erase(cell)
@@ -1515,7 +1520,7 @@ func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "", skil
 		natural_essence_cells.erase(cell)
 		obstacle_durability.erase(cell)
 		set_terrain(cell, TerrainDB.PLAIN)
-		add_reward_point(cell, "chest:%d:%d" % [cell.x, cell.y])
+		add_reward_point(cell, "chest:%d:%d" % [cell.x, cell.y], String(contents) if contents is String else "")
 		log_event("宝箱被打开，原格生成奖励点。")
 		return true
 	if not obstacle_durability.has(cell):
@@ -1600,7 +1605,8 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 		if source_side == "player":
 			earn_essence("nest" if target_nest == nest else "nest:%d:%d" % [target_nest["cell"].x, target_nest["cell"].y], 8, target_nest["cell"])
 		target_nest["alive"] = false
-		add_reward_point(target_nest["cell"], "nest:%d:%d" % [target_nest["cell"].x, target_nest["cell"].y])
+		var tier := "common" if exploration_v2 and exploration_role != "hunt" else ""
+		add_reward_point(target_nest["cell"], "nest:%d:%d" % [target_nest["cell"].x, target_nest["cell"].y], tier)
 		target_nest["destroyed_by_player"] = source_side == "player"
 		set_terrain(target_nest["cell"], TerrainDB.PLAIN)
 		log_event("巢穴被摧毁，永久停止生成。")
@@ -1958,14 +1964,15 @@ func _start_round_rules() -> void:
 		unit.vine_reapply_cell = Vector2i(-1, -1)
 		if same_vine and unit.imprison_ticks <= 0:
 			apply_imprison(unit, false, unit.cell)
-	if RelicDB.rank(relic_stacks, "root_rest") > 0:
+	var grass_heal := 2 * RelicDB.rank(relic_stacks, "root_rest") + 3 * RelicDB.rank(relic_stacks, "forest_shelter")
+	if grass_heal > 0:
 		for unit in units:
 			if unit.side == "player" and unit.is_alive() and RelicDB.on_grass_or_vines(self, unit):
-				var restored := mini(unit.max_hp - unit.hp, 2 * RelicDB.rank(relic_stacks, "root_rest"))
+				var restored := mini(unit.max_hp - unit.hp, grass_heal)
 				if restored > 0:
 					unit.hp += restored
 					feedback_heal(unit, restored)
-					log_event("根息：%s 恢复 %d HP。" % [unit.display_name, restored])
+					log_event("草地遗物：%s 恢复 %d HP。" % [unit.display_name, restored])
 	if boss_portal_cell == Vector2i(-1, -1) and Balance.nest_warning_due(round):
 		log_event("巢穴预警：下回合将尝试产怪。")
 	for current in all_nests():
@@ -2132,7 +2139,28 @@ func _end_enemy_phase_rules() -> void:
 	_apply_shallow_wet("player", 2)
 	_finish_reward_guard()
 	_begin_reward_guard("enemy")
+	_tick_reward_carrier()
 	_finish_round()
+
+
+func _tick_reward_carrier() -> void:
+	if carrier_turns_left <= 0:
+		return
+	for unit in alive_units("enemy"):
+		if not unit.reward_carrier:
+			continue
+		carrier_turns_left -= 1
+		if carrier_turns_left == 0:
+			unit.reward_carrier = false
+			for point in all_rewards():
+				if point.get("owner_uid", -1) == unit.uid:
+					point["state"] = "lost"
+			unit.hp = 0
+			enemy_outcomes[unit.uid] = "escaped"
+			log_event("%s 携带奖励撤退。" % unit.display_name)
+			check_battle_end()
+		return
+	carrier_turns_left = 0
 
 
 func _finish_round() -> void:
@@ -2278,7 +2306,7 @@ func _trigger_timed_corruption() -> void:
 
 
 func _settle_storm() -> void:
-	if ended or is_free_exploration() or round < Balance.STORM_START_ROUND or storm_last_round >= round:
+	if ended or is_free_exploration() or (exploration_role != "recapture" and round < Balance.STORM_START_ROUND) or storm_last_round >= round:
 		return
 	storm_last_round = round
 	var due: Array = []
@@ -2301,13 +2329,17 @@ func _settle_storm() -> void:
 	if check_battle_end() or is_free_exploration():
 		storm_strikes.clear()
 		return
+	mark_storm(round + 1)
+
+
+func mark_storm(due_round: int) -> void:
 	var marked := {}
 	for unit in alive_units("player"):
 		if not marked.has(unit.cell):
 			marked[unit.cell] = true
-			storm_strikes.append({"cell": unit.cell, "due_round": round + 1})
+			storm_strikes.append({"cell": unit.cell, "due_round": due_round})
 	if not marked.is_empty():
-		log_event("天雷预告：锁定 %d 格，第 %d 轮双方行动结束后造成落点单位最大生命 50%% 伤害（向上取整，敌我均可命中）。" % [marked.size(), round + 1])
+		log_event("天雷预告：锁定 %d 格，第 %d 轮双方行动结束后造成落点单位最大生命 50%% 伤害（向上取整，敌我均可命中）。" % [marked.size(), due_round])
 
 
 func ice_slide_outcome(unit: CombatUnit) -> Dictionary:
@@ -2758,6 +2790,7 @@ func _signature() -> String:
 	parts.append("xp:%s:%s:%s" % [str(experience_events), str(experience_gains), str(units.map(func(u): return [u.uid, u.combat_xp, u.combat_level]))])
 	parts.append("treasure:%s:%s" % [str(all_rewards()), str(chests)])
 	parts.append("storm:%d:%s" % [storm_last_round, str(storm_strikes)])
+	parts.append("carrier_clock:%d:%s" % [carrier_turns_left, carrier_tier])
 	parts.append("boss_phase:%s" % str(boss_retreat_used))
 	parts.append("pending:%s" % str(pending_casts))
 	parts.append("relics:%s" % str(relic_stacks))
@@ -2826,6 +2859,8 @@ func clone() -> BattleState:
 	copy.speech_seen = speech_seen.duplicate(true)
 	copy.enemy_origins = enemy_origins.duplicate(true)
 	copy.enemy_outcomes = enemy_outcomes.duplicate()
+	copy.carrier_tier = carrier_tier
+	copy.carrier_turns_left = carrier_turns_left
 	copy.storm_strikes = storm_strikes.duplicate(true)
 	copy.storm_last_round = storm_last_round
 	copy.boss_retreat_used = boss_retreat_used
@@ -3018,7 +3053,7 @@ func award_kill_experience(event: Dictionary, include_fainted: bool = false) -> 
 	var killer_uid := int(event.get("killer_uid", -1))
 	if killer_uid >= 0:
 		amounts[killer_uid] = 1 if bool(event.get("is_summon", false)) else normal + (2 if bool(event.get("is_boss", false)) else 0)
-	if int(event.get("xp_reward", normal)) <= 0 or bool(event.get("corrupted", false)):
+	if int(event.get("xp_reward", normal)) <= 0 or (not exploration_v2 and bool(event.get("corrupted", false))):
 		amount = 0
 		amounts.clear()
 	award_battle_experience("kill:%d" % int(event.get("uid", -1)), amount, include_fainted, amounts)
