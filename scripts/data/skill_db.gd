@@ -11,7 +11,7 @@ extends RefCounted
 
 const DEFS := {
 	"fire_burst": {"name": "火球术", "element": "fire", "kind": "ray", "min_range": 2, "max_range": 4, "damage": 18, "ranged": true, "channel": true, "desc": "锁定射程 2–4 的格子，下次本方阶段开始落下；九宫格中心受18点、外围受9点基础伤害。水格产生蒸汽，浅水同时消失。吟唱后下一阶段不能行动，可被死亡、冻结或麻痹打断。"},
-	"fire_amplify": {"name": "火焰增幅", "element": "fire", "kind": "self", "damage": 0, "ranged": false, "desc": "熄灭自身曼哈顿 2 格内的普通燃烧格，每格积累 5 点增幅；下一次实际造成技能直伤时，每个受击单位额外承受全部增幅。"},
+	"fire_amplify": {"name": "火焰增幅", "element": "fire", "kind": "self", "damage": 0, "ranged": false, "desc": "熄灭自身曼哈顿 2 格内的普通火焰和蓝火，每格积累 5 点增幅。被吸收的蓝火变为平地。下一次实际造成技能直伤时，每个受击单位额外承受全部增幅。"},
 	"flame_jet": {"name": "喷射火焰", "element": "fire", "kind": "direction", "damage": 10, "adjacent_bonus": 3, "ranged": true, "desc": "沿选定方向喷射 3 格；障碍截断；命中单位受到 10 点基础伤害并灼烧，紧邻自身的单位额外受到 3 点伤害。水格产生蒸汽，浅水同时消失。"},
 	"rain_call": {"name": "造雨术", "element": "water", "kind": "cell", "range": 4, "damage": 0, "ranged": false, "desc": "指定曼哈顿距离 4 格内中心，向周围 3×3 格铺水。浅草变为草丛，已有草丛和藤蔓保留。"},
 	"surf": {"name": "冲浪", "element": "water", "kind": "self", "damage": 0, "ranged": false, "desc": "施放当回合及后两回合，沿相连浅水或深水移动不消耗普通移动机会，可重复移动并越过敌方单位；不能停在单位或障碍格。"},

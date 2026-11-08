@@ -89,15 +89,24 @@ func _fire_amplify(t: TestContext) -> void:
 	var target := state.unit_by_uid(100)
 	caster.cell = Vector2i(2, 2)
 	caster.skills.append("fire_amplify")
+	var blue_fire := Vector2i(2, 4)
+	var distant_blue_fire := Vector2i(2, 5)
 	state.set_terrain(Vector2i(2, 3), TerrainDB.GRASS)
-	state.set_terrain(Vector2i(3, 2), TerrainDB.GRASS)
 	state.set_terrain(Vector2i(5, 2), TerrainDB.GRASS)
+	state.set_terrain(blue_fire, TerrainDB.BLUE_FIRE)
+	state.set_terrain(distant_blue_fire, TerrainDB.BLUE_FIRE)
 	state.ignite(Vector2i(2, 3))
-	state.ignite(Vector2i(3, 2))
 	state.ignite(Vector2i(5, 2))
-	var result := state.cast_skill(caster, "fire_amplify", {"type": "cell", "cell": caster.cell})
+	var entry := {"type": "cell", "cell": caster.cell}
+	var preview := state.preview_skill(caster, "fire_amplify", entry)
+	t.check(preview["terrain_changes"].has({"cell": blue_fire, "from": TerrainDB.BLUE_FIRE, "to": TerrainDB.PLAIN}), "技能预览显示蓝火将变为平地")
+	t.eq(state.terrain_at(blue_fire), TerrainDB.BLUE_FIRE, "技能预览不消耗真实蓝火")
+	var result := state.cast_skill(caster, "fire_amplify", entry)
 	t.check(bool(result.get("ok", false)), "火焰增幅可施放")
-	t.eq(caster.fire_amp_stacks, Balance.SKILL_DAMAGE_UPGRADE * 2, "只吸收曼哈顿两格内的两处火焰")
+	t.eq(caster.fire_amp_stacks, Balance.SKILL_DAMAGE_UPGRADE * 2, "普通火焰和蓝火各提供一份增幅")
+	t.eq(state.terrain_at(blue_fire), TerrainDB.PLAIN, "曼哈顿距离两格的蓝火被吸收后变为平地")
+	t.check(not state.is_burning_ground(blue_fire), "蓝火被吸收后不再燃烧")
+	t.eq(state.terrain_at(distant_blue_fire), TerrainDB.BLUE_FIRE, "范围外蓝火保留")
 	t.check(state.burning_cells.has(Vector2i(5, 2)), "范围外火焰保持燃烧")
 	t.check(not state.burning_cells.has(Vector2i(2, 3)), "被吸收的火焰立即熄灭")
 	caster.skill_used = false
@@ -115,10 +124,12 @@ func _fire_amplify(t: TestContext) -> void:
 	strong_caster.cell = Vector2i(2, 2)
 	strong_caster.skills.append("fire_amplify")
 	strong_caster.upgrades["fire_amplify_power"] = 8
-	stronger.set_terrain(Vector2i(2, 3), TerrainDB.GRASS)
-	stronger.ignite(Vector2i(2, 3))
+	stronger.set_terrain(strong_caster.cell, TerrainDB.BLUE_FIRE)
 	stronger.cast_skill(strong_caster, "fire_amplify", {"type": "cell", "cell": strong_caster.cell})
-	t.eq(strong_caster.fire_amp_stacks, 8, "强化火焰增幅每格蓄积八点")
+	t.eq(strong_caster.fire_amp_stacks, 8, "强化后脚下蓝火也提供八点增幅")
+	strong_caster.skill_used = false
+	stronger.cast_skill(strong_caster, "fire_amplify", {"type": "cell", "cell": strong_caster.cell})
+	t.eq(strong_caster.fire_amp_stacks, 8, "已吸收的蓝火不能重复提供增幅")
 
 
 func _terrain_travel(t: TestContext) -> void:

@@ -958,7 +958,7 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	elif skill_id == "leech_seed":
 		parts.append("寄生 %d/轮" % (Balance.PARASITE_DAMAGE + int(unit.upgrades.get("leech_seed_tick_bonus", 0))))
 	elif skill_id == "fire_amplify":
-		parts.append("吸火 ≤2 格 · 每格 +%d" % int(unit.upgrades.get("fire_amplify_power", Balance.SKILL_DAMAGE_UPGRADE)))
+		parts.append("吸收火焰和蓝火 ≤2 格 · 每格 +%d" % int(unit.upgrades.get("fire_amplify_power", Balance.SKILL_DAMAGE_UPGRADE)))
 	elif skill_id == "ice_glide" or skill_id == "surf":
 		parts.append("地形免费移动 %d 回合" % (3 + int(unit.upgrades.get("ice_glide_duration", 0)) if skill_id == "ice_glide" else 3 + int(unit.upgrades.get("surf_duration", 0))))
 	elif skill_id == "mirror_water_moon":

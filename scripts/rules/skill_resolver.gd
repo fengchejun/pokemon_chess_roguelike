@@ -1308,9 +1308,14 @@ static func _apply_leech_seed(state: BattleState, caster: CombatUnit, entry: Dic
 
 static func _apply_fire_amplify(state: BattleState, caster: CombatUnit, summary: Dictionary) -> void:
 	var absorbed := 0
-	for cell in state.burning_cells.keys().duplicate():
-		if GridSpec.manhattan(caster.cell, cell) > 2:
+	for cell in GridSpec.all_cells():
+		if GridSpec.manhattan(caster.cell, cell) > 2 or not state.is_burning_ground(cell):
 			continue
+		if state.terrain_at(cell) == TerrainDB.BLUE_FIRE:
+			state.set_terrain(cell, TerrainDB.PLAIN)
+			if state.terrain_at(cell) != TerrainDB.PLAIN:
+				continue
+			summary["terrain_changes"].append({"cell": cell, "from": TerrainDB.BLUE_FIRE, "to": TerrainDB.PLAIN})
 		state.burning_cells.erase(cell)
 		state.burning_origin.erase(cell)
 		state.burning_forced.erase(cell)
