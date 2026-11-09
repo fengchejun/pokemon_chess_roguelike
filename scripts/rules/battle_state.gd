@@ -171,7 +171,6 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	for unit in player_units:
 		if slot >= deploy_cells.size():
 			break
-		unit.battle_skill_uses.clear()
 		unit.cell = map_data.get("deploy_positions", {}).get(unit.uid, deploy_cells[slot])
 		if is_nest_cell(unit.cell):
 			for fallback in deploy_cells:

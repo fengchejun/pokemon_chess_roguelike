@@ -2,13 +2,26 @@ class_name Merchant
 extends RefCounted
 
 const RARITIES := {"common": ["普通", 10], "rare": ["稀有", 15], "precious": ["珍稀", 25]}
-const ITEMS := {"potion": ["治疗药", 5, "恢复三格内一个存活己方单位15 HP，不能复活。"], "capture_aid": ["捕获辅助", 6, "本次探索下一次捕获概率增加20个百分点。"]}
+const PP_TONIC_RESTORE := 5
+const ITEMS := {
+	"potion": ["治疗药", 5, "恢复三格内一个存活己方单位15 HP，不能复活。"],
+	"pp_tonic": ["技能药剂", 7, "为三格内一个存活己方单位的每项已装备技能恢复5 PP，不能超过上限。"],
+	"capture_aid": ["捕获辅助", 6, "本次探索下一次捕获概率增加20个百分点。"],
+}
 
-static func item_target_valid(state: BattleState, target: CombatUnit) -> bool:
+static func item_requires_unit_target(id: String) -> bool:
+	return id in ["potion", "pp_tonic"]
+
+
+static func item_target_valid(state: BattleState, target: CombatUnit, id: String = "potion") -> bool:
 	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
 	if state.is_free_exploration():
 		return false
-	if target == null or not target.is_alive() or target.side != "player" or target.hp >= target.max_hp or GridSpec.manhattan(trainer.cell, target.cell) > 3:
+	if not ITEMS.has(id) or target == null or not target.is_alive() or target.side != "player" or GridSpec.manhattan(trainer.cell, target.cell) > 3:
+		return false
+	if id == "potion" and target.hp >= target.max_hp:
+		return false
+	if id == "pp_tonic" and not target.has_pp_deficit():
 		return false
 	var delta := target.cell - trainer.cell
 	var steps := maxi(absi(delta.x), absi(delta.y))
@@ -24,11 +37,17 @@ static func use_item(run: RunState, state: BattleState, id: String, target_uid: 
 		return {"ok": false, "reason": "道具不足或训练师本回合无法行动。"}
 	if id == "potion":
 		var target := state.unit_by_uid(target_uid)
-		if not item_target_valid(state, target):
+		if not item_target_valid(state, target, id):
 			return {"ok": false, "reason": "请选择三格内视线可达、受伤且存活的己方单位。"}
 		var healed := mini(target.max_hp - target.hp, 15)
 		target.hp += healed
 		state.feedback_heal(target, healed)
+	elif id == "pp_tonic":
+		var target := state.unit_by_uid(target_uid)
+		if not item_target_valid(state, target, id):
+			return {"ok": false, "reason": "请选择三格内视线可达、仍有 PP 缺失的己方单位。"}
+		var restored := target.restore_pp(PP_TONIC_RESTORE)
+		state.emit_feedback(target, "buff", "PP +%d" % restored, restored)
 	else:
 		if state.capture_aid:
 			return {"ok": false, "reason": "捕获辅助已经生效。"}
@@ -88,9 +107,12 @@ static func ensure_region(region: RegionState, seed_value: int) -> void:
 	rng.seed = hash("merchant:%d:%d" % [seed_value, region.floor_index])
 	var id := "event_%d" % rng.randi_range(1, 2)
 	if region.nodes[id].has("merchant"):
+		var existing_stock: Dictionary = region.nodes[id]["merchant"].get("stock", {})
+		if not existing_stock.has("pp_tonic"):
+			existing_stock["pp_tonic"] = 1
 		return
 	var pool: Array = RelicDB.ids()
-	var stock := {"potion": 2, "capture_aid": 2}
+	var stock := {"potion": 2, "pp_tonic": 1, "capture_aid": 2}
 	for i in 3:
 		var relic: String = pool.pop_at(rng.randi_range(0, pool.size() - 1))
 		stock["relic:" + relic] = 1

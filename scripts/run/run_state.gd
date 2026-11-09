@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 18
+const SAVE_VERSION := 19
 var essence: int = 0
 var trainer_items: Dictionary = {}
 var sold_monster_uids: Array = []
@@ -110,6 +110,21 @@ static func migrate_region_snapshots(region: Dictionary) -> void:
 	for node in (region.get("nodes", {}) as Dictionary).values():
 		if not (node.get("snapshot", {}) as Dictionary).is_empty():
 			node["snapshot"] = migrate_snapshot(node["snapshot"])
+
+
+static func migrate_legacy_pp_snapshot(snapshot: Dictionary) -> Dictionary:
+	## v18 的 PP 是单场 1～5 点；v19 改为本局 5～25 点，按同一比例迁移已消耗次数。
+	if snapshot.is_empty():
+		return {}
+	var state := BattleSnapshot.load_state(snapshot)
+	if state == null:
+		return snapshot.duplicate(true)
+	for unit in state.units:
+		var scaled := {}
+		for skill_id in unit.battle_skill_uses:
+			scaled[String(skill_id)] = maxi(0, int(unit.battle_skill_uses[skill_id])) * 5
+		unit.battle_skill_uses = scaled
+	return BattleSnapshot.save_state(state)
 
 var seed: int = 0
 const Region = preload("res://scripts/run/region_state.gd")
@@ -231,6 +246,7 @@ func _make_record(species_id: String, hp: int = -1) -> Dictionary:
 		"claimed_even_levels": [],
 		"level_choices": {},
 		"trait_upgrade_claimed": false,
+		"skill_pp_uses": {},
 	}
 	next_uid += 1
 	return record
@@ -251,6 +267,84 @@ func owned_record_by_uid(uid: int) -> Dictionary:
 		if int(stored["uid"]) == uid:
 			return stored
 	return {}
+
+
+func record_pp_used(record: Dictionary, skill_id: String) -> int:
+	var saved = record.get("skill_pp_uses", {})
+	var uses: Dictionary = saved if saved is Dictionary else {}
+	return clampi(int(uses.get(skill_id, 0)), 0, SkillDB.pp_of(skill_id))
+
+
+func record_pp_remaining(record: Dictionary, skill_id: String) -> int:
+	return maxi(0, SkillDB.pp_of(skill_id) - record_pp_used(record, skill_id))
+
+
+func record_pp_totals(record: Dictionary) -> Dictionary:
+	var current := 0
+	var maximum := 0
+	for skill_id in record.get("equipped_skills", []):
+		var id := String(skill_id)
+		current += record_pp_remaining(record, id)
+		maximum += SkillDB.pp_of(id)
+	return {"current": current, "max": maximum}
+
+
+func record_has_pp_deficit(record: Dictionary) -> bool:
+	var skills: Array = record.get("known_skills", record.get("equipped_skills", []))
+	for skill_id in skills:
+		var id := String(skill_id)
+		if SkillDB.pp_of(id) > 0 and record_pp_remaining(record, id) < SkillDB.pp_of(id):
+			return true
+	return false
+
+
+func restore_record_pp(record: Dictionary, amount: int = -1) -> int:
+	var saved = record.get("skill_pp_uses", {})
+	var uses: Dictionary = (saved if saved is Dictionary else {}).duplicate()
+	var skills: Array = record.get("known_skills", record.get("equipped_skills", []))
+	var restored := 0
+	for skill_id in skills:
+		var id := String(skill_id)
+		var maximum := SkillDB.pp_of(id)
+		if maximum <= 0:
+			continue
+		var before := clampi(int(uses.get(id, 0)), 0, maximum)
+		var after := 0 if amount < 0 else maxi(0, before - amount)
+		if after > 0:
+			uses[id] = after
+		else:
+			uses.erase(id)
+		restored += before - after
+	record["skill_pp_uses"] = uses
+	return restored
+
+
+func _normalize_record_pp_uses(record: Dictionary) -> void:
+	var saved = record.get("skill_pp_uses", {})
+	var source: Dictionary = saved if saved is Dictionary else {}
+	var uses := {}
+	for skill_id in record.get("known_skills", []):
+		var id := String(skill_id)
+		var maximum := SkillDB.pp_of(id)
+		if maximum <= 0:
+			continue
+		var used := clampi(int(source.get(id, 0)), 0, maximum)
+		if used > 0:
+			uses[id] = used
+	record["skill_pp_uses"] = uses
+
+
+func _sync_unit_pp(unit: CombatUnit, record: Dictionary) -> void:
+	var saved = record.get("skill_pp_uses", {})
+	var uses: Dictionary = (saved if saved is Dictionary else {}).duplicate()
+	for skill_id in unit.skills:
+		var id := String(skill_id)
+		var used := unit.pp_used(id)
+		if used > 0:
+			uses[id] = used
+		else:
+			uses.erase(id)
+	record["skill_pp_uses"] = uses
 
 
 func monster_max_hp(record: Dictionary) -> int:
@@ -372,7 +466,7 @@ func needs_camp_rest() -> bool:
 	if trainer_hp < trainer_max_hp():
 		return true
 	for record in carried:
-		if int(record["hp"]) < monster_max_hp(record):
+		if int(record["hp"]) < monster_max_hp(record) or record_has_pp_deficit(record):
 			return true
 	return false
 
@@ -418,6 +512,9 @@ func rest_with_food(selection: Dictionary) -> Dictionary:
 		var healed := ceili(monster_max_hp(record) / 2.0) if before <= 0 else monster_max_hp(record)
 		results.append("%s HP %d → %d" % [SpeciesDB.name_of(String(record["species_id"])), before, healed])
 		record["hp"] = healed
+		var pp_restored := restore_record_pp(record)
+		if pp_restored > 0:
+			results.append("%s PP +%d" % [SpeciesDB.name_of(String(record["species_id"])), pp_restored])
 	return {"ok": true, "spent": {kind: cost}, "results": results}
 
 
@@ -580,6 +677,7 @@ func build_deploy_units(deploy_uids: Array) -> Array:
 		var unit := CombatUnit.make(String(record["species_id"]), "player", int(record["uid"]))
 		unit.upgrades = (record.get("upgrades", {}) as Dictionary).duplicate()
 		unit.skills = (record.get("equipped_skills", SpeciesDB.skills_of(String(record["species_id"]))) as Array).duplicate()
+		unit.battle_skill_uses = (record.get("skill_pp_uses", {}) as Dictionary).duplicate()
 		unit.combat_xp = int(record.get("xp", 0))
 		unit.max_hp = monster_max_hp(record)
 		unit.combat_level = clampi(int(record.get("level", 1)), 1, MonsterProgression.MAX_LEVEL)
@@ -626,6 +724,7 @@ func sync_from_battle(battle: BattleState) -> void:
 			continue
 		record["xp"] = unit.combat_xp
 		record["level"] = unit.combat_level
+		_sync_unit_pp(unit, record)
 		if unit.is_alive():
 			record["hp"] = unit.hp
 		else:
@@ -1312,6 +1411,7 @@ static func from_dict(data: Dictionary) -> RunState:
 				MonsterProgression.migrate_mainline_xp(record, mainline_curve)
 			MonsterProgression.normalize_record(record, run.level_cap_for_floor())
 			run._normalize_record_growth(record, legacy_upgrade_style)
+			run._normalize_record_pp_uses(record)
 			if mainline_curve or version < 12:
 				var claimed_count := mini(4, (record.get("claimed_even_levels", []) as Array).size())
 				record["claimed_even_levels"] = MonsterProgression.LEARN_LEVELS.slice(0, claimed_count)
@@ -1333,6 +1433,12 @@ static func from_dict(data: Dictionary) -> RunState:
 		for region in [run.region_data, run.pending_region_entry_backup]:
 			for node in (region.get("nodes", {}) as Dictionary).values():
 				node["snapshot"] = run.migrate_progression_snapshot(node.get("snapshot", {}), false, mainline_curve, version)
+	if version < 19:
+		run.battle_snapshot = migrate_legacy_pp_snapshot(run.battle_snapshot)
+		for region in [run.region_data, run.pending_region_entry_backup]:
+			for node in (region.get("nodes", {}) as Dictionary).values():
+				if not (node.get("snapshot", {}) as Dictionary).is_empty():
+					node["snapshot"] = migrate_legacy_pp_snapshot(node["snapshot"])
 	return run
 
 

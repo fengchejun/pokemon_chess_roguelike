@@ -265,7 +265,7 @@ func max_pp(skill_id: String) -> int:
 
 
 func pp_used(skill_id: String) -> int:
-	return maxi(0, int(battle_skill_uses.get(skill_id, 0)))
+	return clampi(int(battle_skill_uses.get(skill_id, 0)), 0, max_pp(skill_id))
 
 
 func pp_remaining(skill_id: String) -> int:
@@ -274,6 +274,31 @@ func pp_remaining(skill_id: String) -> int:
 
 func can_use_in_battle(skill_id: String) -> bool:
 	return pp_remaining(skill_id) > 0
+
+
+func has_pp_deficit() -> bool:
+	for skill_id in skills:
+		var id := String(skill_id)
+		if pp_remaining(id) < max_pp(id):
+			return true
+	return false
+
+
+func restore_pp(amount: int) -> int:
+	## amount < 0 表示回满；否则每项已装备技能最多恢复 amount 点。
+	var restored := 0
+	for skill_id in skills:
+		var id := String(skill_id)
+		var before := pp_remaining(id)
+		if before >= max_pp(id) or max_pp(id) <= 0:
+			continue
+		var spend := pp_used(id)
+		var after_spend := 0 if amount < 0 else maxi(0, spend - amount)
+		if after_spend == spend:
+			continue
+		battle_skill_uses[id] = after_spend
+		restored += pp_remaining(id) - before
+	return restored
 
 
 func consume_skill_pp(skill_id: String) -> bool:

@@ -54,7 +54,13 @@ func _ready() -> void:
 	var index := 0
 	for record in app.run.carried:
 		var uid := int(record["uid"])
-		var button := UIKit.button("%s\nHP %d/%d" % [SpeciesDB.name_of(String(record["species_id"])), int(record["hp"]), app.run.monster_max_hp(record)], 16)
+		var button := UIKit.button("%s\nHP %d/%d · PP %d/%d" % [
+			SpeciesDB.name_of(String(record["species_id"])),
+			int(record["hp"]),
+			app.run.monster_max_hp(record),
+			int(app.run.record_pp_totals(record)["current"]),
+			int(app.run.record_pp_totals(record)["max"]),
+		], 16)
 		button.name = "CampMonster_%d" % uid
 		button.custom_minimum_size = Vector2(170, 66)
 		button.pressed.connect(func() -> void: _show_monster(uid))
@@ -85,7 +91,14 @@ func _open_storage() -> void:
 	scroll.add_child(column)
 	column.add_child(UIKit.wrapped("选择营地成员与背包成员交换。仓库成员会随本局跨层保留，但本局结束时默认被抛弃；想稳定保留下局使用，请在结束对局前换入携带名单。最终结局页仅提供一次勾选例外保留。", 15))
 	for stored in app.run.storage:
-		column.add_child(UIKit.label("营地：%s HP %d/%d" % [SpeciesDB.name_of(String(stored["species_id"])), int(stored["hp"]), app.run.monster_max_hp(stored)], 16, UIKit.ACCENT))
+		var stored_pp: Dictionary = app.run.record_pp_totals(stored)
+		column.add_child(UIKit.label("营地：%s HP %d/%d · PP %d/%d" % [
+			SpeciesDB.name_of(String(stored["species_id"])),
+			int(stored["hp"]),
+			app.run.monster_max_hp(stored),
+			int(stored_pp["current"]),
+			int(stored_pp["max"]),
+		], 16, UIKit.ACCENT))
 		for member in app.run.carried:
 			var stored_uid := int(stored["uid"])
 			var member_uid := int(member["uid"])
@@ -166,7 +179,14 @@ func _open_fire() -> void:
 		for record in app.run.carried:
 			var button := find_child("CampMonster_%d" % int(record["uid"]), true, false)
 			if button != null:
-				button.text = "%s\nHP %d/%d" % [SpeciesDB.name_of(String(record["species_id"])), int(record["hp"]), app.run.monster_max_hp(record)]
+				var pp: Dictionary = app.run.record_pp_totals(record)
+				button.text = "%s\nHP %d/%d · PP %d/%d" % [
+					SpeciesDB.name_of(String(record["species_id"])),
+					int(record["hp"]),
+					app.run.monster_max_hp(record),
+					int(pp["current"]),
+					int(pp["max"]),
+				]
 	)
 	content.add_child(rest)
 	var close := UIKit.small_button("取消")
@@ -179,7 +199,17 @@ func _show_monster(uid: int) -> void:
 	if record.is_empty():
 		return
 	var monster_name := SpeciesDB.name_of(String(record["species_id"]))
-	result_label.text = "%s · Lv.%d · HP %d/%d。可选择互动。" % [monster_name, int(record.get("level", 1)), int(record["hp"]), app.run.monster_max_hp(record)]
+	var pp_lines: Array = []
+	for skill_id in record.get("equipped_skills", []):
+		var id := String(skill_id)
+		pp_lines.append("%s %d/%d" % [SkillDB.name_of(id), app.run.record_pp_remaining(record, id), SkillDB.pp_of(id)])
+	result_label.text = "%s · Lv.%d · HP %d/%d\nPP：%s。可选择互动。" % [
+		monster_name,
+		int(record.get("level", 1)),
+		int(record["hp"]),
+		app.run.monster_max_hp(record),
+		" · ".join(pp_lines),
+	]
 	var menu := PopupMenu.new()
 	menu.name = "CampInteraction_%d" % uid
 	menu.add_item("抚摸", 0)

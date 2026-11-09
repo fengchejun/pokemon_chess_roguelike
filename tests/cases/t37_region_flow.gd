@@ -28,6 +28,9 @@ func run(t: TestContext) -> void:
 	t.eq(app.run.carried[0]["affinity"], affinity_before, "互动不增加亲密度")
 	app.run.trainer_hp = 1
 	app.run.carried[0]["hp"] = 0
+	var camp_skill := String(app.run.carried[0]["equipped_skills"][0])
+	var camp_pp_spent := maxi(1, int(SkillDB.pp_of(camp_skill) / 2))
+	app.run.carried[0]["skill_pp_uses"] = {camp_skill: camp_pp_spent}
 	var fire: Button = app.current_screen.find_child("Campfire", true, false)
 	t.check(fire != null, "独立营地有可点击篝火")
 	fire.pressed.emit()
@@ -36,6 +39,7 @@ func run(t: TestContext) -> void:
 	rest.pressed.emit()
 	t.eq(app.run.food_inventory["basic"], 0, "篝火按类型扣除食物")
 	t.eq(app.run.carried[0]["hp"], ceili(app.run.monster_max_hp(app.run.carried[0]) / 2.0), "篝火将濒死成员恢复至半血")
+	t.eq(app.run.record_pp_remaining(app.run.carried[0], camp_skill), SkillDB.pp_of(camp_skill), "篝火将携带队伍技能 PP 回满")
 	app.run.trainer_hp = 1
 	app.show_camp()
 	app.current_screen.find_child("Campfire", true, false).pressed.emit()
@@ -104,6 +108,13 @@ func run(t: TestContext) -> void:
 	camp_run.region_mode = true
 	camp_run.choose_floor_theme(String(camp_run.offered_floor_themes[0]))
 	camp_run.enter_region_node("camp")
+	var pp_record: Dictionary = camp_run.carried[0]
+	var pp_skill := String(pp_record["equipped_skills"][0])
+	pp_record["skill_pp_uses"] = {pp_skill: maxi(1, SkillDB.pp_of(pp_skill) - 1)}
+	t.check(camp_run.needs_camp_rest(), "仅 PP 缺失也会被视为需要营地休息")
+	var pp_rest := camp_run.rest_with_food({"basic": 3})
+	t.check(bool(pp_rest.get("ok", false)), "生命全满时仍可消耗食物恢复 PP")
+	t.eq(camp_run.record_pp_remaining(pp_record, pp_skill), SkillDB.pp_of(pp_skill), "营地休息只补 PP 时也会回满")
 	var starting_count := camp_run.carried.size()
 	for i in range(Balance.CARRIED_LIMIT + 20):
 		camp_run._add_capture("fire_starter", 10)

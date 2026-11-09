@@ -742,18 +742,19 @@ func _rebuild_skill_buttons() -> void:
 			var button := UIKit.small_button("%s ×%d" % [Merchant.ITEMS[id][0], int(app.run.trainer_items.get(id, 0))])
 			button.tooltip_text = Merchant.ITEMS[id][2]
 			button.disabled = (id == "potion" and state.is_free_exploration()) or int(app.run.trainer_items.get(id, 0)) <= 0 or unit.capture_used or not unit.can_act_skill() or (id == "capture_aid" and state.capture_aid)
-			if id == "potion" and state.alive_units("player").filter(func(target): return Merchant.item_target_valid(state, target)).is_empty():
+			var needs_target := Merchant.item_requires_unit_target(id)
+			var valid_targets: Array = state.alive_units("player").filter(func(target): return Merchant.item_target_valid(state, target, id)) if needs_target else []
+			if needs_target and valid_targets.is_empty():
 				button.disabled = true
-				button.tooltip_text += "\n当前没有可治疗目标。"
+				button.tooltip_text += "\n当前没有合法目标。"
 			button.pressed.connect(func() -> void:
-				if id == "potion":
+				if needs_target:
 					item_aim = id
 					board.clear_overlays()
-					for target in state.alive_units("player"):
-						if Merchant.item_target_valid(state, target):
-							board.attack_cells.append(target.cell)
+					for target in valid_targets:
+						board.attack_cells.append(target.cell)
 					_position_action_panel()
-					hint_label.text = "治疗药：点击三格内受伤己方单位；右键或Esc取消。"
+					hint_label.text = "治疗药：点击三格内受伤己方单位；右键或Esc取消。" if id == "potion" else "技能药剂：点击三格内仍有PP缺失的己方单位；右键或Esc取消。"
 					board.queue_redraw()
 				else:
 					_use_trainer_item(id)
