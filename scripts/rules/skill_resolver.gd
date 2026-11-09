@@ -2030,8 +2030,14 @@ static func _apply_line(state: BattleState, caster: CombatUnit, skill_id: String
 		if skill_id == "freeze_ray":
 			if target.side == caster.side:
 				break
-			state.apply_freeze(target)
-			summary["text"] = "%s 被冰冻。" % target.display_name
+			var freeze_hit := _hit_entry(state, caster, skill_id, target, SkillDB.damage_of(skill_id))
+			summary["hits"].append(freeze_hit)
+			if target.is_alive():
+				state.apply_freeze(target)
+				freeze_hit["statuses"].append("冰冻")
+				summary["text"] = "急冻光线命中 %s：%d 伤害，附加冰冻。" % [target.display_name, int(freeze_hit["damage"])]
+			else:
+				summary["text"] = "急冻光线命中 %s：%d 伤害，目标倒下。" % [target.display_name, int(freeze_hit["damage"])]
 			break
 		var base_damage := SkillDB.damage_of("flame_jet") + (int(SkillDB.get_def("flame_jet").get("adjacent_bonus", 5)) if skill_id == "flame_jet" and step == 1 else 0)
 		var hit := _hit_entry(state, caster, skill_id, target, base_damage)

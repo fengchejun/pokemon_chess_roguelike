@@ -14,6 +14,7 @@ func run(t: TestContext) -> void:
 		"lightning": 13,
 		"tsunami": 15,
 		"windfire_breath": 10,
+		"freeze_ray": 6,
 	}
 	for skill_id in expected:
 		t.eq(SkillDB.damage_of(String(skill_id)), int(expected[skill_id]), "%s 使用新平衡数值" % skill_id)

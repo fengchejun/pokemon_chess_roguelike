@@ -4,6 +4,7 @@ extends RefCounted
 func run(t: TestContext) -> void:
 	t.begin("冰冻：一回合无法行动且受伤正常结算")
 	_blocks_all_actions(t)
+	_freeze_ray_damage_and_freeze(t)
 	_damage_breaks_without_immunity(t)
 	_skill_damage_breaks_without_immunity(t)
 	_ui_skill_damage_breaks_without_immunity(t)
@@ -20,6 +21,20 @@ func _blocks_all_actions(t: TestContext) -> void:
 	t.check(not state.can_move_unit_now(unit), "冰冻单位不能移动")
 	t.check(not unit.can_act_skill(), "冰冻单位不能施法")
 	t.eq(unit.effective_move(), 0, "冰冻单位移动力显示为零")
+
+
+func _freeze_ray_damage_and_freeze(t: TestContext) -> void:
+	var state := TestScenario.make_state(["ice_starter"], [["rock_wild1", Vector2i(4, 3)]])
+	var caster := state.unit_by_uid(1)
+	var target := state.unit_by_uid(100)
+	caster.cell = Vector2i(0, 3)
+	target.element = ""
+	var hp_before := target.hp
+	var result := state.cast_skill(caster, "freeze_ray", {"type": "cell", "cell": target.cell})
+	t.check(bool(result.get("ok", false)), "急冻光线可命中首个敌人")
+	t.eq(target.hp, hp_before - 6, "急冻光线造成六点基础直伤")
+	t.check(target.frozen, "急冻光线的自身伤害结算后仍施加冰冻")
+	t.check(result.get("text", "").contains("6 伤害") and result.get("text", "").contains("附加冰冻"), "结算文本同时说明伤害与冰冻")
 
 
 func _damage_breaks_without_immunity(t: TestContext) -> void:

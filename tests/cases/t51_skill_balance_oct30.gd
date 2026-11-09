@@ -21,6 +21,7 @@ func _ranges(t: TestContext) -> void:
 		state.unit_by_uid(100).cell = Vector2i(7, 7)
 		t.eq(SkillResolver.targets(state, caster, "volt_replace").has({"type": "cell", "cell": dest}), distance <= 3, "空格换位距离 %d" % distance)
 	t.eq(SkillDB.get_def("freeze_ray")["max_range"], 6, "急冻基础六格")
+	t.eq(SkillDB.damage_of("freeze_ray"), 6, "急冻光线基础六伤")
 	t.eq(SkillDB.get_def("water_flow")["max_range"], 3, "水炮基础三格")
 	t.eq(SkillDB.name_of("double_cast"), "电力引擎", "电力引擎保留内部编号")
 

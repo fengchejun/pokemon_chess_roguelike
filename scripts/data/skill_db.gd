@@ -35,7 +35,7 @@ const DEFS := {
 	"antidote": {"name": "解药", "element": "grass", "kind": "unit", "range": 2, "damage": 0, "ranged": true, "desc": "解除曼哈顿 2 格内一名友军或自己的所有可解除异常状态，冰冻除外，并回复 3 HP。"},
 	"frozen_ground": {"name": "冰封大地", "element": "water", "kind": "direction", "damage": 0, "ranged": false, "desc": "前方 3×3 地形生成冰面，可覆盖深水和深坑。"},
 	"ice_glide": {"name": "溜冰", "element": "water", "kind": "self", "damage": 0, "ranged": false, "desc": "施放当回合及后两回合，沿相连冰面移动不消耗普通移动机会，可重复移动并越过敌方单位；不能停在单位或障碍格。"},
-	"freeze_ray": {"name": "急冻光线", "element": "water", "kind": "ray", "min_range": 1, "max_range": 6, "damage": 0, "ranged": true, "desc": "射程 6；树木与岩障截断射线。第一个敌人被冰冻一回合，期间无法行动；受到伤害时立即解冻并正常受伤。"},
+	"freeze_ray": {"name": "急冻光线", "element": "water", "kind": "ray", "min_range": 1, "max_range": 6, "damage": 6, "ranged": true, "desc": "射程 6；树木与岩障截断射线。第一个敌人受到 6 点基础直伤并被冰冻一回合，期间无法行动；再次受到实际伤害时立即解冻并正常受伤。"},
 	"ice_shard": {"name": "冰锥", "element": "water", "kind": "unit", "range": 3, "damage": 11, "ranged": true, "desc": "对 3 格内一个敌人造成 11 点基础直伤。"},
 	"water_magic_burst": {"name": "水魔爆", "element": "water", "kind": "cell", "range": 4, "damage": 8, "ranged": true, "desc": "选择曼哈顿 4 格内的落点，可越过障碍；五格十字内敌人各受 8 点基础直伤，中心敌人额外受 3 点，外侧四格敌人沿远离中心方向被推 1 格。"},
 	"ice_breath": {"name": "冰之息", "element": "water", "kind": "direction", "width": 3, "depth": 2, "damage": 8, "ranged": true, "freeze_combo": true, "desc": "选择正交方向，覆盖前方 3 格宽、2 格深的 3×2 区域；区域内所有敌人各受 8 点基础直伤。若目标已有浸湿，则清除浸湿并施加一回合冰冻。"},
