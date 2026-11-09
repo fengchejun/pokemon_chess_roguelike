@@ -18,9 +18,44 @@ func _definitions(t: TestContext) -> void:
 		var id := String(skill_id)
 		var def := SkillDB.get_def(id)
 		t.check(def.has("pp"), "%s配置 PP" % id)
-		t.check(int(def.get("pp", 0)) > 0, "%s的 PP 上限为正数" % id)
+		t.check(int(def.get("pp", 0)) >= 1 and int(def.get("pp", 0)) <= 5, "%s的 PP 上限位于 1～5 档" % id)
 		t.eq(SkillDB.pp_of(id), int(def.get("pp", 0)), "%s的 PP 查询与定义一致" % id)
+	_assert_pp_group(t, ["burn_out", "mirror_water_moon"], 1, "特殊或高危技能")
+	_assert_pp_group(t, [
+		"double_cast", "earth_shake", "electric_resonance", "fire_burst", "flame_rush",
+		"ice_breath", "ice_glide", "imprint", "lightning", "mountain_form", "rock_blast",
+		"rock_slide", "skyfire", "surf", "tree_man", "tsunami", "water_magic_burst",
+		"windfire_breath",
+	], 2, "强范围、跨回合或多目标技能")
+	_assert_pp_group(t, [
+		"antidote", "electric_spark", "fire_amplify", "first_aid", "freeze_ray",
+		"frozen_ground", "glare", "guard_rock", "herbal_heal", "leech_seed", "magnet_pull",
+		"mountain_chain", "rain_call", "rain_dance", "rock_create", "rooted_grass",
+		"seed_sow", "tailwind", "volt_replace", "volt_step", "water_drop_stone", "wild_vines",
+	], 3, "战术控制、地形或条件收益技能")
+	_assert_pp_group(t, [
+		"combustion", "drain", "electromagnetic_laser", "fire_seed", "flame_charge", "furnace_fist",
+	], 4, "进阶单体技能")
+	_assert_pp_group(t, [
+		"discharge", "electric_arc", "flame_jet", "ice_shard", "leaf_wind", "push",
+		"rock_break", "rock_push", "rock_smash", "tree_wrath", "water_flow",
+	], 5, "稳定基础技能")
+	_assert_same_pp(t, ["electric_arc", "discharge"], "同效果放电")
+	_assert_same_pp(t, ["rain_call", "rain_dance"], "同效果造雨术")
+	_assert_same_pp(t, ["rock_break", "rock_smash"], "同效果碎岩")
+	_assert_same_pp(t, ["rock_push", "push"], "同效果推击")
 	t.eq(SkillDB.pp_of("mirror_water_moon"), 1, "镜花水月保留每场一次限制")
+
+
+func _assert_pp_group(t: TestContext, skill_ids: Array, expected: int, role: String) -> void:
+	for skill_id in skill_ids:
+		t.eq(SkillDB.pp_of(String(skill_id)), expected, "%s的 PP 为 %d 档（%s）" % [skill_id, expected, role])
+
+
+func _assert_same_pp(t: TestContext, skill_ids: Array, role: String) -> void:
+	var expected := SkillDB.pp_of(String(skill_ids[0]))
+	for skill_id in skill_ids.slice(1):
+		t.eq(SkillDB.pp_of(String(skill_id)), expected, "%s使用一致的 PP" % role)
 
 
 func _player_consumption(t: TestContext) -> void:
