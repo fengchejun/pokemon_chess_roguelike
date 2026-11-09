@@ -156,7 +156,7 @@ func _open_fire() -> void:
 	var refresh_food := func() -> void:
 		var kind := String(food_ids[selector.selected])
 		var definition: Dictionary = FoodDB.definition(kind)
-		var cost := int(definition["rest_cost"])
+		var cost: int = app.run.camp_rest_cost(kind)
 		var stock := int(app.run.food_inventory.get(kind, 0))
 		description.text = "%s：库存 %d，需选择 %d 份。%s" % [definition["name"], stock, cost, definition["description"]]
 		amount.max_value = mini(cost, stock)

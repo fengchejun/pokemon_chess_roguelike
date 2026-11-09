@@ -61,9 +61,13 @@ func run(t: TestContext) -> void:
 	for key in state.merchant["stock"]:
 		if String(key).begins_with("relic:"):
 			relic_stock.append(String(key))
-	t.eq(relic_stock, [], "旧遗物不再进入商人库存")
-	t.check(not app.merchant_trade(state, "buy", "relic:fire_mark")["ok"], "已删除遗物不能购买")
-	t.check(not app.merchant_trade(state, "relic", "fire_mark")["ok"], "已删除遗物不能出售")
+	t.eq(relic_stock.size(), 1, "商人提供一项未获得的新版遗物")
+	var stocked_relic := String(relic_stock[0])
+	var stocked_relic_id := stocked_relic.trim_prefix("relic:")
+	t.check(app.merchant_trade(state, "buy", stocked_relic)["ok"], "可以购买新版遗物")
+	t.check(app.run.relic_stacks.has(stocked_relic_id), "购买的遗物进入本局构筑")
+	t.check(not app.merchant_trade(state, "buy", stocked_relic)["ok"], "同一遗物不能重复购买")
+	t.check(not app.merchant_trade(state, "relic", stocked_relic.trim_prefix("relic:"))["ok"], "固定遗物不能出售")
 	app.run.essence = 100
 	var round_before := state.round
 	t.check(app.merchant_trade(state, "buy", "potion")["ok"], "购买治疗药")

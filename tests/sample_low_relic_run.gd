@@ -91,7 +91,8 @@ func _run() -> void:
 				else:
 					break
 		while run.pending_reward_choices > 0:
-			if run.discard_unavailable_reward_choices() <= 0:
+			var choices: Array = run.reward_choices()
+			if choices.is_empty() or not run.choose_reward(String(choices[0])):
 				break
 		run.advance_battle()
 		if run.supply_due():

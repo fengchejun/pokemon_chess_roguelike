@@ -520,15 +520,14 @@ func _update_relic_panel() -> void:
 	var stacks: Dictionary = _display_state().relic_stacks
 	var owned: Array = []
 	for relic_id in stacks:
-		if RelicDB.DEFINITIONS.has(String(relic_id)) and RelicDB.rank(stacks, String(relic_id)) > 0:
+		if RelicDB.DEFINITIONS.has(String(relic_id)) and RelicDB.owned(stacks, String(relic_id)):
 			owned.append(String(relic_id))
 	owned.sort()
 	if owned.is_empty():
 		relic_list.add_child(UIKit.wrapped("暂无遗物", 13, UIKit.TEXT_DIM))
 	else:
 		for relic_id in owned:
-			var rank := RelicDB.rank(stacks, relic_id)
-			var line := UIKit.wrapped("%s Lv.%d  %s" % [RelicDB.name_of(relic_id), rank, RelicDB.description_of(relic_id)], 12, UIKit.TEXT)
+			var line := UIKit.wrapped("%s：%s" % [RelicDB.name_of(relic_id), RelicDB.description_of(relic_id)], 12, UIKit.TEXT)
 			line.custom_minimum_size.x = 248
 			relic_list.add_child(line)
 	call_deferred("_fit_relic_panel")
@@ -1521,10 +1520,10 @@ func _show_merchant(message: String = "") -> void:
 		var relic := id.trim_prefix("relic:")
 		if is_relic and not RelicDB.DEFINITIONS.has(relic):
 			continue
-		var price := 16 if is_relic else int(Merchant.ITEMS[id][1])
+		var price := 16 if is_relic else Merchant.item_price(app.run, id)
 		var title := RelicDB.name_of(relic) if is_relic else String(Merchant.ITEMS[id][0])
 		var button := UIKit.small_button("购买 %s · %d原质 · 剩%d" % [title, price, int(state.merchant["stock"][id])])
-		button.disabled = int(state.merchant["stock"][id]) == 0 or app.run.essence < price or (is_relic and RelicDB.rank(app.run.relic_stacks, relic) >= 3)
+		button.disabled = int(state.merchant["stock"][id]) == 0 or app.run.essence < price or (is_relic and RelicDB.owned(app.run.relic_stacks, relic))
 		button.tooltip_text = RelicDB.description_of(relic) if is_relic else Merchant.ITEMS[id][2]
 		button.pressed.connect(func() -> void: _trade("buy", id))
 		list.add_child(button)
@@ -1566,13 +1565,6 @@ func _show_merchant(message: String = "") -> void:
 		button.pressed.connect(func() -> void: _trade("food", id, int(quantity.value)))
 		row.add_child(button)
 		list.add_child(row)
-	for relic_id in app.run.relic_stacks:
-		var id := String(relic_id)
-		if not RelicDB.DEFINITIONS.has(id) or RelicDB.rank(app.run.relic_stacks, id) <= 0:
-			continue
-		var button := UIKit.small_button("出售一级 %s（当前%d级）· 8原质" % [RelicDB.name_of(id), RelicDB.rank(app.run.relic_stacks, id)])
-		button.pressed.connect(func() -> void: _trade("relic", id))
-		list.add_child(button)
 	for record in app.run.carried:
 		var uid := int(record["uid"])
 		var rarity := String(Merchant.RARITIES[Merchant.rarity(String(record["species_id"]))][0])

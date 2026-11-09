@@ -137,6 +137,7 @@ var extra_casts: int = 0:
 		extra_casts = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "额外施法" + ("解除" if not active else ""), int(value), cell)
+var relay_move_bonus: int = 0
 var battle_skill_uses: Dictionary = {}
 var channel_lock_round: int = 0
 var battle_buffs: Dictionary = {}
@@ -249,6 +250,7 @@ func effective_move() -> int:
 		value += 2
 	if has_buff("move_plus"):
 		value += 1
+	value += relay_move_bonus
 	return maxi(0, value)
 
 
@@ -356,6 +358,7 @@ func dup() -> CombatUnit:
 	copy.vine_sources = vine_sources.duplicate()
 	copy.haste_ticks = haste_ticks
 	copy.extra_casts = extra_casts
+	copy.relay_move_bonus = relay_move_bonus
 	copy.battle_skill_uses = battle_skill_uses.duplicate()
 	copy.channel_lock_round = channel_lock_round
 	copy.battle_buffs = battle_buffs.duplicate()

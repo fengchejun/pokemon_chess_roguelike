@@ -79,9 +79,10 @@ static func _range_bonus(state: BattleState, unit: CombatUnit, skill_id: String)
 	## 潮汐：我方水系技能射程 +1（环境卡增益只对我方生效）。
 	if unit == null or unit.side != "player":
 		return 0
+	var bonus := state.relic_range_bonus(unit, skill_id)
 	if SkillDB.element_of(skill_id) == "water" and int(state.effects.get("water_range", 0)) > 0:
-		return int(state.effects["water_range"])
-	return 0
+		bonus += int(state.effects["water_range"])
+	return bonus
 
 
 static func _ray_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
@@ -136,7 +137,7 @@ static func ice_breath_has_enemy(state: BattleState, caster: CombatUnit, dir: Ve
 
 
 static func _unit_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
-	var skill_range := int(def.get("range", 1))
+	var skill_range := int(def.get("range", 1)) + _range_bonus(state, unit, skill_id)
 	var allows_self := skill_id in ["first_aid", "antidote", "guard_rock"]
 	if unit.side == "player" and skill_id == "drain":
 		skill_range += int(unit.upgrades.get("drain_range", 0))
@@ -419,7 +420,7 @@ static func _water_magic_burst_has_enemy(state: BattleState, caster: CombatUnit,
 
 
 static func _volt_empty_targets(state: BattleState, unit: CombatUnit, def: Dictionary, entries: Array) -> void:
-	var skill_range := int(def.get("range", 2))
+	var skill_range := int(def.get("range", 2)) + _range_bonus(state, unit, "volt_replace")
 	for cell in GridSpec.all_cells():
 		var distance := GridSpec.manhattan(unit.cell, cell)
 		if distance < 1 or distance > skill_range:
@@ -431,7 +432,7 @@ static func _volt_empty_targets(state: BattleState, unit: CombatUnit, def: Dicti
 
 
 static func _teleport_targets(state: BattleState, unit: CombatUnit, def: Dictionary, entries: Array) -> void:
-	var skill_range := int(def.get("range", 2)) + int(unit.upgrades.get("volt_step_bonus", 0))
+	var skill_range := int(def.get("range", 2)) + int(unit.upgrades.get("volt_step_bonus", 0)) + _range_bonus(state, unit, "volt_step")
 	for cell in GridSpec.all_cells():
 		var distance := GridSpec.manhattan(unit.cell, cell)
 		if distance == 0 or distance > skill_range:
@@ -515,7 +516,7 @@ static func electric_spark_cells(state: BattleState, caster: CombatUnit, dir: Ve
 
 
 static func _electromagnetic_laser_targets(state: BattleState, caster: CombatUnit, def: Dictionary, entries: Array) -> void:
-	var max_range := int(def.get("range", 4))
+	var max_range := int(def.get("range", 4)) + _range_bonus(state, caster, "electromagnetic_laser")
 	for target in state.alive_units("enemy" if caster.side == "player" else "player"):
 		if target.cell.x != caster.cell.x and target.cell.y != caster.cell.y:
 			continue

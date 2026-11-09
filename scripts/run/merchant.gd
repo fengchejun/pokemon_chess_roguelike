@@ -74,6 +74,13 @@ static func skill_upgrade_cost(run: RunState, record: Dictionary) -> int:
 	return run.merchant_skill_upgrade_cost(record)
 
 
+static func item_price(run: RunState, id: String) -> int:
+	var base := int(ITEMS.get(id, ["", -1])[1])
+	if base > 0 and RelicDB.owned(run.relic_stacks, "merchant_credentials"):
+		return maxi(1, base - 2)
+	return base
+
+
 static func upgrade_skill(run: RunState, state: BattleState, uid: int, skill_id: String) -> Dictionary:
 	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
 	if state.ended or state.phase != BattleState.PHASE_PLAYER or state.node_kind != "event" or state.merchant.is_empty() or trainer == null or not trainer.is_alive() or not state.can_interact_at(state.merchant["cell"]):
@@ -102,19 +109,28 @@ static func upgrade_skill(run: RunState, state: BattleState, uid: int, skill_id:
 	}
 
 
-static func ensure_region(region: RegionState, seed_value: int) -> void:
+static func ensure_region(region: RegionState, seed_value: int, owned_relics: Dictionary = {}) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("merchant:%d:%d" % [seed_value, region.floor_index])
 	var id := "event_%d" % rng.randi_range(1, 2)
+	var available_relics := RelicDB.offer(seed_value, region.floor_index * 6, region.floor_index, owned_relics, 1)
+	var relic_stock := "relic:" + String(available_relics[0]) if not available_relics.is_empty() else ""
 	if region.nodes[id].has("merchant"):
 		var existing_stock: Dictionary = region.nodes[id]["merchant"].get("stock", {})
 		for stock_id in existing_stock.keys():
-			if String(stock_id).begins_with("relic:") and not RelicDB.DEFINITIONS.has(String(stock_id).trim_prefix("relic:")):
-				existing_stock.erase(stock_id)
+			if String(stock_id).begins_with("relic:"):
+				var stocked_relic := String(stock_id).trim_prefix("relic:")
+				if not RelicDB.DEFINITIONS.has(stocked_relic) or RelicDB.owned(owned_relics, stocked_relic):
+					existing_stock.erase(stock_id)
+		var has_relic_stock := existing_stock.keys().any(func(stock_id): return String(stock_id).begins_with("relic:"))
+		if not has_relic_stock and relic_stock != "":
+			existing_stock[relic_stock] = 1
 		if not existing_stock.has("pp_tonic"):
 			existing_stock["pp_tonic"] = 1
 		return
 	var stock := {"potion": 2, "pp_tonic": 1, "capture_aid": 2}
+	if relic_stock != "":
+		stock[relic_stock] = 1
 	region.nodes[id]["merchant"] = {"stock": stock, "cell": [-1, -1]}
 
 static func choose_battle_cell(state: BattleState, positions: Dictionary = {}) -> Vector2i:
@@ -136,16 +152,16 @@ static func trade(run: RunState, state: BattleState, operation: String, id: Stri
 	if quantity <= 0:
 		return {"ok": false, "reason": "数量必须大于零。"}
 	if operation == "buy":
-		var cost := 16 if id.begins_with("relic:") else int(ITEMS.get(id, ["", -1])[1])
+		var cost := 16 if id.begins_with("relic:") else item_price(run, id)
 		if cost < 0 or quantity != 1 or int(state.merchant["stock"].get(id, 0)) < 1 or run.essence < cost:
 			return {"ok": false, "reason": "原质不足或商品已售罄。"}
 		if id.begins_with("relic:"):
 			var relic := id.trim_prefix("relic:")
 			if not RelicDB.DEFINITIONS.has(relic):
 				return {"ok": false, "reason": "该遗物已删除。"}
-			if RelicDB.rank(run.relic_stacks, relic) >= RelicDB.MAX_RANK:
-				return {"ok": false, "reason": "遗物已满级。"}
-			run.relic_stacks[relic] = RelicDB.rank(run.relic_stacks, relic) + 1
+			if RelicDB.owned(run.relic_stacks, relic):
+				return {"ok": false, "reason": "已经拥有该遗物。"}
+			run.relic_stacks[relic] = 1
 		else:
 			run.trainer_items[id] = int(run.trainer_items.get(id, 0)) + 1
 		run.essence -= cost
@@ -157,10 +173,7 @@ static func trade(run: RunState, state: BattleState, operation: String, id: Stri
 		run.food = run.total_food()
 		run.essence += quantity
 	elif operation == "relic":
-		if quantity != 1 or not RelicDB.DEFINITIONS.has(id) or RelicDB.rank(run.relic_stacks, id) <= 0:
-			return {"ok": false, "reason": "没有可出售的遗物。"}
-		run.relic_stacks[id] -= 1
-		run.essence += 8
+		return {"ok": false, "reason": "固定遗物不能出售。"}
 	elif operation == "monster":
 		var record := run.record_by_uid(int(id))
 		if record.is_empty() or quantity != 1 or String(record.get("species_id", "")) in ["trainer", "tree_summon"]:

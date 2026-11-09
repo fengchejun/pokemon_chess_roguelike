@@ -2,7 +2,7 @@ extends RefCounted
 
 
 func run(t: TestContext) -> void:
-	t.begin("战后空遗物池、背包与迁移")
+	t.begin("战后遗物、背包与迁移")
 	_test_offer_and_claim(t)
 	_test_inventory_roundtrip(t)
 	_test_legacy_migration(t)
@@ -15,12 +15,23 @@ func _test_offer_and_claim(t: TestContext) -> void:
 	var run_state := RunState.new_run(20261014)
 	run_state.pending_reward_choices = 2
 	var first: Array = run_state.reward_choices()
-	t.eq(first, [], "旧遗物删除后奖励池为空")
+	t.eq(first.size(), 3, "固定遗物每次提供三个候选")
+	t.eq({first[0]: true, first[1]: true, first[2]: true}.size(), 3, "候选不重复")
+	var categories := {}
+	for id in first:
+		categories[RelicDB.category_of(String(id))] = true
+	t.check(categories.size() >= 2, "候选至少覆盖两个流派")
 	t.eq(run_state.choose_reward("upgrade:team_move"), false, "不能越过经验系统从战后池领取局内强化")
 	t.eq(run_state.choose_reward("position:not_real"), false, "奖励列表之外的项目不能领取")
-	t.eq(run_state.choose_reward("fire_mark"), false, "已删除的旧遗物不能领取")
-	t.eq(run_state.discard_unavailable_reward_choices(), 2, "空池会跳过待领遗物次数")
-	t.eq(run_state.pending_reward_choices, 0, "空池清理后待领次数归零")
+	var chosen := String(first[0])
+	t.eq(run_state.choose_reward(chosen), true, "可以领取固定遗物")
+	t.eq(run_state.relic_stacks.get(chosen, 0), 1, "遗物只记录一次获得")
+	t.eq(run_state.pending_reward_choices, 1, "领取后扣除一次机会")
+	var second := run_state.reward_choices()
+	t.check(not second.has(chosen), "已获得遗物不会再次出现")
+	t.eq(run_state.choose_reward(String(second[0])), true, "可以领取第二种遗物")
+	t.eq(run_state.pending_reward_choices, 0, "全部遗物机会已处理")
+	t.eq(run_state.choose_reward(String(second[0])), false, "次数归零后不能重复领取")
 
 
 func _test_inventory_roundtrip(t: TestContext) -> void:
@@ -112,10 +123,16 @@ func _test_settlement_resume(t: TestContext) -> void:
 	app._switch(load("res://scripts/ui/settlement_screen.gd").new())
 	t.eq(app.current_screen.name, "SettlementScreen", "没有内存中的 BattleState 仍能恢复结算界面")
 	var offered: Array = restored.reward_choices()
-	t.eq(offered, [], "恢复后的遗物池仍为空")
-	t.eq(restored.pending_reward_choices, 0, "空遗物池会在结算页自动跳过待领机会")
+	t.eq(offered.size(), 3, "恢复后的结算仍有三个遗物候选")
+	t.eq(restored.pending_reward_choices, 1, "恢复后尚待领取遗物")
+	var reward_id := String(offered[0])
+	var choice: Button = app.current_screen.find_child("RewardChoice_%s" % reward_id, true, false)
+	t.check(choice != null, "恢复后的结算页面显示遗物候选")
+	if choice != null:
+		choice.pressed.emit()
+		t.eq(restored.relic_stacks.get(reward_id, 0), 1, "恢复后领取的遗物进入本局")
 	var next: Button = app.current_screen.find_child("ContinueButton", true, false)
-	t.check(next != null and not next.disabled, "空池不会阻止继续下一场")
+	t.check(next != null and not next.disabled, "领取后可继续下一场")
 	if next != null:
 		next.pressed.emit()
 		t.eq(restored.battle_index, 1, "恢复结算不会重打一场或重复发奖")

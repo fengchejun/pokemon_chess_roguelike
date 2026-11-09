@@ -155,6 +155,8 @@ var environment_deck: Array = [] # 旧存档字段；读取时按已确认规则
 var environment_reward_pending: bool = false # 旧结算字段。
 var reward_inventory: Array = []
 var relic_stacks: Dictionary = {}
+var homeward_waypoint_floors: Array = []
+var pending_waypoint_floor: int = -1
 var invasion_level_bonus: int = 0
 var pending_invasion_bonus: int = 0
 var claimed_supply_battles: Array = []
@@ -413,7 +415,7 @@ func get_region():
 	if region_data.is_empty():
 		region_data = Region.create_floor(floor_index(), current_theme()).to_dict()
 	var region = Region.from_dict(region_data)
-	Merchant.ensure_region(region, seed)
+	Merchant.ensure_region(region, seed, relic_stacks)
 	# Skill upgrades now belong exclusively to the merchant.
 	for node in region.nodes.values():
 		node.erase("mentor")
@@ -426,8 +428,16 @@ func enter_region_node(id: String) -> bool:
 	var previous := region_data.duplicate(true)
 	var previous_index := battle_index
 	var pressure_before: int = region.boss_level_bonus
-	if not region.record_entry(id):
+	var waypoint_free := false
+	var waypoint_floor: int = region.floor_index
+	if RelicDB.owned(relic_stacks, "homeward_waypoint") and region.node_mode(id) == "camp" and region.visits > 0 and not homeward_waypoint_floors.has(waypoint_floor):
+		waypoint_free = true
+		homeward_waypoint_floors.append(waypoint_floor)
+	if not region.record_entry(id, not waypoint_free):
+		if waypoint_free:
+			homeward_waypoint_floors.erase(waypoint_floor)
 		return false
+	pending_waypoint_floor = waypoint_floor if waypoint_free else -1
 	invasion_level_bonus += region.boss_level_bonus - pressure_before
 	if region.node_mode(id) != "camp":
 		pending_invasion_bonus = region.boss_level_bonus - pressure_before
@@ -445,6 +455,9 @@ func enter_region_node(id: String) -> bool:
 func cancel_region_entry() -> void:
 	if pending_region_entry_backup.is_empty() or not battle_snapshot.is_empty():
 		return
+	if pending_waypoint_floor >= 0:
+		homeward_waypoint_floors.erase(pending_waypoint_floor)
+		pending_waypoint_floor = -1
 	invasion_level_bonus -= pending_invasion_bonus
 	pending_invasion_bonus = 0
 	if preview_used_reward_item != "" and RewardDB.is_consumable(preview_used_reward_item):
@@ -459,7 +472,14 @@ func cancel_region_entry() -> void:
 
 
 func rest_at_region_camp() -> bool:
-	return bool(rest_with_food({"basic": 3}).get("ok", false))
+	return bool(rest_with_food({"basic": camp_rest_cost("basic")}).get("ok", false))
+
+
+func camp_rest_cost(kind: String) -> int:
+	var base := int(FoodDB.definition(kind).get("rest_cost", 0))
+	if base <= 0:
+		return 0
+	return maxi(1, base - (1 if RelicDB.owned(relic_stacks, "camp_ember") else 0))
 
 
 func needs_camp_rest() -> bool:
@@ -497,7 +517,7 @@ func rest_with_food(selection: Dictionary) -> Dictionary:
 	var definition: Dictionary = FoodDB.definition(kind)
 	if definition.is_empty() or String(definition.get("effect", "")) != "full_party_heal":
 		return {"ok": false, "reason": "这种食物尚不能用于篝火休息。"}
-	var cost := int(definition["rest_cost"])
+	var cost := camp_rest_cost(kind)
 	if int(selection[kind]) != cost:
 		return {"ok": false, "reason": "本次需要选择 %d 份%s。" % [cost, definition["name"]]}
 	if int(food_inventory.get(kind, 0)) < cost:
@@ -509,7 +529,9 @@ func rest_with_food(selection: Dictionary) -> Dictionary:
 	trainer_hp = trainer_max_hp()
 	for record in carried:
 		var before := int(record["hp"])
-		var healed := ceili(monster_max_hp(record) / 2.0) if before <= 0 else monster_max_hp(record)
+		var healed := monster_max_hp(record)
+		if before <= 0:
+			healed = ceili(monster_max_hp(record) * (0.75 if RelicDB.owned(relic_stacks, "camp_ember") else 0.5))
 		results.append("%s HP %d → %d" % [SpeciesDB.name_of(String(record["species_id"])), before, healed])
 		record["hp"] = healed
 		var pp_restored := restore_record_pp(record)
@@ -640,9 +662,9 @@ func discard_unavailable_reward_choices() -> int:
 func choose_reward(reward_id: String) -> bool:
 	if pending_reward_choices <= 0 or not reward_choices().has(reward_id):
 		return false
-	if not RelicDB.DEFINITIONS.has(reward_id) or RelicDB.rank(relic_stacks, reward_id) >= RelicDB.MAX_RANK:
+	if not RelicDB.DEFINITIONS.has(reward_id) or RelicDB.owned(relic_stacks, reward_id):
 		return false
-	relic_stacks[reward_id] = RelicDB.rank(relic_stacks, reward_id) + 1
+	relic_stacks[reward_id] = 1
 	pending_reward_choices -= 1
 	reward_choice_index += 1
 	return true
@@ -1222,7 +1244,10 @@ func apply_merchant_skill_upgrade(uid: int, skill_id: String) -> bool:
 
 func merchant_skill_upgrade_cost(record: Dictionary) -> int:
 	var discount := mini(4, floori(float(record.get("affinity", 0)) / 5.0))
-	return maxi(4, 12 - discount)
+	var cost := maxi(4, 12 - discount)
+	if RelicDB.owned(relic_stacks, "merchant_credentials"):
+		cost = maxi(1, cost - 2)
+	return cost
 
 
 func equip_monster_skill(uid: int, slot: int, skill_id: String) -> bool:
@@ -1280,6 +1305,8 @@ func to_dict() -> Dictionary:
 		"environment_reward_pending": environment_reward_pending,
 		"reward_inventory": reward_inventory.duplicate(),
 		"relic_stacks": relic_stacks.duplicate(),
+		"homeward_waypoint_floors": homeward_waypoint_floors.duplicate(),
+		"pending_waypoint_floor": pending_waypoint_floor,
 		"invasion_level_bonus": invasion_level_bonus,
 		"pending_invasion_bonus": pending_invasion_bonus,
 		"claimed_supply_battles": claimed_supply_battles.duplicate(),
@@ -1306,6 +1333,7 @@ static func from_dict(data: Dictionary) -> RunState:
 	var run := RunState.new()
 	run.invasion_level_bonus = int(data.get("invasion_level_bonus", 0))
 	run.pending_invasion_bonus = int(data.get("pending_invasion_bonus", 0))
+	run.pending_waypoint_floor = int(data.get("pending_waypoint_floor", -1))
 	run.essence = maxi(0, int(data.get("essence", 0)))
 	run.trainer_items = (data.get("trainer_items", {}) as Dictionary).duplicate()
 	run.sold_monster_uids = (data.get("sold_monster_uids", []) as Array).map(func(uid): return int(uid))
@@ -1367,8 +1395,12 @@ static func from_dict(data: Dictionary) -> RunState:
 		run.deployed_uids.append(int(deployed_uid))
 	run.pending_supply = bool(data.get("pending_supply", false))
 	for relic_id in (data.get("relic_stacks", {}) as Dictionary):
-		if RelicDB.DEFINITIONS.has(relic_id):
-			run.relic_stacks[relic_id] = clampi(int(data["relic_stacks"][relic_id]), 0, RelicDB.MAX_RANK)
+		if RelicDB.DEFINITIONS.has(relic_id) and int(data["relic_stacks"][relic_id]) > 0:
+			run.relic_stacks[String(relic_id)] = 1
+	for floor_index in data.get("homeward_waypoint_floors", []):
+		var number := int(floor_index)
+		if number >= 0 and not run.homeward_waypoint_floors.has(number):
+			run.homeward_waypoint_floors.append(number)
 	for battle_number in data.get("claimed_supply_battles", []):
 		var number := int(battle_number)
 		if number > 0 and number % Balance.SUPPLY_INTERVAL == 0 and not run.claimed_supply_battles.has(number):

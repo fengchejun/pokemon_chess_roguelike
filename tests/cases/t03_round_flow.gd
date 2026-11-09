@@ -288,13 +288,13 @@ func _t_pickups(t: TestContext) -> void:
 	state.end_enemy_phase()
 	t.eq(state.reward["state"], "carried", "敌方阶段结束后由守点者持有奖励")
 	t.eq(state.reward_owner().uid, fire.uid, "奖励记录实际守点者")
-	# 历史果实不再提供即时恢复。
+	# 果实基础恢复保留，采药袋只在其上追加收益。
 	var legacy := TestScenario.make_state(["fire_starter"], [])
 	var member := legacy.unit_by_uid(1)
 	member.hp = 2
 	legacy.fruits.append(member.cell)
 	legacy.settle_round()
-	t.eq(member.hp, 2, "旧果实不再回血")
+	t.eq(member.hp, 12, "无采药袋时果实按基础值恢复")
 
 
 func _t_temp_obstacle_expiry(t: TestContext) -> void:

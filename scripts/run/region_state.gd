@@ -102,7 +102,7 @@ func display_name(id: String) -> String:
 	return "%s %s" % ["战斗区" if id.begins_with("battle_") else "探索区", id.get_slice("_", 1)]
 
 
-func record_entry(id: String) -> bool:
+func record_entry(id: String, count_pressure: bool = true) -> bool:
 	if visit_pending or not nodes.has(id):
 		return false
 	var node = nodes[id]
@@ -113,11 +113,12 @@ func record_entry(id: String) -> bool:
 		return false
 	if kind == "boss" and bool(node.get("cleared", false)):
 		return false
-	if kind != "boss":
+	if kind != "boss" and count_pressure:
 		visits += 1
 	node["visits"] = int(node.get("visits", 0)) + 1
 	active_node = id
-	_apply_pressure()
+	if count_pressure:
+		_apply_pressure()
 	at_camp_scene = node_mode(id) == "camp"
 	visit_pending = true
 	return true
