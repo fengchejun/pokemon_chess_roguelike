@@ -155,10 +155,7 @@ func _run() -> void:
 		var choices: Array = app.run.available_monster_upgrades(int(level_entry["uid"]))
 		if choices.is_empty() or not app.run.take_monster_level_choice(int(level_entry["uid"]), int(level_entry["level"]), String(choices[0])):
 			break
-	while app.run.pending_reward_choices > 0:
-		var offers: Array = app.run.reward_choices()
-		if offers.is_empty() or not app.run.choose_reward(String(offers[0])):
-			break
+	app.run.discard_unavailable_reward_choices()
 	settlement._show_next_step()
 	await process_frame
 	await _shot("12_settlement_done")

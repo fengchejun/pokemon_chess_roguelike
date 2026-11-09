@@ -108,14 +108,13 @@ static func ensure_region(region: RegionState, seed_value: int) -> void:
 	var id := "event_%d" % rng.randi_range(1, 2)
 	if region.nodes[id].has("merchant"):
 		var existing_stock: Dictionary = region.nodes[id]["merchant"].get("stock", {})
+		for stock_id in existing_stock.keys():
+			if String(stock_id).begins_with("relic:") and not RelicDB.DEFINITIONS.has(String(stock_id).trim_prefix("relic:")):
+				existing_stock.erase(stock_id)
 		if not existing_stock.has("pp_tonic"):
 			existing_stock["pp_tonic"] = 1
 		return
-	var pool: Array = RelicDB.ids()
 	var stock := {"potion": 2, "pp_tonic": 1, "capture_aid": 2}
-	for i in 3:
-		var relic: String = pool.pop_at(rng.randi_range(0, pool.size() - 1))
-		stock["relic:" + relic] = 1
 	region.nodes[id]["merchant"] = {"stock": stock, "cell": [-1, -1]}
 
 static func choose_battle_cell(state: BattleState, positions: Dictionary = {}) -> Vector2i:
@@ -142,6 +141,8 @@ static func trade(run: RunState, state: BattleState, operation: String, id: Stri
 			return {"ok": false, "reason": "原质不足或商品已售罄。"}
 		if id.begins_with("relic:"):
 			var relic := id.trim_prefix("relic:")
+			if not RelicDB.DEFINITIONS.has(relic):
+				return {"ok": false, "reason": "该遗物已删除。"}
 			if RelicDB.rank(run.relic_stacks, relic) >= RelicDB.MAX_RANK:
 				return {"ok": false, "reason": "遗物已满级。"}
 			run.relic_stacks[relic] = RelicDB.rank(run.relic_stacks, relic) + 1
@@ -156,7 +157,7 @@ static func trade(run: RunState, state: BattleState, operation: String, id: Stri
 		run.food = run.total_food()
 		run.essence += quantity
 	elif operation == "relic":
-		if quantity != 1 or RelicDB.rank(run.relic_stacks, id) <= 0:
+		if quantity != 1 or not RelicDB.DEFINITIONS.has(id) or RelicDB.rank(run.relic_stacks, id) <= 0:
 			return {"ok": false, "reason": "没有可出售的遗物。"}
 		run.relic_stacks[id] -= 1
 		run.essence += 8

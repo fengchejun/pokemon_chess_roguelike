@@ -88,13 +88,9 @@ func _test_ordered_settlement_choices(t: TestContext) -> void:
 		button.pressed.emit()
 		t.check((app.run.record_by_uid(uid).get("known_skills", []) as Array).has(skill_id), "选择记录到对应怪物")
 	t.eq(app.run.pending_monster_levels().size(), 0, "全部怪物强化已逐项处理")
-	t.eq(app.run.pending_reward_choices, 1, "怪物升级完成后才进入战后卡牌选择")
-	var reward_id := String(app.run.reward_choices()[0])
-	var reward_button: Button = app.current_screen.find_child("RewardChoice_%s" % reward_id.replace(":", "_"), true, false)
-	t.check(reward_button != null and continue_button.disabled, "战后卡牌仍需领取，不能跳过")
-	if reward_button != null:
-		reward_button.pressed.emit()
-		t.eq(continue_button.disabled, false, "怪物强化和卡牌领取完毕后可继续")
+	t.eq(app.run.pending_reward_choices, 0, "空遗物池在怪物升级后自动跳过")
+	t.eq(app.run.reward_choices(), [], "当前没有新版遗物候选")
+	t.eq(continue_button.disabled, false, "空池不会阻止结算继续")
 	app.queue_free()
 
 

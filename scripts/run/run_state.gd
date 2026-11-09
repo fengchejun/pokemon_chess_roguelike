@@ -628,6 +628,15 @@ func reward_choices() -> Array:
 	return RelicDB.offer(seed, battle_index, reward_choice_index, relic_stacks)
 
 
+func discard_unavailable_reward_choices() -> int:
+	## 当前没有可提供的新版遗物时，清除待选次数，避免结算页空池软锁。
+	if pending_reward_choices <= 0 or not reward_choices().is_empty():
+		return 0
+	var discarded := pending_reward_choices
+	pending_reward_choices = 0
+	return discarded
+
+
 func choose_reward(reward_id: String) -> bool:
 	if pending_reward_choices <= 0 or not reward_choices().has(reward_id):
 		return false

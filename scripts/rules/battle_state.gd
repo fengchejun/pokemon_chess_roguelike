@@ -931,7 +931,6 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var break_frozen := target.frozen and bool(opts.get("break_frozen", false))
 	var was_frozen_before_hit := target.frozen
 	var hit_element := String(opts.get("element", ""))
-	var was_burning := target.burn_ticks > 0
 	var matchup_modifier := 0 if bool(opts.get("no_element", false)) else Elements.modifier(hit_element, target.element)
 	var amount := calculate_damage(source, target, base, opts)
 	if bool(opts.get("guard_share_half", false)):
@@ -985,7 +984,6 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 				target = mountain_bearer
 				break_frozen = false
 				was_frozen_before_hit = target.frozen
-				was_burning = target.burn_ticks > 0
 				matchup_modifier = 0
 			else:
 				log_event("%s 的山岳形态将受到的伤害减免至 %d。" % [target.display_name, amount])
@@ -1022,7 +1020,6 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		matchup_text = "（属性逆克制 ×0.75）"
 	log_event("%s 对 %s 造成 %d 伤害%s。" % [source_name, target.display_name, amount, matchup_text])
 	var killed := false
-	var relic_healed := 0
 	if target.is_trainer and target.hp <= 0:
 		target.hp = 0
 		emit_feedback(target, "death", "倒下")
@@ -1036,19 +1033,6 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var thawed_wet := false
 	if amount > 0 and was_frozen_before_hit and target.is_alive() and source != null and bool(opts.get("skill_direct", false)) and hit_element == "fire":
 		thawed_wet = apply_wet(target, 1)
-	if source != null and source.side == "player" and target.side == "enemy" and bool(opts.get("skill_direct", false)) and amount > 0:
-		if killed and was_burning and source.is_alive():
-			var healed := mini(source.max_hp - source.hp, 4 * RelicDB.rank(relic_stacks, "ember_recovery"))
-			if healed > 0:
-				source.hp += healed
-				feedback_heal(source, healed)
-				relic_healed = healed
-				log_event("余烬：%s 恢复 %d HP。" % [source.display_name, healed])
-		elif not killed:
-			if hit_element == "fire" and RelicDB.rank(relic_stacks, "fire_mark") > 0 and target.burn_ticks <= 0:
-				apply_burn(target, source)
-			if hit_element == "water" and RelicDB.rank(relic_stacks, "water_mark") > 0 and target.slow_ticks <= 0:
-				apply_slow(target)
 	if amount > 0 and target.uid == boss_uid:
 		_try_shelter_boss()
 	return {
@@ -1056,7 +1040,6 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		"killed": killed,
 		"previous_hp": previous_hp,
 		"hp": target.hp,
-		"relic_healed": relic_healed,
 		"thawed_wet": thawed_wet,
 		"absorbed_from_uid": absorbed_from_uid,
 		"absorbed_by_uid": absorbed_by_uid,
@@ -1799,14 +1782,6 @@ func _start_round_rules() -> void:
 		unit.vine_reapply_cell = Vector2i(-1, -1)
 		if same_vine and unit.imprison_ticks <= 0:
 			apply_imprison(unit)
-	if RelicDB.rank(relic_stacks, "root_rest") > 0:
-		for unit in units:
-			if unit.side == "player" and unit.is_alive() and RelicDB.on_grass_or_vines(self, unit):
-				var restored := mini(unit.max_hp - unit.hp, 2 * RelicDB.rank(relic_stacks, "root_rest"))
-				if restored > 0:
-					unit.hp += restored
-					feedback_heal(unit, restored)
-					log_event("根息：%s 恢复 %d HP。" % [unit.display_name, restored])
 	if boss_portal_cell == Vector2i(-1, -1) and Balance.nest_warning_due(round):
 		log_event("巢穴预警：下回合将尝试产怪。")
 	for current in all_nests():
@@ -2734,7 +2709,7 @@ func check_speech_events() -> void:
 
 
 func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: Dictionary) -> int:
-	# 纯数值计算，巢穴使用无属性目标复用技能与遗物加成，不施加状态或触发击杀。
+	# 纯数值计算，巢穴使用无属性目标复用技能强化，不施加状态或触发击杀。
 	var amount := base
 	if source != null and source.side == "enemy" and source.corrupted and bool(opts.get("skill_direct", false)):
 		amount = roundi(amount * Balance.CORRUPTION_MULTIPLIER)
@@ -2764,9 +2739,6 @@ func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: D
 				amount += int(effects["grass_strike"])
 	if source != null and bool(opts.get("skill_direct", false)):
 		amount += int(debug_skill_damage_bonus.get(source.side, 0))
-	if source != null and bool(opts.get("skill_direct", false)):
-		amount += RelicDB.damage_bonus(self, source, target, opts)
-		amount -= RelicDB.incoming_reduction(self, source, target, opts)
 	amount = maxi(0, amount)
 	if amount > 0 and source != null and not bool(opts.get("no_element", false)) and target.has_buff("direct_guard") and not bool(opts.get("conductive", false)):
 		amount = maxi(0, amount - Balance.DIRECT_GUARD_REDUCTION)

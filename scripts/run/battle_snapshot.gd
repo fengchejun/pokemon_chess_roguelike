@@ -69,6 +69,11 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 	var state := BattleState.new()
 	for key in snapshot["fields"]:
 		state.set(key, decode(snapshot["fields"][key]))
+	var valid_relics := {}
+	for relic_id in state.relic_stacks:
+		if RelicDB.DEFINITIONS.has(String(relic_id)):
+			valid_relics[String(relic_id)] = int(state.relic_stacks[relic_id])
+	state.relic_stacks = valid_relics
 	for member in snapshot["units"]:
 		var unit := CombatUnit.new()
 		for key in member:

@@ -97,9 +97,9 @@ func _summary_box(run: RunState) -> Control:
 	if int(outcome.get("boss_blood", 0)) > 0:
 		lines.append("捕获首领：永久首领之血 +%d（当前 %d 份）" % [int(outcome["boss_blood"]), app.collection.boss_blood])
 	if bool(outcome.get("bonus_choice_earned", false)):
-		lines.append("奖励点：本场额外获得一次三选一")
+		lines.append("奖励点：本场获得一次遗物奖励机会（当前遗物池为空）")
 	if run.pending_reward_choices > 0:
-		lines.append("待选战后奖励：%d 次" % run.pending_reward_choices)
+		lines.append("待处理遗物机会：%d 次（将自动跳过）" % run.pending_reward_choices)
 	var pending_monster_levels: Array = run.pending_monster_levels()
 	if not pending_monster_levels.is_empty():
 		lines.append("待选怪物学招：%d 次（按怪物与等级顺序逐项处理）" % pending_monster_levels.size())
@@ -163,9 +163,17 @@ func _show_next_step() -> void:
 		_show_monster_level_step(run, pending_monster_levels[0], pending_monster_levels.size())
 		return
 	if run.pending_reward_choices > 0:
+		var choices := run.reward_choices()
+		if choices.is_empty():
+			var discarded := run.discard_unavailable_reward_choices()
+			step_label.text = "战后奖励：暂无可领取遗物"
+			choice_box.add_child(UIKit.wrapped("旧版遗物已删除，新版遗物尚未接入。本次 %d 个遗物奖励机会已跳过。" % discarded, 13, UIKit.TEXT_DIM))
+			app.autosave()
+			continue_button.disabled = false
+			return
 		step_label.text = "战后奖励：三选一（剩余 %d 次）" % run.pending_reward_choices
 		choice_box.add_child(UIKit.wrapped("从三个完全随机的遗物中选择一个，效果持续到本局结束；同种遗物最多三级。怪物强化仍在升级时分别选择。", 13))
-		for reward_id in run.reward_choices():
+		for reward_id in choices:
 			var id := String(reward_id)
 			var next_rank := RelicDB.rank(run.relic_stacks, id) + 1
 			var button := UIKit.button("%s · 取得后 %d/%d 级\n%s" % [RelicDB.name_of(id), next_rank, RelicDB.MAX_RANK, RelicDB.description_of(id)], 14)

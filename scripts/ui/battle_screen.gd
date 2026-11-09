@@ -132,7 +132,7 @@ func _ready() -> void:
 	add_child(relic_panel)
 	var relic_column := UIKit.vbox(5)
 	relic_panel.add_child(relic_column)
-	relic_column.add_child(UIKit.label("遗物加成", 15, UIKit.ACCENT))
+	relic_column.add_child(UIKit.label("遗物", 15, UIKit.ACCENT))
 	relic_scroll = ScrollContainer.new()
 	relic_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	relic_column.add_child(relic_scroll)
@@ -520,7 +520,7 @@ func _update_relic_panel() -> void:
 	var stacks: Dictionary = _display_state().relic_stacks
 	var owned: Array = []
 	for relic_id in stacks:
-		if RelicDB.rank(stacks, String(relic_id)) > 0:
+		if RelicDB.DEFINITIONS.has(String(relic_id)) and RelicDB.rank(stacks, String(relic_id)) > 0:
 			owned.append(String(relic_id))
 	owned.sort()
 	if owned.is_empty():
@@ -1251,15 +1251,13 @@ func _on_board_hovered(cell: Vector2i) -> void:
 			var preview := state.preview_skill(unit, aim_skill, entry)
 			if bool(preview.get("ok", false)):
 				var matchup: Array = []
-				var relic_feedback: Array = []
+				var status_feedback: Array = []
 				for hit in preview.get("hits", []):
 					if int(hit.get("modifier", 0)) != 0:
 						matchup.append("%s %s" % [hit.get("name", "?"), "克制 ×1.25" if int(hit["modifier"]) > 0 else "抵抗 ×0.75"])
 					if not (hit.get("statuses", []) as Array).is_empty():
-						relic_feedback.append("%s：%s" % [hit.get("name", "?"), "、".join(hit["statuses"])])
-					if int(hit.get("relic_healed", 0)) > 0:
-						relic_feedback.append("余烬回复 %d HP" % int(hit["relic_healed"]))
-				hint_label.text = "%s：%s%s%s" % [SkillDB.name_of(aim_skill), preview.get("text", ""), "｜" + "、".join(matchup) if not matchup.is_empty() else "", "｜" + "、".join(relic_feedback) if not relic_feedback.is_empty() else ""]
+						status_feedback.append("%s：%s" % [hit.get("name", "?"), "、".join(hit["statuses"])])
+				hint_label.text = "%s：%s%s%s" % [SkillDB.name_of(aim_skill), preview.get("text", ""), "｜" + "、".join(matchup) if not matchup.is_empty() else "", "｜" + "、".join(status_feedback) if not status_feedback.is_empty() else ""]
 				hint_label.add_theme_color_override("font_color", UIKit.TEXT)
 				_preview_overlays(preview)
 				board.queue_redraw()
@@ -1521,6 +1519,8 @@ func _show_merchant(message: String = "") -> void:
 		var id := String(item_id)
 		var is_relic := id.begins_with("relic:")
 		var relic := id.trim_prefix("relic:")
+		if is_relic and not RelicDB.DEFINITIONS.has(relic):
+			continue
 		var price := 16 if is_relic else int(Merchant.ITEMS[id][1])
 		var title := RelicDB.name_of(relic) if is_relic else String(Merchant.ITEMS[id][0])
 		var button := UIKit.small_button("购买 %s · %d原质 · 剩%d" % [title, price, int(state.merchant["stock"][id])])
@@ -1568,7 +1568,7 @@ func _show_merchant(message: String = "") -> void:
 		list.add_child(row)
 	for relic_id in app.run.relic_stacks:
 		var id := String(relic_id)
-		if RelicDB.rank(app.run.relic_stacks, id) <= 0:
+		if not RelicDB.DEFINITIONS.has(id) or RelicDB.rank(app.run.relic_stacks, id) <= 0:
 			continue
 		var button := UIKit.small_button("出售一级 %s（当前%d级）· 8原质" % [RelicDB.name_of(id), RelicDB.rank(app.run.relic_stacks, id)])
 		button.pressed.connect(func() -> void: _trade("relic", id))

@@ -57,15 +57,13 @@ func run(t: TestContext) -> void:
 	t.check((app.run.record_by_uid(second_uid).get("upgrades_taken", []) as Array).has(second_upgrade), "商人界面强化写入对应宝可梦")
 	app.run.essence = 100
 	t.check(not app.merchant_trade(state, "food", "basic", 99)["ok"], "禁止超量出售食物")
-	var first_relic := ""
+	var relic_stock: Array = []
 	for key in state.merchant["stock"]:
 		if String(key).begins_with("relic:"):
-			first_relic = String(key)
-			break
-	app.run.relic_stacks[first_relic.trim_prefix("relic:")] = 3
-	t.check(not app.merchant_trade(state, "buy", first_relic)["ok"], "满级遗物不能购买")
-	t.check(app.merchant_trade(state, "relic", first_relic.trim_prefix("relic:"))["ok"], "遗物逐级出售")
-	t.eq(RelicDB.rank(state.relic_stacks, first_relic.trim_prefix("relic:")), 2, "出售更新战场遗物等级")
+			relic_stock.append(String(key))
+	t.eq(relic_stock, [], "旧遗物不再进入商人库存")
+	t.check(not app.merchant_trade(state, "buy", "relic:fire_mark")["ok"], "已删除遗物不能购买")
+	t.check(not app.merchant_trade(state, "relic", "fire_mark")["ok"], "已删除遗物不能出售")
 	app.run.essence = 100
 	var round_before := state.round
 	t.check(app.merchant_trade(state, "buy", "potion")["ok"], "购买治疗药")

@@ -1,9 +1,8 @@
 extends SceneTree
 
-## 固定种子的低收益遗物自动战术试玩。实际走移动/施法/敌方行动/结算，不直接清场。
+## 固定种子的无遗物自动战术试玩。实际走移动/施法/敌方行动/结算，不直接清场。
 ## 用法：Godot --headless --path . --script res://tests/sample_low_relic_run.gd
 
-const LOW_VALUE := ["frost_wet", "wind_pressure", "wet_conductor", "root_bind", "green_pulse", "rushing_tide", "root_rest", "rock_armor", "wall_crash", "rock_pulse", "water_mark", "ember_recovery", "burn_chaser", "fire_mark", "first_strike"]
 var nest_focus := false
 var trace_actions := false
 var capture_mode := false
@@ -92,12 +91,8 @@ func _run() -> void:
 				else:
 					break
 		while run.pending_reward_choices > 0:
-			var offered := run.reward_choices()
-			var picked := String(offered[0])
-			for candidate in offered:
-				if LOW_VALUE.find(candidate) < LOW_VALUE.find(picked):
-					picked = String(candidate)
-			run.choose_reward(picked)
+			if run.discard_unavailable_reward_choices() <= 0:
+				break
 		run.advance_battle()
 		if run.supply_due():
 			run.pending_supply = true
