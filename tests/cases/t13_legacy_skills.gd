@@ -56,7 +56,7 @@ func _water(t: TestContext) -> void:
 	water.cell = Vector2i(0, 3)
 	var result := SkillResolver.apply(state, water, "water_flow", {"type": "cell", "cell": Vector2i(3, 3)}, false)
 	t.check(bool(result.get("ok", false)), "水流可施放")
-	t.eq(state.unit_by_uid(100).slow_ticks, 0, "水炮命中不自动浸湿")
+	t.eq(state.unit_by_uid(100).slow_ticks, 1, "水炮命中附加一层浸湿")
 	t.eq(state.terrain_at(Vector2i(3, 3)), TerrainDB.PLAIN, "水流命中单位不造水")
 	var rain := SkillResolver.apply(state, water, "rain_call", {"type": "cell", "cell": Vector2i(2, 4)}, false)
 	t.check(bool(rain.get("ok", false)), "造雨术可施放")

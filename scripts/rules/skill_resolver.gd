@@ -87,8 +87,6 @@ static func _range_bonus(state: BattleState, unit: CombatUnit, skill_id: String)
 static func _ray_targets(state: BattleState, unit: CombatUnit, skill_id: String, def: Dictionary, entries: Array) -> void:
 	var min_range := int(def.get("min_range", 1))
 	var max_range := int(def.get("max_range", 8)) + _range_bonus(state, unit, skill_id)
-	if skill_id == "freeze_ray":
-		max_range += int(unit.upgrades.get("freeze_ray_range", 0))
 	for dir in GridSpec.DIRS4:
 		for distance in range(1, max_range + 1):
 			var cell: Vector2i = unit.cell + dir * distance
@@ -1243,11 +1241,13 @@ static func _apply_water_flow(state: BattleState, caster: CombatUnit, entry: Dic
 	if hit_unit != null:
 		var hit := _hit_entry(state, caster, "water_flow", hit_unit, int(SkillDB.get_def("water_flow").get("damage", 1)))
 		if hit_unit.is_alive():
+			if state.apply_wet(hit_unit, 1) and not (hit["statuses"] as Array).has("浸湿"):
+				hit["statuses"].append("浸湿")
 			var push_distance := 1 + (1 if caster.has_buff("water_flow") else 0)
 			var push_result := PushResolver.push(state, hit_unit, dir, push_distance, 0, "水炮击退", caster.side, caster.uid, "water_flow")
 			hit["push"] = push_result
 		summary["hits"].append(hit)
-		summary["text"] = "水炮命中 %s：%d 伤害，击退" % [hit["name"], hit["damage"]]
+		summary["text"] = "水炮命中 %s：%d 伤害，附加浸湿并击退" % [hit["name"], hit["damage"]]
 	elif hit_object == "obstacle":
 		_hit_obstacle(state, hit_cell, summary, caster.side)
 		var prev: Vector2i = hit_cell - dir
@@ -1932,7 +1932,6 @@ static func _apply_water_magic_burst(state: BattleState, caster: CombatUnit, ent
 	var center: Vector2i = entry["cell"]
 	var cells: Array = [center] + GridSpec.neighbors4(center)
 	summary["area_cells"] = cells
-	var push_targets: Array = []
 	for cell in cells:
 		_hit_nest(state, caster, cell, summary, 11 if cell == center else 8)
 		var target := state.unit_at(cell)
@@ -1941,17 +1940,6 @@ static func _apply_water_magic_burst(state: BattleState, caster: CombatUnit, ent
 		var base_damage := 11 if cell == center else 8
 		var hit := _hit_entry(state, caster, "water_magic_burst", target, base_damage)
 		summary["hits"].append(hit)
-		if cell != center and target.is_alive():
-			push_targets.append({"target": target, "direction": cell - center})
-	for entry_data in push_targets:
-		var target: CombatUnit = entry_data["target"]
-		if not target.is_alive():
-			continue
-		var direction: Vector2i = entry_data["direction"]
-		for hit in summary["hits"]:
-			if int(hit.get("uid", -1)) == target.uid:
-				hit["push"] = PushResolver.push(state, target, direction, 1, 0, "水魔爆", caster.side, caster.uid, "water_magic_burst")
-				break
 	summary["text"] = "水魔爆炸开五格十字，命中 %d 名敌人。" % summary["hits"].size()
 
 
@@ -2030,12 +2018,18 @@ static func _apply_line(state: BattleState, caster: CombatUnit, skill_id: String
 		if skill_id == "freeze_ray":
 			if target.side == caster.side:
 				break
+			var was_frozen := target.frozen
 			var freeze_hit := _hit_entry(state, caster, skill_id, target, SkillDB.damage_of(skill_id))
 			summary["hits"].append(freeze_hit)
 			if target.is_alive():
-				state.apply_freeze(target)
-				freeze_hit["statuses"].append("冰冻")
-				summary["text"] = "急冻光线命中 %s：%d 伤害，附加冰冻。" % [target.display_name, int(freeze_hit["damage"])]
+				if was_frozen:
+					summary["text"] = "急冻光线命中已冰冻的 %s：%d 伤害并解冻。" % [target.display_name, int(freeze_hit["damage"])]
+					if not target.frozen:
+						freeze_hit["statuses"].append("解冻")
+				else:
+					state.apply_freeze(target)
+					freeze_hit["statuses"].append("冰冻")
+					summary["text"] = "急冻光线命中 %s：%d 伤害，附加冰冻。" % [target.display_name, int(freeze_hit["damage"])]
 			else:
 				summary["text"] = "急冻光线命中 %s：%d 伤害，目标倒下。" % [target.display_name, int(freeze_hit["damage"])]
 			break

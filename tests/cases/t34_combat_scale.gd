@@ -64,7 +64,7 @@ func _t_enemy_pressure(t: TestContext) -> void:
 	BattleDB.configure_enemy(enemy, 42, 2 * Balance.BATTLES_PER_FLOOR, 0)
 	var player_damage := Balance.skill_damage_for_side(SkillDB.damage_of("rock_break"), player.side)
 	var enemy_damage := Balance.skill_damage_for_side(SkillDB.damage_of("rock_break"), enemy.side)
-	t.check(enemy_damage > 0 and enemy_damage < player_damage, "群体敌人的单次技能伤害低于同级我方")
+	t.eq(enemy_damage, player_damage, "敌我同技能基础伤害相同")
 	t.check(ceili(float(player.max_hp) / float(enemy_damage)) >= 3, "单个普通敌人通常不能两击带走同层坦克")
 
 

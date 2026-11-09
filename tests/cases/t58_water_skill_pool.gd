@@ -44,8 +44,9 @@ func _water_magic_burst(t: TestContext) -> void:
 	t.eq(center.cell, target, "中心敌人不会被推动")
 	t.eq(lower.hp, lower_hp - 8, "外侧敌人受到八点伤害")
 	t.eq(upper.hp, upper_hp - 8, "另一外侧敌人受到八点伤害")
-	t.eq(lower.cell, Vector2i(3, 5), "下方敌人沿远离中心方向被推一格")
-	t.eq(upper.cell, Vector2i(3, 1), "上方敌人沿远离中心方向被推一格")
+	t.eq(lower.cell, Vector2i(3, 4), "下方敌人不再被水魔爆推动")
+	t.eq(upper.cell, Vector2i(3, 2), "上方敌人不再被水魔爆推动")
+	t.check((result["hits"] as Array).all(func(hit): return hit.get("push") == null), "水魔爆不再产生推击结果")
 
 
 func _ice_breath(t: TestContext) -> void:

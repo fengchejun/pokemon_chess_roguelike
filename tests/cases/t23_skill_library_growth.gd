@@ -48,8 +48,12 @@ func _test_missing_skill_upgrades(t: TestContext) -> void:
 	var ice_caster := ice.unit_by_uid(1)
 	ice_caster.cell = Vector2i(0, 3)
 	t.check(not ice.skill_targets(ice_caster, "freeze_ray").has({"type": "cell", "cell": Vector2i(7, 3)}), "急冻原射程不足七格")
-	ice_caster.upgrades["freeze_ray_range"] = 1
-	t.check(ice.skill_targets(ice_caster, "freeze_ray").has({"type": "cell", "cell": Vector2i(6, 3)}), "急冻强化射程达到七格")
+	ice_caster.upgrades["freeze_ray_damage"] = 4
+	t.check(not ice.skill_targets(ice_caster, "freeze_ray").has({"type": "cell", "cell": Vector2i(7, 3)}), "急冻强化不再增加第七格射程")
+	ice.unit_by_uid(100).cell = Vector2i(4, 3)
+	ice.unit_by_uid(100).element = ""
+	var upgraded_freeze := ice.preview_skill(ice_caster, "freeze_ray", {"type": "cell", "cell": Vector2i(4, 3)})
+	t.eq(int(upgraded_freeze["hits"][0]["damage"]), 10, "急冻强化伤害提高至十点")
 	var wind := TestScenario.make_state(["wind_starter", "fire_starter", "grass_starter"], [["rock_wild1", Vector2i(7, 7)]])
 	var wind_caster := wind.unit_by_uid(1)
 	wind_caster.cell = Vector2i(1, 3)

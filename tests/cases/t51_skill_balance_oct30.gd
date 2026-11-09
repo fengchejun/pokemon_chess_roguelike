@@ -22,6 +22,9 @@ func _ranges(t: TestContext) -> void:
 		t.eq(SkillResolver.targets(state, caster, "volt_replace").has({"type": "cell", "cell": dest}), distance <= 3, "空格换位距离 %d" % distance)
 	t.eq(SkillDB.get_def("freeze_ray")["max_range"], 6, "急冻基础六格")
 	t.eq(SkillDB.damage_of("freeze_ray"), 6, "急冻光线基础六伤")
+	var freeze_upgrade := RunState.upgrade_info("freeze_ray_range")
+	t.eq(String(freeze_upgrade.get("key", "")), "freeze_ray_damage", "急冻旧强化ID迁移为伤害键")
+	t.eq(int(freeze_upgrade.get("damage_bonus", 0)), 4, "急冻强化增伤四点")
 	t.eq(SkillDB.get_def("water_flow")["max_range"], 3, "水炮基础三格")
 	t.eq(SkillDB.name_of("double_cast"), "电力引擎", "电力引擎保留内部编号")
 

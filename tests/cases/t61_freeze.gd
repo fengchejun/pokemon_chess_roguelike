@@ -5,6 +5,8 @@ func run(t: TestContext) -> void:
 	t.begin("冰冻：一回合无法行动且受伤正常结算")
 	_blocks_all_actions(t)
 	_freeze_ray_damage_and_freeze(t)
+	_freeze_ray_upgrade_and_repeat(t)
+	_freeze_upgrade_migration(t)
 	_damage_breaks_without_immunity(t)
 	_skill_damage_breaks_without_immunity(t)
 	_ui_skill_damage_breaks_without_immunity(t)
@@ -35,6 +37,38 @@ func _freeze_ray_damage_and_freeze(t: TestContext) -> void:
 	t.eq(target.hp, hp_before - 6, "急冻光线造成六点基础直伤")
 	t.check(target.frozen, "急冻光线的自身伤害结算后仍施加冰冻")
 	t.check(result.get("text", "").contains("6 伤害") and result.get("text", "").contains("附加冰冻"), "结算文本同时说明伤害与冰冻")
+
+
+func _freeze_ray_upgrade_and_repeat(t: TestContext) -> void:
+	var state := TestScenario.make_state(["ice_starter"], [["rock_wild1", Vector2i(4, 3)]])
+	var caster := state.unit_by_uid(1)
+	var target := state.unit_by_uid(100)
+	caster.cell = Vector2i(0, 3)
+	caster.upgrades["freeze_ray_damage"] = 4
+	target.element = ""
+	target.hp = 100
+	target.max_hp = 100
+	var entry := {"type": "cell", "cell": target.cell}
+	SkillResolver.apply(state, caster, "freeze_ray", entry, false)
+	t.eq(target.hp, 90, "急冻强化后造成十点伤害")
+	t.check(target.frozen, "强化急冻首次命中仍附加冰冻")
+	var first_ticks := target.frozen_ticks
+	SkillResolver.apply(state, caster, "freeze_ray", entry, false)
+	t.eq(target.hp, 80, "再次命中已冰冻目标仍造成十点伤害")
+	t.check(not target.frozen and target.frozen_ticks == 0, "急冻伤害使已有冰冻解除且不叠加")
+	t.eq(first_ticks, Balance.FREEZE_TICKS, "同一目标只维持一层冰冻")
+
+
+func _freeze_upgrade_migration(t: TestContext) -> void:
+	var run := RunState.new_run(6102)
+	var record := run.record_by_uid(2)
+	record["known_skills"].append("freeze_ray")
+	record["upgrades_taken"] = ["freeze_ray_range"]
+	record["upgrades"] = {"freeze_ray_range": 1}
+	var restored := RunState.from_dict(run.to_dict())
+	var migrated := restored.record_by_uid(2)
+	t.eq(int(migrated.get("upgrades", {}).get("freeze_ray_damage", 0)), 4, "旧急冻强化迁移为增伤四点")
+	t.check(not (migrated.get("upgrades", {}) as Dictionary).has("freeze_ray_range"), "旧射程强化键不再生效")
 
 
 func _damage_breaks_without_immunity(t: TestContext) -> void:

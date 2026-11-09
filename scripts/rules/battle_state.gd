@@ -1234,18 +1234,20 @@ func apply_paralysis(target: CombatUnit, ticks: int = Balance.PARALYSIS_TICKS) -
 	return changed
 
 
-func apply_wet(target: CombatUnit, ticks: int = 2) -> bool:
+func apply_wet(target: CombatUnit, ticks: int = 1) -> bool:
 	if target == null or not target.is_alive() or target.element == "water" or target.has_buff("status_immune"):
 		return false
+	if ticks <= 0:
+		return false
 	var was_wet := target.slow_ticks > 0
-	target.slow_ticks = maxi(target.slow_ticks, maxi(1, ticks))
+	target.slow_ticks = maxi(target.slow_ticks, 1)
 	if not was_wet:
 		log_event("%s 获得浸湿：下一次移动力 -1。" % target.display_name)
 	return true
 
 
 func apply_slow(target: CombatUnit) -> void:
-	apply_wet(target, 2)
+	apply_wet(target, 1)
 
 
 func clear_wet(target: CombatUnit) -> void:
@@ -1366,6 +1368,7 @@ func _finish_movement_effects(side: String) -> void:
 	for unit in units:
 		if unit.side != side or unit.sheltered:
 			continue
+		unit.slow_ticks = 0
 		if unit.vine_sources.is_empty():
 			unit.vine_ticks = maxi(0, unit.vine_ticks - 1)
 		else:
@@ -1963,7 +1966,7 @@ func _end_enemy_phase_rules() -> void:
 	if ended:
 		return
 	_finish_movement_effects("enemy")
-	_apply_shallow_wet("player", 2)
+	_apply_shallow_wet("player", 1)
 	_finish_reward_guard()
 	_begin_reward_guard("enemy")
 	_finish_round()
@@ -2061,12 +2064,10 @@ func _settle_round_rules() -> void:
 		steam_cells[cell] = int(steam_cells[cell]) - 1
 		if int(steam_cells[cell]) <= 0:
 			steam_cells.erase(cell)
-	# 4. 减速衰减
+	# 4. 其他持续效果衰减；浸湿在所属方完成下一次行动阶段时清除。
 	for unit in units:
 		if unit.sheltered:
 			continue
-		if unit.slow_ticks > 0:
-			unit.slow_ticks = maxi(0, unit.slow_ticks - 1)
 		if unit.mountain_form_ticks > 0:
 			unit.mountain_form_ticks = maxi(0, unit.mountain_form_ticks - 1)
 		if unit.shield_ticks > 0:
@@ -2171,7 +2172,7 @@ func _settle_ice_slides() -> void:
 			if terrain_at(next) == TerrainDB.WATER and not unit.has_buff("flight"):
 				unit.burn_ticks = 0
 				# 浅水阶段检查已发生；滑行入水仍须影响下一次移动。
-				_apply_shallow_wet_to_unit(unit, 2)
+				_apply_shallow_wet_to_unit(unit, 1)
 			apply_vine_on_landing(unit)
 
 

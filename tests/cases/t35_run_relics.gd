@@ -124,7 +124,7 @@ func _direct_effects(t: TestContext) -> void:
 	defender.cell = Vector2i(2, 3)
 	armor.set_terrain(Vector2i(2, 2), TerrainDB.OBSTACLE)
 	var incoming := armor.damage_unit(armor.unit_by_uid(100), defender, 10, {"skill_direct": true, "element": "rock"})
-	t.eq(int(incoming["amount"]), 3, "岩甲二级减伤叠加敌方 70% 直伤")
+	t.eq(int(incoming["amount"]), 6, "岩甲二级减伤叠加敌方完整直伤")
 	defender.hp = 10
 	armor.set_terrain(defender.cell, TerrainDB.GRASS)
 	armor.start_round()

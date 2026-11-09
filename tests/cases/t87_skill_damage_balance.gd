@@ -4,7 +4,7 @@ extends RefCounted
 func run(t: TestContext) -> void:
 	t.begin("技能伤害平衡与低层击杀阈值")
 	var expected := {
-		"water_flow": 9,
+		"water_flow": 12,
 		"rock_push": 11,
 		"push": 11,
 		"discharge": 11,

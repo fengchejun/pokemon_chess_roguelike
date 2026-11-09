@@ -89,6 +89,7 @@ func _activation_and_movement(t: TestContext) -> void:
 	t.check(state.move_unit(caster, Vector2i(6, 2)), "同一阶段可再次跃迁至离散深水")
 	t.check(not caster.moved, "连续跃迁仍不消耗普通移动机会")
 	state.settle_round()
+	state._finish_movement_effects("enemy")
 	t.eq(fire_enemy.slow_ticks, 0, "浸湿只覆盖敌方下一次行动")
 
 

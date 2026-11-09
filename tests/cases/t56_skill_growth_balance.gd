@@ -31,11 +31,11 @@ func _water(t: TestContext) -> void:
 			caster.upgrades = {"water_flow_push": 0}
 		var entry := {"type": "cell", "cell": Vector2i(3, 3)}
 		var preview := state.preview_skill(caster, "water_flow", entry)
-		t.eq(preview["hits"][0]["damage"], 13 if upgraded else 9, "水炮基础与强化伤害")
+		t.eq(preview["hits"][0]["damage"], 16 if upgraded else 12, "水炮基础与强化伤害")
 		var result := state.cast_skill(caster, "water_flow", entry)
 		t.eq(result["hits"], preview["hits"], "水炮预览与实战一致")
 		t.eq(state.unit_by_uid(100).cell, Vector2i(4, 3), "强化不增加水炮击退")
-		t.eq(state.unit_by_uid(100).slow_ticks, 0, "水炮不附加浸湿")
+		t.eq(state.unit_by_uid(100).slow_ticks, 1, "水炮附加一层浸湿")
 	var pushed := _state("water_flow", [["rock_wild1", Vector2i(3, 3)]])
 	pushed.set_terrain(Vector2i(4, 3), TerrainDB.PIT)
 	pushed.cast_skill(pushed.unit_by_uid(1), "water_flow", {"type": "cell", "cell": Vector2i(3, 3)})

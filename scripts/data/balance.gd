@@ -60,8 +60,6 @@ const MIRROR_WATER_MOON_ROUNDS := 3
 const MIRROR_WATER_DAMAGE_BONUS := 5
 
 # 战斗数值刻度：Lv1 普通敌人 20–30 HP，常规技能约 9–13 直伤。
-# 敌人通常成群行动，单次技能伤害按此比例结算，避免放大数字后集火过猛。
-const ENEMY_SKILL_DAMAGE_RATIO := 0.7
 const SKILL_DAMAGE_UPGRADE := 5
 const DIRECT_GUARD_REDUCTION := 4
 const PARASITE_DAMAGE := 4
@@ -77,10 +75,8 @@ const BENCH_REVIVE_HP := 5
 const CAPTURE_GUARANTEE_HP := 5
 const CAPTURE_DEBUFF_GUARANTEE_HP := 10
 
-static func skill_damage_for_side(base: int, side: String) -> int:
-	if base <= 0:
-		return 0
-	return maxi(1, roundi(float(base) * ENEMY_SKILL_DAMAGE_RATIO)) if side == "enemy" else base
+static func skill_damage_for_side(base: int, _side: String) -> int:
+	return maxi(0, base)
 
 const EXP_PER_KILL := 2
 const EXP_PER_CAPTURE := 2

@@ -78,12 +78,10 @@ func _t_root_and_slow(t: TestContext) -> void:
 	t.eq(wild.move_cancelled, false, "一轮后定身解除")
 	# 减速
 	state.apply_slow(wild)
-	t.eq(wild.slow_ticks, 2, "减速已挂载")
+	t.eq(wild.slow_ticks, 1, "浸湿只保留一次行动")
 	t.eq(wild.effective_move(), wild.move_points - 1, "减速使移动上限 −1")
-	state.settle_round()
-	t.eq(wild.slow_ticks, 1, "缓慢衰减")
-	state.settle_round()
-	t.eq(wild.slow_ticks, 0, "1 回合后解除")
+	state._finish_movement_effects(wild.side)
+	t.eq(wild.slow_ticks, 0, "完成下一次行动阶段后解除")
 
 
 

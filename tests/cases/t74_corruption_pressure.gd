@@ -82,12 +82,12 @@ func _growth_and_damage(t: TestContext) -> void:
 	var enemy := state.unit_by_uid(100)
 	enemy.skills = ["rock_break"]
 	var opts := {"skill_direct": true, "no_element": true, "skill_id": "rock_break"}
-	t.eq(state.calculate_damage(enemy, state.trainer(), 10, opts), 7, "普通敌人基础10按70%结算")
+	t.eq(state.calculate_damage(enemy, state.trainer(), 10, opts), 10, "普通敌人技能不再承受70%减益")
 	enemy.max_hp = 50
 	enemy.hp = 25
 	enemy.set_corrupted(true)
 	t.eq(enemy.max_hp, 55, "50生命精确变55，不因浮点误差变56")
-	t.eq(state.calculate_damage(enemy, state.trainer(), 10, opts), 8, "黑化先提升技能威力，再按敌方比例结算")
+	t.eq(state.calculate_damage(enemy, state.trainer(), 10, opts), 11, "黑化技能按完整基础伤害提升10%")
 	t.eq(state.calculate_damage(enemy, state.trainer(), 5, {"no_element": true, "collision": true}), 5, "碰撞伤害不获得技能威力加成")
 	state.unit_by_uid(1).cell = Vector2i(3, 3)
 	var target := {"type": "unit", "unit": 1, "cell": Vector2i(3, 3)}

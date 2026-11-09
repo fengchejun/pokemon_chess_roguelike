@@ -284,7 +284,7 @@ func _water_drop_stone(t: TestContext) -> void:
 	target.hp = 50
 	target.max_hp = 50
 	t.check(state.apply_wet(target), "目标获得浸湿")
-	t.eq(target.slow_ticks, 2, "浸湿默认持续两回合")
+	t.eq(target.slow_ticks, 1, "浸湿只影响下一次行动")
 	var result := state.cast_skill(caster, "water_drop_stone", {"type": "unit", "unit": target.uid, "cell": target.cell})
 	t.check(bool(result.get("ok", false)), "水滴石穿成功施放")
 	t.eq(int(state.obstacle_durability.get(Vector2i(2, 3), 0)), Balance.OBSTACLE_DURABILITY - 1, "延伸路径岩石耐久减一")

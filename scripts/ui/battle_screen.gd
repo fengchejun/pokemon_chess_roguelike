@@ -617,7 +617,7 @@ func _update_unit_card() -> void:
 	if unit.vine_reapply_round > 0:
 		statuses.append("藤蔓禁锢将在第 %d 回合再次触发" % unit.vine_reapply_round)
 	if unit.slow_ticks > 0:
-		statuses.append("浸湿 %d 层（移动 -1）" % unit.slow_ticks)
+		statuses.append("浸湿（下一次行动移动力 -1）")
 	if unit.shock_ticks > 0:
 		statuses.append("感电 %d 层" % unit.shock_ticks)
 	if unit.paralyzed_ticks > 0:
@@ -947,7 +947,7 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("前方 %d 格 · 生成藤蔓 · 进入禁锢" % SkillResolver.wild_vines_reach(unit))
 	elif skill_id == "water_magic_burst":
 		var center_damage := Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, 11), unit.side)
-		parts.append("十字 5 格 · 伤害 %d · 中心 %d · 击退" % [damage, center_damage])
+		parts.append("十字 5 格 · 伤害 %d · 中心 %d" % [damage, center_damage])
 	elif skill_id == "ice_breath":
 		parts.append("前方 3 格宽 × 2 格深 · 伤害 %d · 浸湿转冰冻" % damage)
 	elif skill_id == "tree_man":
@@ -1015,7 +1015,7 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("伤害 %d" % damage)
 	var kind := String(def.get("kind", ""))
 	if kind == "ray":
-		parts.append("射线 %d-%d" % [int(def.get("min_range", 1)), int(def.get("max_range", 8)) + SkillResolver._range_bonus(state, unit, skill_id) + (int(unit.upgrades.get("freeze_ray_range", 0)) if skill_id == "freeze_ray" else 0)])
+		parts.append("射线 %d-%d" % [int(def.get("min_range", 1)), int(def.get("max_range", 8)) + SkillResolver._range_bonus(state, unit, skill_id)])
 	elif skill_id == "lightning":
 		parts.append("全场锁定 · 蓄力")
 	elif skill_id == "flame_rush":
