@@ -51,7 +51,7 @@ func run(t: TestContext) -> void:
 	t.eq(run.record_by_uid(1)["xp"], 4, "未集合者此前经验及参战经验保留")
 	t.eq(run.record_by_uid(1)["hp"], 0, "濒死代价跨结算保留")
 	t.eq(outcome["escape_penalties"].size(), 1, "结算摘要记录紧急撤离成员")
-	t.eq(outcome["pending_reward_choices"], 0, "失去奖励不兑换选择")
+	t.eq(outcome["reward_points_earned"], 0, "失去奖励不提供额外经验")
 	t.check(not state.leave_node(true), "不能重复结算紧急撤离")
 	var safe := BattleSnapshot.load_state(saved)
 	safe.unit_by_uid(1).cell = Vector2i(1,3)

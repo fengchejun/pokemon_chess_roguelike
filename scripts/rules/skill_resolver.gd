@@ -79,7 +79,7 @@ static func _range_bonus(state: BattleState, unit: CombatUnit, skill_id: String)
 	## 潮汐：我方水系技能射程 +1（环境卡增益只对我方生效）。
 	if unit == null or unit.side != "player":
 		return 0
-	var bonus := state.relic_range_bonus(unit, skill_id)
+	var bonus := 0
 	if SkillDB.element_of(skill_id) == "water" and int(state.effects.get("water_range", 0)) > 0:
 		bonus += int(state.effects["water_range"])
 	return bonus
@@ -1132,11 +1132,11 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 	opts.merge(extra_opts, true)
 	var hit_cell := target.cell
 	var result := state.damage_unit(caster, target, base, opts)
-	var relic_statuses: Array = []
+	var statuses: Array = []
 	if not had_burn and target.burn_ticks > 0:
-		relic_statuses.append("灼烧")
+		statuses.append("灼烧")
 	if not had_wet and target.slow_ticks > 0:
-		relic_statuses.append("浸湿")
+		statuses.append("浸湿")
 	return {
 		"uid": target.uid,
 		"name": target.display_name,
@@ -1144,7 +1144,7 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 		"damage": int(result.get("amount", 0)),
 		"modifier": modifier if int(result.get("amount", 0)) > 0 else 0,
 		"killed": bool(result.get("killed", false)),
-		"statuses": relic_statuses,
+		"statuses": statuses,
 		"mirror_immune": bool(result.get("mirror_immune", false)),
 		"shield_absorbed": int(result.get("shield_absorbed", 0)),
 		"shield_broken": bool(result.get("shield_broken", false)),

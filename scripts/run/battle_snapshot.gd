@@ -56,7 +56,7 @@ static func save_state(state: BattleState) -> Dictionary:
 	var members: Array = []
 	for unit in state.units:
 		members.append(_fields(unit))
-	return {"version": 8, "fields": _fields(state), "units": members, "rng": {
+	return {"version": 9, "fields": _fields(state), "units": members, "rng": {
 		"spawn_seed": str(state.spawn_rng.seed), "spawn_state": str(state.spawn_rng.state),
 		"capture_seed": str(state.capture_rng.seed), "capture_state": str(state.capture_rng.state),
 		"terrain_seed": str(state.terrain_rng.seed), "terrain_state": str(state.terrain_rng.state),
@@ -67,13 +67,11 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 	if not snapshot.has("fields") or not snapshot.has("units") or not snapshot.has("rng"):
 		return null
 	var state := BattleState.new()
-	for key in snapshot["fields"]:
-		state.set(key, decode(snapshot["fields"][key]))
-	var valid_relics := {}
-	for relic_id in state.relic_stacks:
-		if RelicDB.DEFINITIONS.has(String(relic_id)):
-			valid_relics[String(relic_id)] = int(state.relic_stacks[relic_id])
-	state.relic_stacks = valid_relics
+	var fields: Dictionary = (snapshot["fields"] as Dictionary).duplicate()
+	fields.erase("relic_stacks")
+	fields.erase("relic_state")
+	for key in fields:
+		state.set(key, decode(fields[key]))
 	for member in snapshot["units"]:
 		var unit := CombatUnit.new()
 		for key in member:

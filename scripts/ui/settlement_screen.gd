@@ -96,10 +96,10 @@ func _summary_box(run: RunState) -> Control:
 	lines.append("击败：%d　捕获：%d" % [int(outcome.get("kills", 0)), int(outcome.get("captures", 0))])
 	if int(outcome.get("boss_blood", 0)) > 0:
 		lines.append("捕获首领：永久首领之血 +%d（当前 %d 份）" % [int(outcome["boss_blood"]), app.collection.boss_blood])
-	if bool(outcome.get("bonus_choice_earned", false)):
-		lines.append("奖励点：本场获得一次遗物奖励机会")
-	if run.pending_reward_choices > 0:
-		lines.append("待处理遗物机会：%d 次" % run.pending_reward_choices)
+	if int(outcome.get("reward_points_earned", 0)) > 0:
+		lines.append("奖励点：本场取得 %d 点，每名存活原出战成员额外获得 %d 经验" % [
+			int(outcome["reward_points_earned"]), int(outcome["reward_points_earned"]),
+		])
 	var pending_monster_levels: Array = run.pending_monster_levels()
 	if not pending_monster_levels.is_empty():
 		lines.append("待选怪物学招：%d 次（按怪物与等级顺序逐项处理）" % pending_monster_levels.size())
@@ -162,39 +162,8 @@ func _show_next_step() -> void:
 	if not pending_monster_levels.is_empty():
 		_show_monster_level_step(run, pending_monster_levels[0], pending_monster_levels.size())
 		return
-	if run.pending_reward_choices > 0:
-		var choices := run.reward_choices()
-		if choices.is_empty():
-			var discarded := run.discard_unavailable_reward_choices()
-			step_label.text = "战后奖励：暂无可领取遗物"
-			choice_box.add_child(UIKit.wrapped("所有可用遗物均已获得。本次 %d 个遗物奖励机会已跳过。" % discarded, 13, UIKit.TEXT_DIM))
-			app.autosave()
-			continue_button.disabled = false
-			return
-		step_label.text = "战后奖励：三选一（剩余 %d 次）" % run.pending_reward_choices
-		choice_box.add_child(UIKit.wrapped("从三个固定遗物中选择一个，效果持续到本局结束；每种遗物全局唯一且不可升级。", 13))
-		for reward_id in choices:
-			var id := String(reward_id)
-			var button := UIKit.button("%s\n%s" % [RelicDB.name_of(id), RelicDB.description_of(id)], 14)
-			button.custom_minimum_size = Vector2(0, 76)
-			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			var normal_style := StyleBoxFlat.new()
-			normal_style.bg_color = UIKit.PANEL_LIGHT
-			normal_style.border_color = UIKit.ACCENT.darkened(0.35)
-			normal_style.set_border_width_all(1)
-			normal_style.set_corner_radius_all(6)
-			normal_style.set_content_margin_all(12)
-			button.add_theme_stylebox_override("normal", normal_style)
-			var hover_style := normal_style.duplicate() as StyleBoxFlat
-			hover_style.bg_color = UIKit.PANEL_LIGHT.lightened(0.18)
-			button.add_theme_stylebox_override("hover", hover_style)
-			button.name = "RewardChoice_%s" % id.replace(":", "_")
-			button.pressed.connect(_choose_settlement_reward.bind(id))
-			choice_box.add_child(button)
-		continue_button.disabled = true
-		return
 	step_label.text = "全部处理完成，可以进入下一场。"
-	choice_box.add_child(UIKit.wrapped("战斗结算顺序已完成：怪物经验 → 捕获 → 怪物升级 → 战后奖励 → 下一场准备。", 13))
+	choice_box.add_child(UIKit.wrapped("战斗结算顺序已完成：怪物经验 → 捕获 → 怪物升级 → 下一场准备。", 13))
 	continue_button.disabled = false
 
 
@@ -263,12 +232,6 @@ func _show_growth_replace(run: RunState, uid: int, level: int, new_skill_id: Str
 		button.pressed.connect(_replace_monster_skill.bind(run, uid, level, new_skill_id, old_id))
 		choice_box.add_child(button)
 	continue_button.disabled = true
-
-
-func _choose_settlement_reward(reward_id: String) -> void:
-	if app.run.choose_reward(reward_id):
-		app.autosave()
-		_show_next_step()
 
 
 func _choose_monster_skill(run: RunState, uid: int, level: int, skill_id: String) -> void:

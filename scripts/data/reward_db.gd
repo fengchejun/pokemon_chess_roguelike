@@ -1,7 +1,7 @@
 class_name RewardDB
 extends RefCounted
 
-## 补给点消耗品 ID；遗物与怪物升级分别由 RelicDB 和成长系统管理。
+## 补给点消耗品 ID；怪物升级由成长系统管理。
 const MOD_ITEM := "mod:field_kit"
 
 

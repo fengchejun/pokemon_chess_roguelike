@@ -89,11 +89,6 @@ func _modifiers(t: TestContext) -> void:
 	upgraded.unit_by_uid(1).upgrades[info["key"]] = info["value"]
 	_attack(upgraded)
 	t.eq(upgraded.nest["hp"], 20 - int(info.get("damage_bonus", 0)), "技能强化提高拆巢伤害")
-	var relic := _state()
-	relic.relic_stacks["first_strike"] = 1
-	var relic_result := _attack(relic)
-	t.check(bool(relic_result.get("ok", false)), "旧遗物不会阻止正常拆巢攻击")
-	t.eq(relic.nest["hp"], 20, "已删除旧遗物不再提高拆巢伤害")
 	var amp := _state()
 	amp.unit_by_uid(1).fire_amp_stacks = 5
 	_attack(amp)

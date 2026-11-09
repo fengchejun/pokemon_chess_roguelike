@@ -91,11 +91,6 @@ func _eighteen_battle_route(t: TestContext) -> void:
 		app.finish_battle(state)
 		t.eq(app.current_screen.name, "SettlementScreen", "第 %d 战进入结算" % (index + 1))
 		_claim_monster_levels(app.run)
-		while app.run.pending_reward_choices > 0:
-			var choices: Array = app.run.reward_choices()
-			t.check(not choices.is_empty(), "第 %d 战有未获得的遗物候选" % (index + 1))
-			if choices.is_empty() or not app.run.choose_reward(String(choices[0])):
-				break
 		app.continue_after_settlement()
 		if index == Balance.BATTLES_PER_RUN - 1:
 			t.eq(app.current_screen.name, "RunEndScreen", "第十八战后进入明确结局")

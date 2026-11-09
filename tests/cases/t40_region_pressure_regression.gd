@@ -76,11 +76,9 @@ func run(t: TestContext) -> void:
 	clearing.nest["alive"] = false
 	clearing.end_battle("victory")
 	clear_app.finish_battle(clearing)
-	while clear_app.run.pending_reward_choices > 0 and clear_app.run.choose_reward(String(clear_app.run.reward_choices()[0])):
-		pass
 	clear_app.continue_after_settlement()
 	t.eq(clear_app.run.get_region().node_mode("battle_1"), "event", "普通战斗真正清空后成为收集区")
-	t.check(not bool(clear_app.run.get_region().nodes["battle_1"].get("reward_claimed", false)), "取消清场基础三选一，不自动记领取账")
+	t.check(not bool(clear_app.run.get_region().nodes["battle_1"].get("reward_claimed", false)), "清场不自动记录奖励领取")
 	var cleared_visit: BattleState = _start(clear_app, "battle_1")
 	t.eq(cleared_visit.alive_enemy_count(), 0, "已清场重访无敌人")
 	var old_terrain := cleared_visit.terrain.duplicate()
@@ -128,8 +126,6 @@ func run(t: TestContext) -> void:
 	var prior_owned: Dictionary = boss_app.run._make_record("water_starter")
 	prior_owned["collection_id"] = previous_collection_id
 	boss_app.run.storage.append(prior_owned)
-	while boss_app.run.pending_reward_choices > 0 and boss_app.run.choose_reward(String(boss_app.run.reward_choices()[0])):
-		pass
 	boss_app.continue_after_settlement()
 	t.eq(boss_app.run.storage.size(), 2, "进入下一层后仓库成员保留")
 	t.check(boss_app.collection.owned.all(func(entry): return String(entry.get("source", "")) != "run:%d:%d" % [boss_app.run.seed, int(abandoned["uid"])]), "跨层结算不提前登记仓库成员")

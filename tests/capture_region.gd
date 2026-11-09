@@ -89,8 +89,6 @@ func _run() -> void:
 	revisit.leave_node_button.pressed.emit()
 	await process_frame
 	await process_frame
-	while app.run.pending_reward_choices > 0 and app.run.choose_reward(String(app.run.reward_choices()[0])):
-		pass
 	app.continue_after_settlement()
 	app.enter_region_node("battle_1")
 	app.show_preview([1, 2, 3])

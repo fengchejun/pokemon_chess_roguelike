@@ -58,7 +58,7 @@ func _t_victory_rewards(t: TestContext) -> void:
 	t.eq(int(outcome["exp"]), 3, "一级敌人击杀经验与非失败参战经验合计 3")
 	t.eq(outcome.has("carrier_exp"), false, "局内 Buff 不再提供携带者经验")
 	t.eq(run.exp, 0, "废弃的全队经验不再累积")
-	t.eq(run.pending_reward_choices, 0, "未拾取奖励点则不发清场基础三选一")
+	t.eq(int(outcome.get("reward_points_earned", -1)), 0, "未拾取奖励点则不结算额外经验")
 	t.eq(int(run.record_by_uid(1)["xp"]), 3, "实际击败者获得本局经验")
 	t.eq(int(run.record_by_uid(1)["affinity"]), 1, "出战怪物完成非失败战斗获得永久亲密度")
 	t.eq(run.in_battle, false, "结算后离开战斗态")
@@ -74,19 +74,16 @@ func _t_bonus_reward_credit(t: TestContext) -> void:
 	state.end_enemy_phase()
 	state.end_battle("victory")
 	var outcome := run.settle_battle(state)
-	t.check(bool(outcome.get("bonus_choice_earned", false)), "守点者存活到战后，记录一次额外选择")
-	t.eq(run.pending_reward_choices, 1, "只结算守点取得的一次奖励")
-	t.eq(run.pending_bonus_choices, 0, "守点额外奖励在本场战后兑现")
+	t.eq(int(outcome.get("reward_points_earned", 0)), 1, "守点者存活到战后，记录一个奖励点")
 	var repeated := run.settle_battle(state)
 	t.eq(repeated, outcome, "同一场战斗重复结算复用原结果")
-	t.eq(run.pending_reward_choices, 1, "重复结算不再增加奖励次数")
-	var save_path := "res://.test_bonus_reward_save.json"
-	t.check(SaveSystem.save_run(run, save_path), "待领战后奖励可写入本局存档")
+	var save_path := "res://.test_reward_point_save.json"
+	t.check(SaveSystem.save_run(run, save_path), "奖励点结算可写入本局存档")
 	var loaded := SaveSystem.load_run(save_path)
-	t.check(loaded != null and loaded.pending_reward_choices == 1, "读档恢复一次待领奖励")
+	t.check(loaded != null and int(loaded.last_settlement.get("reward_points_earned", 0)) == 1, "读档恢复奖励点经验收益")
 	SaveSystem.delete_save(save_path)
-	var legacy := RunState.from_dict({"version": RunState.SAVE_VERSION})
-	t.eq(legacy.pending_reward_choices, 0, "旧存档缺少奖励字段时默认为零")
+	var legacy := RunState.from_dict({"version": 19, "pending_reward_choices": 3})
+	t.eq(legacy.to_dict().has("pending_reward_choices"), false, "旧存档遗物待选字段被丢弃")
 
 
 func _t_monster_experience(t: TestContext) -> void:
@@ -317,7 +314,7 @@ func _t_escape_flow(t: TestContext) -> void:
 	state.end_battle("escape")
 	t.eq(state.end_reason, "escape", "主动撤离结束")
 	var outcome := run.settle_battle(state)
-	t.eq(run.pending_reward_choices, 0, "未取得奖励点的撤退不发基础三选一")
+	t.eq(int(outcome.get("reward_points_earned", -1)), 0, "未取得奖励点的撤退没有额外经验")
 	t.eq(outcome.has("carrier_exp"), false, "逃离也不结算旧携带者经验")
 
 

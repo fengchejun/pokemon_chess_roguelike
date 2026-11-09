@@ -126,12 +126,6 @@ func _vine_and_root_terrain(t: TestContext) -> void:
 	var caster := state.unit_by_uid(1)
 	var target := state.unit_by_uid(100)
 	caster.cell = Vector2i(2, 3)
-	state.relic_stacks["root_bind"] = 1
-	target.imprison_ticks = 2
-	var with_imprison := state.calculate_damage(caster, target, 10, {"element": "grass", "skill_id": "leaf_wind", "skill_direct": true})
-	target.imprison_ticks = 0
-	var without_imprison := state.calculate_damage(caster, target, 10, {"element": "grass", "skill_id": "leaf_wind", "skill_direct": true})
-	t.eq(with_imprison - without_imprison, 0, "已删除缠根遗物不再按禁锢状态提供伤害")
 	caster.cell = Vector2i(3, 3)
 	caster.skills.append("rooted_grass")
 	var root := state.cast_skill(caster, "rooted_grass", {"type": "cell", "cell": caster.cell})

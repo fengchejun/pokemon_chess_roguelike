@@ -108,19 +108,17 @@ func _arc(t: TestContext) -> void:
 	dry.unit_by_uid(1).upgrades["electric_arc_damage"] = 3
 	var result := dry.cast_skill(dry.unit_by_uid(1), "electric_arc", {"type": "cell", "cell": Vector2i(3, 3)})
 	t.eq(result["hits"][0]["damage"], 13, "旱地单体强化只追加三伤")
-	# Two equal water paths must hit once, including friendly units. Removed
-	# legacy relic IDs no longer alter the damage chain.
+	# Two equal water paths must hit once, including friendly units.
 	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(2, 3), TerrainDB.WATER], [Vector2i(2, 2), TerrainDB.WATER], [Vector2i(3, 3), TerrainDB.WATER], [Vector2i(3, 2), TerrainDB.WATER]])
 	var loop := _state("electric_arc", [["water_wild1", Vector2i(3, 2)]], terrain)
 	loop.unit_by_uid(100).element = "water"
 	loop.unit_by_uid(100).slow_ticks = 2
-	loop.relic_stacks["wet_conductor"] = 1
 	loop.trainer().cell = Vector2i(2, 2)
 	result = loop.cast_skill(loop.unit_by_uid(1), "electric_arc", {"type": "cell", "cell": Vector2i(2, 3)})
 	t.eq(result["hits"].size(), 2, "多路径去重且友伤保留")
 	for hit in result["hits"]:
 		if hit["uid"] == 100:
-			t.eq(hit["damage"], Elements.direct_damage(8, "electric", "water"), "已删除旧遗物不参与传导伤害")
+			t.eq(hit["damage"], Elements.direct_damage(8, "electric", "water"), "传导伤害只按技能与属性结算")
 
 func _rain(t: TestContext) -> void:
 	var state := _state("rain_call", [["rock_wild1", Vector2i(7, 6)]])

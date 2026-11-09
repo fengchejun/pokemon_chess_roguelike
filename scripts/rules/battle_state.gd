@@ -126,8 +126,6 @@ var deaths: Array = []
 var enemy_kills: Array = []
 var captured: Array = []
 var effects: Dictionary = {}
-var relic_stacks: Dictionary = {}
-var relic_state: Dictionary = {}
 var upgrades: Dictionary = {}
 var capture_options: Dictionary = {}
 var debug_skill_damage_bonus: Dictionary = {"player": 0, "enemy": 0} # 仅本场调试覆盖，不写入本局存档。
@@ -151,7 +149,7 @@ var _forecast_cache: Array = []
 var _forecast_signature: String = ""
 
 
-func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_value: int, player_units: Array, effects_value: Dictionary, upgrades_value: Dictionary, pool_value: Array, capture_options_value: Dictionary = {}, relic_stacks_value: Dictionary = {}) -> void:
+func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_value: int, player_units: Array, effects_value: Dictionary, upgrades_value: Dictionary, pool_value: Array, capture_options_value: Dictionary = {}) -> void:
 	run_seed = seed_value
 	battle_index = battle_index_value
 	experience_level_cap = MonsterProgression.MAX_LEVEL
@@ -159,8 +157,6 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	enemy_level_bonus = maxi(0, int(cfg.get("enemy_level_bonus", 0)))
 	skill_use_counts = {"player": {}, "enemy": {}}
 	effects = effects_value.duplicate()
-	relic_stacks = relic_stacks_value.duplicate()
-	relic_state = {}
 	upgrades = upgrades_value.duplicate()
 	capture_options = capture_options_value.duplicate()
 	reinforcement_pool = pool_value.duplicate()
@@ -202,303 +198,9 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	spawn_rng.seed = hash("spawn:%d:%d" % [seed_value, battle_index_value])
 	capture_rng.seed = hash("capture:%d:%d" % [seed_value, battle_index_value])
 	terrain_rng.seed = hash("terrain:%d:%d" % [seed_value, battle_index_value])
-	if RelicDB.owned(relic_stacks, "herb_satchel"):
-		_place_relic_fruit()
 	log_event("战斗开始：%s，敌方 %d 只。" % [String(cfg.get("region", "?")), cfg.get("enemies", []).size()])
 	relocate_nest_occupants()
 	start_round()
-
-
-func _relic_owned(relic_id: String) -> bool:
-	return RelicDB.owned(relic_stacks, relic_id)
-
-
-func relic_range_bonus(unit: CombatUnit, skill_id: String) -> int:
-	if unit == null or unit.side != "player" or unit.moved or not _relic_owned("watch_line"):
-		return 0
-	var def := SkillDB.get_def(skill_id)
-	if not def.has("range") and not def.has("max_range"):
-		return 0
-	var used: Dictionary = relic_state.get("watch_used", {})
-	return 0 if int(used.get(str(unit.uid), -1)) == round else 1
-
-
-func _relic_pp_waived(unit: CombatUnit, skill_id: String, result: Dictionary, moved_before: bool) -> bool:
-	if unit == null or unit.side != "player" or unit.is_trainer or is_free_exploration():
-		return false
-	var uid_key := str(unit.uid)
-	var cast_counts: Dictionary = relic_state.get("cast_counts", {})
-	var cast_count := int(cast_counts.get(uid_key, 0)) + 1
-	cast_counts[uid_key] = cast_count
-	relic_state["cast_counts"] = cast_counts
-	var waived := false
-	if _relic_owned("echo_gear") and cast_count in [3, 6]:
-		waived = true
-	if _relic_owned("still_chant") and not moved_before:
-		var still_counts: Dictionary = relic_state.get("still_counts", {})
-		var still_count := int(still_counts.get(uid_key, 0)) + 1
-		still_counts[uid_key] = still_count
-		relic_state["still_counts"] = still_counts
-		if still_count <= 2:
-			waived = true
-	var changes_terrain := not (result.get("terrain_changes", []) as Array).is_empty() or skill_id == "earth_shake"
-	if _relic_owned("overwrite_compass") and changes_terrain and not bool(relic_state.get("overwrite_used", false)):
-		relic_state["overwrite_used"] = true
-		waived = true
-	if _relic_owned("pressure_breaker") and (corruption_active or round > Balance.CORRUPTION_ROUND):
-		var pressure_count := int(relic_state.get("pressure_free_count", 0))
-		if pressure_count < 3 and int(relic_state.get("pressure_free_round", -1)) != round:
-			relic_state["pressure_free_count"] = pressure_count + 1
-			relic_state["pressure_free_round"] = round
-			waived = true
-	if _relic_owned("watch_line") and not moved_before:
-		var def := SkillDB.get_def(skill_id)
-		if def.has("range") or def.has("max_range"):
-			var watch_used: Dictionary = relic_state.get("watch_used", {})
-			watch_used[uid_key] = round
-			relic_state["watch_used"] = watch_used
-	return waived
-
-
-func _trigger_pp_exhaustion(unit: CombatUnit, skill_id: String) -> void:
-	if unit == null or unit.side != "player" or unit.pp_remaining(skill_id) > 0 or not _relic_owned("overload_coil"):
-		return
-	var exhausted: Dictionary = relic_state.get("overload_skills", {})
-	var key := "%d:%s" % [unit.uid, skill_id]
-	if bool(exhausted.get(key, false)):
-		return
-	exhausted[key] = true
-	relic_state["overload_skills"] = exhausted
-	apply_guard_rock_shield(unit, 8, unit.uid)
-	unit.slow_ticks = 0
-	unit.root_pending = false
-	emit_feedback(unit, "buff", "过载线圈")
-	log_event("过载线圈：%s 的%s耗尽，获得护盾并清除减速与定身。" % [unit.display_name, SkillDB.name_of(skill_id)])
-
-
-func _trigger_relay_sigil(unit: CombatUnit) -> void:
-	if unit == null or unit.side != "player" or not unit.is_alive() or not _relic_owned("relay_sigil") or int(relic_state.get("relay_round", -1)) == round:
-		return
-	var candidates: Array = []
-	for cell in GridSpec.neighbors4(unit.cell):
-		var other := unit_at(cell)
-		if other != null and other.side == "player" and other.is_alive() and other.uid != unit.uid:
-			candidates.append(other)
-	if candidates.is_empty():
-		return
-	candidates.sort_custom(func(a: CombatUnit, b: CombatUnit) -> bool: return a.uid < b.uid)
-	var target: CombatUnit = candidates[0]
-	target.relay_move_bonus += 1
-	relic_state["relay_round"] = round
-	emit_feedback(target, "buff", "接力 +1")
-	log_event("接力徽记：%s 获得下一次移动力 +1。" % target.display_name)
-
-
-func _relic_damage_bonus(source: CombatUnit, target: CombatUnit, opts: Dictionary) -> int:
-	if source == null or target == null or source.side != "player" or target.side != "enemy" or not bool(opts.get("skill_direct", false)):
-		return 0
-	var bonus := 0
-	var skill_id := String(opts.get("skill_id", ""))
-	var is_nest_target := is_nest_cell(target.cell)
-	if not is_nest_target and _relic_owned("flank_prism"):
-		var marked: Dictionary = relic_state.get("flank_marks", {})
-		var key := "%d:%d:%d:%s" % [round, source.uid, target.uid, skill_id]
-		if not bool(marked.get(key, false)):
-			for cell in GridSpec.neighbors4(target.cell):
-				var ally := unit_at(cell)
-				if ally != null and ally.side == "player" and ally.is_alive() and ally.uid != source.uid:
-					marked[key] = true
-					relic_state["flank_marks"] = marked
-					bonus += 5
-					break
-	if not is_nest_target and _relic_owned("weakness_ledger"):
-		var weakness_round := int(relic_state.get("weakness_round", -1))
-		if weakness_round != round:
-			relic_state["weakness_round"] = round
-			relic_state["weakness_uid"] = target.uid
-			relic_state["weakness_source_uid"] = source.uid
-			relic_state["weakness_consumed"] = false
-		elif int(relic_state.get("weakness_uid", -1)) == target.uid and int(relic_state.get("weakness_source_uid", -1)) != source.uid and not bool(relic_state.get("weakness_consumed", false)):
-			relic_state["weakness_consumed"] = true
-			bonus += 3
-	if _relic_owned("nest_wedge") and is_nest_target:
-		var nest_hits: Dictionary = relic_state.get("nest_hit_rounds", {})
-		var nest_key := "%s:%d" % [str(target.cell), round]
-		if not bool(nest_hits.get(nest_key, false)):
-			nest_hits[nest_key] = true
-			relic_state["nest_hit_rounds"] = nest_hits
-			bonus += 6
-	if _relic_owned("boss_hunt") and target.uid == boss_uid and int(relic_state.get("boss_hit_round", -1)) != round:
-		relic_state["boss_hit_round"] = round
-		bonus += 6
-	return bonus
-
-
-func _restore_lowest_pp(unit: CombatUnit, amount: int = 1) -> int:
-	if unit == null or unit.side != "player" or unit.summon_owner_uid >= 0 or amount <= 0:
-		return 0
-	var best_id := ""
-	var lowest := 1 << 30
-	for skill_id in unit.skills:
-		var id := String(skill_id)
-		var remaining := unit.pp_remaining(id)
-		if remaining >= unit.max_pp(id):
-			continue
-		if remaining < lowest:
-			lowest = remaining
-			best_id = id
-	if best_id == "":
-		return 0
-	var before := unit.pp_remaining(best_id)
-	unit.battle_skill_uses[best_id] = maxi(0, unit.pp_used(best_id) - amount)
-	var actual := unit.pp_remaining(best_id) - before
-	if actual > 0:
-		emit_feedback(unit, "buff", "PP +%d" % actual, actual)
-	return actual
-
-
-func _trigger_summon_exit(summon: CombatUnit) -> void:
-	if summon == null or summon.summon_owner_uid < 0 or not _relic_owned("symbiotic_roots"):
-		return
-	var owner := unit_by_uid(summon.summon_owner_uid)
-	if owner == null or owner.side != "player":
-		return
-	var marks: Dictionary = relic_state.get("summon_recovery_round", {})
-	var key := str(owner.uid)
-	if int(marks.get(key, -1)) == round:
-		return
-	marks[key] = round
-	relic_state["summon_recovery_round"] = marks
-	_restore_lowest_pp(owner, 1)
-
-
-func _drain_controlled_target_pp(target: CombatUnit) -> void:
-	if target == null or target.side != "player" or target.is_trainer or not _relic_owned("suppression_lock") or int(relic_state.get("suppression_round", -1)) == round:
-		return
-	var best_id := ""
-	var best_remaining := -1
-	for skill_id in target.skills:
-		var id := String(skill_id)
-		var remaining := target.pp_remaining(id)
-		if remaining > best_remaining:
-			best_remaining = remaining
-			best_id = id
-	if best_id == "" or best_remaining <= 0:
-		return
-	target.battle_skill_uses[best_id] = mini(target.max_pp(best_id), target.pp_used(best_id) + 1)
-	relic_state["suppression_round"] = round
-	emit_feedback(target, "status", "PP -1")
-	log_event("压制枷锁：%s 的%s失去1PP。" % [target.display_name, SkillDB.name_of(best_id)])
-
-
-func _trigger_cleanse_circuit(target: CombatUnit) -> void:
-	if target == null or target.side != "player" or not _relic_owned("cleanse_circuit") or int(relic_state.get("cleanse_round", -1)) == round:
-		return
-	relic_state["cleanse_round"] = round
-	apply_guard_rock_shield(target, 4, target.uid)
-	target.relay_move_bonus += 1
-	emit_feedback(target, "buff", "净化回路")
-	log_event("净化回路：%s 获得护盾与移动力 +1。" % target.display_name)
-
-
-func _trigger_status_aftershock(unit: CombatUnit) -> void:
-	if unit == null or unit.side != "enemy" or not _relic_owned("status_aftershock") or int(relic_state.get("aftershock_round", -1)) == round:
-		return
-	var status := ""
-	if unit.paralyzed_ticks > 0:
-		status = "paralysis"
-	elif unit.imprison_ticks > 0:
-		status = "imprison"
-	elif unit.root_pending:
-		status = "root"
-	elif unit.shock_ticks > 0:
-		status = "shock"
-	elif unit.slow_ticks > 0:
-		status = "wet"
-	elif unit.burn_ticks > 0:
-		status = "burn"
-	if status == "":
-		return
-	var target: CombatUnit = null
-	for other in alive_units("enemy"):
-		if other.uid == unit.uid:
-			continue
-		var distance := GridSpec.manhattan(unit.cell, other.cell)
-		if distance > 3:
-			continue
-		if target == null or distance < GridSpec.manhattan(unit.cell, target.cell) or (distance == GridSpec.manhattan(unit.cell, target.cell) and other.uid < target.uid):
-			target = other
-	if target == null:
-		return
-	relic_state["aftershock_round"] = round
-	match status:
-		"paralysis": apply_paralysis(target)
-		"imprison": apply_imprison(target)
-		"root": apply_root(target)
-		"shock": apply_shock(target)
-		"wet": apply_wet(target)
-		"burn": apply_burn(target, null)
-	emit_feedback(target, "status", "连锁余波")
-	log_event("连锁余波：%s 的减益传给 %s。" % [unit.display_name, target.display_name])
-
-
-func _trigger_freeze_crack(source: CombatUnit, target: CombatUnit, amount: int, was_frozen: bool) -> void:
-	if source == null or target == null or source.side != "player" or target.side != "enemy" or amount <= 0 or not was_frozen or not _relic_owned("freeze_crack"):
-		return
-	var serials: Dictionary = relic_state.get("freeze_serials", {})
-	var marks: Dictionary = relic_state.get("freeze_crack_marks", {})
-	var key := "%d:%d" % [target.uid, int(serials.get(str(target.uid), 0))]
-	if bool(marks.get(key, false)):
-		return
-	marks[key] = true
-	relic_state["freeze_crack_marks"] = marks
-	for cell in GridSpec.neighbors4(target.cell):
-		var other := unit_at(cell)
-		if other != null and other.side == "enemy" and other.is_alive():
-			damage_unit(null, other, 2, {
-				"no_element": true,
-				"cause": "冻结裂响",
-				"killer_side": source.side,
-				"killer_uid": source.uid,
-			})
-	log_event("冻结裂响：%s 周围的敌人受到2点固定伤害。" % target.display_name)
-
-
-func _trigger_last_stand(target: CombatUnit, previous_hp: int, amount: int) -> void:
-	if target == null or target.side != "player" or target.is_trainer or target.summon_owner_uid >= 0 or amount <= 0 or not target.is_alive() or not _relic_owned("last_stand_ember") or bool(relic_state.get("last_stand_used", false)):
-		return
-	if previous_hp * 3 > target.max_hp and target.hp * 3 <= target.max_hp:
-		relic_state["last_stand_used"] = true
-		apply_guard_rock_shield(target, 8, target.uid)
-		target.relay_move_bonus += 1
-		emit_feedback(target, "buff", "背水火种")
-		log_event("背水火种：%s 获得护盾与移动力 +1。" % target.display_name)
-
-
-func _apply_terrain_relics(caster: CombatUnit, result: Dictionary) -> void:
-	if caster == null or caster.side != "player" or not _relic_owned("terrain_resonance"):
-		return
-	var marks: Dictionary = relic_state.get("terrain_shield_round", {})
-	for change in result.get("terrain_changes", []):
-		var cell: Vector2i = change.get("cell", Vector2i(-1, -1))
-		var unit := unit_at(cell)
-		if unit == null or unit.side != "player" or not unit.is_alive():
-			continue
-		var key := str(unit.uid)
-		if int(marks.get(key, -1)) == round:
-			continue
-		marks[key] = round
-		apply_guard_rock_shield(unit, 3, caster.uid)
-	relic_state["terrain_shield_round"] = marks
-
-
-func _place_relic_fruit() -> void:
-	var candidates := GridSpec.all_cells()
-	candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
-	for cell in candidates:
-		if food_cell_valid(cell) and unit_at(cell) == null and not fruits.has(cell) and not food_cells.has(cell):
-			fruits.append(cell)
-			return
 
 
 func _configure_enemy(enemy: CombatUnit, spawn_index: int, make_boss: bool = false) -> void:
@@ -522,10 +224,6 @@ func _grant_inspiration(unit: CombatUnit) -> void:
 
 func _trigger_inspiration() -> void:
 	if inspiration_triggered:
-		return
-	if _relic_owned("boss_hunt") and not relic_state.has("boss_inspiration_due_round"):
-		relic_state["boss_inspiration_due_round"] = round + 1
-		log_event("猎首令：首领鼓舞被压制，将在下一轮开始生效。")
 		return
 	inspiration_triggered = true
 	var boss := unit_by_uid(boss_uid)
@@ -813,7 +511,7 @@ func add_reward_point(cell: Vector2i, source_id: String) -> void:
 	else:
 		extra_rewards.append(point)
 	_relay_feedback("buff", "奖励点出现", 0, cell, -1)
-	log_event("(%d,%d) 出现奖励点，拾取并保住持有者后可兑换一次三选一。" % [cell.x, cell.y])
+	log_event("(%d,%d) 出现奖励点，存活持有者离场后为出战成员提供额外经验。" % [cell.x, cell.y])
 
 
 func damage_reward_at(_cell: Vector2i) -> void:
@@ -842,7 +540,7 @@ func _finish_reward_guard(side: String = "player") -> void:
 			point["state"] = "carried"
 			point["owner_uid"] = unit.uid
 			emit_feedback(unit, "buff", "获得战场奖励")
-			log_event(("%s 取得奖励点，存活离场可额外三选一。" if side == "player" else "%s 拾取并携带了奖励点，击杀后可夺回。") % unit.display_name)
+			log_event(("%s 取得奖励点，存活离场可提供额外经验。" if side == "player" else "%s 拾取并携带了奖励点，击杀后可夺回。") % unit.display_name)
 		else:
 			point["state"] = "map"
 			point["guard_uid"] = -1
@@ -993,8 +691,6 @@ func summon_tree(owner: CombatUnit, cell: Vector2i) -> CombatUnit:
 	summon.reg_index = units.size()
 	summon.fresh_spawn = true
 	summon.max_hp += int(owner.upgrades.get("tree_man_hp_bonus", 0))
-	if owner.side == "player" and _relic_owned("symbiotic_roots"):
-		summon.max_hp += 10
 	var absorb_cells: Array = []
 	for dx in range(-1, 2):
 		for dy in range(-1, 2):
@@ -1085,9 +781,7 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 		end_battle("forced_retreat")
 		return
 	unit.hp = 0
-	_trigger_status_aftershock(unit)
 	if unit.summon_owner_uid >= 0:
-		_trigger_summon_exit(unit)
 		if unit.side == "enemy" and killer_side == "player":
 			award_battle_experience("kill:%d" % unit.uid, 0 if unit.corrupted else 1)
 		log_event("%s 消散（%s）。" % [unit.display_name, cause])
@@ -1308,8 +1002,6 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var cause: String = opts.get("cause", "伤害")
 	var previous_hp := target.hp
 	target.hp -= amount
-	_trigger_freeze_crack(source, target, amount, was_frozen_before_hit)
-	_trigger_last_stand(target, previous_hp, amount)
 	if bool(opts.get("collision", false)):
 		emit_feedback(target, "collision_damage", "碰撞 -%d" % amount if amount > 0 else "碰撞未受伤", amount)
 	else:
@@ -1465,7 +1157,6 @@ func clear_burn(target: CombatUnit) -> void:
 func apply_root(target: CombatUnit) -> void:
 	target.root_pending = true
 	log_event("%s 被定身：下一次移动机会将被取消。" % target.display_name)
-	_drain_controlled_target_pp(target)
 
 
 func apply_imprison(target: CombatUnit, after_movement: bool = false) -> bool:
@@ -1478,7 +1169,6 @@ func apply_imprison(target: CombatUnit, after_movement: bool = false) -> bool:
 		return false
 	target.imprison_ticks = ticks
 	log_event("%s 被禁锢 %d 回合：不能普通移动，但仍可进行其他行动。" % [target.display_name, ticks])
-	_drain_controlled_target_pp(target)
 	return true
 
 
@@ -1489,13 +1179,9 @@ func apply_freeze(target: CombatUnit) -> bool:
 	target.frozen_ticks = Balance.FREEZE_TICKS
 	target.frozen = true
 	target.paralyzed_ticks = 0
-	var serials: Dictionary = relic_state.get("freeze_serials", {})
-	serials[str(target.uid)] = int(serials.get(str(target.uid), 0)) + 1
-	relic_state["freeze_serials"] = serials
 	cancel_channel(target, "冰冻")
 	if not was_frozen:
 		log_event("%s 被冰冻 %d 回合，无法行动。" % [target.display_name, Balance.FREEZE_TICKS])
-	_drain_controlled_target_pp(target)
 	return true
 
 
@@ -1526,7 +1212,6 @@ func apply_paralysis(target: CombatUnit, ticks: int = Balance.PARALYSIS_TICKS) -
 	cancel_channel(target, "麻痹")
 	if changed:
 		log_event("%s 被麻痹 %d 回合。" % [target.display_name, target.paralyzed_ticks])
-		_drain_controlled_target_pp(target)
 	return changed
 
 
@@ -1592,8 +1277,6 @@ func clear_debuff_status(target: CombatUnit) -> bool:
 	if ended_imprison and remains_on_vines:
 		target.vine_reapply_round = round + 2
 		target.vine_reapply_cell = target.cell
-	if removed:
-		_trigger_cleanse_circuit(target)
 	return removed
 
 
@@ -1746,10 +1429,6 @@ func damage_nest(amount: int, source_side: String = "", target_cell: Vector2i = 
 		target_nest["destroyed_by_player"] = source_side == "player"
 		set_terrain(target_nest["cell"], TerrainDB.PLAIN)
 		log_event("巢穴被摧毁，永久停止生成。")
-		if source_side == "player" and _relic_owned("nest_wedge"):
-			for unit in alive_units("player"):
-				if unit.summon_owner_uid < 0 and not unit.is_trainer:
-					_restore_lowest_pp(unit, 1)
 		try_release_boss()
 		if node_kind == "" and boss_uid < 0 and not has_live_nests():
 			end_battle("victory")
@@ -1966,18 +1645,9 @@ func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) ->
 	if not unit.can_use_in_battle(skill_id):
 		return {"ok": false}
 	var skill_used_before := unit.skill_used
-	var moved_before := unit.moved
 	var result := SkillResolver.apply(self, unit, skill_id, target_entry, false)
 	if bool(result.get("ok", false)):
-		var pp_waived := _relic_pp_waived(unit, skill_id, result, moved_before)
-		if pp_waived:
-			emit_feedback(unit, "buff", "PP不消耗")
-			log_event("%s 的遗物免除本次%s的PP消耗。" % [unit.display_name, SkillDB.name_of(skill_id)])
-		else:
-			unit.consume_skill_pp(skill_id)
-			_trigger_pp_exhaustion(unit, skill_id)
-		_apply_terrain_relics(unit, result)
-		_trigger_relay_sigil(unit)
+		unit.consume_skill_pp(skill_id)
 		_record_skill_use(unit.side, skill_id)
 		if skill_used_before and unit.extra_casts > 0:
 			unit.extra_casts -= 1
@@ -2023,15 +1693,7 @@ func begin_channel(caster: CombatUnit, skill_id: String, cells: Array) -> bool:
 func cancel_channel(unit: CombatUnit, reason: String) -> void:
 	for index in range(pending_casts.size() - 1, -1, -1):
 		if int(pending_casts[index]["uid"]) == unit.uid:
-			var interrupted_skill := String(pending_casts[index].get("skill_id", ""))
 			pending_casts.remove_at(index)
-			if unit.side == "player" and unit.is_alive() and _relic_owned("echo_hourglass") and not bool(relic_state.get("echo_hourglass_used", false)) and interrupted_skill != "":
-				var before := unit.pp_remaining(interrupted_skill)
-				unit.battle_skill_uses[interrupted_skill] = maxi(0, unit.pp_used(interrupted_skill) - 1)
-				if unit.pp_remaining(interrupted_skill) > before:
-					relic_state["echo_hourglass_used"] = true
-					emit_feedback(unit, "buff", "PP +1")
-					log_event("残响沙漏：返还%s的1PP。" % SkillDB.name_of(interrupted_skill))
 			emit_feedback(unit, "action", "吟唱中断")
 			log_event("%s 的吟唱中断：%s；下次本方阶段仍无法行动。" % [unit.display_name, reason])
 
@@ -2054,7 +1716,6 @@ func _resolve_due_channels(side: String) -> void:
 		if caster == null or not caster.is_on_board() or caster.side != side:
 			continue
 		var result := SkillResolver.resolve_channel(self, caster, String(entry["skill_id"]), entry["cells"])
-		_apply_terrain_relics(caster, result)
 		emit_feedback(caster, "action", "吟唱完成")
 		log_event("%s 吟唱完成：%s" % [caster.display_name, String(result.get("text", ""))])
 		check_battle_end()
@@ -2087,10 +1748,6 @@ func _start_round_rules() -> void:
 		reset_exploration_actions()
 		return
 	round += 1
-	var inspiration_due := int(relic_state.get("boss_inspiration_due_round", 0))
-	if inspiration_due > 0 and inspiration_due <= round:
-		relic_state["boss_inspiration_due_round"] = -1
-		_trigger_inspiration()
 	for unit in units:
 		if not unit.is_on_board():
 			continue
@@ -2110,8 +1767,6 @@ func _start_round_rules() -> void:
 			unit.capture_used = true
 		if unit.paralyzed_ticks > 0:
 			unit.paralyzed_ticks -= 1
-		if unit.side == "player" and _relic_owned("migration_tracks") and GridSpec.is_inside(unit.cell) and terrain_at(unit.cell) in [TerrainDB.GRASS, TerrainDB.VINES, TerrainDB.ICE]:
-			unit.relay_move_bonus = maxi(unit.relay_move_bonus, 1)
 	for unit in units:
 		if unit.move_cancelled and not unit.sheltered:
 			unit.move_cancelled = false
@@ -2568,7 +2223,7 @@ func _settle_ice_growth(sources: Array) -> void:
 func try_pickup_fruit(unit: CombatUnit) -> Dictionary:
 	if unit == null or unit.side != "player" or not unit.is_alive() or not fruits.has(unit.cell):
 		return {}
-	var heal := Balance.FRUIT_HEAL + (2 if _relic_owned("herb_satchel") else 0)
+	var heal := Balance.FRUIT_HEAL
 	var before := unit.hp
 	unit.hp = mini(unit.max_hp, unit.hp + heal)
 	var gained := unit.hp - before
@@ -2871,8 +2526,6 @@ func _signature() -> String:
 	parts.append("storm:%d:%s" % [storm_last_round, str(storm_strikes)])
 	parts.append("boss_phase:%s" % str(boss_retreat_used))
 	parts.append("pending:%s" % str(pending_casts))
-	parts.append("relics:%s" % str(relic_stacks))
-	parts.append("relic_state:%s" % str(relic_state))
 	parts.append("channel_claims:%s:%s" % [str(channel_claims.get("player", {})), str(channel_claims.get("enemy", {}))])
 	var obstacle_keys: Array = obstacle_durability.keys().duplicate()
 	obstacle_keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
@@ -2943,8 +2596,6 @@ func clone() -> BattleState:
 	copy.enemy_kills = enemy_kills.duplicate(true)
 	copy.captured = captured.duplicate(true)
 	copy.effects = effects.duplicate()
-	copy.relic_stacks = relic_stacks.duplicate()
-	copy.relic_state = relic_state.duplicate(true)
 	copy.upgrades = upgrades.duplicate()
 	copy.capture_options = capture_options.duplicate()
 	copy.debug_skill_damage_bonus = debug_skill_damage_bonus.duplicate()
@@ -3097,8 +2748,6 @@ func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: D
 				amount += int(effects["grass_strike"])
 	if source != null and bool(opts.get("skill_direct", false)):
 		amount += int(debug_skill_damage_bonus.get(source.side, 0))
-	if source != null and bool(opts.get("skill_direct", false)):
-		amount += _relic_damage_bonus(source, target, opts)
 	amount = maxi(0, amount)
 	if amount > 0 and source != null and not bool(opts.get("no_element", false)) and target.has_buff("direct_guard") and not bool(opts.get("conductive", false)):
 		amount = maxi(0, amount - Balance.DIRECT_GUARD_REDUCTION)

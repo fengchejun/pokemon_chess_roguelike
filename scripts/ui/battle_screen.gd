@@ -44,9 +44,6 @@ var terrain_panel: Control = null
 var terrain_label: Label = null
 var terrain_scroll: ScrollContainer = null
 var objective_panel: Control = null
-var relic_panel: PanelContainer = null
-var relic_list: VBoxContainer = null
-var relic_scroll: ScrollContainer = null
 var objective_label: Label = null
 var corner_top_left: Control = null
 var team_panel: Control = null
@@ -127,18 +124,6 @@ func _ready() -> void:
 	objective_label.custom_minimum_size.x = 270
 	objective_panel.add_child(objective_label)
 	objective_panel.set_meta("corner", "top_right")
-	relic_panel = UIKit.panel(UIKit.PANEL)
-	relic_panel.name = "RelicBonusPanel"
-	add_child(relic_panel)
-	var relic_column := UIKit.vbox(5)
-	relic_panel.add_child(relic_column)
-	relic_column.add_child(UIKit.label("遗物", 15, UIKit.ACCENT))
-	relic_scroll = ScrollContainer.new()
-	relic_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	relic_column.add_child(relic_scroll)
-	relic_list = UIKit.vbox(5)
-	relic_list.custom_minimum_size.x = 250
-	relic_scroll.add_child(relic_list)
 	unit_panel = _unit_box()
 	add_child(unit_panel)
 	unit_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -328,11 +313,7 @@ func _layout_overlays() -> void:
 	corner_top_left.custom_minimum_size.x = side_space - 28.0
 	objective_panel.position = Vector2(size.x - side_space + 10.0, 12)
 	objective_panel.custom_minimum_size = Vector2(side_space - 24.0, 105)
-	relic_panel.position = Vector2(size.x - side_space + 10.0, 130)
-	relic_panel.custom_minimum_size.x = side_space - 24.0
-	relic_scroll.custom_minimum_size = Vector2(260, minf(170.0, maxf(50.0, size.y * 0.22)))
-	relic_panel.reset_size()
-	_fit_relic_panel()
+	objective_panel.reset_size()
 	team_panel.position = Vector2(14, maxf(178, corner_top_left.position.y + corner_top_left.get_combined_minimum_size().y + 10))
 	team_panel.custom_minimum_size.x = side_space - 28.0
 	_fit_team_panel()
@@ -354,7 +335,7 @@ func _layout_corner_cards() -> void:
 func _fit_terrain_panel() -> void:
 	if terrain_scroll == null or terrain_label == null:
 		return
-	var available := maxf(120.0, size.y - maxf(270.0, relic_panel.position.y + relic_panel.size.y + 28.0))
+	var available := maxf(120.0, size.y - maxf(270.0, objective_panel.position.y + objective_panel.size.y + 28.0))
 	var height := clampf(terrain_label.get_minimum_size().y + 24.0, 120.0, available)
 	terrain_scroll.custom_minimum_size = Vector2(266, height - 20.0)
 	terrain_panel.custom_minimum_size.y = height
@@ -394,7 +375,7 @@ func refresh_all() -> void:
 	board.selected_uid = selected_uid
 	board.clear_overlays()
 	_update_header()
-	_update_relic_panel()
+	_fit_terrain_panel()
 	_update_team_list()
 	_update_unit_card()
 	_rebuild_skill_buttons()
@@ -511,36 +492,6 @@ func _update_header() -> void:
 	if not state.can_leave_node() and state.node_kind != "boss" and state.boss_uid < 0:
 		objective_label.text += "\n部署/撤离区：绿色框\n区外%d名：撤离损失25%%最大生命" % state.escape_stragglers().size()
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
-
-
-func _update_relic_panel() -> void:
-	if relic_list == null:
-		return
-	UIKit.clear_children(relic_list)
-	var stacks: Dictionary = _display_state().relic_stacks
-	var owned: Array = []
-	for relic_id in stacks:
-		if RelicDB.DEFINITIONS.has(String(relic_id)) and RelicDB.owned(stacks, String(relic_id)):
-			owned.append(String(relic_id))
-	owned.sort()
-	if owned.is_empty():
-		relic_list.add_child(UIKit.wrapped("暂无遗物", 13, UIKit.TEXT_DIM))
-	else:
-		for relic_id in owned:
-			var line := UIKit.wrapped("%s：%s" % [RelicDB.name_of(relic_id), RelicDB.description_of(relic_id)], 12, UIKit.TEXT)
-			line.custom_minimum_size.x = 248
-			relic_list.add_child(line)
-	call_deferred("_fit_relic_panel")
-
-
-func _fit_relic_panel() -> void:
-	if relic_list == null or relic_scroll == null:
-		return
-	objective_panel.reset_size()
-	relic_panel.position.y = maxf(130.0, objective_panel.position.y + objective_panel.size.y + 10.0)
-	relic_scroll.custom_minimum_size.y = minf(170.0, maxf(34.0, relic_list.get_combined_minimum_size().y))
-	relic_panel.reset_size()
-	_fit_terrain_panel()
 
 
 func _update_unit_card() -> void:
@@ -1516,15 +1467,13 @@ func _show_merchant(message: String = "") -> void:
 	list.add_child(UIKit.wrapped(message if message != "" else "交易不消耗回合。库存不会随重访刷新。", 14))
 	for item_id in state.merchant["stock"]:
 		var id := String(item_id)
-		var is_relic := id.begins_with("relic:")
-		var relic := id.trim_prefix("relic:")
-		if is_relic and not RelicDB.DEFINITIONS.has(relic):
+		if not Merchant.ITEMS.has(id):
 			continue
-		var price := 16 if is_relic else Merchant.item_price(app.run, id)
-		var title := RelicDB.name_of(relic) if is_relic else String(Merchant.ITEMS[id][0])
+		var price := Merchant.item_price(app.run, id)
+		var title := String(Merchant.ITEMS[id][0])
 		var button := UIKit.small_button("购买 %s · %d原质 · 剩%d" % [title, price, int(state.merchant["stock"][id])])
-		button.disabled = int(state.merchant["stock"][id]) == 0 or app.run.essence < price or (is_relic and RelicDB.owned(app.run.relic_stacks, relic))
-		button.tooltip_text = RelicDB.description_of(relic) if is_relic else Merchant.ITEMS[id][2]
+		button.disabled = int(state.merchant["stock"][id]) == 0 or app.run.essence < price
+		button.tooltip_text = Merchant.ITEMS[id][2]
 		button.pressed.connect(func() -> void: _trade("buy", id))
 		list.add_child(button)
 	list.add_child(UIKit.label("技能强化 · 每次12原质（亲密度可折扣）", 18, UIKit.ACCENT))

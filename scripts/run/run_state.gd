@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 19
+const SAVE_VERSION := 20
 var essence: int = 0
 var trainer_items: Dictionary = {}
 var sold_monster_uids: Array = []
@@ -154,9 +154,6 @@ var cards: Array = [] # 旧存档字段；新规则不再免费选取站位卡�
 var environment_deck: Array = [] # 旧存档字段；读取时按已确认规则清空。
 var environment_reward_pending: bool = false # 旧结算字段。
 var reward_inventory: Array = []
-var relic_stacks: Dictionary = {}
-var homeward_waypoint_floors: Array = []
-var pending_waypoint_floor: int = -1
 var invasion_level_bonus: int = 0
 var pending_invasion_bonus: int = 0
 var claimed_supply_battles: Array = []
@@ -165,11 +162,8 @@ var selected_reward_item: String = ""
 var preview_used_reward_item: String = ""
 var preview_modifications: Array = []
 var preview_deploy_positions: Dictionary = {}
-var pending_reward_choices: int = 0
-var reward_choice_index: int = 0
 var settlement_pending: bool = false
 var last_settlement: Dictionary = {}
-var pending_bonus_choices: int = 0
 var upgrades: Dictionary = {}
 var upgrades_taken: Array = []
 var xp_upgrades_claimed: int = 0
@@ -415,7 +409,7 @@ func get_region():
 	if region_data.is_empty():
 		region_data = Region.create_floor(floor_index(), current_theme()).to_dict()
 	var region = Region.from_dict(region_data)
-	Merchant.ensure_region(region, seed, relic_stacks)
+	Merchant.ensure_region(region, seed)
 	# Skill upgrades now belong exclusively to the merchant.
 	for node in region.nodes.values():
 		node.erase("mentor")
@@ -428,16 +422,8 @@ func enter_region_node(id: String) -> bool:
 	var previous := region_data.duplicate(true)
 	var previous_index := battle_index
 	var pressure_before: int = region.boss_level_bonus
-	var waypoint_free := false
-	var waypoint_floor: int = region.floor_index
-	if RelicDB.owned(relic_stacks, "homeward_waypoint") and region.node_mode(id) == "camp" and region.visits > 0 and not homeward_waypoint_floors.has(waypoint_floor):
-		waypoint_free = true
-		homeward_waypoint_floors.append(waypoint_floor)
-	if not region.record_entry(id, not waypoint_free):
-		if waypoint_free:
-			homeward_waypoint_floors.erase(waypoint_floor)
+	if not region.record_entry(id):
 		return false
-	pending_waypoint_floor = waypoint_floor if waypoint_free else -1
 	invasion_level_bonus += region.boss_level_bonus - pressure_before
 	if region.node_mode(id) != "camp":
 		pending_invasion_bonus = region.boss_level_bonus - pressure_before
@@ -455,9 +441,6 @@ func enter_region_node(id: String) -> bool:
 func cancel_region_entry() -> void:
 	if pending_region_entry_backup.is_empty() or not battle_snapshot.is_empty():
 		return
-	if pending_waypoint_floor >= 0:
-		homeward_waypoint_floors.erase(pending_waypoint_floor)
-		pending_waypoint_floor = -1
 	invasion_level_bonus -= pending_invasion_bonus
 	pending_invasion_bonus = 0
 	if preview_used_reward_item != "" and RewardDB.is_consumable(preview_used_reward_item):
@@ -477,9 +460,7 @@ func rest_at_region_camp() -> bool:
 
 func camp_rest_cost(kind: String) -> int:
 	var base := int(FoodDB.definition(kind).get("rest_cost", 0))
-	if base <= 0:
-		return 0
-	return maxi(1, base - (1 if RelicDB.owned(relic_stacks, "camp_ember") else 0))
+	return maxi(0, base)
 
 
 func needs_camp_rest() -> bool:
@@ -531,7 +512,7 @@ func rest_with_food(selection: Dictionary) -> Dictionary:
 		var before := int(record["hp"])
 		var healed := monster_max_hp(record)
 		if before <= 0:
-			healed = ceili(monster_max_hp(record) * (0.75 if RelicDB.owned(relic_stacks, "camp_ember") else 0.5))
+			healed = ceili(monster_max_hp(record) * 0.5)
 		results.append("%s HP %d → %d" % [SpeciesDB.name_of(String(record["species_id"])), before, healed])
 		record["hp"] = healed
 		var pp_restored := restore_record_pp(record)
@@ -644,30 +625,6 @@ func consume_selected_reward_item() -> String:
 	reward_inventory.erase(used)
 	selected_reward_item = ""
 	return used
-
-
-func reward_choices() -> Array:
-	return RelicDB.offer(seed, battle_index, reward_choice_index, relic_stacks)
-
-
-func discard_unavailable_reward_choices() -> int:
-	## 当前没有可提供的新版遗物时，清除待选次数，避免结算页空池软锁。
-	if pending_reward_choices <= 0 or not reward_choices().is_empty():
-		return 0
-	var discarded := pending_reward_choices
-	pending_reward_choices = 0
-	return discarded
-
-
-func choose_reward(reward_id: String) -> bool:
-	if pending_reward_choices <= 0 or not reward_choices().has(reward_id):
-		return false
-	if not RelicDB.DEFINITIONS.has(reward_id) or RelicDB.owned(relic_stacks, reward_id):
-		return false
-	relic_stacks[reward_id] = 1
-	pending_reward_choices -= 1
-	reward_choice_index += 1
-	return true
 
 
 func supply_choices() -> Array:
@@ -924,11 +881,9 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		run_failed = true
 		# 本场尚未战后收容的捕获失效；此前已在名单或仓库的收藏保留。
 		pending_captures.clear()
-		pending_reward_choices = 0
-		pending_bonus_choices = 0
 	var bonus_points := battle.earned_reward_points(true) if not failure else []
 	var bonus_count := bonus_points.size()
-	var bonus_earned := bonus_count > 0
+	var reward_points_earned := bonus_count > 0
 	if not failure and (not region_mode or battle.node_kind != "event"):
 		var gains: Dictionary = {}
 		var original: Dictionary = {}
@@ -938,7 +893,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 				original[id] = true
 				gains[id] = 0
 		var shared_bonus := 0
-		if bonus_earned:
+		if reward_points_earned:
 			shared_bonus += bonus_count
 		for current in battle.all_nests():
 			if bool(current.get("destroyed_by_player", false)):
@@ -966,15 +921,10 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		if bool(entry.get("by_player", false)):
 			kills += 1
 	stats["kills"] = int(stats["kills"]) + kills
-	if bonus_earned:
-		pending_bonus_choices += bonus_count
+	if reward_points_earned:
 		for point in bonus_points:
 			point["credited"] = true
-	outcome["bonus_choice_earned"] = bonus_earned
-	outcome["bonus_choices_earned"] = bonus_count
-	pending_reward_choices += pending_bonus_choices
-	pending_bonus_choices = 0
-	outcome["pending_reward_choices"] = pending_reward_choices
+	outcome["reward_points_earned"] = bonus_count
 	match battle.end_reason:
 		"victory":
 			stats["victories"] = int(stats["victories"]) + 1
@@ -1244,10 +1194,7 @@ func apply_merchant_skill_upgrade(uid: int, skill_id: String) -> bool:
 
 func merchant_skill_upgrade_cost(record: Dictionary) -> int:
 	var discount := mini(4, floori(float(record.get("affinity", 0)) / 5.0))
-	var cost := maxi(4, 12 - discount)
-	if RelicDB.owned(relic_stacks, "merchant_credentials"):
-		cost = maxi(1, cost - 2)
-	return cost
+	return maxi(4, 12 - discount)
 
 
 func equip_monster_skill(uid: int, slot: int, skill_id: String) -> bool:
@@ -1304,9 +1251,6 @@ func to_dict() -> Dictionary:
 		"environment_deck": environment_deck.duplicate(),
 		"environment_reward_pending": environment_reward_pending,
 		"reward_inventory": reward_inventory.duplicate(),
-		"relic_stacks": relic_stacks.duplicate(),
-		"homeward_waypoint_floors": homeward_waypoint_floors.duplicate(),
-		"pending_waypoint_floor": pending_waypoint_floor,
 		"invasion_level_bonus": invasion_level_bonus,
 		"pending_invasion_bonus": pending_invasion_bonus,
 		"claimed_supply_battles": claimed_supply_battles.duplicate(),
@@ -1315,11 +1259,8 @@ func to_dict() -> Dictionary:
 		"preview_used_reward_item": preview_used_reward_item,
 		"preview_modifications": preview_modifications.duplicate(true),
 		"preview_deploy_positions": BattleSnapshot.encode(preview_deploy_positions),
-		"pending_reward_choices": pending_reward_choices,
-		"reward_choice_index": reward_choice_index,
 		"settlement_pending": settlement_pending,
 		"last_settlement": last_settlement.duplicate(true),
-		"pending_bonus_choices": pending_bonus_choices,
 		"deaths": deaths.duplicate(true),
 		"stats": stats.duplicate(),
 		"captured_applied": captured_applied,
@@ -1333,7 +1274,6 @@ static func from_dict(data: Dictionary) -> RunState:
 	var run := RunState.new()
 	run.invasion_level_bonus = int(data.get("invasion_level_bonus", 0))
 	run.pending_invasion_bonus = int(data.get("pending_invasion_bonus", 0))
-	run.pending_waypoint_floor = int(data.get("pending_waypoint_floor", -1))
 	run.essence = maxi(0, int(data.get("essence", 0)))
 	run.trainer_items = (data.get("trainer_items", {}) as Dictionary).duplicate()
 	run.sold_monster_uids = (data.get("sold_monster_uids", []) as Array).map(func(uid): return int(uid))
@@ -1394,13 +1334,6 @@ static func from_dict(data: Dictionary) -> RunState:
 	for deployed_uid in data.get("deployed_uids", []):
 		run.deployed_uids.append(int(deployed_uid))
 	run.pending_supply = bool(data.get("pending_supply", false))
-	for relic_id in (data.get("relic_stacks", {}) as Dictionary):
-		if RelicDB.DEFINITIONS.has(relic_id) and int(data["relic_stacks"][relic_id]) > 0:
-			run.relic_stacks[String(relic_id)] = 1
-	for floor_index in data.get("homeward_waypoint_floors", []):
-		var number := int(floor_index)
-		if number >= 0 and not run.homeward_waypoint_floors.has(number):
-			run.homeward_waypoint_floors.append(number)
 	for battle_number in data.get("claimed_supply_battles", []):
 		var number := int(battle_number)
 		if number > 0 and number % Balance.SUPPLY_INTERVAL == 0 and not run.claimed_supply_battles.has(number):
@@ -1426,8 +1359,6 @@ static func from_dict(data: Dictionary) -> RunState:
 		run.preview_used_reward_item = ""
 	run.preview_modifications = (data.get("preview_modifications", []) as Array).duplicate(true)
 	run.preview_deploy_positions = BattleSnapshot.decode(data.get("preview_deploy_positions", {}))
-	run.pending_reward_choices = maxi(0, int(data.get("pending_reward_choices", 0)))
-	run.reward_choice_index = maxi(0, int(data.get("reward_choice_index", 0)))
 	run.settlement_pending = bool(data.get("settlement_pending", false))
 	run.last_settlement = (data.get("last_settlement", {}) as Dictionary).duplicate(true)
 	if run.settlement_pending and String(run.last_settlement.get("reason", "")) == "forced_retreat":
@@ -1437,7 +1368,6 @@ static func from_dict(data: Dictionary) -> RunState:
 		run.trainer_hp = 0
 	if run.run_failed:
 		run.pending_captures.clear()
-	run.pending_bonus_choices = maxi(0, int(data.get("pending_bonus_choices", 0)))
 	## 修复历史存档：补齐缺失的 uid（否则名单/仓库相关界面会取键失败）。
 	for group in [run.carried, run.storage, run.pending_captures]:
 		for record in (group as Array):

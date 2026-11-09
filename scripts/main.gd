@@ -249,7 +249,6 @@ func merchant_trade(state: BattleState, operation: String, id: String, quantity:
 		var restored := BattleSnapshot.load_state(battle_before)
 		state.units = restored.units
 		state.merchant = restored.merchant
-		state.relic_stacks = restored.relic_stacks
 		return {"ok": false, "reason": "存档写入失败，交易已撤回。"}
 	if collection != null:
 		collection.absorb_run(run)
@@ -270,7 +269,6 @@ func purchase_skill_upgrade(state: BattleState, uid: int, skill_id: String, save
 		run = RunState.from_dict(previous)
 		var restored := BattleSnapshot.load_state(battle_before)
 		state.units = restored.units
-		state.relic_stacks = restored.relic_stacks
 		return {"ok": false, "reason": "存档写入失败，技能强化已撤回。"}
 	if collection != null:
 		collection.absorb_run(run)
@@ -358,7 +356,7 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 	if run.region_mode:
 		state.node_kind = run.get_region().node_mode(run.get_region().active_node)
 	var card_effects := run.effects()
-	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, card_effects, {}, cfg.get("reinforce", []), run.options, run.relic_stacks)
+	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, card_effects, {}, cfg.get("reinforce", []), run.options)
 	if run.region_mode:
 		run.captured_applied = 0
 		var region = run.get_region()
@@ -457,7 +455,7 @@ func continue_after_settlement() -> void:
 	if run == null:
 		show_menu()
 		return
-	if not run.pending_captures.is_empty() or run.pending_upgrades() or run.pending_reward_choices > 0:
+	if not run.pending_captures.is_empty() or run.pending_upgrades():
 		return
 	if collection != null:
 		collection.absorb_run(run)

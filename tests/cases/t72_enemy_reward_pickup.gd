@@ -45,10 +45,10 @@ func _timing(t: TestContext) -> void:
 	state.apply_vine_on_landing(state.unit_by_uid(100))
 	t.eq(state.reward["state"], "carried", "拾取后可以离开奖励格")
 	state.end_battle("escape")
-	t.check(state.earned_reward_points().is_empty(), "敌方持有不能兑换我方奖励")
+	t.check(state.earned_reward_points().is_empty(), "敌方持有不计入我方奖励经验")
 	var run := RunState.new_run(7201)
 	run.mark_deployed([1, 2])
-	t.eq(run.settle_battle(state)["pending_reward_choices"], 0, "敌方持有不增加结算选择")
+	t.eq(run.settle_battle(state)["reward_points_earned"], 0, "敌方持有不增加我方奖励经验")
 
 func _interrupt(t: TestContext) -> void:
 	var pushed := _waiting()
@@ -87,7 +87,7 @@ func _drops(t: TestContext) -> void:
 	state._begin_reward_guard()
 	state._finish_reward_guard()
 	state.end_battle("escape")
-	t.eq(state.earned_reward_points().size(), 1, "掉落后可由我方拾取并兑换")
+	t.eq(state.earned_reward_points().size(), 1, "掉落后可由我方拾取并计入奖励经验")
 	for kind in [TerrainDB.DEEP, TerrainDB.LAVA, TerrainDB.PIT]:
 		var fatal := _carried()
 		fatal.set_terrain(Vector2i(6, 3), kind)

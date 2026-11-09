@@ -8,7 +8,7 @@
 
 PP 是局内持久资源：宝可梦记录的 `skill_pp_uses` 保存每个已学技能已消耗次数，`RunState.build_deploy_units()` 在开战前注入 `CombatUnit.battle_skill_uses`，`sync_from_battle()` 在施法、读档和结算后回写。`BattleState.setup()` 不再清空我方 PP；敌方每场新生成并自然满 PP。存档 v19 对旧快照按五倍比例迁移消耗次数；旧记录无 PP 数据时默认满 PP。营地基础食物调用 `restore_record_pp()` 回满全队，商人 `pp_tonic` 通过 `CombatUnit.restore_pp(5)` 为每项已装备技能恢复至多 5 PP。
 
-新版遗物共 24 项，固定唯一、不升级。`RelicDB.offer()` 过滤已有 ID 并优先保证候选流派多样性；`RunState` 在奖励和商人领取时只写入一次。`BattleState.relic_state` 保存战斗内一次性触发状态，随快照和克隆复制；`RunState`/`RegionState` 处理营地、归途压力和商人折扣。旧遗物 ID 仍保留兼容过滤，旧存档不会把旧效果重新带入。
+遗物机制已于 2026-11-09 整体移除。当前没有遗物数据表、战后遗物池、商人遗物库存或战斗遗物触发；本局存档升至 v20，读取旧档时忽略遗物栈、待选次数和归途路标字段，战斗快照升至 v9 并剔除 `relic_stacks`、`relic_state`。旧区域商人库存中的 `relic:` SKU 在区域初始化时清除，旧快照中的同类 SKU 不会显示或购买。奖励点保留为胜利后的额外经验来源。
 
 `SkillResolver` 让冲浪、溜冰保留施放前的移动消耗状态，截止回合为当前回合加一；`PathFinder._connected_terrain_paths()` 允许路线经过敌方占据格，`stop_cells()` 仍禁止停在任何单位所在格。普通移动寻路及阻挡不变。推风射程、海啸区域和顺风长度分别由 `SkillDB` 与 `SkillResolver` 的共享规则定义。
 

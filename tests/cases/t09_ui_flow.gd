@@ -74,7 +74,7 @@ func run(t: TestContext) -> void:
 		t.finish()
 		return
 	var state: BattleState = battle_screen.state
-	t.check(battle_screen.action_panel.z_index > battle_screen.relic_panel.z_index, "行动窗口高于侧栏")
+	t.check(battle_screen.action_panel.z_index > battle_screen.team_panel.z_index, "行动窗口高于侧栏")
 	state.pending_casts.append({"uid": 100, "side": "enemy", "skill_id": "rock_slide", "cells": [Vector2i(2, 3)], "due_round": state.round + 1})
 	battle_screen.refresh_all()
 	battle_screen._show_modal("战斗菜单", "层级验证")
@@ -230,11 +230,8 @@ func run(t: TestContext) -> void:
 	capture_choice_btn.pressed.emit()
 	t.eq(app.run.storage.size(), 1, "第二条放入仓库")
 	t.eq(app.run.pending_captures.size(), 0, "捕获处理完成")
-	t.eq(continue_button.disabled, true, "新版遗物候选会在捕获处理后等待选择")
 	_claim_pending_monster_levels(t, app)
-	_claim_pending_rewards(t, app)
-	t.eq(continue_button.disabled, false, "奖励处理完成后可以继续")
-	t.check(not app.run.relic_stacks.is_empty(), "新版遗物已进入本局构筑")
+	t.eq(continue_button.disabled, false, "捕获与非遗物战后步骤处理完成后可以继续")
 	app.run.reward_inventory.append("position:forest")
 	var index_before: int = app.run.battle_index
 	continue_button.pressed.emit()
@@ -326,10 +323,9 @@ func run(t: TestContext) -> void:
 	t.eq(app.run.pending_captures.size(), 0, "捕获处理完成")
 	t.eq(app.run.storage.size(), storage_before + 1, "捕获进入仓库")
 	var settle_continue: Button = settlement2.find_child("ContinueButton", true, false)
-	t.eq(settle_continue.disabled, true, "第二场结算先领取怪物升级和奖励")
+	t.eq(settle_continue.disabled, true, "第二场结算先处理怪物升级")
 	_claim_pending_monster_levels(t, app)
-	_claim_pending_rewards(t, app)
-	t.eq(settle_continue.disabled, false, "第二场奖励处理完可以继续")
+	t.eq(settle_continue.disabled, false, "第二场怪物升级处理完可以继续")
 	app.run.trainer_hp = 1
 	settle_continue.pressed.emit()
 	t.eq(app.current_screen.name, "SupplyScreen", "完成两场后进入补给点")
@@ -356,23 +352,6 @@ func run(t: TestContext) -> void:
 	t.eq(app.music_director.current_track, "title", "返回开始界面恢复标题音乐")
 	app.free()
 	t.finish()
-
-
-func _claim_pending_rewards(t: TestContext, app: Control) -> void:
-	var count := 0
-	while app.run.pending_reward_choices > 0 and count < 4:
-		var choices: Array = app.run.reward_choices()
-		t.eq(choices.size(), 3, "战后奖励提供三个未获得遗物")
-		if choices.is_empty():
-			break
-		var id := String(choices[0])
-		var button: Button = app.current_screen.find_child("RewardChoice_%s" % id, true, false)
-		t.check(button != null, "遗物候选按钮存在")
-		if button == null:
-			break
-		button.pressed.emit()
-		count += 1
-	t.eq(app.run.pending_reward_choices, 0, "本场奖励选择全部处理完成")
 
 
 func _claim_pending_monster_levels(t: TestContext, app: Control) -> void:
