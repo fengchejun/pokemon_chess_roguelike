@@ -69,6 +69,7 @@ func _first_aid(t: TestContext) -> void:
 	t.eq(near_ally.hp, near_ally.max_hp, "急救不会超过生命上限")
 	caster.skill_used = false
 	caster.moved = false
+	caster.battle_skill_uses.clear()
 	caster.upgrades["first_aid_healing"] = 5
 	near_ally.hp = near_ally.max_hp - 20
 	var upgraded_hp := near_ally.hp

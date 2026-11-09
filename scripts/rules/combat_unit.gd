@@ -260,9 +260,27 @@ func can_act_skill() -> bool:
 	return is_on_board() and guard_nest.x < 0 and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and (not skill_used or extra_casts > 0)
 
 
+func max_pp(skill_id: String) -> int:
+	return SkillDB.pp_of(skill_id)
+
+
+func pp_used(skill_id: String) -> int:
+	return maxi(0, int(battle_skill_uses.get(skill_id, 0)))
+
+
+func pp_remaining(skill_id: String) -> int:
+	return maxi(0, max_pp(skill_id) - pp_used(skill_id))
+
+
 func can_use_in_battle(skill_id: String) -> bool:
-	var limit := SkillDB.battle_limit_of(skill_id)
-	return limit <= 0 or int(battle_skill_uses.get(skill_id, 0)) < limit
+	return pp_remaining(skill_id) > 0
+
+
+func consume_skill_pp(skill_id: String) -> bool:
+	if not can_use_in_battle(skill_id):
+		return false
+	battle_skill_uses[skill_id] = mini(max_pp(skill_id), pp_used(skill_id) + 1)
+	return true
 
 
 func can_move_now(free_terrain: bool = false) -> bool:

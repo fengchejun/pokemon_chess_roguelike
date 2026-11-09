@@ -78,8 +78,8 @@ func _electric(t: TestContext) -> void:
 	state.round = 2
 	state._resolve_due_channels("player")
 	t.check(target.shock_ticks > 0, "闪电施加感电")
-	t.eq(int(caster.battle_skill_uses.get("lightning", 0)), 0, "闪电不再消耗每场次数")
-	t.check(caster.can_use_in_battle("lightning"), "下一回合仍可再次吟唱闪电")
+	t.eq(int(caster.battle_skill_uses.get("lightning", 0)), 1, "闪电宣告时消耗 1 PP")
+	t.check(caster.can_use_in_battle("lightning"), "闪电仍保留第二点 PP")
 	t.check(caster.can_use_in_battle("electric_arc"), "放电不受闪电次数限制")
 	var second := CombatUnit.make("electric_starter", "player", 51)
 	second.cell = Vector2i(1, 3)

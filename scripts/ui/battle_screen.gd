@@ -682,8 +682,9 @@ func _update_unit_card() -> void:
 		lines.append("地形赋予技能威力 +%d" % unit.summon_power_bonus)
 	for skill_id in unit.skills:
 		var id := String(skill_id)
-		var used_text := "（本场已用尽）" if not unit.can_use_in_battle(id) else ""
-		lines.append("· %s%s：%s" % [SkillDB.name_of(id), used_text, SkillDB.get_def(id).get("desc", "")])
+		var pp_text := "PP %d/%d" % [unit.pp_remaining(id), unit.max_pp(id)]
+		var used_text := "（PP耗尽）" if not unit.can_use_in_battle(id) else ""
+		lines.append("· %s【%s】%s：%s" % [SkillDB.name_of(id), pp_text, used_text, SkillDB.get_def(id).get("desc", "")])
 	unit_body.text = "\n".join(lines)
 
 
@@ -773,7 +774,7 @@ func _rebuild_skill_buttons() -> void:
 			if phase_reason != "":
 				button_text += "·" + phase_reason
 			elif not unit.can_use_in_battle(id):
-				button_text += "·本场已用"
+				button_text += "·PP耗尽"
 			var button := UIKit.small_button(button_text)
 			button.name = "SkillButton_%s" % id
 			button.tooltip_text = String(def.get("desc", ""))
@@ -783,7 +784,7 @@ func _rebuild_skill_buttons() -> void:
 				button.tooltip_text += "\n（%s）" % phase_reason
 			elif not unit.can_use_in_battle(id):
 				button.disabled = true
-				button.tooltip_text += "\n（本场使用次数已耗尽）"
+				button.tooltip_text += "\n（PP已耗尽）"
 			elif id == "tree_man" and state.active_summon(unit.uid) != null:
 				button.disabled = true
 				button.tooltip_text += "\n（已有存活召唤物）"
@@ -911,6 +912,7 @@ func _skill_phase_block_reason(unit: CombatUnit, skill_id: String = "") -> Strin
 func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	var def := SkillDB.get_def(skill_id)
 	var parts: Array = []
+	parts.append("PP %d/%d" % [unit.pp_remaining(skill_id), unit.max_pp(skill_id)])
 	var base_damage := int(def.get("damage", 0))
 	base_damage = SkillResolver.upgraded_base_damage(unit, skill_id, base_damage)
 	if String(def.get("element", "")) == "water" and state.mirror_water_travel_active(unit):

@@ -708,8 +708,6 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		_apply_direct_nest(state, caster, skill_id, target_entry["cell"], summary)
 		summary["text"] = "%s命中巢穴。" % SkillDB.name_of(skill_id)
 		_consume_fire_amp_if_used(state, caster, summary)
-		if SkillDB.battle_limit_of(skill_id) > 0:
-			caster.battle_skill_uses[skill_id] = int(caster.battle_skill_uses.get(skill_id, 0)) + 1
 		caster.moved = true
 		return summary
 	if String(def.get("kind", "")) == "unit" and String(target_entry.get("type", "")) == "cell" and state.obstacle_durability.has(target_entry["cell"]):
@@ -722,8 +720,6 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 			summary["text"] = "推击岩障：耐久 -1；" + ("填成易碎格" if pushed["filled"] else "推动一格" if pushed["moved"] else "原地破碎" if pushed["destroyed"] else "撞击单位，岩障留在原格" if not pushed["hits"].is_empty() else "前方受阻")
 		else:
 			_hit_obstacle(state, target_entry["cell"], summary, caster.side, skill_id == "rock_break" or skill_id == "rock_smash")
-		if SkillDB.battle_limit_of(skill_id) > 0:
-			caster.battle_skill_uses[skill_id] = int(caster.battle_skill_uses.get(skill_id, 0)) + 1
 		caster.moved = true
 		return summary
 	match String(def.get("kind", "")):
@@ -826,8 +822,6 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 	_consume_fire_amp_if_used(state, caster, summary)
 	if not preview and skill_id == "imprint":
 		_record_skill_use(state, caster, skill_id, target_entry, cast_origin)
-	if SkillDB.battle_limit_of(skill_id) > 0:
-		caster.battle_skill_uses[skill_id] = int(caster.battle_skill_uses.get(skill_id, 0)) + 1
 	caster.moved = movement_used_before if skill_id in ["surf", "ice_glide", "mirror_water_moon"] else true
 	return summary
 

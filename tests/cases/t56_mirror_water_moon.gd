@@ -14,7 +14,8 @@ func run(t: TestContext) -> void:
 func _definition(t: TestContext) -> void:
 	var def := SkillDB.get_def("mirror_water_moon")
 	t.eq(String(def.get("name", "")), "镜花水月", "技能名称")
-	t.eq(int(def.get("battle_limit", 0)), 1, "镜花水月每场限用一次")
+	t.eq(SkillDB.pp_of("mirror_water_moon"), 1, "镜花水月每场只有 1 PP")
+	t.check(not def.has("battle_limit"), "镜花水月不再使用旧每场次数机制")
 	t.check(SkillDB.is_special("mirror_water_moon"), "镜花水月属于特殊技能")
 	t.check(SkillDB.special_ids_for("water").has("mirror_water_moon"), "镜花水月归纳为水系特殊技能")
 	t.check(not SkillDB.learnable_ids_for("water").has("mirror_water_moon"), "特殊技能不进入普通升级学习池")

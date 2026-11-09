@@ -171,6 +171,7 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	for unit in player_units:
 		if slot >= deploy_cells.size():
 			break
+		unit.battle_skill_uses.clear()
 		unit.cell = map_data.get("deploy_positions", {}).get(unit.uid, deploy_cells[slot])
 		if is_nest_cell(unit.cell):
 			for fallback in deploy_cells:
@@ -1662,6 +1663,7 @@ func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) ->
 	var skill_used_before := unit.skill_used
 	var result := SkillResolver.apply(self, unit, skill_id, target_entry, false)
 	if bool(result.get("ok", false)):
+		unit.consume_skill_pp(skill_id)
 		_record_skill_use(unit.side, skill_id)
 		if skill_used_before and unit.extra_casts > 0:
 			unit.extra_casts -= 1
@@ -1938,6 +1940,7 @@ func _step_enemy_phase_rules() -> Dictionary:
 		var skill_used_before := unit.skill_used
 		var result := SkillResolver.apply(self, unit, String(skill["id"]), skill["target"], false)
 		if bool(result.get("ok", false)):
+			unit.consume_skill_pp(String(skill["id"]))
 			_record_skill_use(unit.side, String(skill["id"]))
 			if skill_used_before and unit.extra_casts > 0:
 				unit.extra_casts -= 1
@@ -2667,7 +2670,6 @@ func reset_exploration_actions() -> void:
 		unit.root_pending = false
 		unit.vine_ticks = 0
 		unit.vine_sources.clear()
-		unit.battle_skill_uses.clear()
 
 
 func all_nests() -> Array:
