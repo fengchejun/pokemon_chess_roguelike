@@ -57,7 +57,8 @@ func _areas(t: TestContext) -> void:
 		t.check(state.skill_targets(state.unit_by_uid(1), skill).has(entry), "%s仅有巢穴也可选择攻击区域" % skill)
 		_compare(t, state, skill, entry, int(pair[1]))
 	var edge := _state("water_magic_burst")
-	_compare(t, edge, "water_magic_burst", {"type": "cell", "cell": Vector2i(5, 3)}, 8)
+	edge.nest["cell"] = Vector2i(4, 2)
+	_compare(t, edge, "water_magic_burst", {"type": "cell", "cell": Vector2i(4, 3)}, 8)
 
 func _limits(t: TestContext) -> void:
 	var blast := _state("rock_blast")

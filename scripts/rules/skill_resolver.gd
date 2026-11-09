@@ -377,7 +377,8 @@ static func _cell_targets(state: BattleState, unit: CombatUnit, skill_id: String
 		elif skill_id == "herbal_heal":
 			entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "water_magic_burst":
-			if _water_magic_burst_has_enemy(state, unit, cell):
+			var delta: Vector2i = cell - unit.cell
+			if distance >= 1 and distance <= 4 and (delta.x == 0 or delta.y == 0) and _water_magic_burst_has_enemy(state, unit, cell):
 				entries.append({"type": "cell", "cell": cell})
 		elif skill_id == "electric_arc" and TerrainDB.is_water_body(state.terrain_at(cell)):
 			entries.append({"type": "cell", "cell": cell})
@@ -407,7 +408,7 @@ static func _flame_rush_targets(state: BattleState, unit: CombatUnit, entries: A
 
 static func _water_magic_burst_has_enemy(state: BattleState, caster: CombatUnit, center: Vector2i) -> bool:
 	var enemy_side := "enemy" if caster.side == "player" else "player"
-	var cells: Array = [center] + GridSpec.neighbors4(center)
+	var cells := water_magic_burst_cells(center)
 	for cell in cells:
 		if caster.side == "player" and state.is_nest_cell(cell):
 			return true
@@ -1928,19 +1929,67 @@ static func _apply_skyfire(state: BattleState, caster: CombatUnit, entry: Dictio
 	summary["text"] = "天火在 (%d,%d) 生成 %d 格十字火焰，命中 %d 个单位。" % [center.x, center.y, ignited, summary["hits"].size()]
 
 
+static func water_magic_burst_cells(center: Vector2i) -> Array:
+	var cells: Array = []
+	for cell in [center] + GridSpec.neighbors4(center):
+		if GridSpec.is_inside(cell):
+			cells.append(cell)
+	return cells
+
+
 static func _apply_water_magic_burst(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var center: Vector2i = entry["cell"]
-	var cells: Array = [center] + GridSpec.neighbors4(center)
+	var direction := _axis_dir(caster.cell, center)
+	var sideways := Vector2i(-direction.y, direction.x)
+	var cells := water_magic_burst_cells(center)
 	summary["area_cells"] = cells
-	for cell in cells:
-		_hit_nest(state, caster, cell, summary, 11 if cell == center else 8)
-		var target := state.unit_at(cell)
-		if target == null or target.side == caster.side:
+	var pushed := 0
+	_hit_nest(state, caster, center, summary, 11)
+	var center_target := state.unit_at(center)
+	if center_target != null and center_target.side != caster.side:
+		summary["hits"].append(_hit_entry(state, caster, "water_magic_burst", center_target, 11))
+	for offset in [-1, 1]:
+		var front_cell: Vector2i = center + direction * offset
+		if GridSpec.is_inside(front_cell):
+			_hit_nest(state, caster, front_cell, summary, 8)
+			var front_target := state.unit_at(front_cell)
+			if front_target != null and front_target.side != caster.side:
+				summary["hits"].append(_hit_entry(state, caster, "water_magic_burst", front_target, 8))
+		var side_cell: Vector2i = center + sideways * offset
+		if not GridSpec.is_inside(side_cell):
 			continue
-		var base_damage := 11 if cell == center else 8
-		var hit := _hit_entry(state, caster, "water_magic_burst", target, base_damage)
+		_hit_nest(state, caster, side_cell, summary, 8)
+		var side_target := state.unit_at(side_cell)
+		if side_target == null or side_target.side == caster.side:
+			continue
+		var hit := _hit_entry(state, caster, "water_magic_burst", side_target, 8)
 		summary["hits"].append(hit)
-	summary["text"] = "水魔爆炸开五格十字，命中 %d 名敌人。" % summary["hits"].size()
+		if side_target.is_alive():
+			hit["push"] = _water_magic_side_push(state, caster, side_target, sideways * signi(offset))
+			if not bool(hit["push"].get("moved", false)):
+				hit["collision_damage"] = _water_magic_push_collision(state, caster, side_target, hit["push"])
+			pushed += 1
+	summary["text"] = "水魔爆在 (%d,%d) 展开五格十字，命中 %d 名敌人，推动两侧 %d 名敌人。" % [
+		center.x, center.y, summary["hits"].size(), pushed,
+	]
+
+
+static func _water_magic_side_push(state: BattleState, caster: CombatUnit, target: CombatUnit, direction: Vector2i) -> Dictionary:
+	return PushResolver.push(state, target, direction, 1, 0, "水魔爆", caster.side, caster.uid, "water_magic_burst")
+
+
+static func _water_magic_push_collision(state: BattleState, caster: CombatUnit, target: CombatUnit, push: Dictionary) -> int:
+	for collision in push.get("collisions", []):
+		if int((collision as Dictionary).get("target_damage", 0)) > 0:
+			return 0
+	var hit := state.damage_unit(null, target, Balance.COLLISION_DAMAGE, {
+		"no_element": true,
+		"collision": true,
+		"cause": "水魔爆碰撞",
+		"killer_side": caster.side,
+		"killer_uid": caster.uid,
+	})
+	return int(hit.get("amount", 0))
 
 
 static func _apply_fire_burst(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:

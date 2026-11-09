@@ -947,7 +947,7 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("前方 %d 格 · 生成藤蔓 · 进入禁锢" % SkillResolver.wild_vines_reach(unit))
 	elif skill_id == "water_magic_burst":
 		var center_damage := Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, 11), unit.side)
-		parts.append("十字 5 格 · 伤害 %d · 中心 %d" % [damage, center_damage])
+		parts.append("正交 4 格落点 · 十字 5 格 · 伤害 %d · 中心 %d · 两侧击退" % [damage, center_damage])
 	elif skill_id == "ice_breath":
 		parts.append("前方 3 格宽 × 2 格深 · 伤害 %d · 浸湿转冰冻" % damage)
 	elif skill_id == "tree_man":

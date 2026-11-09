@@ -20,33 +20,43 @@ func _definition_and_learning(t: TestContext) -> void:
 
 
 func _water_magic_burst(t: TestContext) -> void:
-	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(2, 3), TerrainDB.OBSTACLE]])
+	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(2, 1), TerrainDB.OBSTACLE]])
 	var state := TestScenario.make_state(["water_starter"], [
+		["rock_wild1", Vector2i(2, 3)],
 		["rock_wild1", Vector2i(3, 3)],
-		["rock_wild1", Vector2i(3, 4)],
-		["rock_wild1", Vector2i(3, 2)],
+		["rock_wild1", Vector2i(2, 2)],
+		["rock_wild1", Vector2i(2, 4)],
 	], terrain)
 	var caster := state.unit_by_uid(1)
 	caster.cell = Vector2i(0, 3)
 	caster.skills.append("water_magic_burst")
 	var center := state.unit_by_uid(100)
-	var lower := state.unit_by_uid(101)
-	var upper := state.unit_by_uid(102)
-	var center_hp := center.hp
-	var lower_hp := lower.hp
-	var upper_hp := upper.hp
-	var target := Vector2i(3, 3)
-	t.check(state.skill_targets(caster, "water_magic_burst").any(func(entry): return entry.get("cell") == target), "水魔爆可越过障碍选择落点")
-	var result := state.cast_skill(caster, "water_magic_burst", {"type": "cell", "cell": target})
+	var front := state.unit_by_uid(101)
+	var stuck_side := state.unit_by_uid(102)
+	var free_side := state.unit_by_uid(103)
+	var hp_before := [center.hp, front.hp, stuck_side.hp, free_side.hp]
+	var entry := {"type": "cell", "cell": Vector2i(2, 3)}
+	t.check(state.skill_targets(caster, "water_magic_burst").has(entry), "水魔爆可选择正交四格内落点")
+	t.check(not state.skill_targets(caster, "water_magic_burst").has({"type": "cell", "cell": Vector2i(2, 2)}), "水魔爆不能用斜角格作为十字中心")
+	var result := state.cast_skill(caster, "water_magic_burst", entry)
 	t.check(bool(result.get("ok", false)), "水魔爆成功施放")
-	t.eq((result.get("area_cells", []) as Array).size(), 5, "水魔爆覆盖五格十字")
-	t.eq(center.hp, center_hp - 11, "中心敌人受到八点基础伤害并额外受三点")
-	t.eq(center.cell, target, "中心敌人不会被推动")
-	t.eq(lower.hp, lower_hp - 8, "外侧敌人受到八点伤害")
-	t.eq(upper.hp, upper_hp - 8, "另一外侧敌人受到八点伤害")
-	t.eq(lower.cell, Vector2i(3, 4), "下方敌人不再被水魔爆推动")
-	t.eq(upper.cell, Vector2i(3, 2), "上方敌人不再被水魔爆推动")
-	t.check((result["hits"] as Array).all(func(hit): return hit.get("push") == null), "水魔爆不再产生推击结果")
+	t.eq((result.get("area_cells", []) as Array).size(), 5, "水魔爆覆盖以落点为中心的五格十字")
+	t.eq(center.hp, int(hp_before[0]) - 11, "落点中心敌人受到十一点伤害")
+	t.eq(center.cell, Vector2i(2, 3), "落点中心敌人不会被推动")
+	t.eq(front.hp, int(hp_before[1]) - 8, "攻击方向前后两格敌人受到八点伤害")
+	t.eq(front.cell, Vector2i(3, 3), "前后方向格不会横向推动")
+	t.eq(stuck_side.hp, int(hp_before[2]) - 13, "不可推动的侧面敌人受到八点伤害和五点碰撞伤害")
+	t.eq(stuck_side.cell, Vector2i(2, 2), "被障碍挡住时留在原格")
+	t.eq(free_side.hp, int(hp_before[3]) - 8, "可推动的侧面敌人只受到八点技能伤害")
+	t.eq(free_side.cell, Vector2i(2, 5), "下方侧面敌人继续向外推一格")
+	var pushes := {}
+	for hit in result["hits"]:
+		pushes[int(hit["uid"])] = hit.get("push")
+	t.check(pushes.get(center.uid) == null and pushes.get(front.uid) == null, "中心与前后方向格不产生推击")
+	var stuck_push = pushes.get(stuck_side.uid)
+	var free_push = pushes.get(free_side.uid)
+	t.check(stuck_push is Dictionary and not bool(stuck_push.get("moved", false)), "受阻侧翼推击记录为未移动")
+	t.check(free_push is Dictionary and bool(free_push.get("moved", false)), "空侧翼记录成功推动")
 
 
 func _ice_breath(t: TestContext) -> void:
