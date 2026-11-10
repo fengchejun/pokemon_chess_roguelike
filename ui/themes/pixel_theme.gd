@@ -48,4 +48,22 @@ static func build() -> Theme:
 			theme.set_constant(key, type, 6)
 	for type in ["HSeparator", "VSeparator"]:
 		theme.set_stylebox("separator", type, box(Color("313244"), Color("313244"), 0))
+	for type in ["Label", "RichTextLabel", "LineEdit", "TextEdit", "PopupMenu", "Tree", "ItemList"]:
+		theme.set_color("font_color", type, Color("cdd6f4"))
+		theme.set_color("default_color", type, Color("cdd6f4"))
+		theme.set_color("font_selected_color", type, Color("f9e2af"))
+	for type in ["LineEdit", "TextEdit", "Tree", "ItemList"]:
+		theme.set_stylebox("normal", type, box(Color("11111b"), Color("45475a"), 6))
+		theme.set_stylebox("focus", type, box(Color(0, 0, 0, 0), Color("f9e2af"), 6))
+		theme.set_stylebox("read_only", type, box(Color("1e1e2e"), Color("313244"), 6))
+	theme.set_stylebox("panel", "PopupMenu", box(Color("1e1e2e"), Color("585b70")))
+	theme.set_stylebox("hover", "PopupMenu", box(Color("313244"), Color("f9e2af"), 4))
+	for type in ["HScrollBar", "VScrollBar"]:
+		var track := box(Color("11111b"), Color("313244"), 6)
+		track.shadow_size = 0
+		theme.set_stylebox("scroll", type, track)
+		for state in ["grabber", "grabber_highlight", "grabber_pressed"]:
+			var grabber := box(Color("585b70"), Color("f9e2af") if state != "grabber" else Color("6c7086"), 6)
+			grabber.shadow_size = 0
+			theme.set_stylebox(state, type, grabber)
 	return theme

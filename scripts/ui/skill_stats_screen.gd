@@ -1,4 +1,5 @@
 extends Control
+const Widgets = preload("res://ui/components/pixel_widgets.gd")
 
 var app = null
 
@@ -8,19 +9,20 @@ func _ready() -> void:
 	UIKit.fill_background(self)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 80)
-	margin.add_theme_constant_override("margin_right", 80)
-	margin.add_theme_constant_override("margin_top", 36)
-	margin.add_theme_constant_override("margin_bottom", 36)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
 	add_child(margin)
 	var column := UIKit.vbox(12)
 	margin.add_child(column)
 	column.add_child(UIKit.title("技能使用统计", 32))
 	var profile: CollectionState = app.collection
 	column.add_child(UIKit.wrapped("跨所有开局的已完成战斗累计。从启用统计后开始记录；成功施放计 1 次，蓄力技在开始蓄力时计数。", 15))
-	var summary := UIKit.label("已统计战斗 %d 场　我方施放 %d 次　敌方施放 %d 次" % [
-		profile.recorded_skill_battles.size(), profile.skill_use_total("player"), profile.skill_use_total("enemy"),
-	], 18, UIKit.ACCENT)
+	var summary := UIKit.hbox(16)
+	summary.add_child(Widgets.stat("战", str(profile.recorded_skill_battles.size()), "已统计战斗"))
+	summary.add_child(Widgets.stat("我", str(profile.skill_use_total("player")), "我方施放次数", UIKit.GOOD))
+	summary.add_child(Widgets.stat("敌", str(profile.skill_use_total("enemy")), "敌方施放次数", UIKit.BAD))
 	summary.name = "SkillStatsSummary"
 	column.add_child(summary)
 	var scroll := UIKit.scroll()

@@ -5,7 +5,7 @@ var app = null
 var column: VBoxContainer
 var message := ""
 var title_label: Label
-var resources_label: Label
+var resources_label: HBoxContainer
 var return_button: Button
 
 func _ready() -> void:
@@ -36,7 +36,7 @@ func _ready() -> void:
 	header.add_child(bag)
 	if not app.run.get_region().invaded:
 		header.add_child(preload("res://scripts/ui/garrison_dialog.gd").make_button(self, app, refresh))
-	resources_label = UIKit.label("", 18, UIKit.ACCENT)
+	resources_label = UIKit.hbox(12)
 	page.add_child(resources_label)
 	var scroll := UIKit.scroll()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -73,7 +73,10 @@ func refresh() -> void:
 	var node: Dictionary = region.nodes[region.active_node]
 	var role: String = node["role"]
 	title_label.text = region.display_name(region.active_node)
-	resources_label.text = "原质 %d · 食物 %d · %s" % [run.essence, run.total_food(), region.next_pressure_text()]
+	UIKit.clear_children(resources_label)
+	resources_label.add_child(Widgets.stat("◆", str(run.essence), "原质"))
+	resources_label.add_child(Widgets.stat("食", str(run.total_food()), "食物", UIKit.GOOD))
+	resources_label.add_child(UIKit.label(region.next_pressure_text(), 16, UIKit.TEXT_DIM))
 	return_button.disabled = bool(node.get("reward_pending", false))
 	return_button.tooltip_text = "先选择本次奖励，再返回地图。" if return_button.disabled else "结算当前节点后检查楼层入侵。"
 	column.add_child(UIKit.wrapped(message, 16))

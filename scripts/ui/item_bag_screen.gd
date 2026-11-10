@@ -112,7 +112,11 @@ func refresh() -> void:
 				content.add_child(UIKit.wrapped("捕获辅助在战斗中通过训练师道具菜单使用。", 15))
 	for card in run.reward_inventory:
 		has_items = true
-		content.add_child(UIKit.label("%s · 战前整备使用" % RewardDB.name_of(card), 15))
+		var reward_slot := Widgets.slot(RewardDB.name_of(card), 1, RewardDB.name_of(card).left(2), "战前整备使用\n" + RewardDB.description_of(card), UIKit.ACCENT)
+		reward_slot.pressed.connect(func() -> void:
+			message = reward_slot.tooltip_text
+			refresh())
+		item_grid.add_child(reward_slot)
 	if not has_items:
 		content.add_child(UIKit.label("背包里还没有道具。", 16))
 

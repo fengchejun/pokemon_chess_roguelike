@@ -87,8 +87,8 @@ func _test_menu_view(t: TestContext) -> void:
 	if stats_button != null:
 		stats_button.pressed.emit()
 		t.eq(app.current_screen.name, "SkillStatsScreen", "进入技能统计页")
-		var summary: Label = app.current_screen.find_child("SkillStatsSummary", true, false)
-		t.check(summary != null and summary.text.contains("我方施放 1 次"), "统计页展示已结算的我方次数")
+		var summary: HBoxContainer = app.current_screen.find_child("SkillStatsSummary", true, false)
+		t.check(summary != null and summary.get_child(1).get_child(1).text == "1", "统计页展示已结算的我方次数")
 		var back: Button = app.current_screen.find_child("SkillStatsBackButton", true, false)
 		t.check(back != null, "统计页可返回主菜单")
 		if back != null:

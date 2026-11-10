@@ -15,16 +15,13 @@ func run(t: TestContext) -> void:
 	app.run.storage.append(app.run._make_record("rock_starter"))
 	app.show_region()
 	var screen = app.current_screen
-	var resources: Label = screen.find_child("RegionResources", true, false)
-	t.check(resources.text.contains("37") and resources.text.contains("8"), "地图直接显示原质与食物")
+	var resources: Control = screen.find_child("RegionResources", true, false)
+	t.check(_texts(resources).contains("37") and _texts(resources).contains("8"), "地图直接显示原质与食物")
 	var before: Dictionary = app.run.to_dict().duplicate(true)
 	screen.find_child("ViewTeamButton", true, false).pressed.emit()
 	t.check(screen.team_overlay != null, "点击队伍按钮打开队伍窗口")
 	var content: Control = screen.find_child("RegionTeamContent", true, false)
-	var texts := ""
-	for child in content.get_children():
-		if child is Label:
-			texts += child.text
+	var texts := _texts(content)
 	t.check(texts.contains("训练师") and texts.contains("随行队伍") and texts.contains("营地留守") and texts.contains("装备招式"), "队伍信息包含训练师、随行与留守成员及招式")
 	t.eq(app.run.to_dict(), before, "查看队伍不消耗访问次数或改变成员")
 	screen.find_child("CloseTeamButton", true, false).pressed.emit()
@@ -74,3 +71,9 @@ func run(t: TestContext) -> void:
 	t.check(battle_screen.battle_notice.pending.is_empty(), "重复刷新不重复排队胜利提示")
 	app.queue_free()
 	t.finish()
+
+func _texts(node: Node) -> String:
+	var value: String = node.text if node is Label else ""
+	for child in node.get_children():
+		value += _texts(child)
+	return value

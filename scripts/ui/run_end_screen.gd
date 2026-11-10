@@ -1,4 +1,5 @@
 extends Control
+const Widgets = preload("res://ui/components/pixel_widgets.gd")
 
 var app = null
 
@@ -9,10 +10,10 @@ func _ready() -> void:
 	var run: RunState = app.run
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 80)
-	margin.add_theme_constant_override("margin_right", 80)
-	margin.add_theme_constant_override("margin_top", 40)
-	margin.add_theme_constant_override("margin_bottom", 40)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
 	add_child(margin)
 	var column := UIKit.vbox(10)
 	column.alignment = BoxContainer.ALIGNMENT_BEGIN
@@ -61,7 +62,33 @@ func _ready() -> void:
 	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	var summary := UIKit.wrapped("\n".join(lines), 15)
 	summary.name = "RunEndSummary"
-	box.add_child(summary)
+	var report := UIKit.vbox(8)
+	box.add_child(report)
+	var totals := UIKit.hbox(12)
+	report.add_child(totals)
+	for entry in [["胜", "victories", "胜利"], ["击", "kills", "击败"], ["捕", "captures", "捕获"], ["逃", "escapes", "逃离"], ["退", "retreats", "撤退"]]:
+		totals.add_child(Widgets.stat(entry[0], str(run.stats[entry[1]]), entry[2]))
+	report.add_child(HSeparator.new())
+	for record in run.carried:
+		var member := UIKit.panel(UIKit.PANEL_LIGHT)
+		report.add_child(member)
+		var body := UIKit.vbox(4)
+		member.add_child(body)
+		body.add_child(UIKit.label(SpeciesDB.name_of(String(record["species_id"])), 17, UIKit.ACCENT))
+		body.add_child(Widgets.health(int(record["hp"]), run.monster_max_hp(record)))
+		var stats := UIKit.hbox(12)
+		body.add_child(stats)
+		stats.add_child(Widgets.stat("级", str(record.get("level", 1)), "本局等级"))
+		stats.add_child(Widgets.stat("亲", str(record.get("affinity", 0)), "永久亲密度"))
+		stats.add_child(Widgets.stat("刻", "%d/%d" % [run.monster_empty_engraving_slots(record), run.monster_engraving_slots(record)], "空余刻印 / 总槽位"))
+	var expand := UIKit.small_button("完整成长与战损记录 ▸")
+	expand.toggle_mode = true
+	expand.toggled.connect(func(open: bool) -> void:
+		summary.visible = open
+		expand.text = "完整成长与战损记录 ▾" if open else "完整成长与战损记录 ▸")
+	report.add_child(expand)
+	summary.hide()
+	report.add_child(summary)
 	var scroll := UIKit.scroll()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.add_child(box)
