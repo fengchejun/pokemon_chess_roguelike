@@ -8,6 +8,8 @@ var choice_box: VBoxContainer = null
 var step_label: Label = null
 var continue_button: Button = null
 var processing := false
+var mage_note_selected: Array = []
+var magic_end_uid := -1
 
 
 func _ready() -> void:
@@ -100,6 +102,10 @@ func _summary_box(run: RunState) -> Control:
 		lines.append("奖励点：本场取得 %d 点，每名存活原出战成员额外获得 %d 经验" % [
 			int(outcome["reward_points_earned"]), int(outcome["reward_points_earned"]),
 		])
+	if int(outcome.get("relic_reward_count", 0)) > 0:
+		lines.append("遗物机会：+%d" % int(outcome["relic_reward_count"]))
+	for notice in outcome.get("relic_notices", []):
+		lines.append(String(notice))
 	var pending_monster_levels: Array = run.pending_monster_levels()
 	if not pending_monster_levels.is_empty():
 		lines.append("待选怪物学招：%d 次（按怪物与等级顺序逐项处理）" % pending_monster_levels.size())
@@ -162,9 +168,162 @@ func _show_next_step() -> void:
 	if not pending_monster_levels.is_empty():
 		_show_monster_level_step(run, pending_monster_levels[0], pending_monster_levels.size())
 		return
+	if run.has_pending_relic_actions():
+		_show_relic_action_step(run)
+		return
+	if run.pending_reward_choices > 0:
+		var choices := run.reward_choices()
+		if choices.is_empty():
+			var discarded := run.discard_unavailable_reward_choices()
+			step_label.text = "遗物奖励：暂无可领取项目"
+			choice_box.add_child(UIKit.wrapped("全部可提供遗物均已获得，%d 次机会已跳过。" % discarded, 13, UIKit.TEXT_DIM))
+			app.autosave()
+			_show_next_step()
+			return
+		step_label.text = "遗物三选一（剩余 %d 次）" % run.pending_reward_choices
+		choice_box.add_child(UIKit.wrapped("选择一件本局唯一遗物。进化型遗物会替换其前置遗物；效果立即生效并随本局保存。", 13))
+		for reward_id in choices:
+			var id := String(reward_id)
+			var button := UIKit.button("%s【%s】\n%s" % [
+				RelicDB.name_of(id), RelicDB.rarity_name(id), RelicDB.description_of(id),
+			], 14)
+			button.name = "RelicChoice_%s" % id
+			button.custom_minimum_size = Vector2(0, 92)
+			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			button.pressed.connect(_choose_settlement_relic.bind(id))
+			choice_box.add_child(button)
+		continue_button.disabled = true
+		return
 	step_label.text = "全部处理完成，可以进入下一场。"
-	choice_box.add_child(UIKit.wrapped("战斗结算顺序已完成：怪物经验 → 捕获 → 怪物升级 → 下一场准备。", 13))
+	choice_box.add_child(UIKit.wrapped("战斗结算顺序已完成：怪物经验 → 捕获 → 怪物升级 → 遗物选择 → 下一场准备。", 13))
 	continue_button.disabled = false
+
+
+func _choose_settlement_relic(relic_id: String) -> void:
+	if processing:
+		return
+	processing = true
+	if app.run.choose_reward(relic_id):
+		app.autosave()
+		_show_next_step()
+	else:
+		processing = false
+
+
+func _show_relic_action_step(run: RunState) -> void:
+	var action := run.pending_relic_action()
+	match String(action.get("kind", "")):
+		"mage_notes":
+			_show_mage_notes_step(run)
+		"unbalanced_scales":
+			_show_unbalanced_step(run)
+		"magic_end":
+			_show_magic_end_step(run)
+		_:
+			run.pending_relic_actions.pop_front()
+			app.autosave()
+			_show_next_step()
+
+
+func _show_mage_notes_step(run: RunState) -> void:
+	var eligible := run.mage_note_eligible_uids()
+	var required := mini(3, eligible.size())
+	step_label.text = "法师笔记：选择 %d 只宝可梦（%d/%d）" % [required, mage_note_selected.size(), required]
+	choice_box.add_child(UIKit.wrapped("每名被选成员会随机学会 1 个尚未掌握的本属性普通技能；新技能进入招式库。", 13))
+	if required == 0:
+		choice_box.add_child(UIKit.wrapped("当前没有可学习新技能的成员，本次法师笔记自动跳过。", 13, UIKit.TEXT_DIM))
+		var skip := UIKit.small_button("跳过法师笔记")
+		skip.pressed.connect(func() -> void:
+			run.resolve_mage_notes([])
+			app.autosave()
+			_show_next_step()
+		)
+		choice_box.add_child(skip)
+		continue_button.disabled = true
+		return
+	for record in run.carried:
+		var uid := int(record["uid"])
+		var selected := mage_note_selected.has(uid)
+		var button := UIKit.small_button("%s %s · 可学 %d 个" % [
+			"✓" if selected else "○",
+			SpeciesDB.name_of(String(record["species_id"])),
+			run.mage_note_candidates(uid).size(),
+		])
+		button.disabled = selected or run.mage_note_candidates(uid).is_empty()
+		button.pressed.connect(func() -> void:
+			if not mage_note_selected.has(uid):
+				mage_note_selected.append(uid)
+			if mage_note_selected.size() >= required:
+				var result := run.resolve_mage_notes(mage_note_selected)
+				mage_note_selected.clear()
+				if bool(result.get("ok", false)):
+					app.autosave()
+				_show_next_step()
+			else:
+				_show_next_step()
+		)
+		choice_box.add_child(button)
+	var reset := UIKit.small_button("重置选择")
+	reset.disabled = mage_note_selected.is_empty()
+	reset.pressed.connect(func() -> void:
+		mage_note_selected.clear()
+		_show_next_step()
+	)
+	choice_box.add_child(reset)
+	continue_button.disabled = true
+
+
+func _show_unbalanced_step(run: RunState) -> void:
+	step_label.text = "不平天秤：选择 1 件遗物摧毁"
+	var candidates := run.unbalanced_candidates()
+	if candidates.is_empty():
+		run.pending_relic_actions.pop_front()
+		app.autosave()
+		_show_next_step()
+		return
+	choice_box.add_child(UIKit.wrapped("摧毁后随机获得 2 件遗物：普通 50%、稀有 30%、传奇 20%。", 13))
+	for relic_id in candidates:
+		var id := String(relic_id)
+		var button := UIKit.small_button("摧毁 %s【%s】\n%s" % [
+			RelicDB.name_of(id), RelicDB.rarity_name(id), RelicDB.description_of(id),
+		])
+		button.pressed.connect(func() -> void:
+			var result := run.resolve_unbalanced_scales(id)
+			if bool(result.get("ok", false)):
+				app.autosave()
+			_show_next_step()
+		)
+		choice_box.add_child(button)
+	continue_button.disabled = true
+
+
+func _show_magic_end_step(run: RunState) -> void:
+	if magic_end_uid < 0:
+		step_label.text = "术之尽头：选择学习魔法的成员"
+		choice_box.add_child(UIKit.wrapped("先选择 1 名我方成员，再从 3 个魔法中选择 1 个。", 13))
+		for record in run.carried:
+			var uid := int(record["uid"])
+			var button := UIKit.small_button("选择 %s" % SpeciesDB.name_of(String(record["species_id"])))
+			button.pressed.connect(func() -> void:
+				magic_end_uid = uid
+				_show_next_step()
+			)
+			choice_box.add_child(button)
+	else:
+		var record := run.owned_record_by_uid(magic_end_uid)
+		step_label.text = "术之尽头：%s 选择魔法" % SpeciesDB.name_of(String(record.get("species_id", "")))
+		for magic_id in ["ultra_death_ray", "time_mirror_leap", "mage_key"]:
+			var button := UIKit.small_button("%s\n%s" % [SkillDB.name_of(magic_id), SkillDB.get_def(magic_id).get("desc", "")])
+			button.pressed.connect(func() -> void:
+				var result := run.resolve_magic_end(magic_end_uid, magic_id)
+				magic_end_uid = -1
+				if bool(result.get("ok", false)):
+					app.autosave()
+				_show_next_step()
+			)
+			choice_box.add_child(button)
+	continue_button.disabled = true
 
 
 func _show_monster_level_step(run: RunState, entry: Dictionary, remaining: int) -> void:

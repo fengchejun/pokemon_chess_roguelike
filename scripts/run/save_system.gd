@@ -13,10 +13,13 @@ static func backup_old_save(path: String = DEFAULT_PATH) -> String:
 	var bytes := original.get_buffer(original.get_length())
 	original.close()
 	var stamp := int(Time.get_unix_time_from_system() * 1000.0)
-	var backup_path := "user://save_backup_%d.json" % stamp
+	var directory := path.get_base_dir()
+	if directory == "":
+		directory = "user://"
+	var backup_path := directory.path_join("save_backup_%d.json" % stamp)
 	var suffix := 1
 	while FileAccess.file_exists(backup_path):
-		backup_path = "user://save_backup_%d_%d.json" % [stamp, suffix]
+		backup_path = directory.path_join("save_backup_%d_%d.json" % [stamp, suffix])
 		suffix += 1
 	var backup := FileAccess.open(backup_path, FileAccess.WRITE)
 	if backup == null:

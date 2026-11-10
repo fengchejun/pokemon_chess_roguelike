@@ -296,6 +296,40 @@ const DEFS := {
 		"obstacle_extension": true,
 		"desc": "攻击正交方向 1 格的单位；连续岩石障碍格可作为攻击范围延伸，途经的每格岩石失去 1 点耐久。目标受到 12 点岩系伤害；若已浸湿，额外独立结算 3 点水属性伤害。",
 	},
+	"ultra_death_ray": {
+		"name": "超魔死光",
+		"element": "",
+		"kind": "direction",
+		"max_range": 6,
+		"damage": 40,
+		"pp": 1,
+		"battle_only": true,
+		"category": "special",
+		"uncopyable": true,
+		"desc": "术之尽头魔法。沿正交方向射出 6 格，对路径上首个单位造成 40 点基础伤害，摧毁沿途障碍；每场战斗 1 次。",
+	},
+	"time_mirror_leap": {
+		"name": "时镜跃迁",
+		"element": "",
+		"kind": "teleport",
+		"range": 99,
+		"damage": 0,
+		"pp": 1,
+		"battle_only": true,
+		"category": "special",
+		"uncopyable": true,
+		"desc": "术之尽头魔法。移动到任意合法空格并获得下一次攻击免疫，不消耗本次施法次数；每场战斗 1 次。",
+	},
+	"mage_key": {
+		"name": "魔之钥",
+		"element": "",
+		"kind": "self",
+		"damage": 0,
+		"pp": 0,
+		"category": "special",
+		"uncopyable": true,
+		"desc": "术之尽头魔法。领取时令最多 3 名我方成员各学习 2 个自身技能池中的技能，每局 1 次。",
+	},
 }
 
 const ROCK_SKILL_POOL := [
@@ -329,6 +363,10 @@ static func learnable_ids_for(element: String) -> Array:
 
 static func is_special(skill_id: String) -> bool:
 	return String(get_def(skill_id).get("category", "normal")) == "special"
+
+
+static func is_battle_only(skill_id: String) -> bool:
+	return bool(get_def(skill_id).get("battle_only", false))
 
 
 static func is_copyable(skill_id: String) -> bool:

@@ -38,8 +38,8 @@ func _test_legacy_migration(t: TestContext) -> void:
 	t.eq(restored.environment_reward_pending, false, "旧版待领地貌卡不再保留")
 	t.eq(restored.reward_inventory, [], "旧卡不会折算成新消耗卡")
 	t.eq(restored.options.has("card_mode"), false, "旧环境模式开关移除")
-	t.eq(restored.to_dict().has("relic_stacks"), false, "旧遗物记录不会进入新版存档")
-	t.eq(restored.to_dict().has("pending_reward_choices"), false, "旧遗物待选队列被丢弃")
+	t.eq((restored.to_dict().get("relic_stacks", {}) as Dictionary).is_empty(), true, "不存在的旧遗物ID不会进入新池")
+	t.eq(int(restored.to_dict().get("pending_reward_choices", 0)), 2, "v21遗物待选次数保留")
 
 
 func _test_monster_growth_in_battle(t: TestContext) -> void:
@@ -86,6 +86,7 @@ func _test_settlement_resume(t: TestContext) -> void:
 	battle.check_battle_end()
 	run_state.sync_from_battle(battle)
 	run_state.settle_battle(battle)
+	run_state.pending_reward_choices = 0
 	t.eq(run_state.settlement_pending, true, "战后有待处理结算标记")
 	var restored := RunState.from_dict(run_state.to_dict())
 	t.eq(int(restored.last_settlement.get("reward_points_earned", 0)), 1, "奖励点经验收益可从结算摘要恢复")

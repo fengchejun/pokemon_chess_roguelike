@@ -39,9 +39,7 @@ static func use_item(run: RunState, state: BattleState, id: String, target_uid: 
 		var target := state.unit_by_uid(target_uid)
 		if not item_target_valid(state, target, id):
 			return {"ok": false, "reason": "请选择三格内视线可达、受伤且存活的己方单位。"}
-		var healed := mini(target.max_hp - target.hp, 15)
-		target.hp += healed
-		state.feedback_heal(target, healed)
+		var healed := state.relic_heal(target, 15)
 	elif id == "pp_tonic":
 		var target := state.unit_by_uid(target_uid)
 		if not item_target_valid(state, target, id):
@@ -79,6 +77,10 @@ static func item_price(run: RunState, id: String) -> int:
 	return base
 
 
+static func relic_price(relic_id: String) -> int:
+	return {"common": 12, "rare": 20, "legendary": 32}.get(RelicDB.rarity_of(relic_id), -1)
+
+
 static func upgrade_skill(run: RunState, state: BattleState, uid: int, skill_id: String) -> Dictionary:
 	var trainer := state.unit_by_uid(Balance.TRAINER_UID)
 	if state.ended or state.phase != BattleState.PHASE_PLAYER or state.node_kind != "event" or state.merchant.is_empty() or trainer == null or not trainer.is_alive() or not state.can_interact_at(state.merchant["cell"]):
@@ -107,19 +109,29 @@ static func upgrade_skill(run: RunState, state: BattleState, uid: int, skill_id:
 	}
 
 
-static func ensure_region(region: RegionState, seed_value: int) -> void:
+static func ensure_region(region: RegionState, seed_value: int, relic_stacks: Dictionary = {}) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("merchant:%d:%d" % [seed_value, region.floor_index])
 	var id := "event_%d" % rng.randi_range(1, 2)
 	if region.nodes[id].has("merchant"):
 		var existing_stock: Dictionary = region.nodes[id]["merchant"].get("stock", {})
 		for stock_id in existing_stock.keys():
-			if String(stock_id).begins_with("relic:") or not ITEMS.has(String(stock_id)):
+			var key := String(stock_id)
+			if key.begins_with("relic:") and not RelicDB.DEFINITIONS.has(key.trim_prefix("relic:")):
+				existing_stock.erase(stock_id)
+			elif not key.begins_with("relic:") and not ITEMS.has(key):
 				existing_stock.erase(stock_id)
 		if not existing_stock.has("pp_tonic"):
 			existing_stock["pp_tonic"] = 1
+		if not existing_stock.keys().any(func(key): return String(key).begins_with("relic:")):
+			var offered := RelicDB.weighted_random_id(hash("merchant-relic:%d:%d" % [seed_value, region.floor_index]), relic_stacks)
+			if offered != "":
+				existing_stock["relic:%s" % offered] = 1
 		return
 	var stock := {"potion": 2, "pp_tonic": 1, "capture_aid": 2}
+	var relic_id := RelicDB.weighted_random_id(hash("merchant-relic:%d:%d" % [seed_value, region.floor_index]), relic_stacks)
+	if relic_id != "":
+		stock["relic:%s" % relic_id] = 1
 	region.nodes[id]["merchant"] = {"stock": stock, "cell": [-1, -1]}
 
 static func choose_battle_cell(state: BattleState, positions: Dictionary = {}) -> Vector2i:
@@ -141,12 +153,26 @@ static func trade(run: RunState, state: BattleState, operation: String, id: Stri
 	if quantity <= 0:
 		return {"ok": false, "reason": "数量必须大于零。"}
 	if operation == "buy":
-		if id.begins_with("relic:"):
-			return {"ok": false, "reason": "遗物系统已移除。"}
-		var cost := item_price(run, id)
+		var is_relic := id.begins_with("relic:")
+		var relic_id := id.trim_prefix("relic:")
+		var cost := relic_price(relic_id) if is_relic else item_price(run, id)
 		if cost < 0 or quantity != 1 or int(state.merchant["stock"].get(id, 0)) < 1 or run.essence < cost:
 			return {"ok": false, "reason": "原质不足或商品已售罄。"}
-		run.trainer_items[id] = int(run.trainer_items.get(id, 0)) + 1
+		if is_relic:
+			if not RelicDB.DEFINITIONS.has(relic_id) or RelicDB.owned(run.relic_stacks, relic_id):
+				return {"ok": false, "reason": "该遗物已经拥有或无效。"}
+			var requires := String(RelicDB.get_def(relic_id).get("requires", ""))
+			if requires != "" and not RelicDB.owned(run.relic_stacks, requires):
+				return {"ok": false, "reason": "尚未满足遗物进化条件。"}
+			if not run.acquire_relic(relic_id, "merchant"):
+				return {"ok": false, "reason": "遗物领取失败。"}
+			state.relic_stacks = run.relic_stacks.duplicate()
+			state.relic_state["merchant_notice"] = RelicDB.name_of(relic_id)
+			if relic_id == "blood_orb":
+				state.relic_state["blood_orb_active_floor"] = true
+			run.sync_battle_max_hp(state)
+		else:
+			run.trainer_items[id] = int(run.trainer_items.get(id, 0)) + 1
 		run.essence -= cost
 		state.merchant["stock"][id] -= 1
 	elif operation == "food":

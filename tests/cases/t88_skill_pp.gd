@@ -18,7 +18,10 @@ func _definitions(t: TestContext) -> void:
 		var id := String(skill_id)
 		var def := SkillDB.get_def(id)
 		t.check(def.has("pp"), "%s配置 PP" % id)
-		t.check(int(def.get("pp", 0)) in [5, 10, 15, 20, 25], "%s的 PP 上限位于本局五档" % id)
+		t.check(
+			int(def.get("pp", 0)) in [5, 10, 15, 20, 25] or SkillDB.is_battle_only(id) or id == "mage_key",
+			"%s的 PP 上限位于本局五档或属于遗物魔法" % id
+		)
 		t.eq(SkillDB.pp_of(id), int(def.get("pp", 0)), "%s的 PP 查询与定义一致" % id)
 	_assert_pp_group(t, ["burn_out", "mirror_water_moon"], 5, "特殊或高危技能")
 	_assert_pp_group(t, [
@@ -122,7 +125,7 @@ func _run_persistence(t: TestContext) -> void:
 	(legacy_data["carried"][4] as Dictionary).erase("skill_pp_uses")
 	var legacy := RunState.from_dict(legacy_data)
 	t.eq(legacy.record_pp_remaining(legacy.record_by_uid(5), "rock_push"), SkillDB.pp_of("rock_push"), "旧存档缺少 PP 记录时按满 PP 迁入")
-	var legacy_path := "user://pp_v18_migration.json"
+	var legacy_path := "res://.test_pp_v18_migration.json"
 	var legacy_file := FileAccess.open(legacy_path, FileAccess.WRITE)
 	if legacy_file != null:
 		legacy_file.store_string(JSON.stringify(legacy_data))

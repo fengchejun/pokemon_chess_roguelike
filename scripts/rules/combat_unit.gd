@@ -73,6 +73,7 @@ var slow_ticks: int = 0:
 		slow_ticks = value
 		if announce:
 			feedback_changed.emit("status" if active else "clear", "浸湿" + ("解除" if not active else ""), int(value), cell)
+var wet_layers: int = 0
 var burn_ticks: int = 0:
 	set(value):
 		var was_active := burn_ticks > 0
@@ -81,6 +82,7 @@ var burn_ticks: int = 0:
 		burn_ticks = value
 		if announce:
 			feedback_changed.emit("status" if active else "clear", "灼烧" + ("解除" if not active else ""), int(value), cell)
+var burn_layers: int = 0
 var burn_source_uid: int = -1
 var burn_source_side: String = ""
 var shock_ticks: int = 0:
@@ -91,6 +93,7 @@ var shock_ticks: int = 0:
 		shock_ticks = value
 		if announce:
 			feedback_changed.emit("status" if active else "clear", "感电" + ("解除" if not active else ""), int(value), cell)
+var shock_layers: int = 0
 var paralyzed_ticks: int = 0:
 	set(value):
 		var was_active := paralyzed_ticks > 0
@@ -201,6 +204,7 @@ var mountain_form_ticks: int = 0:
 		mountain_form_ticks = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "山岳形态" + ("解除" if not active else ""), int(value), cell)
+var heavy_wound_layers: int = 0
 var shield_hp: int = 0:
 	set(value):
 		var was_active := shield_hp > 0
@@ -347,10 +351,13 @@ func dup() -> CombatUnit:
 	copy.vine_reapply_round = vine_reapply_round
 	copy.vine_reapply_cell = vine_reapply_cell
 	copy.slow_ticks = slow_ticks
+	copy.wet_layers = wet_layers
 	copy.burn_ticks = burn_ticks
+	copy.burn_layers = burn_layers
 	copy.burn_source_uid = burn_source_uid
 	copy.burn_source_side = burn_source_side
 	copy.shock_ticks = shock_ticks
+	copy.shock_layers = shock_layers
 	copy.paralyzed_ticks = paralyzed_ticks
 	copy.frozen = frozen
 	copy.frozen_ticks = frozen_ticks
@@ -373,6 +380,7 @@ func dup() -> CombatUnit:
 	copy.fire_amp_stacks = fire_amp_stacks
 	copy.electric_resonance_bonus = electric_resonance_bonus
 	copy.mountain_form_ticks = mountain_form_ticks
+	copy.heavy_wound_layers = heavy_wound_layers
 	copy.shield_hp = shield_hp
 	copy.shield_ticks = shield_ticks
 	copy.shield_source_uid = shield_source_uid

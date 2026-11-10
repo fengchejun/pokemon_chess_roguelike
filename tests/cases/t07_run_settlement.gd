@@ -83,7 +83,7 @@ func _t_bonus_reward_credit(t: TestContext) -> void:
 	t.check(loaded != null and int(loaded.last_settlement.get("reward_points_earned", 0)) == 1, "读档恢复奖励点经验收益")
 	SaveSystem.delete_save(save_path)
 	var legacy := RunState.from_dict({"version": 19, "pending_reward_choices": 3})
-	t.eq(legacy.to_dict().has("pending_reward_choices"), false, "旧存档遗物待选字段被丢弃")
+	t.eq(int(legacy.to_dict().get("pending_reward_choices", -1)), 0, "旧存档遗物待选次数迁移为0")
 
 
 func _t_monster_experience(t: TestContext) -> void:

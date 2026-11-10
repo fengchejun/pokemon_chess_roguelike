@@ -37,7 +37,7 @@ static func make_map(terrain: Array, nest_cell: Vector2i = Vector2i(7, 7), rewar
 	}
 
 
-static func make_state(player_species: Array, enemies: Array, terrain: Array = [], effects: Dictionary = {}, upgrades: Dictionary = {}, pool: Array = [], seed_value: int = 42) -> BattleState:
+static func make_state(player_species: Array, enemies: Array, terrain: Array = [], effects: Dictionary = {}, upgrades: Dictionary = {}, pool: Array = [], seed_value: int = 42, relics: Dictionary = {}) -> BattleState:
 	var run := RunState.new()
 	run.trainer_hp = SpeciesDB.hp_of("trainer")
 	var deploy_units: Array = []
@@ -53,7 +53,7 @@ static func make_state(player_species: Array, enemies: Array, terrain: Array = [
 	var cfg := {"region": "测试", "enemies": enemies}
 	var state := BattleState.new()
 	var actual_terrain: Array = terrain if not terrain.is_empty() else plain_terrain()
-	state.setup(make_map(actual_terrain), cfg, seed_value, 0, deploy_units, effects, upgrades, pool)
+	state.setup(make_map(actual_terrain), cfg, seed_value, 0, deploy_units, effects, upgrades, pool, {}, relics)
 	return state
 
 

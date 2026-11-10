@@ -3,7 +3,7 @@ extends RefCounted
 
 ## 一局游戏的持久状态：出战名单、仓库、经验、环境卡、强化、战损记录与统计。
 
-const SAVE_VERSION := 20
+const SAVE_VERSION := 21
 var essence: int = 0
 var trainer_items: Dictionary = {}
 var sold_monster_uids: Array = []
@@ -173,6 +173,17 @@ var captured_applied: int = 0
 var deployed_uids: Array = []
 var pending_supply: bool = false
 var options := {"threat_preview": false, "capture_low_hp": false, "capture_field_join": false}
+var relic_stacks: Dictionary = {}
+var pending_reward_choices: int = 0
+var reward_choice_index: int = 0
+var pending_relic_actions: Array = []
+var relic_global_damage_percent: int = 0
+var relic_layer_damage_percent: int = 0
+var relic_layer_damage_floor: int = -1
+var next_battle_damage_percent: int = 0
+var evil_coin_losses: int = 0
+var necronomicon_unsealed: bool = false
+var relic_notices: Array = []
 
 
 static func new_run(seed_value: int = 0, starting_collection: Array = []) -> RunState:
@@ -335,6 +346,8 @@ func _sync_unit_pp(unit: CombatUnit, record: Dictionary) -> void:
 	var uses: Dictionary = (saved if saved is Dictionary else {}).duplicate()
 	for skill_id in unit.skills:
 		var id := String(skill_id)
+		if SkillDB.is_battle_only(id):
+			continue
 		var used := unit.pp_used(id)
 		if used > 0:
 			uses[id] = used
@@ -344,7 +357,43 @@ func _sync_unit_pp(unit: CombatUnit, record: Dictionary) -> void:
 
 
 func monster_max_hp(record: Dictionary) -> int:
-	return MonsterProgression.max_hp_for_record(record)
+	return maxi(1, roundi(float(MonsterProgression.max_hp_for_record(record)) * relic_max_hp_multiplier()))
+
+
+func relic_max_hp_multiplier() -> float:
+	var multiplier := 1.0
+	if RelicDB.owned(relic_stacks, "crimson_heart"):
+		multiplier *= 1.15
+	if RelicDB.owned(relic_stacks, "bottled_dragon_blood"):
+		multiplier *= 1.20
+	if RelicDB.owned(relic_stacks, "sealed_necronomicon") and not necronomicon_unsealed:
+		multiplier *= 0.80
+	return multiplier
+
+
+func sync_battle_max_hp(battle: BattleState) -> void:
+	if battle == null:
+		return
+	for unit in battle.units:
+		if unit.side != "player" or unit.summon_owner_uid >= 0:
+			continue
+		var target_max := trainer_max_hp()
+		if not unit.is_trainer:
+			var record := record_by_uid(unit.uid)
+			if record.is_empty():
+				continue
+			target_max = monster_max_hp(record)
+		if target_max == unit.max_hp:
+			continue
+		var old_max: int = unit.max_hp
+		unit.max_hp = target_max
+		if target_max > old_max and unit.is_alive():
+			unit.hp += target_max - old_max
+		unit.hp = clampi(unit.hp, 0, target_max)
+
+
+func _clamp_record_hp_to_relic_max(record: Dictionary) -> void:
+	record["hp"] = clampi(int(record.get("hp", 0)), 0, monster_max_hp(record))
 
 
 func battle_seed() -> int:
@@ -409,7 +458,7 @@ func get_region():
 	if region_data.is_empty():
 		region_data = Region.create_floor(floor_index(), current_theme()).to_dict()
 	var region = Region.from_dict(region_data)
-	Merchant.ensure_region(region, seed)
+	Merchant.ensure_region(region, seed, relic_stacks)
 	# Skill upgrades now belong exclusively to the merchant.
 	for node in region.nodes.values():
 		node.erase("mentor")
@@ -582,9 +631,18 @@ func region_name() -> String:
 
 
 func effects() -> Dictionary:
+	var result := {}
 	if preview_used_reward_item.begins_with("position:"):
-		return CardDB.active_effects([preview_used_reward_item.trim_prefix("position:")])
-	return {}
+		result = CardDB.active_effects([preview_used_reward_item.trim_prefix("position:")])
+	if relic_layer_damage_floor != floor_index():
+		relic_layer_damage_floor = floor_index()
+		relic_layer_damage_percent = 0
+	var damage_bonus := relic_global_damage_percent + next_battle_damage_percent
+	if damage_bonus != 0:
+		result["relic_damage_bonus"] = damage_bonus
+	if relic_layer_damage_percent > 0:
+		result["blood_orb_active"] = true
+	return result
 
 
 func map_deck() -> Array:
@@ -627,6 +685,374 @@ func consume_selected_reward_item() -> String:
 	return used
 
 
+func reward_choices() -> Array:
+	return RelicDB.offer(seed, battle_index, reward_choice_index, relic_stacks)
+
+
+func discard_unavailable_reward_choices() -> int:
+	if pending_reward_choices <= 0 or not reward_choices().is_empty():
+		return 0
+	var discarded := pending_reward_choices
+	pending_reward_choices = 0
+	return discarded
+
+
+func choose_reward(relic_id: String) -> bool:
+	if pending_reward_choices <= 0 or not reward_choices().has(relic_id):
+		return false
+	if not acquire_relic(relic_id, "reward"):
+		return false
+	pending_reward_choices -= 1
+	reward_choice_index += 1
+	return true
+
+
+func acquire_relic(relic_id: String, source: String = "event") -> bool:
+	if not RelicDB.DEFINITIONS.has(relic_id) or RelicDB.owned(relic_stacks, relic_id):
+		return false
+	var definition := RelicDB.get_def(relic_id)
+	var requires := String(definition.get("requires", ""))
+	var replaces := String(definition.get("replaces", ""))
+	if requires != "" and not RelicDB.owned(relic_stacks, requires):
+		return false
+	if replaces != "" and not RelicDB.owned(relic_stacks, replaces):
+		return false
+	if replaces != "":
+		relic_stacks.erase(replaces)
+	relic_stacks[relic_id] = 1
+	relic_notices.append("获得遗物：%s" % RelicDB.name_of(relic_id))
+	_apply_immediate_relic(relic_id, source)
+	for record in carried:
+		_clamp_record_hp_to_relic_max(record)
+	for record in storage:
+		_clamp_record_hp_to_relic_max(record)
+	trainer_hp = clampi(trainer_hp, 0, trainer_max_hp())
+	return true
+
+
+func remove_relic(relic_id: String) -> bool:
+	if not RelicDB.owned(relic_stacks, relic_id):
+		return false
+	relic_stacks.erase(relic_id)
+	for record in carried:
+		_clamp_record_hp_to_relic_max(record)
+	for record in storage:
+		_clamp_record_hp_to_relic_max(record)
+	trainer_hp = clampi(trainer_hp, 0, trainer_max_hp())
+	return true
+
+
+func has_pending_relic_actions() -> bool:
+	return not pending_relic_actions.is_empty()
+
+
+func pending_relic_action() -> Dictionary:
+	return pending_relic_actions[0] if not pending_relic_actions.is_empty() else {}
+
+
+func _queue_relic_action(kind: String, relic_id: String) -> void:
+	pending_relic_actions.append({"kind": kind, "relic_id": relic_id})
+
+
+func _apply_immediate_relic(relic_id: String, source: String) -> void:
+	match relic_id:
+		"crimson_heart":
+			_heal_party(20)
+		"blood_orb":
+			relic_layer_damage_floor = floor_index()
+			relic_layer_damage_percent = 30
+			_damage_party_ratio(0.30)
+		"bottled_dragon_blood":
+			_heal_party(-1)
+		"sealed_necronomicon":
+			_halve_party_pp()
+		"mage_notes":
+			_queue_relic_action("mage_notes", relic_id)
+		"worn_chest":
+			_grant_weighted_random_relic("worn_chest", {"common": 50, "rare": 30, "legendary": 20})
+		"unbalanced_scales":
+			_queue_relic_action("unbalanced_scales", relic_id)
+		"mystery_dice":
+			_resolve_mystery_dice()
+		"evil_coin":
+			_resolve_evil_coin()
+		"magic_end":
+			_queue_relic_action("magic_end", relic_id)
+		_:
+			pass
+	if source == "merchant":
+		relic_notices.append("商人交付了%s。" % RelicDB.name_of(relic_id))
+
+
+func _heal_party(amount: int) -> void:
+	for record in carried:
+		var maximum := monster_max_hp(record)
+		var before := int(record.get("hp", 0))
+		record["hp"] = maximum if amount < 0 else mini(maximum, maxi(1, before) + amount)
+
+
+func _damage_party_ratio(ratio: float) -> void:
+	for record in carried:
+		var maximum := monster_max_hp(record)
+		var before := int(record.get("hp", 0))
+		if before <= 0:
+			continue
+		record["hp"] = maxi(1, before - ceili(float(maximum) * ratio))
+
+
+func _halve_party_pp() -> void:
+	for record in carried:
+		var uses: Dictionary = (record.get("skill_pp_uses", {}) as Dictionary).duplicate()
+		for skill_id in record.get("known_skills", []):
+			var id := String(skill_id)
+			var maximum := SkillDB.pp_of(id)
+			if maximum <= 0:
+				continue
+			var remaining := maxi(0, maximum - int(uses.get(id, 0)))
+			var next_remaining := remaining / 2
+			var next_used := maximum - next_remaining
+			if next_used > 0:
+				uses[id] = next_used
+			else:
+				uses.erase(id)
+		record["skill_pp_uses"] = uses
+
+
+func _restore_party_half(max_hp_ratio: float, pp_ratio: float, essence_amount: int) -> void:
+	for record in carried:
+		var maximum := monster_max_hp(record)
+		var before := int(record.get("hp", 0))
+		if before > 0:
+			record["hp"] = mini(maximum, before + ceili(float(maximum) * max_hp_ratio))
+		if pp_ratio > 0.0:
+			var uses: Dictionary = (record.get("skill_pp_uses", {}) as Dictionary).duplicate()
+			for skill_id in record.get("known_skills", []):
+				var id := String(skill_id)
+				var maximum_pp := SkillDB.pp_of(id)
+				if maximum_pp <= 0:
+					continue
+				var used := int(uses.get(id, 0))
+				var remaining := maxi(0, maximum_pp - used)
+				var restored := mini(remaining, ceili(float(maximum_pp) * pp_ratio))
+				var next_used := maxi(0, used - restored)
+				if next_used > 0:
+					uses[id] = next_used
+				else:
+					uses.erase(id)
+			record["skill_pp_uses"] = uses
+	essence += maxi(0, essence_amount)
+
+
+func _grant_weighted_random_relic(source: String, weights: Dictionary = {}) -> String:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("relic-source:%s:%d:%d:%d" % [source, seed, battle_index, relic_stacks.size()])
+	var relic_id := RelicDB.weighted_random_id(rng.randi(), relic_stacks, weights)
+	if relic_id == "":
+		relic_notices.append("没有可获得的遗物。")
+		return ""
+	acquire_relic(relic_id, source)
+	return relic_id
+
+
+func _resolve_evil_coin() -> void:
+	var candidates: Array = relic_stacks.keys().filter(func(id): return String(id) != "evil_coin")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("evil-coin:%d:%d" % [seed, reward_choice_index])
+	for index in range(candidates.size() - 1, 0, -1):
+		var swap_index := rng.randi_range(0, index)
+		var value = candidates[index]
+		candidates[index] = candidates[swap_index]
+		candidates[swap_index] = value
+	var lost := mini(2, candidates.size())
+	for index in lost:
+		remove_relic(String(candidates[index]))
+	essence += lost * 5
+	evil_coin_losses += lost
+	relic_global_damage_percent += lost * 20
+	if lost > 0:
+		relic_notices.append("邪恶金币失去 %d 件遗物并换得 %d 原质。" % [lost, lost * 5])
+
+
+func _resolve_mystery_dice() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("mystery-dice:%d:%d:%d" % [seed, battle_index, relic_stacks.size()])
+	var roll := rng.randi_range(1, 6)
+	relic_notices.append("神秘骰子掷出 %d。" % roll)
+	match roll:
+		1:
+			for record in carried:
+				if int(record.get("hp", 0)) > 0:
+					record["hp"] = maxi(1, int(record["hp"]) - ceili(monster_max_hp(record) * 0.5))
+			_halve_party_pp()
+			relic_global_damage_percent -= 20
+		2:
+			essence = floori(essence / 2.0)
+			next_battle_damage_percent = -10
+		3:
+			_restore_party_half(0.5, 0.5, 10)
+		4:
+			relic_global_damage_percent += 20
+			if rng.randf() < 0.5:
+				var rare := RelicDB.random_id(rng.randi(), "rare", relic_stacks)
+				if rare != "":
+					acquire_relic(rare, "mystery_dice")
+			else:
+				for index in 2:
+					var common := RelicDB.random_id(rng.randi() + index, "common", relic_stacks)
+					if common != "":
+						acquire_relic(common, "mystery_dice")
+		5:
+			relic_global_damage_percent += 30
+			if rng.randf() < 0.5:
+				var legendary := RelicDB.random_id(rng.randi(), "legendary", relic_stacks)
+				if legendary != "":
+					acquire_relic(legendary, "mystery_dice")
+			else:
+				for index in 2:
+					var rare := RelicDB.random_id(rng.randi() + index, "rare", relic_stacks)
+					if rare != "":
+						acquire_relic(rare, "mystery_dice")
+		6:
+			for index in 2:
+				var legendary := RelicDB.random_id(rng.randi() + index, "legendary", relic_stacks)
+				if legendary != "":
+					acquire_relic(legendary, "mystery_dice")
+
+
+func mage_note_candidates(uid: int) -> Array:
+	var record := owned_record_by_uid(uid)
+	if record.is_empty():
+		return []
+	var known: Array = record.get("known_skills", [])
+	var element := SpeciesDB.element_of(String(record.get("species_id", "")))
+	return RelicDB.all_normal_skills_for_element(element).filter(func(id): return not known.has(id))
+
+
+func mage_note_eligible_uids() -> Array:
+	var result: Array = []
+	for record in carried:
+		var uid := int(record["uid"])
+		if not mage_note_candidates(uid).is_empty():
+			result.append(uid)
+	return result
+
+
+func resolve_mage_notes(selected_uids: Array) -> Dictionary:
+	if pending_relic_action().get("kind", "") != "mage_notes":
+		return {"ok": false, "reason": "当前没有法师笔记待处理。"}
+	var unique: Array = []
+	for uid in selected_uids:
+		var id := int(uid)
+		if not unique.has(id) and not owned_record_by_uid(id).is_empty():
+			unique.append(id)
+	var eligible := mage_note_eligible_uids()
+	var required := mini(3, eligible.size())
+	if unique.size() != required or unique.any(func(uid): return not eligible.has(uid)):
+		return {"ok": false, "reason": "请按当前合格成员选择%s。" % ("3只不同宝可梦" if required == 3 else "全部%d只可学成员" % required)}
+	var results: Array = []
+	for uid in unique:
+		var record := owned_record_by_uid(int(uid))
+		var candidates := mage_note_candidates(int(uid))
+		if candidates.is_empty():
+			results.append("%s没有可学习的普通技能。" % SpeciesDB.name_of(String(record["species_id"])))
+			continue
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash("mage-notes:%d:%d:%d" % [seed, reward_choice_index, int(uid)])
+		var skill_id := String(candidates[rng.randi_range(0, candidates.size() - 1)])
+		var known: Array = record.get("known_skills", [])
+		known.append(skill_id)
+		record["known_skills"] = known
+		results.append("%s学会%s。" % [SpeciesDB.name_of(String(record["species_id"])), SkillDB.name_of(skill_id)])
+	pending_relic_actions.pop_front()
+	relic_notices.append_array(results)
+	return {"ok": true, "reason": "；".join(results)}
+
+
+func unbalanced_candidates() -> Array:
+	return relic_stacks.keys().filter(func(id): return String(id) != "unbalanced_scales")
+
+
+func resolve_unbalanced_scales(destroy_id: String) -> Dictionary:
+	if pending_relic_action().get("kind", "") != "unbalanced_scales":
+		return {"ok": false, "reason": "当前没有不平天秤待处理。"}
+	if not unbalanced_candidates().has(destroy_id) or not remove_relic(destroy_id):
+		return {"ok": false, "reason": "请选择一件可摧毁的遗物。"}
+	var gained: Array = []
+	for index in 2:
+		var relic_id := RelicDB.weighted_random_id(seed + reward_choice_index + index, relic_stacks, {"common": 50, "rare": 30, "legendary": 20})
+		if relic_id == "":
+			break
+		acquire_relic(relic_id, "unbalanced_scales")
+		gained.append(RelicDB.name_of(relic_id))
+	pending_relic_actions.pop_front()
+	relic_notices.append("不平天秤摧毁%s，获得%s。" % [RelicDB.name_of(destroy_id), "、".join(gained) if not gained.is_empty() else "无可获得遗物"])
+	return {"ok": true, "gained": gained}
+
+
+func resolve_magic_end(uid: int, magic_id: String) -> Dictionary:
+	if pending_relic_action().get("kind", "") != "magic_end":
+		return {"ok": false, "reason": "当前没有术之尽头待处理。"}
+	if not magic_id in ["ultra_death_ray", "time_mirror_leap", "mage_key"]:
+		return {"ok": false, "reason": "未知魔法。"}
+	var record := owned_record_by_uid(uid)
+	if record.is_empty():
+		return {"ok": false, "reason": "请选择一名我方宝可梦。"}
+	if magic_id == "mage_key":
+		_apply_mage_key()
+		pending_relic_actions.pop_front()
+		return {"ok": true, "reason": "魔之钥已为最多 3 名队员各补充 2 个技能。"}
+	_grant_record_skill(record, magic_id)
+	pending_relic_actions.pop_front()
+	relic_notices.append("%s学会%s。" % [SpeciesDB.name_of(String(record["species_id"])), SkillDB.name_of(magic_id)])
+	return {"ok": true, "reason": "魔法学习完成。"}
+
+
+func _grant_record_skill(record: Dictionary, skill_id: String) -> bool:
+	var known: Array = record.get("known_skills", [])
+	if known.has(skill_id) or SkillDB.get_def(skill_id).is_empty():
+		return false
+	known.append(skill_id)
+	record["known_skills"] = known
+	var equipped: Array = record.get("equipped_skills", [])
+	if equipped.size() < MAX_EQUIPPED_SKILLS:
+		equipped.append(skill_id)
+		record["equipped_skills"] = equipped
+	return true
+
+
+func _apply_mage_key() -> void:
+	var taught := 0
+	for record in carried.slice(0, mini(3, carried.size())):
+		var pool: Array = mage_note_candidates(int(record["uid"]))
+		for magic_id in ["ultra_death_ray", "time_mirror_leap"]:
+			if not (record.get("known_skills", []) as Array).has(magic_id):
+				pool.append(magic_id)
+		for index in 2:
+			if pool.is_empty():
+				break
+			var chosen := String(pool.pop_at(index % pool.size()))
+			if _grant_record_skill(record, chosen):
+				taught += 1
+	relic_notices.append("魔之钥共补充 %d 个技能。" % taught)
+
+
+func unseal_necronomicon() -> bool:
+	if not RelicDB.owned(relic_stacks, "sealed_necronomicon") or necronomicon_unsealed:
+		return false
+	necronomicon_unsealed = true
+	for record in carried:
+		record["hp"] = mini(int(record.get("hp", 0)), monster_max_hp(record))
+	relic_notices.append("未解封的死灵书已解封，最大生命上限恢复。")
+	return true
+
+
+func upgrade_relic(base_id: String, upgraded_id: String) -> bool:
+	var definition := RelicDB.get_def(upgraded_id)
+	if String(definition.get("requires", "")) != base_id or not RelicDB.owned(relic_stacks, base_id):
+		return false
+	return acquire_relic(upgraded_id, "special_event")
+
+
 func supply_choices() -> Array:
 	if not pending_supply or claimed_supply_battles.has(battle_index):
 		return []
@@ -647,7 +1073,7 @@ static func recovery_amount(max_hp: int) -> int:
 
 
 func trainer_max_hp() -> int:
-	return MonsterProgression.max_hp("trainer", trainer_level)
+	return maxi(1, roundi(float(MonsterProgression.max_hp("trainer", trainer_level)) * relic_max_hp_multiplier()))
 
 
 func build_deploy_units(deploy_uids: Array) -> Array:
@@ -881,6 +1307,8 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		run_failed = true
 		# 本场尚未战后收容的捕获失效；此前已在名单或仓库的收藏保留。
 		pending_captures.clear()
+		pending_reward_choices = 0
+		pending_relic_actions.clear()
 	var bonus_points := battle.earned_reward_points(true) if not failure else []
 	var bonus_count := bonus_points.size()
 	var reward_points_earned := bonus_count > 0
@@ -925,6 +1353,18 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		for point in bonus_points:
 			point["credited"] = true
 	outcome["reward_points_earned"] = bonus_count
+	var relic_reward_count := 0
+	if region_mode and not failure and battle.end_reason in ["victory", "explored"] and battle.node_kind != "event":
+		pending_reward_choices += 1
+		relic_reward_count = 1
+		if RelicDB.owned(relic_stacks, "treasure_pocket"):
+			var rng := RandomNumberGenerator.new()
+			rng.seed = hash("treasure-pocket:%d:%d" % [seed, battle_index])
+			if rng.randf() < 0.30:
+				_grant_weighted_random_relic("treasure_pocket")
+	outcome["relic_reward_count"] = relic_reward_count
+	outcome["pending_reward_choices"] = pending_reward_choices
+	outcome["relic_notices"] = relic_notices.duplicate()
 	match battle.end_reason:
 		"victory":
 			stats["victories"] = int(stats["victories"]) + 1
@@ -976,6 +1416,7 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		trainer_hp = trainer_max
 	outcome["trainer_to"] = trainer_hp
 	in_battle = false
+	next_battle_damage_percent = 0
 	environment_reward_pending = false
 	settlement_pending = not failure
 	last_settlement = outcome.duplicate(true)
@@ -1251,6 +1692,17 @@ func to_dict() -> Dictionary:
 		"environment_deck": environment_deck.duplicate(),
 		"environment_reward_pending": environment_reward_pending,
 		"reward_inventory": reward_inventory.duplicate(),
+		"relic_stacks": relic_stacks.duplicate(),
+		"pending_reward_choices": pending_reward_choices,
+		"reward_choice_index": reward_choice_index,
+		"pending_relic_actions": pending_relic_actions.duplicate(true),
+		"relic_global_damage_percent": relic_global_damage_percent,
+		"relic_layer_damage_percent": relic_layer_damage_percent,
+		"relic_layer_damage_floor": relic_layer_damage_floor,
+		"next_battle_damage_percent": next_battle_damage_percent,
+		"evil_coin_losses": evil_coin_losses,
+		"necronomicon_unsealed": necronomicon_unsealed,
+		"relic_notices": relic_notices.duplicate(),
 		"invasion_level_bonus": invasion_level_bonus,
 		"pending_invasion_bonus": pending_invasion_bonus,
 		"claimed_supply_battles": claimed_supply_battles.duplicate(),
@@ -1351,6 +1803,31 @@ static func from_dict(data: Dictionary) -> RunState:
 		var id := String(reward_id)
 		if RewardDB.is_consumable(id):
 			run.reward_inventory.append(id)
+	var saved_relics = data.get("relic_stacks", {})
+	if saved_relics is Dictionary:
+		for relic_id in saved_relics:
+			var id := String(relic_id)
+			if RelicDB.DEFINITIONS.has(id) and int(saved_relics[relic_id]) > 0:
+				run.relic_stacks[id] = 1
+	run.pending_reward_choices = maxi(0, int(data.get("pending_reward_choices", 0)))
+	run.reward_choice_index = maxi(0, int(data.get("reward_choice_index", 0)))
+	if version < 20:
+		# v19 及更早的遗物ID属于已删除的旧池，不能进入57项新池。
+		run.pending_reward_choices = 0
+		run.reward_choice_index = 0
+	var saved_actions = data.get("pending_relic_actions", [])
+	if saved_actions is Array:
+		for action in saved_actions:
+			if action is Dictionary and String(action.get("kind", "")) in ["mage_notes", "unbalanced_scales", "magic_end"]:
+				run.pending_relic_actions.append(action.duplicate(true))
+	run.relic_global_damage_percent = int(data.get("relic_global_damage_percent", 0))
+	run.relic_layer_damage_percent = int(data.get("relic_layer_damage_percent", 0))
+	run.relic_layer_damage_floor = int(data.get("relic_layer_damage_floor", -1))
+	run.next_battle_damage_percent = int(data.get("next_battle_damage_percent", 0))
+	run.evil_coin_losses = maxi(0, int(data.get("evil_coin_losses", 0)))
+	run.necronomicon_unsealed = bool(data.get("necronomicon_unsealed", false))
+	var saved_notices = data.get("relic_notices", [])
+	run.relic_notices = saved_notices.duplicate() if saved_notices is Array else []
 	run.selected_reward_item = String(data.get("selected_reward_item", ""))
 	if not run.reward_inventory.has(run.selected_reward_item):
 		run.selected_reward_item = ""
@@ -1368,6 +1845,8 @@ static func from_dict(data: Dictionary) -> RunState:
 		run.trainer_hp = 0
 	if run.run_failed:
 		run.pending_captures.clear()
+		run.pending_reward_choices = 0
+		run.pending_relic_actions.clear()
 	## 修复历史存档：补齐缺失的 uid（否则名单/仓库相关界面会取键失败）。
 	for group in [run.carried, run.storage, run.pending_captures]:
 		for record in (group as Array):
@@ -1410,6 +1889,10 @@ static func from_dict(data: Dictionary) -> RunState:
 			for node in (region.get("nodes", {}) as Dictionary).values():
 				if not (node.get("snapshot", {}) as Dictionary).is_empty():
 					node["snapshot"] = migrate_legacy_pp_snapshot(node["snapshot"])
+	for group in [run.carried, run.storage, run.pending_captures]:
+		for record in (group as Array):
+			run._clamp_record_hp_to_relic_max(record)
+	run.trainer_hp = clampi(run.trainer_hp, 0, run.trainer_max_hp())
 	return run
 
 

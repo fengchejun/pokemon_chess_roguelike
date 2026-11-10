@@ -56,7 +56,7 @@ static func save_state(state: BattleState) -> Dictionary:
 	var members: Array = []
 	for unit in state.units:
 		members.append(_fields(unit))
-	return {"version": 9, "fields": _fields(state), "units": members, "rng": {
+	return {"version": 10, "fields": _fields(state), "units": members, "rng": {
 		"spawn_seed": str(state.spawn_rng.seed), "spawn_state": str(state.spawn_rng.state),
 		"capture_seed": str(state.capture_rng.seed), "capture_state": str(state.capture_rng.state),
 		"terrain_seed": str(state.terrain_rng.seed), "terrain_state": str(state.terrain_rng.state),
@@ -68,8 +68,6 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		return null
 	var state := BattleState.new()
 	var fields: Dictionary = (snapshot["fields"] as Dictionary).duplicate()
-	fields.erase("relic_stacks")
-	fields.erase("relic_state")
 	for key in fields:
 		state.set(key, decode(fields[key]))
 	for member in snapshot["units"]:

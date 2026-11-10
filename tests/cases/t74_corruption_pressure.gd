@@ -197,6 +197,8 @@ func _camp_ui(t: TestContext) -> void:
 	t.eq(app.run.get_region().node_mode("camp"), "camp", "营地清场恢复营地模式")
 	t.check(not app.run.get_region().camp_invaded, "营地占领标记解除")
 	var visits: int = app.run.get_region().visits
+	app.run.pending_reward_choices = 0
+	app.current_screen._show_next_step()
 	app.continue_after_settlement()
 	t.eq(app.current_screen.name, "CampScreen", "夺回结算后直接进入营地，无需再走一次")
 	t.check(app.current_screen.find_child("CampFeedback", true, false).text.contains("已夺回"), "营地提示已恢复服务")
@@ -238,10 +240,12 @@ func _persistence(t: TestContext) -> void:
 	run.battle_snapshot = old
 	var data := run.to_dict()
 	data["version"] = 14
-	var path := "user://test_t74_legacy.json"
+	var path := "res://.test_t74_legacy.json"
 	var file := FileAccess.open(path, FileAccess.WRITE)
-	file.store_string(JSON.stringify(data))
-	file.close()
+	t.check(file != null, "旧版区域档案可写入测试路径")
+	if file != null:
+		file.store_string(JSON.stringify(data))
+		file.close()
 	var loaded := SaveSystem.load_run(path)
 	t.check(loaded != null, "真实v14文件仍可读取")
 	if loaded != null:

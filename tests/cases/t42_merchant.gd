@@ -57,7 +57,7 @@ func run(t: TestContext) -> void:
 	t.check((app.run.record_by_uid(second_uid).get("upgrades_taken", []) as Array).has(second_upgrade), "商人界面强化写入对应宝可梦")
 	app.run.essence = 100
 	t.check(not app.merchant_trade(state, "food", "basic", 99)["ok"], "禁止超量出售食物")
-	t.check(state.merchant["stock"].keys().all(func(key): return not String(key).begins_with("relic:")), "商人不再出售遗物")
+	t.check(state.merchant["stock"].keys().any(func(key): return String(key).begins_with("relic:")), "商人库存包含新版遗物")
 	t.check(not app.merchant_trade(state, "buy", "relic:camp_ember")["ok"], "旧遗物SKU不能购买")
 	app.run.essence = 100
 	var round_before := state.round

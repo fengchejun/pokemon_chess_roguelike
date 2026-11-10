@@ -141,10 +141,12 @@ func _migration(t: TestContext) -> void:
 	run.battle_snapshot = data
 	var old := run.to_dict()
 	old["version"] = 13
-	var path := "user://test_t73_legacy.json"
+	var path := "res://.test_t73_legacy.json"
 	var file := FileAccess.open(path, FileAccess.WRITE)
-	file.store_string(JSON.stringify(old))
-	file.close()
+	t.check(file != null, "旧版巢穴档案可写入测试路径")
+	if file != null:
+		file.store_string(JSON.stringify(old))
+		file.close()
 	var loaded := SaveSystem.load_run(path)
 	t.check(loaded != null, "实际v13存档入口可读")
 	if loaded != null:

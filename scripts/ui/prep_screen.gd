@@ -22,6 +22,11 @@ func _build_roster() -> Control:
 	column.name = "TeamPreparationPanel"
 	column.add_child(UIKit.label("队伍与招式", 18, UIKit.ACCENT))
 	column.add_child(UIKit.wrapped("训练师生命 %d/%d · 最多选择 %d 只出战；濒死成员不可选。" % [app.run.trainer_hp, app.run.trainer_max_hp(), MAX_DEPLOY], 13))
+	var relic_names: Array = []
+	for relic_id in app.run.relic_stacks:
+		if RelicDB.owned(app.run.relic_stacks, String(relic_id)):
+			relic_names.append("%s【%s】" % [RelicDB.name_of(String(relic_id)), RelicDB.rarity_name(String(relic_id))])
+	column.add_child(UIKit.wrapped("本局遗物 %d 件：%s" % [relic_names.size(), "、".join(relic_names) if not relic_names.is_empty() else "尚无"], 12, UIKit.TEXT_DIM))
 	team_scroll = UIKit.scroll()
 	column.add_child(team_scroll)
 	team_box = UIKit.vbox(6)

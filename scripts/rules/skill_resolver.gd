@@ -14,8 +14,14 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 		return entries
 	if bool(def.get("channel", false)) and not state.can_begin_channel(unit):
 		return entries
-	if skill_id == "tree_man" and state.active_summon(unit.uid) != null:
-		return entries
+	if skill_id == "tree_man":
+		var summon_limit := 2 if unit.side == "player" and RelicDB.owned(state.relic_stacks, "summoner_crown") else 1
+		if state.active_summon_count(unit.uid) >= summon_limit:
+			return entries
+		if unit.side == "player" and RelicDB.owned(state.relic_stacks, "summoner_crown"):
+			var summoned_rounds: Dictionary = state.relic_state.get("summoned_rounds", {})
+			if int(summoned_rounds.get(str(unit.uid), -1)) == state.round:
+				return entries
 	if state.steam_cells.has(unit.cell) and not state.is_free_exploration():
 		return entries
 	if not unit.can_use_in_battle(skill_id):
@@ -40,6 +46,8 @@ static func targets(state: BattleState, unit: CombatUnit, skill_id: String) -> A
 		"teleport":
 			if skill_id == "flame_rush":
 				_flame_rush_targets(state, unit, entries)
+			elif skill_id == "time_mirror_leap":
+				_time_mirror_targets(state, unit, entries)
 			else:
 				_teleport_targets(state, unit, def, entries)
 		"direction":
@@ -446,6 +454,14 @@ static func _teleport_targets(state: BattleState, unit: CombatUnit, def: Diction
 		entries.append({"type": "cell", "cell": cell})
 
 
+static func _time_mirror_targets(state: BattleState, unit: CombatUnit, entries: Array) -> void:
+	for cell in GridSpec.all_cells():
+		if cell == unit.cell or state.unit_at(cell) != null or state.is_interaction_cell(cell) or state.is_nest_cell(cell):
+			continue
+		if TerrainDB.can_stand(state.terrain_at(cell), unit.element):
+			entries.append({"type": "cell", "cell": cell})
+
+
 static func magnet_pull_range(caster: CombatUnit) -> int:
 	return 5 + int(caster.upgrades.get("magnet_pull_reach", 0))
 
@@ -798,12 +814,16 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 		"teleport":
 			if skill_id == "flame_rush":
 				_apply_flame_rush(state, caster, target_entry, summary)
+			elif skill_id == "time_mirror_leap":
+				_apply_time_mirror_leap(state, caster, target_entry, summary)
 			else:
 				_apply_volt_step(state, caster, target_entry, summary)
 		"direction":
 			match skill_id:
 				"ice_breath":
 					_apply_ice_breath(state, caster, target_entry, summary)
+				"ultra_death_ray":
+					_apply_ultra_death_ray(state, caster, target_entry, summary)
 				"flame_jet", "wild_vines", "frozen_ground", "windfire_breath", "electric_spark":
 					_apply_directional(state, caster, skill_id, target_entry, summary)
 				"rock_create":
@@ -823,7 +843,7 @@ static func _apply_rules(state: BattleState, caster: CombatUnit, skill_id: Strin
 	_consume_fire_amp_if_used(state, caster, summary)
 	if not preview and skill_id == "imprint":
 		_record_skill_use(state, caster, skill_id, target_entry, cast_origin)
-	caster.moved = movement_used_before if skill_id in ["surf", "ice_glide", "mirror_water_moon"] else true
+	caster.moved = movement_used_before if skill_id in ["surf", "ice_glide", "mirror_water_moon", "time_mirror_leap"] else true
 	return summary
 
 
@@ -1056,12 +1076,10 @@ static func _apply_nest_hit_healing(state: BattleState, caster: CombatUnit, skil
 	var healing := 0
 	if skill_id == "furnace_fist":
 		healing = 5 + int(caster.upgrades.get("furnace_fist_healing", 0))
-	var healed := mini(caster.max_hp - caster.hp, healing)
+	var healed := state.relic_heal(caster, healing)
 	if healed <= 0:
 		return
-	caster.hp += healed
 	summary["heal"] = {"uid": caster.uid, "amount": healed}
-	state.feedback_heal(caster, healed)
 	state.log_event("%s通过%s回复%d HP。" % [caster.display_name, SkillDB.name_of(skill_id), healed])
 
 
@@ -1432,6 +1450,39 @@ static func _apply_volt_step(state: BattleState, caster: CombatUnit, entry: Dict
 	summary["text"] = "电光步瞬移到 (%d,%d)" % [dest.x, dest.y]
 
 
+static func _apply_time_mirror_leap(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var dest: Vector2i = entry["cell"]
+	if _player_forbidden_landing(state, caster, dest):
+		return
+	caster.cell = dest
+	caster.mirror_until_round = 999
+	summary["self_move"] = dest
+	state.apply_vine_on_landing(caster)
+	state.try_pickup_fruit(caster)
+	summary["text"] = "时镜跃迁至 (%d,%d)，获得下一次攻击免疫，且不消耗施法次数。" % [dest.x, dest.y]
+
+
+static func _apply_ultra_death_ray(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
+	var direction: Vector2i = entry["dir"]
+	for distance in range(1, 7):
+		var cell: Vector2i = caster.cell + direction * distance
+		if not GridSpec.is_inside(cell):
+			break
+		summary["area_cells"].append(cell)
+		if state.obstacle_durability.has(cell):
+			_hit_obstacle(state, cell, summary, caster.side, true)
+			continue
+		if caster.side == "player" and state.is_nest_cell(cell):
+			_hit_nest(state, caster, cell, summary, SkillDB.damage_of("ultra_death_ray"))
+			break
+		var target := state.unit_at(cell)
+		if target == null:
+			continue
+		summary["hits"].append(_hit_entry(state, caster, "ultra_death_ray", target, SkillDB.damage_of("ultra_death_ray")))
+		break
+	summary["text"] = "超魔死光贯穿前方，破坏障碍并命中 %d 个目标。" % summary["hits"].size()
+
+
 static func _apply_flame_rush(state: BattleState, caster: CombatUnit, entry: Dictionary, summary: Dictionary) -> void:
 	var dest: Vector2i = entry["cell"]
 	if _player_forbidden_landing(state, caster, dest):
@@ -1477,12 +1528,10 @@ static func _apply_drain(state: BattleState, caster: CombatUnit, entry: Dictiona
 		return
 	var hit := _hit_entry(state, caster, "drain", target, int(SkillDB.get_def("drain").get("damage", 1)))
 	summary["hits"].append(hit)
-	var healed := mini(caster.max_hp, caster.hp + Balance.DRAIN_HEAL)
-	if healed > caster.hp:
-		summary["heal"] = {"uid": caster.uid, "amount": healed - caster.hp}
-		state.log_event("%s 回复 %d 生命。" % [caster.display_name, healed - caster.hp])
-		state.feedback_heal(caster, healed - caster.hp)
-		caster.hp = healed
+	var healed := state.relic_heal(caster, Balance.DRAIN_HEAL)
+	if healed > 0:
+		summary["heal"] = {"uid": caster.uid, "amount": healed}
+		state.log_event("%s 回复 %d 生命。" % [caster.display_name, healed])
 	summary["text"] = "吸取：对 %s 造成 %d 伤害，自身回复 %d" % [hit["name"], hit["damage"], int(summary["heal"]["amount"]) if summary["heal"] != null else 0]
 
 
@@ -1506,11 +1555,9 @@ static func _apply_furnace_fist(state: BattleState, caster: CombatUnit, entry: D
 		state.clear_burn(target)
 		(hit["statuses"] as Array).append("清除灼烧")
 	var healing := 5 + int(caster.upgrades.get("furnace_fist_healing", 0)) + (5 if had_burn else 0)
-	var healed := mini(caster.max_hp - caster.hp, healing)
+	var healed := state.relic_heal(caster, healing)
 	if healed > 0:
-		caster.hp += healed
 		summary["heal"] = {"uid": caster.uid, "amount": healed}
-		state.feedback_heal(caster, healed)
 		state.log_event("%s 通过炎炉拳回复 %d HP。" % [caster.display_name, healed])
 	summary["text"] = "炎炉拳命中 %s：%d 伤害，自身回复 %d%s。" % [target.display_name, int(hit["damage"]), healed, "并清除灼烧" if had_burn else ""]
 
@@ -2319,9 +2366,7 @@ static func _apply_first_aid(state: BattleState, caster: CombatUnit, entry: Dict
 	var target := state.unit_by_uid(int(entry["unit"]))
 	if target == null:
 		return
-	var healed := mini(first_aid_healing(caster), target.max_hp - target.hp)
-	target.hp += healed
-	state.feedback_heal(target, healed)
+	var healed := state.relic_heal(target, first_aid_healing(caster))
 	summary["heal"] = {"uid": target.uid, "amount": healed}
 	summary["area_cells"].append(target.cell)
 	summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": -healed})
@@ -2334,9 +2379,7 @@ static func _apply_antidote(state: BattleState, caster: CombatUnit, entry: Dicti
 	if target == null:
 		return
 	var removed := state.clear_debuff_status(target)
-	var healed := mini(antidote_healing(caster), target.max_hp - target.hp)
-	target.hp += healed
-	state.feedback_heal(target, healed)
+	var healed := state.relic_heal(target, antidote_healing(caster))
 	summary["heal"] = {"uid": target.uid, "amount": healed}
 	summary["area_cells"].append(target.cell)
 	summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": -healed})
@@ -2372,10 +2415,9 @@ static func _apply_heal(state: BattleState, caster: CombatUnit, entry: Dictionar
 	var amount := Balance.HERBAL_HEAL + int(caster.upgrades.get("herbal_heal_amount", 0))
 	for target in state.alive_units(caster.side):
 		if GridSpec.manhattan(target.cell, center) <= 2 and target.hp < target.max_hp:
-			var healed := mini(amount, target.max_hp - target.hp)
-			target.hp += healed
-			state.feedback_heal(target, healed)
-			summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": -healed})
+			var healed := state.relic_heal(target, amount)
+			if healed > 0:
+				summary["hits"].append({"uid": target.uid, "name": target.display_name, "cell": target.cell, "damage": -healed})
 	summary["text"] = "药草治疗恢复 %d 个友军。" % summary["hits"].size()
 
 

@@ -249,6 +249,8 @@ func merchant_trade(state: BattleState, operation: String, id: String, quantity:
 		var restored := BattleSnapshot.load_state(battle_before)
 		state.units = restored.units
 		state.merchant = restored.merchant
+		state.relic_stacks = restored.relic_stacks
+		state.relic_state = restored.relic_state
 		return {"ok": false, "reason": "存档写入失败，交易已撤回。"}
 	if collection != null:
 		collection.absorb_run(run)
@@ -356,7 +358,7 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 	if run.region_mode:
 		state.node_kind = run.get_region().node_mode(run.get_region().active_node)
 	var card_effects := run.effects()
-	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, card_effects, {}, cfg.get("reinforce", []), run.options)
+	state.setup(final_map, cfg, run.seed, run.battle_index, player_units, card_effects, {}, cfg.get("reinforce", []), run.options, run.relic_stacks)
 	if run.region_mode:
 		run.captured_applied = 0
 		var region = run.get_region()
@@ -455,8 +457,9 @@ func continue_after_settlement() -> void:
 	if run == null:
 		show_menu()
 		return
-	if not run.pending_captures.is_empty() or run.pending_upgrades():
+	if not run.pending_captures.is_empty() or run.pending_upgrades() or run.pending_reward_choices > 0 or run.has_pending_relic_actions():
 		return
+	run.relic_notices.clear()
 	if collection != null:
 		collection.absorb_run(run)
 		if autosave_enabled:
