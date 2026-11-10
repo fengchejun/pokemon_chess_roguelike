@@ -80,6 +80,7 @@ func _shop_and_habitat(t: TestContext) -> void:
 	var bag = app.current_screen
 	var member: Dictionary = run_state.carried[0]
 	var uid := int(member["uid"])
+	bag.find_child("SelectItem_xp_candy_large", true, false).pressed.emit()
 	bag.find_child("UseCandy_xp_candy_large_%d" % uid, true, false).pressed.emit()
 	t.eq(member["level"], 6, "商店买糖后可在非战斗背包立即升级")
 	var restored := RunState.from_dict(run_state.to_dict())
@@ -107,6 +108,7 @@ func _shop_and_habitat(t: TestContext) -> void:
 	member["claimed_even_levels"].append(8)
 	run_state.trainer_items[Merchant.RARE_CANDY] = 1
 	bag.refresh()
+	bag.find_child("SelectItem_rare_candy", true, false).pressed.emit()
 	bag.find_child("UseCandy_rare_candy_%d" % uid, true, false).pressed.emit()
 	var trait_button: Button = bag.find_child("MonsterTrait_%d_10" % uid, true, false)
 	t.check(trait_button != null, "背包可领取十级特性入口")

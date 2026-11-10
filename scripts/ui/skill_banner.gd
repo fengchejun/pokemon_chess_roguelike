@@ -12,7 +12,7 @@ func _ready() -> void:
 	z_index = 30
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.08, 0.10, 0.16, 0.94)
-	style.set_corner_radius_all(10)
+	style.set_corner_radius_all(0)
 	style.content_margin_left = 14
 	style.content_margin_right = 14
 	style.content_margin_top = 8

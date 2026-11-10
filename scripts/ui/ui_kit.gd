@@ -1,14 +1,14 @@
 class_name UIKit
 extends RefCounted
 
-const BG := Color("16161c")
-const PANEL := Color("23232c")
-const PANEL_LIGHT := Color("2d2d38")
-const ACCENT := Color("ffd166")
-const TEXT := Color("eeeef2")
-const TEXT_DIM := Color("9a9aa6")
-const GOOD := Color("7bd88f")
-const BAD := Color("ff6b6b")
+const BG := Color("11111b")
+const PANEL := Color("1e1e2e")
+const PANEL_LIGHT := Color("313244")
+const ACCENT := Color("f9e2af")
+const TEXT := Color("cdd6f4")
+const TEXT_DIM := Color("a6adc8")
+const GOOD := Color("a6e3a1")
+const BAD := Color("f38ba8")
 
 static var _font: Font = null
 
@@ -27,7 +27,7 @@ static func font() -> Font:
 static func setup_theme(window: Window) -> void:
 	ThemeDB.fallback_font = font()
 	ThemeDB.fallback_font_size = 16
-	var theme := Theme.new()
+	var theme := preload("res://ui/themes/pixel_theme.gd").build()
 	theme.default_font = font()
 	theme.default_font_size = 16
 	window.theme = theme
@@ -56,7 +56,7 @@ static func title(text: String, size: int = 26) -> Label:
 
 
 static func button(text: String, size: int = 16) -> Button:
-	var node := Button.new()
+	var node := preload("res://ui/components/pixel_button.gd").new()
 	node.text = text
 	node.add_theme_font_size_override("font_size", size)
 	node.custom_minimum_size = Vector2(0, 36)
@@ -73,7 +73,12 @@ static func panel(background: Color = PANEL) -> PanelContainer:
 	var node := PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = background
-	style.set_corner_radius_all(8)
+	style.set_border_width_all(2)
+	style.border_color = Color("585b70")
+	style.shadow_size = 2
+	style.shadow_offset = Vector2(2, 2)
+	style.anti_aliasing = false
+	style.set_corner_radius_all(0)
 	style.set_content_margin_all(10)
 	node.add_theme_stylebox_override("panel", style)
 	return node
@@ -112,6 +117,7 @@ static func element_chip(element: String, size: int = 14) -> Label:
 
 
 static func fill_background(control: Control, color: Color = BG) -> void:
+	control.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var background := ColorRect.new()
 	background.color = color
 	background.set_anchors_preset(Control.PRESET_FULL_RECT)

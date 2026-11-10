@@ -26,13 +26,13 @@ func run(t: TestContext) -> void:
 	for cell in expected:
 		t.check(screen.board.area_cells.has(cell), "显示范围包含 %s" % str(cell))
 	var button: Button = screen.skill_box.find_child("SkillButton_wild_vines", true, false)
-	t.check(button != null and button.text.contains("前方 2 格"), "技能栏显示基础两格范围")
+	t.check(button != null and button.tooltip_text.contains("前方 2 格"), "技能栏显示基础两格范围")
 	screen._clear_aim()
 	caster.upgrades["wild_vines_reach"] = 1
 	screen.action_mode = "skills"
 	screen._on_skill_pressed("wild_vines")
 	t.eq(screen.board.area_cells.size(), 12, "强化后显示四向前方三格共十二格")
 	button = screen.skill_box.find_child("SkillButton_wild_vines", true, false)
-	t.check(button != null and button.text.contains("前方 3 格"), "技能栏显示强化后三格范围")
+	t.check(button != null and button.tooltip_text.contains("前方 3 格"), "技能栏显示强化后三格范围")
 	app.queue_free()
 	t.finish()

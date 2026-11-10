@@ -11,12 +11,12 @@ func _ready() -> void:
 		run.refresh_theme_offers()
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 90)
-	margin.add_theme_constant_override("margin_right", 90)
-	margin.add_theme_constant_override("margin_top", 48)
-	margin.add_theme_constant_override("margin_bottom", 48)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
 	add_child(margin)
-	var column := UIKit.vbox(18)
+	var column := UIKit.vbox(12)
 	margin.add_child(column)
 	column.add_child(UIKit.title("第 %d 层 · 选择主题" % (run.floor_index() + 1), 32))
 	var floor_hint := "本层共六场战斗，主题决定地形倾向和主要敌人。"
@@ -25,8 +25,9 @@ func _ready() -> void:
 	elif run.region_mode:
 		floor_hint = "本层含营地、五个战斗节点、两个事件节点及首领。主题决定地形倾向和主要敌人。"
 	column.add_child(UIKit.wrapped(floor_hint, 16))
-	var row := UIKit.hbox(20)
-	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var row := UIKit.hbox(12)
+	row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_child(row)
 	for offered_id in run.offered_floor_themes:
 		var theme_id := String(offered_id)

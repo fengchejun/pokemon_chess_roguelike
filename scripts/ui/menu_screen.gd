@@ -38,7 +38,10 @@ func _ready() -> void:
 	var buttons := UIKit.vbox(10)
 	buttons.custom_minimum_size = Vector2(340, 0)
 	buttons.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	column.add_child(buttons)
+	var menu_card := UIKit.panel()
+	menu_card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	menu_card.add_child(buttons)
+	column.add_child(menu_card)
 	var new_button := UIKit.button("新的一局")
 	new_button.name = "NewRunButton"
 	new_button.pressed.connect(_on_new_run)

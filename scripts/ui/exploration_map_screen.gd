@@ -1,4 +1,5 @@
 extends "res://scripts/ui/region_screen.gd"
+const Widgets = preload("res://ui/components/pixel_widgets.gd")
 const Flow = preload("res://scripts/run/exploration_flow.gd")
 const Garrisons = preload("res://scripts/ui/garrison_dialog.gd")
 const Invasion = preload("res://scripts/run/floor_invasion.gd")
@@ -47,7 +48,11 @@ func _ready() -> void:
 		var menu := UIKit.small_button("保存并返回菜单")
 		menu.pressed.connect(func() -> void: app.autosave(); app.show_menu())
 		row.add_child(menu)
-	column.add_child(UIKit.label("%s · 原质 %d · 食物 %d" % [region.next_pressure_text(), app.run.essence, app.run.total_food()], 20, UIKit.ACCENT))
+	var resources := UIKit.hbox(12)
+	column.add_child(resources)
+	resources.add_child(Widgets.stat("◆", str(app.run.essence), "原质", UIKit.ACCENT))
+	resources.add_child(Widgets.stat("食", str(app.run.total_food()), "食物", UIKit.GOOD))
+	resources.add_child(UIKit.label(region.next_pressure_text(), 16, UIKit.TEXT_DIM))
 	column.add_child(UIKit.wrapped("已知地点保留名称和连线。入侵后从保住的前线逐步夺回节点，失守服务在本层永久关闭。", 15))
 	graph = Control.new()
 	graph.name = "FogMap"
@@ -115,7 +120,7 @@ func _update_node_button(id: String, button: Button) -> void:
 	style.bg_color = Color("283647") if available else Color("22252b")
 	style.border_color = UIKit.ACCENT if id == region.active_node else Color("4a6378") if known else Color("30333a")
 	style.set_border_width_all(2 if id == region.active_node else 1)
-	style.set_corner_radius_all(9)
+	style.set_corner_radius_all(0)
 	style.set_content_margin_all(10)
 	button.add_theme_stylebox_override("normal", style)
 	button.add_theme_stylebox_override("disabled", style)

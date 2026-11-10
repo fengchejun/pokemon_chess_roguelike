@@ -1,4 +1,5 @@
 extends Control
+const Widgets = preload("res://ui/components/pixel_widgets.gd")
 
 var app = null
 
@@ -38,10 +39,11 @@ func _ready() -> void:
 		line.add_child(UIKit.label(SpeciesDB.name_of(species_id), 16))
 		line.add_child(UIKit.element_chip(SpeciesDB.element_of(species_id)))
 		var level := int(record.get("level", 1))
-		var progress := UIKit.label("本局 Lv.%d · 经验 %d/%d · 生命 %d/%d · 亲密度 %d" % [
-			level, int(record.get("xp", 0)), MonsterProgression.threshold_for_level(level + 1),
-			int(record["hp"]), run.monster_max_hp(record), int(record.get("affinity", 0)),
-		], 14, UIKit.TEXT_DIM)
+		var progress := UIKit.hbox(6)
+		progress.add_child(Widgets.stat("级", str(level), "本局等级"))
+		progress.add_child(Widgets.health(int(record["hp"]), run.monster_max_hp(record)))
+		progress.add_child(Widgets.stat("亲", str(record.get("affinity", 0)), "永久亲密度"))
+		progress.tooltip_text = "累计经验 %d / %d" % [int(record.get("xp", 0)), MonsterProgression.threshold_for_level(level + 1)]
 		progress.name = "SupplyGrowth_%d" % int(record["uid"])
 		line.add_child(progress)
 		team_box.add_child(row)
@@ -72,21 +74,11 @@ func _ready() -> void:
 		supply_box.add_child(UIKit.wrapped("本次消耗卡已领取。旧背包中的卡仍可在战前使用。", 13, UIKit.TEXT_DIM))
 	else:
 		supply_box.add_child(UIKit.label("免费补给 · 消耗卡三选一", 17, UIKit.ACCENT))
+		var grid := Widgets.slot_grid(supply_box, 3)
+		var detail := Widgets.details(supply_box)
 		for candidate in supply_choices:
 			var item_id := String(candidate)
-			var pick := UIKit.button("%s\n%s" % [RewardDB.name_of(item_id), RewardDB.description_of(item_id)], 13)
-			pick.custom_minimum_size = Vector2(0, 68)
-			pick.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			var normal_style := StyleBoxFlat.new()
-			normal_style.bg_color = UIKit.PANEL_LIGHT
-			normal_style.border_color = UIKit.ACCENT.darkened(0.35)
-			normal_style.set_border_width_all(1)
-			normal_style.set_corner_radius_all(6)
-			normal_style.set_content_margin_all(10)
-			pick.add_theme_stylebox_override("normal", normal_style)
-			var hover_style := normal_style.duplicate() as StyleBoxFlat
-			hover_style.bg_color = UIKit.PANEL_LIGHT.lightened(0.18)
-			pick.add_theme_stylebox_override("hover", hover_style)
+			var pick := Widgets.slot(RewardDB.name_of(item_id), 1, RewardDB.name_of(item_id).left(2), RewardDB.description_of(item_id), UIKit.ACCENT)
 			pick.name = "SupplyChoice_%s" % item_id.replace(":", "_")
 			pick.pressed.connect(func() -> void:
 				if app.run.choose_supply_item(item_id):
@@ -96,7 +88,8 @@ func _ready() -> void:
 					supply_box.add_child(UIKit.wrapped("已领取：%s" % RewardDB.name_of(item_id), 14, UIKit.GOOD))
 					leave.disabled = false
 			)
-			supply_box.add_child(pick)
+			grid.add_child(pick)
+			Widgets.describe(pick, detail)
 	leave.name = "LeaveSupplyButton"
 	leave.disabled = not supply_choices.is_empty()
 	leave.pressed.connect(func() -> void: app.leave_supply())

@@ -1,4 +1,5 @@
 extends Control
+const Widgets = preload("res://ui/components/pixel_widgets.gd")
 
 var app = null
 var selection: Array = []
@@ -13,10 +14,10 @@ func _ready() -> void:
 	UIKit.fill_background(self)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 100)
-	margin.add_theme_constant_override("margin_right", 100)
-	margin.add_theme_constant_override("margin_top", 32)
-	margin.add_theme_constant_override("margin_bottom", 32)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
 	add_child(margin)
 	var column := UIKit.vbox(10)
 	margin.add_child(column)
@@ -26,8 +27,9 @@ func _ready() -> void:
 	var scroll := UIKit.scroll()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_child(scroll)
-	var list := UIKit.vbox(6)
-	list.custom_minimum_size = Vector2(900, 0)
+	var list := GridContainer.new()
+	list.columns = 2 if get_viewport_rect().size.x >= 1100 else 1
+	resized.connect(func() -> void: list.columns = 2 if size.x >= 1100 else 1)
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(list)
 	for record in app.collection.owned:
@@ -63,9 +65,12 @@ func _collection_row(record: Dictionary) -> Control:
 	line.add_child(box)
 	line.add_child(UIKit.label(SpeciesDB.name_of(species_id), 17))
 	line.add_child(UIKit.element_chip(SpeciesDB.element_of(species_id)))
-	line.add_child(UIKit.label("亲密度 %d（永久，暂无效果） · 基础生命 %d · 基础移动 %d" % [
-		int(record.get("affinity", 0)), SpeciesDB.hp_of(species_id), SpeciesDB.move_of(species_id),
-	], 14, UIKit.TEXT_DIM))
+	var stats := UIKit.hbox(8)
+	stats.name = "CollectionStats_%d" % id
+	content.add_child(stats)
+	stats.add_child(Widgets.stat("亲", str(record.get("affinity", 0)), "永久亲密度，暂无数值效果"))
+	stats.add_child(Widgets.stat("心", str(SpeciesDB.hp_of(species_id)), "基础生命", UIKit.BAD))
+	stats.add_child(Widgets.stat("步", str(SpeciesDB.move_of(species_id)), "基础移动", UIKit.GOOD))
 	var skills: Array = []
 	var skill_selector := OptionButton.new()
 	skill_selector.name = "StartingSkill_%d" % id
@@ -79,7 +84,7 @@ func _collection_row(record: Dictionary) -> Control:
 		if (species_id.begins_with("ice_") and String(skill_id) == "ice_shard"):
 			skill_selector.select(skill_selector.item_count - 1)
 	skill_selectors[id] = skill_selector
-	content.add_child(UIKit.wrapped("开局从以下技能中携带一招；标注“特殊”的技能不能通过升级学习：" + "、".join(skills), 13))
+	skill_selector.tooltip_text = "开局携带一招；特殊技能不能通过升级学习。\n" + "、".join(skills)
 	content.add_child(skill_selector)
 	return row
 

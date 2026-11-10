@@ -17,7 +17,8 @@ func _test_collection_prep_and_run_end(t: TestContext) -> void:
 	app.collection.record_by_id(1)["affinity"] = 7
 	app.start_new_run()
 	var collection_text := _all_label_text(app.current_screen)
-	t.check(collection_text.contains("亲密度 7"), "开局收藏页显示永久亲密度")
+	var collection_stats = app.current_screen.find_child("CollectionStats_1", true, false)
+	t.check(collection_stats != null and _all_label_text(collection_stats.get_child(0)).contains("7"), "开局收藏页显示永久亲密度")
 	t.check(collection_text.contains("本局等级、经验与怪物强化在新局重置"), "收藏页说明本局成长不继承")
 	for id in [1, 2, 3]:
 		var choice: CheckBox = app.current_screen.find_child("Collection_%d" % id, true, false)
@@ -38,8 +39,10 @@ func _test_collection_prep_and_run_end(t: TestContext) -> void:
 	fire["upgrades"] = {"fireball_damage": 1}
 	app.show_prep()
 	var prep_text := _all_label_text(app.current_screen)
-	t.check(prep_text.contains("本局 Lv.3") and prep_text.contains("经验 16/30"), "整备页显示怪物本局等级与经验")
-	t.check(prep_text.contains("亲密度 7（强化折扣）"), "整备页说明亲密度用于商人强化折扣")
+	var stats = app.current_screen.find_child("PrepStats_1", true, false)
+	var xp = app.current_screen.find_child("PrepXP_1", true, false)
+	t.check(stats != null and _all_label_text(stats.get_child(0)).contains("3") and xp != null and xp.value == 16 and xp.max_value == 30, "整备页徽章与进度条显示等级经验")
+	t.check(stats != null and _all_label_text(stats.get_child(3)).contains("7") and stats.get_child(3).tooltip_text.contains("强化折扣"), "亲密度徽章显示数值与折扣说明")
 	t.check(prep_text.contains("本局强化：炽烈火球"), "整备页显示该怪物的已选本局升级")
 	app.show_run_end()
 	var summary: Label = app.current_screen.find_child("RunEndSummary", true, false)

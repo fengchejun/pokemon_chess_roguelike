@@ -8,6 +8,9 @@ var content: VBoxContainer
 var message := ""
 var growth_uid := -1
 var scroll: ScrollContainer
+var selected_item := ""
+var item_grid: GridContainer
+const Widgets = preload("res://ui/components/pixel_widgets.gd")
 
 func _ready() -> void:
 	name = "ItemBagScreen"
@@ -15,7 +18,7 @@ func _ready() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 28)
+		margin.add_theme_constant_override("margin_" + side, 16)
 	add_child(margin)
 	var page := UIKit.vbox(12)
 	margin.add_child(page)
@@ -69,12 +72,31 @@ func refresh() -> void:
 			refresh())
 		content.add_child(growth_button)
 	var has_items := false
+	item_grid = GridContainer.new()
+	item_grid.columns = 8
+	content.add_child(item_grid)
+	var available: Array = []
+	for key in run.trainer_items:
+		if int(run.trainer_items[key]) > 0:
+			available.append(String(key))
+	if not available.has(selected_item):
+		selected_item = String(available[0]) if available.size() == 1 else ""
 	for key in run.trainer_items:
 		var id := String(key)
 		var count := int(run.trainer_items[key])
 		if count <= 0:
 			continue
 		has_items = true
+		var is_book := id.begins_with(Merchant.BOOK_PREFIX)
+		var item_name := SkillDB.name_of(id.trim_prefix(Merchant.BOOK_PREFIX)) if is_book else String(Merchant.ITEMS.get(id, [id])[0])
+		var slot := Widgets.slot(item_name, count, "书" if is_book else ("药" if id == "potion" else "◆"), "选择后查看使用目标", UIKit.ACCENT if is_book else UIKit.GOOD)
+		slot.name = "SelectItem_" + id.replace(":", "_")
+		slot.pressed.connect(func() -> void:
+			selected_item = id
+			refresh())
+		item_grid.add_child(slot)
+		if id != selected_item:
+			continue
 		if id.begins_with(Merchant.BOOK_PREFIX):
 			_show_book(run, id.trim_prefix(Merchant.BOOK_PREFIX), count)
 		elif Merchant.ITEMS.has(id):
@@ -115,7 +137,8 @@ func _show_book(run: RunState, skill: String, count: int) -> void:
 		content.add_child(UIKit.label("当前没有可学习该招式的随身成员。", 15))
 
 func _potion_target(uid: int, display_name: String, hp: int, max_hp: int) -> void:
-	var button := UIKit.small_button("为%s使用治疗药 · HP %d/%d" % [display_name, hp, max_hp])
+	content.add_child(Widgets.health(hp, max_hp))
+	var button := UIKit.small_button("为%s使用治疗药" % display_name)
 	button.name = "UsePotion_%d" % uid
 	button.disabled = hp <= 0 or hp >= max_hp
 	button.pressed.connect(func() -> void:

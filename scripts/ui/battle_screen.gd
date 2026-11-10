@@ -1,4 +1,5 @@
 extends Control
+const Widgets = preload("res://ui/components/pixel_widgets.gd")
 
 var camp_services: Control = null
 var app = null
@@ -285,8 +286,8 @@ func _unit_box() -> Control:
 	box.add_child(column)
 	unit_title = UIKit.label("", 17)
 	column.add_child(unit_title)
-	unit_health = ProgressBar.new()
-	unit_health.custom_minimum_size = Vector2(230, 12)
+	unit_health = Widgets.health(0, 1)
+	unit_health.custom_minimum_size = Vector2(230, 24)
 	unit_health.show_percentage = false
 	column.add_child(unit_health)
 	unit_body = UIKit.label("", 13, UIKit.TEXT_DIM)
@@ -427,12 +428,13 @@ func _update_team_list() -> void:
 	for unit in state.units:
 		if unit.side != "player":
 			continue
-		var entry := UIKit.small_button("%s  HP %d/%d" % [unit.display_name, unit.hp, unit.max_hp])
+		var entry := UIKit.small_button(unit.display_name)
 		entry.disabled = not unit.is_alive()
 		entry.add_theme_color_override("font_color", UIKit.ACCENT if unit.uid == selected_uid else UIKit.TEXT)
 		var uid: int = unit.uid
 		entry.pressed.connect(func() -> void: select_unit(uid))
 		team_list.add_child(entry)
+		team_list.add_child(Widgets.health(unit.hp, unit.max_hp))
 		if unit.summon_owner_uid < 0 and app != null and app.run != null:
 			_add_battle_xp_bar(unit)
 	call_deferred("_fit_team_panel")
@@ -594,7 +596,7 @@ func _update_unit_card() -> void:
 	unit_title.text = "%s%s（%s · %s）" % ["首领·" if unit.is_boss else "", unit.display_name, side_text, Elements.FULL_NAMES.get(unit.element, "无属性")]
 	if unit.side == "enemy" and (unit.corrupted or (unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND)):
 		unit_title.text += " · 击杀无经验"
-	unit_title.text += "\nHP %d/%d" % [unit.hp, unit.max_hp]
+	(unit_health.get_child(0) as Label).text = "%d / %d" % [unit.hp, unit.max_hp]
 	unit_health.max_value = maxi(1, unit.max_hp)
 	unit_health.value = unit.hp
 	var lines: Array = []
@@ -769,10 +771,12 @@ func _rebuild_skill_buttons() -> void:
 		skill_box.add_child(UIKit.label("选择己方单位后显示行动。", 13, UIKit.TEXT_DIM))
 		return
 	if action_mode == "items" and unit.is_trainer:
+		var grid := Widgets.slot_grid(skill_box, 3)
+		var detail := Widgets.details(skill_box)
 		for item_id in Merchant.BATTLE_ITEMS:
 			var id := String(item_id)
-			var button := UIKit.small_button("%s ×%d" % [Merchant.ITEMS[id][0], int(app.run.trainer_items.get(id, 0))])
-			button.tooltip_text = Merchant.ITEMS[id][2]
+			var button := Widgets.slot(Merchant.ITEMS[id][0], int(app.run.trainer_items.get(id, 0)), String(Merchant.ITEMS[id][0]).left(2), Merchant.ITEMS[id][2])
+			button.tooltip_text = String(Merchant.ITEMS[id][0]) + "\n" + String(Merchant.ITEMS[id][2])
 			var free_heal: bool = id == "potion" and state.is_free_exploration()
 			button.disabled = int(app.run.trainer_items.get(id, 0)) <= 0 or (not free_heal and (unit.capture_used or not unit.can_act_skill())) or (id == "capture_aid" and state.capture_aid)
 			if id == "potion" and state.alive_units("player").filter(func(target): return Merchant.item_target_valid(state, target)).is_empty():
@@ -791,7 +795,8 @@ func _rebuild_skill_buttons() -> void:
 				else:
 					_use_trainer_item(id)
 			)
-			skill_box.add_child(button)
+			grid.add_child(button)
+			Widgets.describe(button, detail)
 		var back := UIKit.small_button("返回行动")
 		back.pressed.connect(_return_to_main_actions)
 		skill_box.add_child(back)
@@ -799,6 +804,8 @@ func _rebuild_skill_buttons() -> void:
 		return
 	capture_button = null
 	if action_mode == "skills":
+		var grid := Widgets.slot_grid(skill_box, 3)
+		var detail := Widgets.details(skill_box)
 		for skill_id in unit.skills:
 			var id := String(skill_id)
 			var def := SkillDB.get_def(id)
@@ -808,9 +815,9 @@ func _rebuild_skill_buttons() -> void:
 				button_text += "·" + phase_reason
 			elif not unit.can_use_in_battle(id):
 				button_text += "·本场已用"
-			var button := UIKit.small_button(button_text)
+			var button := Widgets.slot(button_text, 1, String(def.get("name", id)).left(2), String(def.get("desc", "")), Elements.color_of(unit.element))
 			button.name = "SkillButton_%s" % id
-			button.tooltip_text = String(def.get("desc", ""))
+			button.tooltip_text = button_text + "\n" + String(def.get("desc", ""))
 			var entries := state.skill_targets(unit, id)
 			if phase_reason != "":
 				button.disabled = true
@@ -825,7 +832,8 @@ func _rebuild_skill_buttons() -> void:
 				button.disabled = true
 				button.tooltip_text += "\n（蒸汽中无法施法）" if state.steam_cells.has(unit.cell) else "\n（当前没有有效目标）"
 			button.pressed.connect(func() -> void: _on_skill_pressed(id))
-			skill_box.add_child(button)
+			grid.add_child(button)
+			Widgets.describe(button, detail)
 		var back_button := UIKit.small_button("返回行动")
 		back_button.pressed.connect(_return_to_main_actions)
 		skill_box.add_child(back_button)

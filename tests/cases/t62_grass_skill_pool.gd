@@ -326,14 +326,14 @@ func _ui_display(t: TestContext) -> void:
 	screen._on_skill_pressed("rooted_grass")
 	t.eq(screen.board.area_cells.size(), 9, "落地生根瞄准时显示基础九格范围")
 	var button: Button = screen.skill_box.find_child("SkillButton_rooted_grass", true, false)
-	t.check(button != null and button.text.contains("3×3"), "技能栏显示基础 3×3 范围")
+	t.check(button != null and button.tooltip_text.contains("3×3"), "技能栏显示基础 3×3 范围")
 	screen._clear_aim()
 	caster.upgrades["rooted_grass_radius"] = 1
 	screen.action_mode = "skills"
 	screen._on_skill_pressed("rooted_grass")
 	t.eq(screen.board.area_cells.size(), 25, "落地生根强化后瞄准时显示二十五格范围")
 	button = screen.skill_box.find_child("SkillButton_rooted_grass", true, false)
-	t.check(button != null and button.text.contains("5×5"), "技能栏显示强化后 5×5 范围")
+	t.check(button != null and button.tooltip_text.contains("5×5"), "技能栏显示强化后 5×5 范围")
 	app.queue_free()
 
 
