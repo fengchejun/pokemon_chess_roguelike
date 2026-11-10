@@ -573,7 +573,7 @@ func _update_unit_card() -> void:
 	if unit.paralyzed_ticks > 0:
 		statuses.append("麻痹 %d 回合（每轮开始时衰减）" % unit.paralyzed_ticks)
 	if unit.frozen:
-		statuses.append("冰冻 %d 回合（无法行动；受到伤害时解除）" % unit.frozen_ticks)
+		statuses.append("冰冻（无法行动；下次行动后解除，受到实际伤害会提前解除）")
 	if unit.channel_lock_round > state.round:
 		statuses.append("吟唱中：第 %d 回合本方阶段结算，届时不能行动" % unit.channel_lock_round)
 	elif unit.channel_lock_round == state.round:

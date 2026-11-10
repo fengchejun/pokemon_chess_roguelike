@@ -9,6 +9,7 @@ func run(t: TestContext) -> void:
 	_freeze_upgrade_migration(t)
 	_damage_breaks_without_immunity(t)
 	_skill_damage_breaks_without_immunity(t)
+	_ui_explains_release_timing(t)
 	_ui_skill_damage_breaks_without_immunity(t)
 	_expires_after_one_round(t)
 	t.finish()
@@ -105,6 +106,26 @@ func _skill_damage_breaks_without_immunity(t: TestContext) -> void:
 	t.check(bool(result.get("ok", false)), "冰冻目标可被正式技能选中")
 	t.eq(target.hp, hp_before - SkillDB.damage_of("ice_shard"), "冰冻目标受到正式技能伤害")
 	t.check(not target.frozen, "正式技能命中后冰冻解除")
+
+
+func _ui_explains_release_timing(t: TestContext) -> void:
+	var app = load("res://scripts/main.gd").new()
+	app.autosave_enabled = false
+	t.tree.root.add_child(app)
+	app.run = RunState.new_run(6103)
+	var state := TestScenario.make_state(["rock_starter"], [["rock_wild1", Vector2i(3, 3)]])
+	var target := state.unit_by_uid(100)
+	state.apply_freeze(target)
+	var screen = load("res://scripts/ui/battle_screen.gd").new()
+	screen.state = state
+	app._switch(screen)
+	screen.viewed_enemy_uid = target.uid
+	screen._update_unit_card()
+	t.check(screen.unit_body.text.contains("下次行动后解除"), "冰冻状态说明写明下次行动后解除")
+	t.check(screen.unit_body.text.contains("受到实际伤害会提前解除"), "冰冻状态说明保留受伤提前解除条件")
+	t.check(String(SkillDB.get_def("freeze_ray").get("desc", "")).contains("下次行动后解除"), "急冻光线说明采用统一下次行动后解除")
+	t.check(String(SkillDB.get_def("ice_breath").get("desc", "")).contains("下次行动后解除"), "冰之息说明采用统一下次行动后解除")
+	app.free()
 
 
 func _ui_skill_damage_breaks_without_immunity(t: TestContext) -> void:
