@@ -51,7 +51,6 @@ func run(t: TestContext) -> void:
 	node.find_child("OpenItemBag", true, false).pressed.emit()
 	var bag = app.current_screen
 	t.eq(bag.name, "ItemBagScreen", "商店可打开道具背包")
-	bag.find_child("SelectItem_" + item.replace(":", "_"), true, false).pressed.emit()
 	bag.find_child("UseBook_%s_%d" % [skill, uid], true, false).pressed.emit()
 	t.check(run.record_by_uid(uid)["known_skills"].has(skill) and int(run.trainer_items[item]) == 0, "背包选成员学习并消耗一本书")
 	bag.find_child("UsePotion_%d" % Balance.TRAINER_UID, true, false).pressed.emit()

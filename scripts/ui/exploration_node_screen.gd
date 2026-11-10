@@ -1,11 +1,10 @@
 extends Control
-const Widgets = preload("res://ui/components/pixel_widgets.gd")
 const Flow = preload("res://scripts/run/exploration_flow.gd")
 var app = null
 var column: VBoxContainer
 var message := ""
 var title_label: Label
-var resources_label: HBoxContainer
+var resources_label: Label
 var return_button: Button
 
 func _ready() -> void:
@@ -14,7 +13,7 @@ func _ready() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 16)
+		margin.add_theme_constant_override("margin_" + side, 28)
 	add_child(margin)
 	var page := UIKit.vbox(14)
 	margin.add_child(page)
@@ -36,7 +35,7 @@ func _ready() -> void:
 	header.add_child(bag)
 	if not app.run.get_region().invaded:
 		header.add_child(preload("res://scripts/ui/garrison_dialog.gd").make_button(self, app, refresh))
-	resources_label = UIKit.hbox(12)
+	resources_label = UIKit.label("", 18, UIKit.ACCENT)
 	page.add_child(resources_label)
 	var scroll := UIKit.scroll()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -54,7 +53,7 @@ func button(text: String, id: String, callback: Callable, disabled: bool = false
 	style.bg_color = Color("242b37")
 	style.border_color = Color("46566c")
 	style.set_border_width_all(1)
-	style.set_corner_radius_all(0)
+	style.set_corner_radius_all(8)
 	style.set_content_margin_all(14)
 	control.add_theme_stylebox_override("normal", style)
 	control.disabled = disabled
@@ -73,10 +72,7 @@ func refresh() -> void:
 	var node: Dictionary = region.nodes[region.active_node]
 	var role: String = node["role"]
 	title_label.text = region.display_name(region.active_node)
-	UIKit.clear_children(resources_label)
-	resources_label.add_child(Widgets.stat("◆", str(run.essence), "原质"))
-	resources_label.add_child(Widgets.stat("食", str(run.total_food()), "食物", UIKit.GOOD))
-	resources_label.add_child(UIKit.label(region.next_pressure_text(), 16, UIKit.TEXT_DIM))
+	resources_label.text = "原质 %d · 食物 %d · %s" % [run.essence, run.total_food(), region.next_pressure_text()]
 	return_button.disabled = bool(node.get("reward_pending", false))
 	return_button.tooltip_text = "先选择本次奖励，再返回地图。" if return_button.disabled else "结算当前节点后检查楼层入侵。"
 	column.add_child(UIKit.wrapped(message, 16))
@@ -233,8 +229,6 @@ func _shop(run: RunState, region) -> void:
 	var intel_reason := Flow.intel_unavailable(region) if node["role"] == "item_shop" else ""
 	if not intel_reason.is_empty() and int(node["stock"].get(Merchant.INTEL_ID, 0)) > 0:
 		column.add_child(UIKit.wrapped("神秘宝可梦情报 · " + intel_reason, 15))
-	var grid := Widgets.slot_grid(column, 6)
-	var detail := Widgets.details(column)
 	for product in node["stock"]:
 		var id: String = product
 		var relic := id.trim_prefix("relic:")
@@ -248,27 +242,7 @@ func _shop(run: RunState, region) -> void:
 			title = "基础食物" if id == "food" else String(Merchant.ITEMS[id][0])
 		var unavailable := id == Merchant.INTEL_ID and not intel_reason.is_empty()
 		var disabled := unavailable or run.essence < price or int(node["stock"][id]) <= 0 or (id.begins_with("relic:") and RelicDB.rank(run.relic_stacks, relic) >= 3)
-		var description := "价格：%d 原质\n库存：%d" % [price, int(node["stock"][id])]
-		if id.begins_with("relic:"):
-			description += "\n" + RelicDB.description_of(relic)
-		elif id.begins_with(Merchant.BOOK_PREFIX):
-			description += "\n" + String(SkillDB.get_def(id.trim_prefix(Merchant.BOOK_PREFIX)).get("desc", ""))
-		elif Merchant.ITEMS.has(id):
-			description += "\n" + String(Merchant.ITEMS[id][2])
-		if unavailable:
-			description += "\n" + intel_reason
-		elif int(node["stock"][id]) <= 0:
-			description += "\n已售罄"
-		elif run.essence < price:
-			description += "\n原质不足"
-		elif disabled:
-			description += "\n遗物已满级"
-		var pick := Widgets.slot(title, int(node["stock"][id]), title.trim_prefix("技能书 · ").left(2), description, UIKit.ACCENT)
-		pick.name = "Buy_" + id.replace(":", "_")
-		pick.disabled = disabled
-		pick.pressed.connect(func() -> void: buy(id))
-		grid.add_child(pick)
-		Widgets.describe(pick, detail)
+		button("购买%s · %d原质 · 剩余%d" % [title, price, int(node["stock"][id])], "Buy_" + id.replace(":", "_"), func() -> void: buy(id), disabled)
 	if node["role"] != "skill_shop":
 		for relic_id in run.relic_stacks:
 			var relic: String = relic_id

@@ -15,13 +15,16 @@ func run(t: TestContext) -> void:
 	app.run.storage.append(app.run._make_record("rock_starter"))
 	app.show_region()
 	var screen = app.current_screen
-	var resources: Control = screen.find_child("RegionResources", true, false)
-	t.check(_texts(resources).contains("37") and _texts(resources).contains("8"), "地图直接显示原质与食物")
+	var resources: Label = screen.find_child("RegionResources", true, false)
+	t.check(resources.text.contains("37") and resources.text.contains("8"), "地图直接显示原质与食物")
 	var before: Dictionary = app.run.to_dict().duplicate(true)
 	screen.find_child("ViewTeamButton", true, false).pressed.emit()
 	t.check(screen.team_overlay != null, "点击队伍按钮打开队伍窗口")
 	var content: Control = screen.find_child("RegionTeamContent", true, false)
-	var texts := _texts(content)
+	var texts := ""
+	for child in content.get_children():
+		if child is Label:
+			texts += child.text
 	t.check(texts.contains("训练师") and texts.contains("随行队伍") and texts.contains("营地留守") and texts.contains("装备招式"), "队伍信息包含训练师、随行与留守成员及招式")
 	t.eq(app.run.to_dict(), before, "查看队伍不消耗访问次数或改变成员")
 	screen.find_child("CloseTeamButton", true, false).pressed.emit()
@@ -33,8 +36,8 @@ func run(t: TestContext) -> void:
 	banner._layout()
 	banner.push("敌方回合", "enemy")
 	t.check(banner.visible and banner.active(), "横条显示时阻止操作")
-	t.eq(banner.band.position, Vector2(400, 301), "像素卡片水平垂直居中")
-	t.eq(banner.band.size.x, 480.0, "像素卡片限制为480宽度")
+	t.eq(banner.band.position, Vector2(0, 301), "横条垂直居中")
+	t.eq(banner.band.size.x, 1280.0, "横条跨越整个场景宽度")
 	banner.advance(0.99)
 	t.check(banner.active(), "0.99秒仍显示")
 	banner.advance(0.02)
@@ -71,9 +74,3 @@ func run(t: TestContext) -> void:
 	t.check(battle_screen.battle_notice.pending.is_empty(), "重复刷新不重复排队胜利提示")
 	app.queue_free()
 	t.finish()
-
-func _texts(node: Node) -> String:
-	var value: String = node.text if node is Label else ""
-	for child in node.get_children():
-		value += _texts(child)
-	return value

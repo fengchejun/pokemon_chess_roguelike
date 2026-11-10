@@ -218,5 +218,5 @@ func _ui_pick_and_cancel(t: TestContext) -> void:
 	second_screen.select_unit(second.uid)
 	second_screen._on_choose_skill_pressed()
 	var blocked_button: Button = second_screen.skill_box.find_child("SkillButton_fire_burst", true, false)
-	t.check(blocked_button != null and blocked_button.disabled and blocked_button.tooltip_text.contains("本方本回合已有吟唱者"), "第二名吟唱者的界面按钮明确提示名额已占用")
+	t.check(blocked_button != null and blocked_button.disabled and blocked_button.text.contains("本方本回合已有吟唱者"), "第二名吟唱者的界面按钮明确提示名额已占用")
 	app.queue_free()

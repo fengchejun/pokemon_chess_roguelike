@@ -21,9 +21,7 @@ var board: BoardView = null
 var hint_label: Label = null
 var mod_count_label: Label = null
 var mod_buttons: Dictionary = {}
-var card_selector: OptionButton = null # Selection model retained for existing save/UI callers.
-var reward_grid: GridContainer
-const PixelWidgets = preload("res://ui/components/pixel_widgets.gd")
+var card_selector: OptionButton = null
 var card_use_button: Button = null
 var card_status_label: Label = null
 var card_header_label: Label = null
@@ -255,9 +253,6 @@ func _cards_box() -> Control:
 	card_selector.disabled = run.preview_used_reward_item != ""
 	card_selector.item_selected.connect(func(_index: int) -> void: _refresh_card_status())
 	column.add_child(card_selector)
-	card_selector.hide()
-	reward_grid = PixelWidgets.slot_grid(column, 4)
-	_build_reward_slots()
 	card_use_button = UIKit.small_button("使用并消耗")
 	card_use_button.name = "UseRewardItemButton"
 	card_use_button.disabled = run.preview_used_reward_item != "" or run.reward_inventory.is_empty()
@@ -268,27 +263,6 @@ func _cards_box() -> Control:
 	_refresh_card_status()
 	return box
 
-
-func _build_reward_slots() -> void:
-	UIKit.clear_children(reward_grid)
-	var run: RunState = app.run
-	for index in run.reward_inventory.size():
-		var id := String(run.reward_inventory[index])
-		var slot := PixelWidgets.slot(RewardDB.name_of(id), 1, RewardDB.name_of(id).left(2), RewardDB.description_of(id), UIKit.ACCENT)
-		slot.name = "RewardSlot_%d" % index
-		slot.disabled = run.preview_used_reward_item != ""
-		slot.toggle_mode = true
-		slot.button_pressed = card_selector.selected == index + 1
-		slot.pressed.connect(func() -> void:
-			card_selector.select(index + 1)
-			_refresh_card_status()
-			for other in reward_grid.get_children():
-				other.set_pressed_no_signal(other == slot))
-		slot.focus_entered.connect(func() -> void: card_status_label.text = slot.tooltip_text)
-		slot.mouse_entered.connect(func() -> void: card_status_label.text = slot.tooltip_text)
-		reward_grid.add_child(slot)
-	if run.reward_inventory.is_empty():
-		reward_grid.add_child(UIKit.label("暂无消耗品", 14, UIKit.TEXT_DIM))
 
 func _on_use_reward_item() -> void:
 	if persistent_node or (app.run.region_mode and app.run.get_region().flow_version == 2):
@@ -311,7 +285,6 @@ func _on_use_reward_item() -> void:
 		_prepare_treasure()
 		base_map = map.duplicate(true)
 	card_selector.disabled = true
-	_build_reward_slots()
 	card_selector.clear()
 	card_selector.add_item("本场已使用：%s" % RewardDB.name_of(reward_id))
 	card_use_button.disabled = true

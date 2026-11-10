@@ -1,5 +1,4 @@
 extends Control
-const Widgets = preload("res://ui/components/pixel_widgets.gd")
 
 const GrowthChoices = preload("res://scripts/ui/monster_growth_choices.gd")
 
@@ -222,17 +221,26 @@ func _show_next_step() -> void:
 		step_label.text = "%s三选一（剩余 %d 次）" % ["传奇遗物" if legendary else "战后奖励", run.pending_reward_choices]
 		var prompt := "从高级奖励点的三个传奇遗物中选一件。满级遗物可折算为原质。" if legendary else "从本次旧版奖励的候选遗物中选一件，同种遗物最多三级。"
 		choice_box.add_child(UIKit.wrapped(prompt, 13))
-		var grid := Widgets.slot_grid(choice_box, 3)
-		var detail := Widgets.details(choice_box)
 		for reward_id in run.reward_choices():
 			var id := String(reward_id)
 			var next_rank := RelicDB.rank(run.relic_stacks, id) + 1
 			var result := "已满级，兑换 16 原质" if next_rank > RelicDB.MAX_RANK else "取得后 %d/%d 级" % [next_rank, RelicDB.MAX_RANK]
-			var button := Widgets.slot(RelicDB.display_name_of(id), mini(next_rank, RelicDB.MAX_RANK), RelicDB.display_name_of(id).left(2), result + "\n" + RelicDB.description_of(id), UIKit.ACCENT)
+			var button := UIKit.button("%s · %s\n%s" % [RelicDB.display_name_of(id), result, RelicDB.description_of(id)], 14)
+			button.custom_minimum_size = Vector2(0, 76)
+			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			var normal_style := StyleBoxFlat.new()
+			normal_style.bg_color = UIKit.PANEL_LIGHT
+			normal_style.border_color = UIKit.ACCENT.darkened(0.35)
+			normal_style.set_border_width_all(1)
+			normal_style.set_corner_radius_all(6)
+			normal_style.set_content_margin_all(12)
+			button.add_theme_stylebox_override("normal", normal_style)
+			var hover_style := normal_style.duplicate() as StyleBoxFlat
+			hover_style.bg_color = UIKit.PANEL_LIGHT.lightened(0.18)
+			button.add_theme_stylebox_override("hover", hover_style)
 			button.name = "RewardChoice_%s" % id.replace(":", "_")
 			button.pressed.connect(_choose_settlement_reward.bind(id))
-			grid.add_child(button)
-			Widgets.describe(button, detail)
+			choice_box.add_child(button)
 		continue_button.disabled = true
 		return
 	step_label.text = "全部处理完成，可以进入下一场。"

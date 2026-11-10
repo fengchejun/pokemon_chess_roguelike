@@ -25,7 +25,7 @@ func push(event: Dictionary) -> void:
 	style.bg_color = Color.TRANSPARENT if panel.jagged else Color("f1e9d5")
 	style.border_color = Color.TRANSPARENT if panel.jagged else Color("78664c")
 	style.set_border_width_all(0 if panel.jagged else 2)
-	style.set_corner_radius_all(0)
+	style.set_corner_radius_all(0 if panel.jagged else 10)
 	style.content_margin_left = 12
 	style.content_margin_right = 12
 	style.content_margin_top = 7

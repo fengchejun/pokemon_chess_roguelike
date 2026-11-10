@@ -42,9 +42,8 @@ func _ready() -> void:
 func _layout() -> void:
 	if band == null:
 		return
-	var width := minf(480.0, size.x - 32.0)
-	band.position = Vector2(roundf((size.x - width) * 0.5), roundf((size.y - 118) * 0.5))
-	band.size = Vector2(width, 118)
+	band.position = Vector2(0, (size.y - 118) * 0.5)
+	band.size = Vector2(size.x, 118)
 
 func active() -> bool:
 	return remaining > 0 or not pending.is_empty()
@@ -64,12 +63,8 @@ func _next() -> void:
 	caption.text = item["text"]
 	subtitle.text = {"player": "PLAYER PHASE", "enemy": "ENEMY PHASE", "victory": "VICTORY", "defeat": "DEFEAT", "escape": "RETREAT"}.get(item["kind"], "")
 	var style := StyleBoxFlat.new()
-	style.bg_color = {"player": UIKit.PANEL_LIGHT, "enemy": Color("682b38"), "victory": Color("66502b"), "defeat": Color("472e4f"), "escape": Color("354d57")}.get(item["kind"], UIKit.PANEL)
+	style.bg_color = {"player": Color("23436b"), "enemy": Color("682b38"), "victory": Color("66502b"), "defeat": Color("472e4f"), "escape": Color("354d57")}.get(item["kind"], Color("24334d"))
 	style.border_color = Color("d7bd7f")
-	style.set_border_width_all(2)
-	style.shadow_size = 4
-	style.shadow_offset = Vector2(2, 2)
-	style.anti_aliasing = false
 	style.border_width_top = 2
 	style.border_width_bottom = 2
 	style.content_margin_top = 14

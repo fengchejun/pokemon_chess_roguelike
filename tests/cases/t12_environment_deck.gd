@@ -76,7 +76,7 @@ func _test_ui_flow(t: TestContext) -> void:
 	if selector == null:
 		app.queue_free()
 		return
-	app.current_screen.find_child("RewardSlot_0", true, false).pressed.emit()
+	selector.select(1)
 	var before_counts := MapGenerator.terrain_counts(app.current_screen.map)
 	var use_button: Button = app.current_screen.find_child("UseRewardItemButton", true, false)
 	use_button.pressed.emit()
@@ -119,7 +119,7 @@ func _test_modification_ui(t: TestContext) -> void:
 	app.show_preview([1, 2, 3])
 	var preview = app.current_screen
 	var selector: OptionButton = preview.find_child("RewardItemOption", true, false)
-	app.current_screen.find_child("RewardSlot_0", true, false).pressed.emit()
+	selector.select(1)
 	var use_button: Button = preview.find_child("UseRewardItemButton", true, false)
 	use_button.pressed.emit()
 	t.eq(preview.mod_count_label.text, "剩余改造次数：%d / %d" % [Balance.MOD_POINTS, Balance.MOD_POINTS], "使用工具后预览页显示改造次数")

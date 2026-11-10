@@ -1,5 +1,4 @@
 extends Control
-const Widgets = preload("res://ui/components/pixel_widgets.gd")
 const FoodDB = preload("res://scripts/data/food_db.gd")
 var app = null
 var result_label: Label
@@ -29,8 +28,7 @@ func _open_storage() -> void:
 	scroll.add_child(column)
 	column.add_child(UIKit.wrapped("选择营地成员与背包成员交换。进入下一层时，留在营地的成员将被抛弃，无法进入永久收藏。", 15))
 	for stored in app.run.storage:
-		column.add_child(UIKit.label(SpeciesDB.name_of(String(stored["species_id"])), 16, UIKit.ACCENT))
-		column.add_child(Widgets.health(int(stored["hp"]), app.run.monster_max_hp(stored)))
+		column.add_child(UIKit.label("营地：%s HP %d/%d" % [SpeciesDB.name_of(String(stored["species_id"])), int(stored["hp"]), app.run.monster_max_hp(stored)], 16, UIKit.ACCENT))
 		for member in app.run.carried:
 			var stored_uid := int(stored["uid"])
 			var member_uid := int(member["uid"])
@@ -78,8 +76,6 @@ func _open_fire() -> void:
 	for food_id in food_ids:
 		selector.add_item(String(FoodDB.definition(String(food_id))["name"]))
 	content.add_child(selector)
-	selector.hide()
-	var food_grid := Widgets.slot_grid(content, 4)
 	var description := UIKit.wrapped("", 16)
 	content.add_child(description)
 	var amount := SpinBox.new()
@@ -104,15 +100,6 @@ func _open_fire() -> void:
 		rest.disabled = not app.run.needs_camp_rest() or stock < cost
 		hint.text = "队伍当前无需恢复。" if not app.run.needs_camp_rest() else "%s不足 %d 份。" % [definition["name"], cost] if stock < cost else ""
 	selector.item_selected.connect(func(_index: int) -> void: refresh_food.call())
-	for index in food_ids.size():
-		var id := String(food_ids[index])
-		var definition: Dictionary = FoodDB.definition(id)
-		var slot := Widgets.slot(String(definition["name"]), int(app.run.food_inventory.get(id, 0)), String(definition["name"]).left(2), String(definition["description"]), UIKit.GOOD)
-		slot.name = "CampFoodSlot_" + id
-		slot.pressed.connect(func() -> void:
-			selector.select(index)
-			refresh_food.call())
-		food_grid.add_child(slot)
 	refresh_food.call()
 	rest.pressed.connect(func() -> void:
 		var kind := String(food_ids[selector.selected])

@@ -1,6 +1,5 @@
 extends "res://scripts/ui/preview_screen.gd"
 
-const Widgets = preload("res://ui/components/pixel_widgets.gd")
 const MAX_DEPLOY := Balance.DEPLOY_LIMIT
 var deploy_selection: Array = []
 var check_boxes: Dictionary = {}
@@ -27,8 +26,7 @@ func _build_roster() -> Control:
 			deploy_selection = deploy_selection.filter(func(uid): return not app.run.is_garrisoned(uid))
 			deploy_uids = deploy_selection.duplicate()
 			show_prep_after_mode_change()))
-	column.add_child(Widgets.health(app.run.trainer_hp, app.run.trainer_max_hp()))
-	column.add_child(UIKit.wrapped("最多选择 %d 只出战；濒死成员不可选。" % MAX_DEPLOY, 13))
+	column.add_child(UIKit.wrapped("训练师生命 %d/%d · 最多选择 %d 只出战；濒死成员不可选。" % [app.run.trainer_hp, app.run.trainer_max_hp(), MAX_DEPLOY], 13))
 	team_scroll = UIKit.scroll()
 	column.add_child(team_scroll)
 	team_box = UIKit.vbox(6)
@@ -58,7 +56,6 @@ func _team_row(record: Dictionary) -> Control:
 	var line := UIKit.hbox(10)
 	row.add_child(line)
 	var box := CheckBox.new()
-	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	box.name = "Deploy_%d" % int(record["uid"])
 	if int(record["hp"]) <= 0:
 		box.disabled = true
@@ -78,19 +75,11 @@ func _team_row(record: Dictionary) -> Control:
 	title_line.add_child(UIKit.element_chip(SpeciesDB.element_of(species_id)))
 	var engraving_total: int = app.run.monster_engraving_slots(record)
 	var engraving_empty: int = app.run.monster_empty_engraving_slots(record)
-	info.add_child(Widgets.health(int(record["hp"]), app.run.monster_max_hp(record)))
-	var stats := UIKit.hbox(6)
-	info.add_child(stats)
-	stats.name = "PrepStats_%d" % int(record["uid"])
-	stats.add_child(Widgets.stat("级", str(record.get("level", 1)), "本局等级"))
-	stats.add_child(Widgets.stat("步", str(SpeciesDB.move_of(species_id)), "基础移动"))
-	stats.add_child(Widgets.stat("刻", "%d/%d" % [engraving_empty, engraving_total], "空余刻印 / 总刻印槽"))
-	stats.add_child(Widgets.stat("亲", str(record.get("affinity", 0)), "亲密度：影响强化折扣"))
-	var xp := Widgets.health(int(record.get("xp", 0)), MonsterProgression.threshold_for_level(int(record.get("level", 1)) + 1))
-	xp.name = "PrepXP_%d" % int(record["uid"])
-	xp.tooltip_text = "本局累计经验 / 下一级门槛"
-	xp.modulate = UIKit.GOOD
-	info.add_child(xp)
+	info.add_child(UIKit.wrapped("本局 Lv.%d · 经验 %d/%d · 生命 %d/%d · 基础移动 %d · 刻印槽 %d/%d · 亲密度 %d（强化折扣）" % [
+		int(record.get("level", 1)), int(record.get("xp", 0)), MonsterProgression.threshold_for_level(int(record.get("level", 1)) + 1),
+		int(record["hp"]), app.run.monster_max_hp(record), SpeciesDB.move_of(species_id),
+		engraving_empty, engraving_total, int(record.get("affinity", 0)),
+	], 13, UIKit.TEXT_DIM))
 	if int(record["hp"]) <= 0:
 			title_line.add_child(UIKit.label("濒死（营地休息恢复半血）" if app.run.region_mode else "濒死（留守一场后恢复到 5 HP）", 13, UIKit.BAD))
 	var upgrade_names: Array = []
@@ -109,7 +98,6 @@ func _team_row(record: Dictionary) -> Control:
 		var enhanced := (record.get("upgrades_taken", []) as Array).has(RunState.upgrade_id_for_skill(id))
 		library_names.append("%s%s%s%s" % [SkillDB.name_of(id), "★" if enhanced else "", "（占位）" if SkillDB.is_placeholder(id) else "", "（特殊）" if SkillDB.is_special(id) else ""])
 	info.add_child(UIKit.wrapped("本局招式库：" + "、".join(library_names), 12, UIKit.TEXT_DIM))
-	var slots := Widgets.slot_grid(info, 3)
 	for slot in range(RunState.MAX_EQUIPPED_SKILLS):
 		var selector := OptionButton.new()
 		selector.name = "SkillSlot_%d_%d" % [int(record["uid"]), slot]
@@ -126,13 +114,8 @@ func _team_row(record: Dictionary) -> Control:
 			if slot < equipped.size() and String(equipped[slot]) == id:
 				selected_index = selector.item_count - 1
 		selector.select(selected_index)
-		selector.fit_to_longest_item = false
-		selector.clip_text = true
-		selector.custom_minimum_size = Vector2(64, 64)
-		selector.tooltip_text = selector.get_item_text(selected_index)
-		selector.text = SkillDB.name_of(String(equipped[slot])).left(2) if slot < equipped.size() else "＋"
 		selector.item_selected.connect(_on_skill_slot_selected.bind(record, slot, selector))
-		slots.add_child(selector)
+		info.add_child(selector)
 	if Elements.MATCHUPS_ENABLED:
 		info.add_child(UIKit.wrapped(Elements.counter_hint(SpeciesDB.element_of(species_id)), 12))
 	return row

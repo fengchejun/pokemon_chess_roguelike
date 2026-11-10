@@ -1,5 +1,4 @@
 extends Control
-const PixelComponents = preload("res://ui/components/pixel_widgets.gd")
 
 var app = null
 var graph: Control
@@ -25,9 +24,7 @@ func _ready() -> void:
 	var title := UIKit.title("第 %d 层 · %s · 区域路线" % [region.floor_index + 1, BattleDB.THEMES.get(region.theme, {}).get("name", region.theme)], 25)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
-	var resources := UIKit.hbox(8)
-	resources.add_child(PixelComponents.stat("◆", str(app.run.essence), "原质"))
-	resources.add_child(PixelComponents.stat("食", str(app.run.total_food()), "食物", UIKit.GOOD))
+	var resources := UIKit.label("原质 %d  ·  食物 %d" % [app.run.essence, app.run.total_food()], 18, UIKit.ACCENT)
 	resources.name = "RegionResources"
 	header.add_child(resources)
 	var team_button := UIKit.small_button("查看队伍")
@@ -165,12 +162,7 @@ func _show_team() -> void:
 	content.name = "RegionTeamContent"
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(content)
-	content.add_child(UIKit.label("训练师", 18))
-	content.add_child(PixelComponents.health(app.run.trainer_hp, app.run.trainer_max_hp()))
-	var trainer_stats := UIKit.hbox(8)
-	trainer_stats.add_child(PixelComponents.stat("级", str(app.run.trainer_level), "训练师等级"))
-	trainer_stats.add_child(PixelComponents.stat("经", str(app.run.trainer_xp), "累计经验"))
-	content.add_child(trainer_stats)
+	content.add_child(UIKit.label("训练师 · Lv.%d · 经验 %d · 生命 %d/%d" % [app.run.trainer_level, app.run.trainer_xp, app.run.trainer_hp, app.run.trainer_max_hp()], 18))
 	for group in [{"title": "随行队伍", "records": app.run.carried}, {"title": "营地留守", "records": app.run.storage}]:
 		content.add_child(UIKit.label("%s（%d）" % [group["title"], group["records"].size()], 18, UIKit.ACCENT))
 		if group["records"].is_empty():
@@ -179,21 +171,8 @@ func _show_team() -> void:
 			var names: Array = []
 			for skill in record.get("equipped_skills", []):
 				names.append(SkillDB.name_of(String(skill)))
-			var card := UIKit.panel(UIKit.PANEL_LIGHT)
-			content.add_child(card)
-			var body := UIKit.vbox(4)
-			card.add_child(body)
-			body.add_child(UIKit.label(SpeciesDB.name_of(String(record["species_id"])), 17))
-			body.add_child(PixelComponents.health(int(record["hp"]), app.run.monster_max_hp(record)))
-			body.add_child(PixelComponents.stat("级", str(record.get("level", 1)), "本局等级"))
-			body.add_child(UIKit.label("装备招式", 13, UIKit.TEXT_DIM))
-			var grid := PixelComponents.slot_grid(body, 3)
-			var detail := PixelComponents.details(body)
-			for skill in record.get("equipped_skills", []):
-				var id := String(skill)
-				var slot := PixelComponents.slot(SkillDB.name_of(id), 1, SkillDB.name_of(id).left(2), String(SkillDB.get_def(id).get("desc", "")))
-				grid.add_child(slot)
-				PixelComponents.describe(slot, detail)
+			var info := "%s · Lv.%d · 生命 %d/%d%s\n装备招式：%s" % [SpeciesDB.name_of(String(record["species_id"])), int(record.get("level", 1)), int(record["hp"]), app.run.monster_max_hp(record), " · 濒死" if int(record["hp"]) <= 0 else "", "、".join(names) if not names.is_empty() else "无"]
+			content.add_child(UIKit.wrapped(info, 16))
 
 func _close_team() -> void:
 	if team_overlay != null:
