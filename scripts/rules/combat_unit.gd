@@ -180,6 +180,7 @@ var mirror_until_round: int = 0:
 		mirror_until_round = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "镜花水月" + ("解除" if not active else ""), int(value), cell)
+var relic_attack_immune: bool = false
 var fire_amp_stacks: int = 0:
 	set(value):
 		var was_active := fire_amp_stacks > 0
@@ -285,6 +286,8 @@ func can_use_in_battle(skill_id: String) -> bool:
 func has_pp_deficit() -> bool:
 	for skill_id in skills:
 		var id := String(skill_id)
+		if SkillDB.is_battle_only(id):
+			continue
 		if pp_remaining(id) < max_pp(id):
 			return true
 	return false
@@ -295,6 +298,8 @@ func restore_pp(amount: int) -> int:
 	var restored := 0
 	for skill_id in skills:
 		var id := String(skill_id)
+		if SkillDB.is_battle_only(id):
+			continue
 		var before := pp_remaining(id)
 		if before >= max_pp(id) or max_pp(id) <= 0:
 			continue
@@ -377,6 +382,7 @@ func dup() -> CombatUnit:
 	copy.ice_glide_until_round = ice_glide_until_round
 	copy.surf_until_round = surf_until_round
 	copy.mirror_until_round = mirror_until_round
+	copy.relic_attack_immune = relic_attack_immune
 	copy.fire_amp_stacks = fire_amp_stacks
 	copy.electric_resonance_bonus = electric_resonance_bonus
 	copy.mountain_form_ticks = mountain_form_ticks

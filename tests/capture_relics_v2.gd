@@ -58,7 +58,7 @@ func _run() -> void:
 		"stock": {
 			"potion": 2,
 			"relic:prism_mirror": 1,
-			"relic:worn_chest": 1,
+			"relic:crimson_heart": 1,
 		},
 	}
 	state.trainer().cell = Vector2i(3, 3)

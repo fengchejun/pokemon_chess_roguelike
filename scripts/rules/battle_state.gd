@@ -210,7 +210,7 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	spawn_rng.seed = hash("spawn:%d:%d" % [seed_value, battle_index_value])
 	capture_rng.seed = hash("capture:%d:%d" % [seed_value, battle_index_value])
 	terrain_rng.seed = hash("terrain:%d:%d" % [seed_value, battle_index_value])
-	if _relic_owned("healing_berry"):
+	if _relic_owned("healing_berry") and node_kind != "event":
 		_place_relic_fruit()
 	log_event("战斗开始：%s，敌方 %d 只。" % [String(cfg.get("region", "?")), cfg.get("enemies", []).size()])
 	relocate_nest_occupants()
@@ -1029,11 +1029,18 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 	emit_feedback(unit, "death", text)
 	cancel_channel(unit, "施法者倒下")
 	if unit.side == "player" and unit.summon_owner_uid < 0 and _relic_owned("dead_poem") and not bool(relic_state.get("dead_poem_used", false)):
-		relic_state["dead_poem_used"] = true
-		unit.hp = maxi(1, ceili(unit.max_hp * 0.50))
-		emit_feedback(unit, "heal", "亡者诗篇·复苏")
-		log_event("亡者诗篇：%s 首次阵亡后复苏，恢复 50%% 最大生命。" % unit.display_name)
-		return
+		var revive_cell := unit.cell
+		if TerrainDB.is_lethal(terrain_kind) and (terrain_kind != TerrainDB.DEEP or unit.element != "water"):
+			revive_cell = _find_capture_join_cell(unit)
+		if GridSpec.is_inside(revive_cell):
+			relic_state["dead_poem_used"] = true
+			unit.cell = revive_cell
+			unit.last_move_direction = Vector2i.ZERO
+			unit.hp = maxi(1, ceili(unit.max_hp * 0.50))
+			emit_feedback(unit, "heal", "亡者诗篇·复苏")
+			log_event("亡者诗篇：%s 首次阵亡后在安全位置复苏，恢复 50%% 最大生命。" % unit.display_name)
+			apply_vine_on_landing(unit)
+			return
 	if unit.side == "player" and _relic_owned("witch_cauldron"):
 		_transfer_player_statuses(unit)
 	for point in all_rewards():
@@ -1121,6 +1128,12 @@ func _transfer_player_statuses(unit: CombatUnit) -> void:
 		target.paralyzed_ticks = maxi(0, unit.paralyzed_ticks)
 	if unit.imprison_ticks > 0:
 		target.imprison_ticks = maxi(1, unit.imprison_ticks)
+	if unit.root_pending or unit.move_cancelled:
+		target.move_cancelled = true
+	if unit.parasite_source_uid >= 0:
+		target.parasite_source_uid = unit.parasite_source_uid
+		target.parasite_source_side = unit.parasite_source_side
+		target.parasite_ticks = maxi(1, unit.parasite_ticks)
 	if unit.frozen:
 		target.frozen = true
 		target.frozen_ticks = maxi(1, unit.frozen_ticks)
@@ -1141,7 +1154,11 @@ func award_battle_experience(event_id: String, amount: int, include_fainted: boo
 		var old_level := unit.combat_level
 		unit.combat_xp = mini(MonsterProgression.threshold_for_level(10), unit.combat_xp + maxi(0, int(recipient_amounts.get(uid, amount))))
 		unit.combat_level = maxi(old_level, MonsterProgression.level_for_xp(unit.combat_xp))
-		var added := MonsterProgression.max_hp(unit.species_id, unit.combat_level) - MonsterProgression.max_hp(unit.species_id, old_level)
+		var base_old_max := MonsterProgression.max_hp(unit.species_id, old_level)
+		var base_new_max := MonsterProgression.max_hp(unit.species_id, unit.combat_level)
+		var added := base_new_max - base_old_max
+		if unit.side == "player":
+			added = relic_max_hp_for_side("player", base_new_max) - relic_max_hp_for_side("player", base_old_max)
 		unit.max_hp += added
 		if unit.is_alive():
 			unit.hp += added
@@ -1247,6 +1264,11 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		emit_feedback(target, "shield", "芬里尔之锁·免疫", 0)
 		log_event("芬里尔之锁替 %s 免疫了本次伤害。" % target.display_name)
 		return {"amount": 0, "killed": false, "previous_hp": target.hp, "hp": target.hp, "relic_immune": true}
+	if amount > 0 and source != null and target.relic_attack_immune:
+		target.relic_attack_immune = false
+		emit_feedback(target, "shield", "时镜跃迁·免疫", 0)
+		log_event("时镜跃迁替 %s 免疫下一次攻击。" % target.display_name)
+		return {"amount": 0, "killed": false, "previous_hp": target.hp, "hp": target.hp, "time_mirror_immune": true}
 	if amount > 0 and target.mirror_until_round > 0 and target.mirror_until_round >= round:
 		target.mirror_until_round = 0
 		emit_feedback(target, "shield", "镜花水月·免疫", 0)
@@ -1344,7 +1366,7 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var source_name := source.display_name if source != null else "环境"
 	var matchup_text := ""
 	if matchup_modifier > 0:
-		matchup_text = "（属性克制 ×1.25）"
+		matchup_text = "（属性克制 ×%s）" % ("1.50" if _relic_owned("prism_mirror") else "1.25")
 	elif matchup_modifier < 0:
 		matchup_text = "（属性逆克制 ×0.75）"
 	log_event("%s 对 %s 造成 %d 伤害%s。" % [source_name, target.display_name, amount, matchup_text])
@@ -1395,7 +1417,10 @@ func _record_bagua_attack(source: CombatUnit, target: CombatUnit) -> void:
 				counter_element = String(element)
 				break
 		var percent := spawn_rng.randi_range(10, 20)
-		var result := damage_unit(null, target, ceili(target.max_hp * percent / 100.0), {
+		var compass_damage := ceili(target.max_hp * percent / 100.0)
+		if counter_element != "":
+			compass_damage = Elements.direct_damage(compass_damage, counter_element, target.element)
+		var result := damage_unit(null, target, compass_damage, {
 			"no_element": true, "cause": "八卦罗盘", "killer_side": "player",
 			"killer_uid": source.uid, "bagua_trigger": true, "element": counter_element,
 		})
@@ -1765,9 +1790,15 @@ func _apply_shallow_wet_to_unit(unit: CombatUnit, ticks: int) -> void:
 		return
 	if terrain_at(unit.cell) != TerrainDB.WATER:
 		return
-	if unit.slow_ticks == 0:
+	var was_wet := unit.slow_ticks > 0
+	if not was_wet:
 		log_event("%s 站在浅水中，获得浸湿（下一次移动力 -1）。" % unit.display_name)
+		if _relic_owned("water_nymph"):
+			unit.relay_move_bonus -= 1
 	unit.slow_ticks = maxi(unit.slow_ticks, ticks)
+	unit.wet_layers = maxi(1, unit.wet_layers)
+	if not was_wet:
+		_mark_debuff_received(unit, true)
 
 
 func _movement_effect_ticks(unit: CombatUnit) -> int:
@@ -1821,6 +1852,7 @@ func _finish_movement_effects(side: String) -> void:
 		if unit.side != side or unit.sheltered:
 			continue
 		unit.slow_ticks = 0
+		unit.wet_layers = 0
 		if unit.vine_sources.is_empty():
 			unit.vine_ticks = maxi(0, unit.vine_ticks - 1)
 		else:
@@ -2629,6 +2661,8 @@ func _settle_round_rules() -> void:
 				clear_guard_rock_shield(unit, true)
 		if unit.shock_ticks > 0:
 			unit.shock_ticks -= 1
+			if unit.shock_ticks <= 0 and not _relic_owned("electric_echo"):
+				unit.shock_layers = 0
 		if unit.frozen and unit.frozen_ticks > 0:
 			unit.frozen_ticks -= 1
 			if unit.frozen_ticks <= 0:
@@ -3349,6 +3383,8 @@ func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: D
 			percent += int(effects.get("relic_damage_bonus", 0))
 			if _relic_owned("safety_button") and alive_units("player").size() > alive_units("enemy").size():
 				percent += 10
+		if _relic_owned("layered_mountains") and Elements.canonical(source.element) == "rock":
+			percent += _rock_cell_count() * 10
 		if not no_element:
 			match Elements.canonical(skill_element):
 				"fire":
@@ -3368,14 +3404,10 @@ func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: D
 				"rock":
 					if _relic_owned("mountain_jade"):
 						percent += 30
-					if _relic_owned("layered_mountains"):
-						percent += _rock_cell_count() * 10
 			if _relic_owned("prism_mirror"):
 				percent += 50
 			if _relic_owned("dragon_blue_flame") and Elements.canonical(skill_element) == "fire" and (
-				target.burn_ticks > 0 or String(opts.get("skill_id", "")) in [
-					"fire_seed", "flame_jet", "burn_out", "combustion", "skyfire", "furnace_fist",
-				]
+				target.burn_ticks > 0 or burning_cells.has(source.cell)
 			):
 				percent += 20
 		if bool((relic_state.get("storm_charged", {}) as Dictionary).get(str(source.uid), false)):

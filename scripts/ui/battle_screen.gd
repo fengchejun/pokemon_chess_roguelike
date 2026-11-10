@@ -587,7 +587,10 @@ func _update_unit_card() -> void:
 			lines.append("敌方技能强化：%s" % "、".join(upgrades_list))
 	lines.append("生命 %d/%d　移动 %s（基础 %d）" % [unit.hp, unit.max_hp, "无限" if state.is_free_exploration() else str(state.move_budget_for(unit)), unit.move_points])
 	if Elements.MATCHUPS_ENABLED:
-		lines.append(Elements.counter_hint(unit.element))
+		var counter_hint := Elements.counter_hint(unit.element)
+		if RelicDB.owned(state.relic_stacks, "prism_mirror"):
+			counter_hint = counter_hint.replace("×1.25", "×1.50")
+		lines.append(counter_hint)
 	var statuses: Array = []
 	if unit.corrupted:
 		statuses.append("黑化：最大生命+10%、技能威力+10%，击杀无经验")
@@ -596,7 +599,10 @@ func _update_unit_card() -> void:
 	if unit.side == "enemy" and unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND:
 		statuses.append("第%d轮增援：击杀不提供经验" % unit.spawn_round)
 	if unit.burn_ticks > 0:
-		statuses.append("灼烧 %d 回合（每回合损失 %d HP）" % [unit.burn_ticks, Balance.burn_damage_for(unit.max_hp)])
+		var burn_tick := Balance.burn_damage_for(unit.max_hp) * maxi(1, unit.burn_layers)
+		if RelicDB.owned(state.relic_stacks, "ember_relic"):
+			burn_tick = roundi(float(burn_tick) * 1.05)
+		statuses.append("灼烧 %d 回合 · %d 层（每回合损失 %d HP）" % [unit.burn_ticks, maxi(1, unit.burn_layers), burn_tick])
 	if unit.parasite_source_uid >= 0:
 		var parasite_source := state.unit_by_uid(unit.parasite_source_uid)
 		var parasite_bonus := int(parasite_source.upgrades.get("leech_seed_tick_bonus", 0)) if parasite_source != null and parasite_source.side == unit.parasite_source_side else 0
@@ -617,6 +623,8 @@ func _update_unit_card() -> void:
 		statuses.append("冲浪：至第 %d 回合，沿连通水域移动不消耗普通移动机会" % unit.surf_until_round)
 	if unit.mirror_until_round > 0 and unit.mirror_until_round >= state.round:
 		statuses.append("镜花水月：至第 %d 回合，可免费跃迁至任意水格，水系技能直伤 +%d，可免疫一次伤害" % [unit.mirror_until_round, Balance.MIRROR_WATER_DAMAGE_BONUS])
+	if unit.relic_attack_immune:
+		statuses.append("时镜跃迁：免疫下一次有施法者的攻击")
 	if unit.root_pending:
 		statuses.append("定身待生效")
 	if unit.move_cancelled:
@@ -626,11 +634,13 @@ func _update_unit_card() -> void:
 	if unit.vine_reapply_round > 0:
 		statuses.append("藤蔓禁锢将在第 %d 回合再次触发" % unit.vine_reapply_round)
 	if unit.slow_ticks > 0:
-		statuses.append("浸湿（下一次行动移动力 -1）")
+		statuses.append("浸湿 %d 层（下一次行动移动力 -1%s）" % [maxi(1, unit.wet_layers), "，水中仙再 -1" if RelicDB.owned(state.relic_stacks, "water_nymph") else ""])
 	if unit.shock_ticks > 0:
-		statuses.append("感电 %d 层" % unit.shock_ticks)
+		statuses.append("感电 %d 层%s" % [maxi(1, unit.shock_layers), "（不衰减）" if RelicDB.owned(state.relic_stacks, "electric_echo") else ""])
 	if unit.paralyzed_ticks > 0:
 		statuses.append("麻痹 %d 回合（每轮开始时衰减）" % unit.paralyzed_ticks)
+	if unit.heavy_wound_layers > 0:
+		statuses.append("重伤 %d 层：受到的治疗与护盾效果降低" % unit.heavy_wound_layers)
 	if unit.frozen:
 		statuses.append("冰冻（无法行动；下次行动后解除，受到实际伤害会提前解除）")
 	if unit.channel_lock_round > state.round:
@@ -963,7 +973,12 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	elif skill_id == "ice_breath":
 		parts.append("前方 3 格宽 × 2 格深 · 伤害 %d · 浸湿转冰冻" % damage)
 	elif skill_id == "tree_man":
-		parts.append("即时召唤 · 上限 1")
+		var summon_limit := 2 if unit.side == "player" and RelicDB.owned(state.relic_stacks, "summoner_crown") else 1
+		parts.append("即时召唤 · 上限 %d%s" % [summon_limit, " · 不耗施法次数" if summon_limit > 1 else ""])
+	elif skill_id == "ultra_death_ray":
+		parts.append("直线 6 格 · 伤害 %d · 摧毁途经障碍" % damage)
+	elif skill_id == "time_mirror_leap":
+		parts.append("任意空格 · 免疫下次伤害 · 不耗施法次数")
 	elif skill_id == "herbal_heal":
 		parts.append("吟唱治疗 %d · 固定曼哈顿 2 格" % (Balance.HERBAL_HEAL + int(unit.upgrades.get("herbal_heal_amount", 0))))
 	elif skill_id == "first_aid":
@@ -1032,6 +1047,10 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("全场锁定 · 蓄力")
 	elif skill_id == "flame_rush":
 		parts.append("全图燃烧格落点")
+	elif skill_id == "ultra_death_ray":
+		parts.append("直线 6 格")
+	elif skill_id == "time_mirror_leap":
+		parts.append("全图空格")
 	elif kind == "unit":
 		var actual_range := int(def.get("range", 1))
 		if skill_id == "drain":
@@ -1529,6 +1548,8 @@ func _show_merchant(message: String = "") -> void:
 		var is_relic := id.begins_with("relic:")
 		var relic_id := id.trim_prefix("relic:")
 		if is_relic and not RelicDB.DEFINITIONS.has(relic_id):
+			continue
+		if is_relic and not RelicDB.merchant_allowed(relic_id):
 			continue
 		if not is_relic and not Merchant.ITEMS.has(id):
 			continue

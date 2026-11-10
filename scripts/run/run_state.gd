@@ -371,25 +371,34 @@ func relic_max_hp_multiplier() -> float:
 	return multiplier
 
 
-func sync_battle_max_hp(battle: BattleState) -> void:
+func sync_relic_effects_to_battle(battle: BattleState) -> void:
 	if battle == null:
 		return
 	for unit in battle.units:
 		if unit.side != "player" or unit.summon_owner_uid >= 0:
 			continue
 		var target_max := trainer_max_hp()
+		var record := {}
 		if not unit.is_trainer:
-			var record := record_by_uid(unit.uid)
+			record = record_by_uid(unit.uid)
 			if record.is_empty():
 				continue
 			target_max = monster_max_hp(record)
-		if target_max == unit.max_hp:
-			continue
-		var old_max: int = unit.max_hp
 		unit.max_hp = target_max
-		if target_max > old_max and unit.is_alive():
-			unit.hp += target_max - old_max
-		unit.hp = clampi(unit.hp, 0, target_max)
+		unit.hp = clampi(trainer_hp if unit.is_trainer else int(record.get("hp", 0)), 0, target_max)
+		if unit.is_trainer:
+			continue
+		var saved_uses = record.get("skill_pp_uses", {})
+		var uses: Dictionary = saved_uses if saved_uses is Dictionary else {}
+		for skill_id in unit.skills:
+			var id := String(skill_id)
+			if SkillDB.is_battle_only(id):
+				continue
+			var used := clampi(int(uses.get(id, 0)), 0, SkillDB.pp_of(id))
+			if used > 0:
+				unit.battle_skill_uses[id] = used
+			else:
+				unit.battle_skill_uses.erase(id)
 
 
 func _clamp_record_hp_to_relic_max(record: Dictionary) -> void:
@@ -742,6 +751,14 @@ func remove_relic(relic_id: String) -> bool:
 	return true
 
 
+func _normalize_relic_stacks() -> void:
+	for relic_id in relic_stacks.keys():
+		var required := String(RelicDB.get_def(String(relic_id)).get("requires", ""))
+		while required != "":
+			relic_stacks.erase(required)
+			required = String(RelicDB.get_def(required).get("requires", ""))
+
+
 func has_pending_relic_actions() -> bool:
 	return not pending_relic_actions.is_empty()
 
@@ -788,6 +805,8 @@ func _heal_party(amount: int) -> void:
 	for record in carried:
 		var maximum := monster_max_hp(record)
 		var before := int(record.get("hp", 0))
+		if before <= 0:
+			continue
 		record["hp"] = maximum if amount < 0 else mini(maximum, maxi(1, before) + amount)
 
 
@@ -797,7 +816,7 @@ func _damage_party_ratio(ratio: float) -> void:
 		var before := int(record.get("hp", 0))
 		if before <= 0:
 			continue
-		record["hp"] = maxi(1, before - ceili(float(maximum) * ratio))
+		record["hp"] = maxi(0, before - ceili(float(maximum) * ratio))
 
 
 func _halve_party_pp() -> void:
@@ -832,8 +851,7 @@ func _restore_party_half(max_hp_ratio: float, pp_ratio: float, essence_amount: i
 				if maximum_pp <= 0:
 					continue
 				var used := int(uses.get(id, 0))
-				var remaining := maxi(0, maximum_pp - used)
-				var restored := mini(remaining, ceili(float(maximum_pp) * pp_ratio))
+				var restored := mini(used, ceili(float(maximum_pp) * pp_ratio))
 				var next_used := maxi(0, used - restored)
 				if next_used > 0:
 					uses[id] = next_used
@@ -882,7 +900,7 @@ func _resolve_mystery_dice() -> void:
 		1:
 			for record in carried:
 				if int(record.get("hp", 0)) > 0:
-					record["hp"] = maxi(1, int(record["hp"]) - ceili(monster_max_hp(record) * 0.5))
+					record["hp"] = maxi(0, int(record["hp"]) - ceili(monster_max_hp(record) * 0.5))
 			_halve_party_pp()
 			relic_global_damage_percent -= 20
 		2:
@@ -1809,6 +1827,7 @@ static func from_dict(data: Dictionary) -> RunState:
 			var id := String(relic_id)
 			if RelicDB.DEFINITIONS.has(id) and int(saved_relics[relic_id]) > 0:
 				run.relic_stacks[id] = 1
+	run._normalize_relic_stacks()
 	run.pending_reward_choices = maxi(0, int(data.get("pending_reward_choices", 0)))
 	run.reward_choice_index = maxi(0, int(data.get("reward_choice_index", 0)))
 	if version < 20:

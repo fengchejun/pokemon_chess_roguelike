@@ -1155,6 +1155,15 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 		statuses.append("灼烧")
 	if not had_wet and target.slow_ticks > 0:
 		statuses.append("浸湿")
+	if (
+		state._relic_owned("dragon_blue_flame")
+		and caster.side == "player"
+		and Elements.canonical(hit_element) == "fire"
+		and state.burning_cells.has(caster.cell)
+		and target.is_alive()
+		and state.apply_burn(target, caster)
+	):
+		statuses.append("灼烧")
 	return {
 		"uid": target.uid,
 		"name": target.display_name,
@@ -1164,6 +1173,7 @@ static func _hit_entry(state: BattleState, caster: CombatUnit, skill_id: String,
 		"killed": bool(result.get("killed", false)),
 		"statuses": statuses,
 		"mirror_immune": bool(result.get("mirror_immune", false)),
+		"time_mirror_immune": bool(result.get("time_mirror_immune", false)),
 		"shield_absorbed": int(result.get("shield_absorbed", 0)),
 		"shield_broken": bool(result.get("shield_broken", false)),
 		"shield_burst_hits": result.get("shield_burst_hits", []),
@@ -1200,7 +1210,7 @@ static func _apply_fire_seed(state: BattleState, caster: CombatUnit, entry: Dict
 			break
 	if hit_unit != null:
 		var hit := _hit_entry(state, caster, "fire_seed", hit_unit, int(SkillDB.get_def("fire_seed").get("damage", 2)))
-		if hit_unit.is_alive():
+		if hit_unit.is_alive() and not (hit["statuses"] as Array).has("灼烧"):
 			state.apply_burn(hit_unit, caster)
 			(hit["statuses"] as Array).append("灼烧")
 		summary["hits"].append(hit)
@@ -1348,7 +1358,7 @@ static func _apply_burn_out(state: BattleState, caster: CombatUnit, entry: Dicti
 		return
 	var sacrifice_damage := ceili(float(caster.max_hp) * 0.5)
 	var hit := _hit_entry(state, caster, "burn_out", target, sacrifice_damage)
-	if target.is_alive() and state.apply_burn(target, caster):
+	if target.is_alive() and not (hit["statuses"] as Array).has("灼烧") and state.apply_burn(target, caster):
 		(hit["statuses"] as Array).append("灼烧")
 	summary["hits"].append(hit)
 	summary["area_cells"].append(target.cell)
@@ -1455,7 +1465,7 @@ static func _apply_time_mirror_leap(state: BattleState, caster: CombatUnit, entr
 	if _player_forbidden_landing(state, caster, dest):
 		return
 	caster.cell = dest
-	caster.mirror_until_round = 999
+	caster.relic_attack_immune = true
 	summary["self_move"] = dest
 	state.apply_vine_on_landing(caster)
 	state.try_pickup_fruit(caster)
@@ -1964,7 +1974,7 @@ static func _apply_skyfire(state: BattleState, caster: CombatUnit, entry: Dictio
 		if target == null:
 			continue
 		var hit := _hit_entry(state, caster, "skyfire", target, SkillDB.damage_of("skyfire"))
-		if target.is_alive() and state.apply_burn(target, caster):
+		if target.is_alive() and not (hit["statuses"] as Array).has("灼烧") and state.apply_burn(target, caster):
 			(hit["statuses"] as Array).append("灼烧")
 		summary["hits"].append(hit)
 	summary["text"] = "天火在 (%d,%d) 生成 %d 格十字火焰，命中 %d 个单位。" % [center.x, center.y, ignited, summary["hits"].size()]
@@ -2063,7 +2073,7 @@ static func _apply_fire_burst(state: BattleState, caster: CombatUnit, entry: Dic
 		if target != null:
 			var hit := _hit_entry(state, caster, "fire_burst", target, fireball_base_damage(caster, cell == center))
 			summary["hits"].append(hit)
-			if cell != center and target.is_alive() and caster.has_buff("fire_burst"):
+			if cell != center and target.is_alive() and caster.has_buff("fire_burst") and not (hit["statuses"] as Array).has("灼烧"):
 				state.apply_burn(target, caster)
 		if state.obstacle_durability.has(cell):
 			_hit_obstacle(state, cell, summary, caster.side)
@@ -2125,7 +2135,7 @@ static func _apply_line(state: BattleState, caster: CombatUnit, skill_id: String
 			break
 		var base_damage := SkillDB.damage_of("flame_jet") + (int(SkillDB.get_def("flame_jet").get("adjacent_bonus", 5)) if skill_id == "flame_jet" and step == 1 else 0)
 		var hit := _hit_entry(state, caster, skill_id, target, base_damage)
-		if target.is_alive():
+		if target.is_alive() and not (hit["statuses"] as Array).has("灼烧"):
 			state.apply_burn(target, caster)
 			hit["statuses"].append("灼烧")
 		summary["hits"].append(hit)

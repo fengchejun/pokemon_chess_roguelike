@@ -9,6 +9,8 @@ const RARITIES := {
 	"rare": {"name": "稀有", "weight": 30, "color": Color("69a9ff")},
 	"legendary": {"name": "传奇", "weight": 10, "color": Color("f4bd58")},
 }
+const DEFERRED_CHOICE_KINDS := ["mage_notes", "worn_chest", "unbalanced_scales", "magic_end"]
+const MERCHANT_UNSAFE_IDS := ["mage_notes", "worn_chest", "unbalanced_scales", "mystery_dice", "magic_end"]
 
 const DEFINITIONS := {
 	# 普通
@@ -298,6 +300,14 @@ static func is_upgrade(relic_id: String) -> bool:
 	return String(get_def(relic_id).get("requires", "")) != ""
 
 
+static func requires_followup_choice(relic_id: String) -> bool:
+	return DEFERRED_CHOICE_KINDS.has(String(get_def(relic_id).get("choice", "")))
+
+
+static func merchant_allowed(relic_id: String) -> bool:
+	return not MERCHANT_UNSAFE_IDS.has(relic_id)
+
+
 static func available_ids(stacks: Dictionary) -> Array:
 	var result: Array = []
 	for relic_id in ids():
@@ -362,8 +372,10 @@ static func random_id(seed_value: int, rarity: String = "", stacks: Dictionary =
 	return pool[rng.randi_range(0, pool.size() - 1)]
 
 
-static func weighted_random_id(seed_value: int, stacks: Dictionary = {}, weights: Dictionary = {}) -> String:
+static func weighted_random_id(seed_value: int, stacks: Dictionary = {}, weights: Dictionary = {}, allow_choices: bool = true) -> String:
 	var pool := available_ids(stacks)
+	if not allow_choices:
+		pool = pool.filter(func(id): return merchant_allowed(String(id)))
 	if pool.is_empty():
 		return ""
 	var resolved_weights := weights
@@ -393,7 +405,9 @@ static func weighted_random_id(seed_value: int, stacks: Dictionary = {}, weights
 
 static func all_normal_skills_for_element(element: String) -> Array:
 	var result: Array = []
-	for skill_id in SkillDB.learnable_ids_for(element):
-		if not SkillDB.is_special(String(skill_id)):
+	for skill_id in SkillDB.DEFS:
+		var id := String(skill_id)
+		if SkillDB.element_of(id) == element and not SkillDB.is_special(id):
 			result.append(String(skill_id))
+	result.sort()
 	return result

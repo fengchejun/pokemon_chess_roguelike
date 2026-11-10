@@ -178,7 +178,7 @@ func _show_next_step() -> void:
 			step_label.text = "遗物奖励：暂无可领取项目"
 			choice_box.add_child(UIKit.wrapped("全部可提供遗物均已获得，%d 次机会已跳过。" % discarded, 13, UIKit.TEXT_DIM))
 			app.autosave()
-			_show_next_step()
+			continue_button.disabled = false
 			return
 		step_label.text = "遗物三选一（剩余 %d 次）" % run.pending_reward_choices
 		choice_box.add_child(UIKit.wrapped("选择一件本局唯一遗物。进化型遗物会替换其前置遗物；效果立即生效并随本局保存。", 13))

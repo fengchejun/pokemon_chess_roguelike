@@ -114,7 +114,10 @@ func _team_row(record: Dictionary) -> Control:
 		selector.item_selected.connect(_on_skill_slot_selected.bind(record, slot, selector))
 		info.add_child(selector)
 	if Elements.MATCHUPS_ENABLED:
-		info.add_child(UIKit.wrapped(Elements.counter_hint(SpeciesDB.element_of(species_id)), 12))
+		var counter_hint := Elements.counter_hint(SpeciesDB.element_of(species_id))
+		if RelicDB.owned(app.run.relic_stacks, "prism_mirror"):
+			counter_hint = counter_hint.replace("×1.25", "×1.50")
+		info.add_child(UIKit.wrapped(counter_hint, 12))
 	return row
 
 
