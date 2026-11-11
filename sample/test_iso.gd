@@ -35,6 +35,27 @@ func run_tests() -> void:
 	var screen = app.current_screen
 	screen.battle_notice.finish_all()
 	screen.speech_layer.set_suppressed(true)
+	await process_frame
+	await process_frame
+	screen.playback.finish_all()
+	screen.battle_notice.finish_all()
+	var state = screen._display_state()
+	for member in state.units:
+		if member.side != "player": continue
+		var card = screen.find_child("TeamPortraitCard_%d" % member.uid, true, false)
+		check(card != null and card.get_child_count() == 3, "Portrait card has only portrait and two bars")
+		var portrait = card.get_child(0)
+		check(portrait is Button and portrait.text.is_empty(), "Portrait has no visible name")
+		check(portrait.tooltip_text.contains(member.display_name), "Member identity remains available on hover")
+		var health = card.get_child(1)
+		check(health.value == member.hp and health.max_value == member.max_hp, "Health bar uses live state")
+		check(health.get_child(0).text == "%d/%d" % [member.hp, member.max_hp], "Health value centered as n/n")
+		var experience = card.get_child(2)
+		check(experience.get_child(0).text.contains("/"), "Experience displays only fraction")
+	var second = screen.find_child("SelectPortrait_2", true, false)
+	second.pressed.emit()
+	check(screen.selected_uid == 2, "Portrait button selects its actual unit")
+	check(not screen.unit_panel.visible, "Duplicate selected-unit card is hidden")
 	var unit = screen.state.unit_by_uid(1)
 	var origin: Vector2i = unit.cell
 	screen.select_unit(1)

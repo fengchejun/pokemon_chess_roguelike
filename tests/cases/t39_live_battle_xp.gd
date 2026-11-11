@@ -34,7 +34,7 @@ func run(t: TestContext) -> void:
 	t.eq(battle.unit_by_uid(1).combat_level, 2, "战斗内等级立即生效")
 	t.eq(battle.unit_by_uid(1).max_hp, initial_hp + 6, "战斗内立即增加生命上限")
 	var caption: Label = screen.find_child("BattleXPText_1", true, false)
-	t.check(caption != null and caption.text.contains("Lv.2"), "经验条明确提示战后升级")
+	t.check(caption != null and caption.tooltip_text.contains("Lv.2"), "经验条悬浮说明显示等级")
 	var bar: ProgressBar = screen.find_child("BattleXP_1", true, false)
 	t.check(bar != null and bar.value >= 0, "达到经验门槛时进度条填满")
 	app.run.battle_snapshot = Snapshot.save_state(battle)
