@@ -27,7 +27,11 @@ func capture() -> void:
 	for cell in [Vector2i(2,5),Vector2i(3,5),Vector2i(2,6),Vector2i(3,6)]: board.terrain[GridSpec.index(cell)] = TerrainDB.LAVA
 	var unit = app.current_screen.board.units.filter(func(u): return u.uid == 1)[0]
 	unit.cell = Vector2i(2,2)
-	board.units = [unit]
+	var water_unit = app.current_screen.board.units.filter(func(u): return u.uid == 2)[0]
+	var deep_unit = app.current_screen.board.units.filter(func(u): return u.uid == 3)[0]
+	water_unit.cell = Vector2i(5,2)
+	deep_unit.cell = Vector2i(5,4)
+	board.units = [unit,water_unit,deep_unit]
 	app.queue_free()
 	await process_frame
 	root.add_child(board)
@@ -38,7 +42,7 @@ func capture() -> void:
 	title.add_theme_font_size_override("font_size",23)
 	root.add_child(title)
 	var note := Label.new()
-	note.text = "草簇不透明，单位半透明\n浅草沿用草地纹理\n\n水面 / 深水 / 岩浆\n下沉 6 px，露出岸壁\n相邻液体没有内侧壁"
+	note.text = "草叶在前，遮住脚部\n单位保持不透明\n浅草只保留地面纹理\n\n浅水遮脚，深水及腰\n血条和状态保持清晰\n\n液面下沉，保留岸壁"
 	note.position = Vector2(24,160)
 	note.add_theme_font_override("font",UIKit.font())
 	note.add_theme_font_size_override("font_size",16)

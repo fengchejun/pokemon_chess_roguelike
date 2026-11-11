@@ -128,19 +128,16 @@ func run_tests() -> void:
 	check(screen.unit_panel.visible, "Selected-unit details restored below compact portrait rail")
 	var unit = screen.state.unit_by_uid(1)
 	var origin: Vector2i = unit.cell
-	var grass_test_cell := Vector2i(7,7)
-	var previous_ground: int = screen.board.terrain[GridSpec.index(grass_test_cell)]
-	screen.board.terrain[GridSpec.index(grass_test_cell)] = TerrainDB.GRASS
-	unit.cell = grass_test_cell
-	check(screen.board._unit_body_alpha(unit) == 0.5, "Unit body fades upon entering tall grass")
-	screen.board.terrain[GridSpec.index(grass_test_cell)] = TerrainDB.SHALLOW_GRASS
-	check(screen.board._unit_body_alpha(unit) == 1.0, "Shallow grass does not conceal units")
-	screen.board.terrain[GridSpec.index(grass_test_cell)] = previous_ground
-	unit.cell = origin
-	var origin_ground: int = screen.board.terrain[GridSpec.index(origin)]
-	screen.board.terrain[GridSpec.index(origin)] = TerrainDB.PLAIN
-	check(screen.board._unit_body_alpha(unit) == 1.0, "Unit body restores opacity after leaving tall grass")
-	screen.board.terrain[GridSpec.index(origin)] = origin_ground
+	var water_shape := material_set.surface(BoardView.Iso.diamond(Vector2i(3,3)),TerrainDB.WATER)
+	var water_center := BoardView.cell_center(Vector2i(3,3))
+	check(material_set.immersion_line(TerrainDB.DEEP) < material_set.immersion_line(TerrainDB.WATER), "Deep water covers more of the body than shallow water")
+	for water_value in [TerrainDB.WATER,TerrainDB.DEEP]:
+		var waterline: float = water_center.y + material_set.immersion_line(water_value)
+		var cover: PackedVector2Array = material_set.water_cover_shape(water_shape,waterline)
+		check(cover.size() >= 3, "Immersion foreground is a valid polygon")
+		for point in cover:
+			check(point.y >= waterline-0.001, "Water foreground never covers the visible upper body")
+			check(Geometry2D.is_point_in_polygon(point,water_shape) or water_shape.has(point), "Immersion foreground stays inside its terrain tile")
 	screen.select_unit(1)
 	var options: Dictionary = screen.state.move_options(unit)
 	check(not options.is_empty(), "Test scenario offers movement")

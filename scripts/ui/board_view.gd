@@ -277,7 +277,7 @@ func _draw() -> void:
 			if electric_flowers.has(cell):
 				draw_circle(center + Vector2(0,-10), 10, Color("f9e2af"))
 				draw_string(font, center + Vector2(-7,-5), "电", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("313244"))
-			if value == TerrainDB.GRASS: Materials.draw_grass(self,center)
+			if value == TerrainDB.GRASS and actors.is_empty(): Materials.draw_grass(self,center)
 			for unit in actors: _draw_unit(font, unit)
 	for arrow in arrows: _draw_arrow(arrow)
 	for marker in markers: _draw_marker(font, marker)
@@ -461,36 +461,33 @@ func _draw_star(cell: Vector2i) -> void:
 	draw_polyline(points + PackedVector2Array([points[0]]), Color(0.7, 0.55, 0.1), 1.5)
 
 
-func _unit_body_alpha(unit: CombatUnit) -> float:
-	return 0.5 if GridSpec.is_inside(unit.cell) and terrain.size() == 64 and terrain[GridSpec.index(unit.cell)] == TerrainDB.GRASS else 1.0
-
 func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	var center := cell_center(unit.cell) + Vector2(presentation_offsets.get(unit.uid, Vector2.ZERO))
-	var body_alpha := _unit_body_alpha(unit)
 	var body_border := _border_color(unit)
-	body_border.a *= body_alpha
+	var ground_value: int = terrain[GridSpec.index(unit.cell)] if terrain.size() == 64 else TerrainDB.PLAIN
 	var art_index := SampleArt.unit_index(unit.species_id)
 	if art_index >= 0:
 		draw_rect(Rect2(center + Vector2(-29, 17), Vector2(58, 8)), Color(0.04, 0.04, 0.07, 0.5))
-		var outline := Rect2(center + Vector2(-40, -54), Vector2(80, 80))
-		if unit.uid == selected_uid:
-			draw_rect(outline, UIKit.ACCENT, false, 2)
-		draw_texture_rect(SampleArt.tile(art_index), Rect2(center + Vector2(-48, -66), Vector2(96, 96)), false, Color(1,1,1,body_alpha))
+		draw_texture_rect(SampleArt.tile(art_index), Rect2(center + Vector2(-48, -66), Vector2(96, 96)), false)
 	else:
 		var radius := 26.0
 		var fill := Elements.color_of(unit.element)
 		if unit.is_trainer:
 			fill = Color(0.72, 0.7, 0.62)
-		fill.a *= body_alpha
 		if unit.is_trainer:
 			draw_rect(Rect2(center - Vector2(radius - 3, radius - 3), Vector2((radius - 3) * 2, (radius - 3) * 2)), fill)
 			draw_rect(Rect2(center - Vector2(radius - 3, radius - 3), Vector2((radius - 3) * 2, (radius - 3) * 2)), body_border, false, 3.0)
 		else:
 			draw_circle(center, radius, fill)
 			draw_arc(center, radius, 0, TAU, 48, body_border, 3.0)
-		if unit.uid == selected_uid:
-			draw_arc(center, radius + 4, 0, TAU, 48, UIKit.ACCENT, 3.0)
-		draw_string(font, center + Vector2(-14, 10), unit.glyph, HORIZONTAL_ALIGNMENT_CENTER, 28, 26, Color(0.1, 0.1, 0.12, body_alpha))
+		draw_string(font, center + Vector2(-14, 10), unit.glyph, HORIZONTAL_ALIGNMENT_CENTER, 28, 26, Color(0.1, 0.1, 0.12))
+	# Environment covers the body only; selection, life and statuses stay above it.
+	if ground_value == TerrainDB.GRASS: Materials.draw_grass(self,cell_center(unit.cell))
+	elif ground_value in [TerrainDB.WATER,TerrainDB.DEEP]:
+		Materials.draw_water_cover(self,_surface_shape(unit.cell),center,ground_value,biome)
+	if unit.uid == selected_uid:
+		if art_index >= 0: draw_rect(Rect2(center+Vector2(-40,-54),Vector2(80,80)),UIKit.ACCENT,false,2)
+		else: draw_arc(center,30,0,TAU,48,UIKit.ACCENT,3)
 	if unit.is_boss:
 		draw_string(font, center + Vector2(-30, -30), "首", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.8, 0.2))
 	# 生命条

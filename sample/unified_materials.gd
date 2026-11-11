@@ -92,6 +92,34 @@ static func draw_grass(canvas: CanvasItem, center: Vector2) -> void:
 	if grass_sprite == null: grass_sprite = load("res://assets/pixel_sample/grass-clump-v1.png")
 	canvas.draw_texture_rect(grass_sprite,Rect2(center+Vector2(-47,-34),Vector2(94,52)),false)
 
+static func immersion_line(value: int) -> float:
+	return -8.0 if value == TerrainDB.DEEP else 4.0
+
+static func water_cover_shape(shape: PackedVector2Array, line_y: float) -> PackedVector2Array:
+	var clipped := PackedVector2Array()
+	for i in shape.size():
+		var a := shape[i]
+		var b := shape[(i+1)%shape.size()]
+		if a.y >= line_y: clipped.append(a)
+		if (a.y >= line_y) != (b.y >= line_y):
+			clipped.append(a.lerp(b,(line_y-a.y)/(b.y-a.y)))
+	return clipped
+
+static func draw_water_cover(canvas: CanvasItem, shape: PackedVector2Array, center: Vector2, value: int, biome: String) -> void:
+	var line_y := center.y + immersion_line(value)
+	var clipped := water_cover_shape(shape,line_y)
+	if clipped.size() < 3: return
+	var part := ground(value,biome)
+	var atlas_size := Vector2(part.atlas.get_size())
+	var mapping := Transform2D(shape[1]-shape[0],shape[3]-shape[0],shape[0]).affine_inverse()
+	var uv := PackedVector2Array()
+	for p in clipped: uv.append((part.region.position+(mapping*p)*part.region.size)/atlas_size)
+	# Exact same texture coordinates as the floor: no rectangular patch over the actor.
+	canvas.draw_polygon(clipped,PackedColorArray([Color(0.83,0.83,0.87)]),uv,part.atlas)
+	var ripple := Color("548ba6") if value == TerrainDB.DEEP else Color("88c6cf")
+	canvas.draw_line(Vector2(center.x-22,line_y+2),Vector2(center.x-10,line_y+2),ripple,1)
+	canvas.draw_line(Vector2(center.x+10,line_y+2),Vector2(center.x+22,line_y+2),ripple,1)
+
 static func nest_index(data: Dictionary) -> int:
 	if not data.get("alive",false) or int(data.get("hp",0)) <= 0: return 13
 	return 12 if int(data.get("hp",0)) * 2 <= int(data.get("max_hp",1)) else 11
