@@ -40,6 +40,17 @@ func run_tests() -> void:
 	screen.playback.finish_all()
 	screen.battle_notice.finish_all()
 	var state = screen._display_state()
+	check(not screen.objective_panel.visible, "Long objective panel replaced by round summary")
+	check(screen.round_summary.position.x > 900 and screen.round_summary.position.y < 30, "Round and phase occupy top-right")
+	check(screen.compact_toolbar.get_child_count() == 3, "Menu speed and retreat share one compact toolbar")
+	check(screen.menu_button.position.y == screen.speed_button.position.y and screen.speed_button.position.y == screen.leave_node_button.position.y, "Toolbar controls stay on one row")
+	check(screen.team_panel.get_global_rect().end.y <= screen.unit_panel.global_position.y - 4, "Portrait rail leaves clear space for unit details")
+	check(screen.unit_body.get_parent() is ScrollContainer, "Status-rich unit details have their own scroll area")
+	var last_card = screen.team_list.get_child(screen.team_list.get_child_count() - 1)
+	check(last_card.get_global_rect().end.y <= screen.team_scroll.get_global_rect().end.y + 1, "All four portrait cards and both bars are visible")
+	var speed_before: float = app.battle_playback_speed
+	screen.speed_button.pressed.emit()
+	check(app.battle_playback_speed != speed_before, "Compact speed button remains functional")
 	for member in state.units:
 		if member.side != "player": continue
 		var card = screen.find_child("TeamPortraitCard_%d" % member.uid, true, false)
@@ -55,7 +66,7 @@ func run_tests() -> void:
 	var second = screen.find_child("SelectPortrait_2", true, false)
 	second.pressed.emit()
 	check(screen.selected_uid == 2, "Portrait button selects its actual unit")
-	check(not screen.unit_panel.visible, "Duplicate selected-unit card is hidden")
+	check(screen.unit_panel.visible, "Selected-unit details restored below compact portrait rail")
 	var unit = screen.state.unit_by_uid(1)
 	var origin: Vector2i = unit.cell
 	screen.select_unit(1)
