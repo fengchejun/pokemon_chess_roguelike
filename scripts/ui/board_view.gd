@@ -6,6 +6,7 @@ signal cell_right_clicked(cell: Vector2i)
 signal cell_hovered(cell: Vector2i)
 
 const TILE := 72.0
+const SampleArt = preload("res://sample/pixel_art.gd")
 
 var terrain: Array = []
 var obstacle_durability: Dictionary = {}
@@ -51,6 +52,7 @@ var hover_cell := Vector2i(-1, -1)
 
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	custom_minimum_size = Vector2(GridSpec.W * TILE, GridSpec.H * TILE)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
@@ -304,6 +306,13 @@ func _draw_fill(cell: Vector2i, color: Color) -> void:
 
 
 func _draw_terrain(rect: Rect2, value: int) -> void:
+	var tile := SampleArt.terrain_index(value)
+	if tile >= 0:
+		draw_texture_rect(SampleArt.tile(tile), rect, false, Color(0.83, 0.83, 0.86))
+		if value in [TerrainDB.TREE, TerrainDB.OBSTACLE]:
+			draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), rect.grow(-3), false)
+		draw_rect(rect, Color(0.08, 0.1, 0.13, 0.24), false, 1)
+		return
 	var color := TerrainDB.color_of(value)
 	draw_rect(rect, color)
 	match value:
@@ -454,19 +463,27 @@ func _draw_star(cell: Vector2i) -> void:
 
 func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	var center := cell_center(unit.cell) + Vector2(presentation_offsets.get(unit.uid, Vector2.ZERO))
-	var radius := 26.0
-	var fill := Elements.color_of(unit.element)
-	if unit.is_trainer:
-		fill = Color(0.72, 0.7, 0.62)
-	if unit.is_trainer:
-		draw_rect(Rect2(center - Vector2(radius - 3, radius - 3), Vector2((radius - 3) * 2, (radius - 3) * 2)), fill)
-		draw_rect(Rect2(center - Vector2(radius - 3, radius - 3), Vector2((radius - 3) * 2, (radius - 3) * 2)), _border_color(unit), false, 3.0)
+	var art_index := SampleArt.unit_index(unit.species_id)
+	if art_index >= 0:
+		draw_rect(Rect2(center + Vector2(-21, 17), Vector2(42, 8)), Color(0.04, 0.04, 0.07, 0.5))
+		var outline := Rect2(center - Vector2(29, 29), Vector2(58, 58))
+		if unit.uid == selected_uid:
+			draw_rect(outline, UIKit.ACCENT, false, 2)
+		draw_texture_rect(SampleArt.tile(art_index), Rect2(center - Vector2(34, 38), Vector2(68, 68)), false)
 	else:
-		draw_circle(center, radius, fill)
-		draw_arc(center, radius, 0, TAU, 48, _border_color(unit), 3.0)
-	if unit.uid == selected_uid:
-		draw_arc(center, radius + 4, 0, TAU, 48, UIKit.ACCENT, 3.0)
-	draw_string(font, center + Vector2(-14, 10), unit.glyph, HORIZONTAL_ALIGNMENT_CENTER, 28, 26, Color(0.1, 0.1, 0.12))
+		var radius := 26.0
+		var fill := Elements.color_of(unit.element)
+		if unit.is_trainer:
+			fill = Color(0.72, 0.7, 0.62)
+		if unit.is_trainer:
+			draw_rect(Rect2(center - Vector2(radius - 3, radius - 3), Vector2((radius - 3) * 2, (radius - 3) * 2)), fill)
+			draw_rect(Rect2(center - Vector2(radius - 3, radius - 3), Vector2((radius - 3) * 2, (radius - 3) * 2)), _border_color(unit), false, 3.0)
+		else:
+			draw_circle(center, radius, fill)
+			draw_arc(center, radius, 0, TAU, 48, _border_color(unit), 3.0)
+		if unit.uid == selected_uid:
+			draw_arc(center, radius + 4, 0, TAU, 48, UIKit.ACCENT, 3.0)
+		draw_string(font, center + Vector2(-14, 10), unit.glyph, HORIZONTAL_ALIGNMENT_CENTER, 28, 26, Color(0.1, 0.1, 0.12))
 	if unit.is_boss:
 		draw_string(font, center + Vector2(-30, -30), "首", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.8, 0.2))
 	# 生命条
