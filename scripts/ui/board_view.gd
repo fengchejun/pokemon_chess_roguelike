@@ -266,12 +266,10 @@ func _draw() -> void:
 			var value: int = terrain[GridSpec.index(cell)]
 			var actors := units.filter(func(u): return u.is_on_board() and u.cell == cell)
 			var obstacle_rect := Rect2(center + Vector2(-56, -95), Vector2(112, 112)) if value == TerrainDB.TREE else Rect2(center + Vector2(-52, -66), Vector2(104, 96))
-			var obscures := units.any(func(u): return u.is_on_board() and u.cell.x + u.cell.y < x + y and obstacle_rect.intersects(Rect2(cell_center(u.cell) + Vector2(-40,-60), Vector2(80,86))))
-			var tint := Color(1, 1, 1, 0.5 if obscures else 1.0)
 			if value == TerrainDB.ROCK_MOUNTAIN:
-				draw_texture_rect(Materials.tile(9), Rect2(center + Vector2(-55,-94), Vector2(110,120)), false, tint)
+				draw_texture_rect(Materials.tile(9), Rect2(center + Vector2(-55,-94), Vector2(110,120)), false)
 			elif value in [TerrainDB.TREE, TerrainDB.OBSTACLE]:
-				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), obstacle_rect, false, tint)
+				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), obstacle_rect, false)
 			if value == TerrainDB.BLUE_FIRE:
 				draw_texture_rect(Materials.tile(10), Rect2(center + Vector2(-27,-46), Vector2(54,54)), false)
 			elif burning_cells.has(cell):
