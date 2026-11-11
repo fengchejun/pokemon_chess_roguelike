@@ -247,13 +247,13 @@ func _draw() -> void:
 			var value: int = terrain[GridSpec.index(cell)]
 			var actors := units.filter(func(u): return u.is_on_board() and u.cell == cell)
 			var obstacle_rect := Rect2(center + Vector2(-56, -95), Vector2(112, 112)) if value == TerrainDB.TREE else Rect2(center + Vector2(-52, -66), Vector2(104, 96))
-			var obscures := units.any(func(u): return u.is_on_board() and u.cell.x + u.cell.y < x + y and obstacle_rect.intersects(Rect2(cell_center(u.cell) + Vector2(-28,-38), Vector2(56,58))))
+			var obscures := units.any(func(u): return u.is_on_board() and u.cell.x + u.cell.y < x + y and obstacle_rect.intersects(Rect2(cell_center(u.cell) + Vector2(-40,-60), Vector2(80,86))))
 			var tint := Color(1, 1, 1, 0.5 if obscures else 1.0)
 			if value == TerrainDB.ROCK_MOUNTAIN:
 				preload("res://sample/simple_terrain.gd").mountain(self, center, tint.a)
 			elif value in [TerrainDB.TREE, TerrainDB.OBSTACLE]:
 				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), obstacle_rect, false, tint)
-			if burning_cells.has(cell):
+			if value == TerrainDB.BLUE_FIRE or burning_cells.has(cell):
 				draw_texture_rect(SampleArt.tile(10), Rect2(center + Vector2(-21, -37), Vector2(42, 42)), false, Color(0.55, 0.7, 1) if value == TerrainDB.BLUE_FIRE else Color.WHITE)
 			if chests.has(cell): draw_texture_rect(SampleArt.tile(14), Rect2(center + Vector2(-24,-30), Vector2(48,48)), false)
 			for current in [nest] + extra_nests:
@@ -272,7 +272,21 @@ func _draw() -> void:
 	if GridSpec.is_inside(hover_cell): _iso_outline(hover_cell, Color.WHITE, 2)
 
 func _draw_clean_ground(cell: Vector2i, value: int) -> void:
-	preload("res://sample/simple_terrain.gd").paint(self, Iso.diamond(cell), value, (cell.x + cell.y) % 2 == 1)
+	var texture_index := SampleArt.terrain_index(value)
+	if value in [TerrainDB.TREE, TerrainDB.OBSTACLE]: texture_index = 0 if value == TerrainDB.TREE else 2
+	var polygon := Iso.diamond(cell)
+	if texture_index >= 0:
+		var part := SampleArt.tile(texture_index)
+		var region := part.region
+		var tex_size := Vector2(part.atlas.get_size())
+		var uv := PackedVector2Array([region.position / tex_size, Vector2(region.end.x,region.position.y) / tex_size, region.end / tex_size, Vector2(region.position.x,region.end.y) / tex_size])
+		draw_polygon(polygon, PackedColorArray([Color(0.83,0.83,0.87)]), uv, part.atlas)
+	else:
+		draw_colored_polygon(polygon, TerrainDB.color_of(value).darkened(0.12))
+	draw_polyline(polygon + PackedVector2Array([polygon[0]]), Color(0.12,0.13,0.16,0.65), 1)
+	if value == TerrainDB.FRAGILE:
+		var center := cell_center(cell)
+		draw_polyline(PackedVector2Array([center + Vector2(-18,-6),center,center + Vector2(-8,8),center + Vector2(16,12)]),Color("5c4a40"),2)
 
 func _iso_outline(cell: Vector2i, color: Color, width: float) -> void:
 	if not GridSpec.is_inside(cell): return
@@ -446,11 +460,11 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	var center := cell_center(unit.cell) + Vector2(presentation_offsets.get(unit.uid, Vector2.ZERO))
 	var art_index := SampleArt.unit_index(unit.species_id)
 	if art_index >= 0:
-		draw_rect(Rect2(center + Vector2(-21, 17), Vector2(42, 8)), Color(0.04, 0.04, 0.07, 0.5))
-		var outline := Rect2(center - Vector2(29, 29), Vector2(58, 58))
+		draw_rect(Rect2(center + Vector2(-29, 17), Vector2(58, 8)), Color(0.04, 0.04, 0.07, 0.5))
+		var outline := Rect2(center + Vector2(-40, -54), Vector2(80, 80))
 		if unit.uid == selected_uid:
 			draw_rect(outline, UIKit.ACCENT, false, 2)
-		draw_texture_rect(SampleArt.tile(art_index), Rect2(center - Vector2(34, 38), Vector2(68, 68)), false)
+		draw_texture_rect(SampleArt.tile(art_index), Rect2(center + Vector2(-48, -66), Vector2(96, 96)), false)
 	else:
 		var radius := 26.0
 		var fill := Elements.color_of(unit.element)
