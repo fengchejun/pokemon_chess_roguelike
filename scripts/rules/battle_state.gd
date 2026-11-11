@@ -3353,11 +3353,8 @@ func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: D
 	if not bool(opts.get("no_element", false)):
 		if source != null and bool(opts.get("skill_direct", false)):
 			var relation := Elements.modifier(skill_element, target.element)
-			if _relic_owned("prism_mirror"):
-				if relation > 0:
-					amount = roundi(float(amount) * 1.50)
-				elif relation < 0:
-					amount = roundi(float(amount) * 0.75)
+			if _relic_owned("prism_mirror") and relation > 0:
+				amount = roundi(float(amount) * 1.50)
 			else:
 				amount = Elements.direct_damage(amount, skill_element, target.element)
 		if skill_element == "fire" and int(effects.get("fire_bonus", 0)) > 0:
@@ -3405,7 +3402,7 @@ func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: D
 					if _relic_owned("mountain_jade"):
 						percent += Balance.ELEMENT_RELIC_DAMAGE_PERCENT
 			if _relic_owned("prism_mirror"):
-				percent += 50
+				percent += 30
 			if _relic_owned("dragon_blue_flame") and Elements.canonical(skill_element) == "fire" and (
 				target.burn_ticks > 0 or burning_cells.has(source.cell)
 			):

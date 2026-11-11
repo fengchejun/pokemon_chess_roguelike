@@ -223,7 +223,7 @@ const DEFINITIONS := {
 	# 传奇
 	"prism_mirror": {
 		"name": "五棱玄镜", "rarity": "legendary", "category": "属性",
-		"description": "所有属性伤害 +50%。属性克制倍率提升至 1.5 倍。",
+		"description": "所有属性伤害 +30%。属性克制倍率提升至 1.5 倍。",
 	},
 	"magic_end": {
 		"name": "术之尽头", "rarity": "legendary", "category": "资源",

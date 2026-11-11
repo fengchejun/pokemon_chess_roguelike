@@ -119,6 +119,24 @@ func _damage_and_status(t: TestContext) -> void:
 			"skill_direct": true, "element": element, "skill_id": "probe",
 		}).get("amount", 0))
 		t.eq(boosted_damage, roundi(normal * 1.20), "%s提高%s属性伤害20%%" % [relic_id, element])
+	var prism := _state(["fire_starter"], [["grass_wild1", Vector2i(4, 3)]], {"prism_mirror": 1})
+	var prism_target := prism.unit_by_uid(100)
+	prism_target.hp = 1000
+	prism_target.max_hp = 1000
+	var prism_damage := int(prism.damage_unit(prism.unit_by_uid(1), prism_target, 100, {
+		"skill_direct": true, "element": "fire", "skill_id": "probe",
+	}).get("amount", 0))
+	t.eq(prism_damage, 195, "五棱玄镜使用1.5倍克制并追加30%属性伤害")
+	var prism_neutral := _state(["fire_starter"], [["electric_wild1", Vector2i(4, 3)]], {"prism_mirror": 1})
+	var prism_neutral_target := prism_neutral.unit_by_uid(100)
+	prism_neutral_target.hp = 1000
+	prism_neutral_target.max_hp = 1000
+	var neutral_damage := int(prism_neutral.damage_unit(prism_neutral.unit_by_uid(1), prism_neutral_target, 100, {
+		"skill_direct": true, "element": "fire", "skill_id": "probe",
+	}).get("amount", 0))
+	t.eq(neutral_damage, 130, "五棱玄镜对无克制关系追加30%属性伤害")
+	t.check(RelicDB.description_of("prism_mirror").contains("+30%"), "五棱玄镜说明使用全属性伤害30%")
+	t.check(RelicDB.description_of("prism_mirror").contains("1.5"), "五棱玄镜说明保留克制倍率提升")
 	var mountains := _state(["rock_starter"], [["water_wild1", Vector2i(5, 5)]], {"layered_mountains": 1})
 	mountains.set_terrain(Vector2i(3, 3), TerrainDB.OBSTACLE)
 	mountains.obstacle_durability[Vector2i(3, 3)] = 2
