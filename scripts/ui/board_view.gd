@@ -10,6 +10,7 @@ const Materials = preload("res://sample/unified_materials.gd")
 const Iso = preload("res://sample/iso_projection.gd")
 const SampleArt = preload("res://sample/pixel_art.gd")
 
+var biome := "rock" # Presentation only; terrain mechanics remain in TerrainDB.
 var terrain: Array = []
 var obstacle_durability: Dictionary = {}
 var electric_flowers: Dictionary = {}
@@ -62,6 +63,14 @@ func _ready() -> void:
 func set_from_state(state: BattleState) -> void:
 	if state == null:
 		return
+	var screen := get_parent()
+	if screen != null:
+		for property in screen.get_property_list():
+			if property["name"] == "app":
+				var application = screen.get("app")
+				if application != null and application.run != null:
+					biome = application.run.current_theme()
+				break
 	camp_facilities = state.camp_facilities.duplicate(true)
 	terrain = state.terrain.duplicate()
 	extraction_cells = state.extraction_cells.duplicate() if state.uses_extraction() else []
@@ -101,6 +110,7 @@ func set_from_state(state: BattleState) -> void:
 
 
 func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
+	biome = String(map.get("theme_id", "rock"))
 	camp_facilities = map.get("camp_facilities", {}).duplicate(true)
 	extraction_cells = map.get("extraction_cells", []).duplicate()
 	capture_exits = map.get("capture_exits", []).duplicate()
@@ -275,7 +285,7 @@ func _draw() -> void:
 	if GridSpec.is_inside(hover_cell): _iso_outline(hover_cell, Color.WHITE, 2)
 
 func _draw_clean_ground(cell: Vector2i, value: int) -> void:
-	Materials.paint(self, Iso.diamond(cell), value)
+	Materials.paint(self, Iso.diamond(cell), value, biome)
 
 func _iso_outline(cell: Vector2i, color: Color, width: float) -> void:
 	if not GridSpec.is_inside(cell): return

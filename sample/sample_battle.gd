@@ -8,6 +8,8 @@ var action_scroll: ScrollContainer
 
 func _ready() -> void:
 	super._ready()
+	board.biome = app.run.current_theme()
+	board.queue_redraw()
 	round_summary = round_label.get_parent().get_parent()
 	round_summary.reparent(self)
 	corner_top_left.hide()

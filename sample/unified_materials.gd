@@ -9,6 +9,8 @@ const ORIGINAL := {
 	TerrainDB.PLAIN:2, TerrainDB.WATER:1, TerrainDB.GRASS:0,
 	TerrainDB.TREE:0, TerrainDB.OBSTACLE:2,
 }
+static var biome_atlas: Texture2D
+static var biome_cache: Dictionary = {}
 static var atlas: Texture2D
 static var cache: Dictionary = {}
 
@@ -23,12 +25,29 @@ static func tile(index: int) -> AtlasTexture:
 		cache[index] = part
 	return cache[index]
 
-static func ground(value: int) -> AtlasTexture:
+static func biome_tile(index: int) -> AtlasTexture:
+	if biome_atlas == null: biome_atlas = load("res://assets/pixel_sample/biome-ground-v1.png")
+	if not biome_cache.has(index):
+		var part := AtlasTexture.new()
+		part.atlas = biome_atlas
+		var step := Vector2(biome_atlas.get_size()) / 2.0
+		part.region = Rect2(Vector2(index % 2,index / 2) * step,step)
+		part.filter_clip = true
+		biome_cache[index] = part
+	return biome_cache[index]
+
+static func ground(value: int, biome: String = "rock") -> AtlasTexture:
+	if value == TerrainDB.LAVA: return biome_tile(2)
+	if value in [TerrainDB.PLAIN, TerrainDB.OBSTACLE]:
+		match biome:
+			"grass": return biome_tile(0)
+			"water": return biome_tile(1)
+			"fire": return tile(1)
 	if ORIGINAL.has(value): return BaseArt.tile(ORIGINAL[value])
 	return tile(SUPPLEMENT.get(value,14))
 
-static func paint(canvas: CanvasItem, shape: PackedVector2Array, value: int) -> void:
-	var part := ground(value)
+static func paint(canvas: CanvasItem, shape: PackedVector2Array, value: int, biome: String = "rock") -> void:
+	var part := ground(value, biome)
 	var r := part.region
 	var size := Vector2(part.atlas.get_size())
 	var uv := PackedVector2Array([r.position/size,Vector2(r.end.x,r.position.y)/size,r.end/size,Vector2(r.position.x,r.end.y)/size])

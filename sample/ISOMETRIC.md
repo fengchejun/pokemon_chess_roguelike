@@ -95,3 +95,13 @@
 - terrain-catalogue.png现为14种实际地形与3种巢穴状态，调用与实机相同的资源与绘制函数。旧simple_terrain.gd/terrain_catalogue.gd仅保留为历史方案，不在战斗或新对照图使用。
 - 本轮验证：专项408检查点、巢穴分层生命与分伤68检查点通过；完整回归101用例、13268检查点通过。对照图与战斗图无脚本错误。
 - 补充图集使用内置image_gen、参考原图集生成；规格与资源说明在assets/pixel_sample/terrain-nest-prompt.md。素材未经人工逐像素精修，不声称已经完成动画与多方向角色资源。
+
+## 地区普通地面分化（2026-11-11）
+
+- 普通地面随四种地区显示：密林为泥土、深潭为沙面、岩窟保留碎石、火谷复用原暗岩细熔缝材质。
+- 原先的岩浆材质转作火谷普通地面；真正的TerrainDB.LAVA换为橙红液态熔流，在所有地区一致，避免误认为可站立。
+- 岩障底部使用地区普通地面以贴合场景，其余特殊地形维持统一辨认特征。没有修改TerrainDB、地形编号或移动/受伤规则。
+- BoardView新增显示用biome属性；预览从map.theme_id取得，战斗/营地从所属屏幕的run.current_theme取得。
+- 新图集biome-ground-v1.png使用内置image_gen生成，规格见assets/pixel_sample/biome-ground-prompt.md。
+- 四地区对比图：sample/biome-catalogue.png。主战斗图当前为密林。
+- 验证：专项427项通过，包含四地区真实预览/战斗入口、平地材质各异与危险岩浆一致；界面流程150项通过。对比图和战斗图无脚本错误。
