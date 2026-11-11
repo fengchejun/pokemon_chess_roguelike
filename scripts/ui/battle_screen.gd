@@ -687,7 +687,7 @@ func _update_unit_card() -> void:
 		lines.append("本回合技能：%s" % ("可用" if skill_reason == "" else "不可用（%s）" % skill_reason))
 	if unit.side == "enemy":
 		var low_hp_rules := bool(state.capture_options.get("capture_low_hp", false))
-		lines.append("捕获概率：%d%%（训练家在周围两格可尝试%s）" % [
+		lines.append("捕获概率：%d%%（训练家在曼哈顿距离两格内可尝试%s）" % [
 			mini(100, CaptureSystem.chance_percent(unit, low_hp_rules, state.debug_capture_percent) + (20 if state.capture_aid else 0)), "，目标需不高于半血" if low_hp_rules else "",
 		])
 	if unit.reward_carrier:
@@ -1775,7 +1775,7 @@ func _on_capture_pressed() -> void:
 	board.clear_overlays()
 	for enemy in _capture_targets(trainer):
 		board.attack_cells.append(enemy.cell)
-	hint_label.text = "捕获：点击周围两格内的合法目标。"
+	hint_label.text = "捕获：点击曼哈顿距离两格内（菱形范围）的合法目标。"
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_position_action_panel()
 	board.queue_redraw()
@@ -1951,7 +1951,7 @@ func do_capture(target_uid: int) -> bool:
 		return false
 	var result := state.capture_attempt(trainer, target)
 	if not bool(result.get("ok", false)):
-		hint_label.text = "无法捕获：目标须在周围两格，本回合尚未尝试，且满足当前生命规则。"
+		hint_label.text = "无法捕获：目标须在曼哈顿距离两格内，本回合尚未尝试，且满足当前生命规则。"
 		hint_label.add_theme_color_override("font_color", UIKit.BAD)
 		return false
 	capture_mode = false

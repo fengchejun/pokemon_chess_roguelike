@@ -1,7 +1,7 @@
 class_name CaptureSystem
 extends RefCounted
 
-## 两格方形邻域为统一距离；低血量保证与战中转阵营由本局设置控制。
+## 曼哈顿距离两格为统一范围；低血量保证与战中转阵营由本局设置控制。
 
 
 static func capture_chance(target: CombatUnit, low_hp_rules: bool = false, debug_percent: int = -1) -> float:
@@ -29,8 +29,7 @@ static func has_debuff(target: CombatUnit) -> bool:
 static func in_range(trainer: CombatUnit, target: CombatUnit) -> bool:
 	if trainer == null or target == null:
 		return false
-	var delta := target.cell - trainer.cell
-	return maxi(absi(delta.x), absi(delta.y)) <= Balance.CAPTURE_RANGE
+	return GridSpec.manhattan(trainer.cell, target.cell) <= Balance.CAPTURE_RANGE
 
 
 static func can_attempt(state, trainer: CombatUnit, target: CombatUnit) -> bool:

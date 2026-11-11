@@ -94,7 +94,7 @@ const SKILL_SLOTS := 3
 const STORAGE_LIMIT := 30
 const MOD_POINTS := 2
 
-# 捕获范围使用训练家周围两格的方形邻域（5×5）。
+# 捕获范围使用训练家周围曼哈顿距离 2 格的菱形范围。
 const CAPTURE_RANGE := 2
 const CAPTURE_CHANCE_MIN := 0.01
 const CAPTURE_CHANCE_MAX := 0.60
