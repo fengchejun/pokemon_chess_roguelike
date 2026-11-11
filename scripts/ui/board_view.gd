@@ -249,12 +249,12 @@ func _draw() -> void:
 			var obstacle_rect := Rect2(center + Vector2(-56, -95), Vector2(112, 112)) if value == TerrainDB.TREE else Rect2(center + Vector2(-52, -66), Vector2(104, 96))
 			var obscures := units.any(func(u): return u.is_on_board() and u.cell.x + u.cell.y < x + y and obstacle_rect.intersects(Rect2(cell_center(u.cell) + Vector2(-28,-38), Vector2(56,58))))
 			var tint := Color(1, 1, 1, 0.5 if obscures else 1.0)
-			if value in [TerrainDB.TREE, TerrainDB.OBSTACLE, TerrainDB.ROCK_MOUNTAIN]:
+			if value == TerrainDB.ROCK_MOUNTAIN:
+				preload("res://sample/simple_terrain.gd").mountain(self, center, tint.a)
+			elif value in [TerrainDB.TREE, TerrainDB.OBSTACLE]:
 				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), obstacle_rect, false, tint)
-			if value == TerrainDB.BLUE_FIRE or burning_cells.has(cell):
+			if burning_cells.has(cell):
 				draw_texture_rect(SampleArt.tile(10), Rect2(center + Vector2(-21, -37), Vector2(42, 42)), false, Color(0.55, 0.7, 1) if value == TerrainDB.BLUE_FIRE else Color.WHITE)
-			if value == TerrainDB.FRAGILE:
-				draw_polyline(PackedVector2Array([center + Vector2(-18,-6),center,center + Vector2(-8,8),center + Vector2(16,12)]), Color("5c4a40"), 2)
 			if chests.has(cell): draw_texture_rect(SampleArt.tile(14), Rect2(center + Vector2(-24,-30), Vector2(48,48)), false)
 			for current in [nest] + extra_nests:
 				if current.get("cell", Vector2i(-1,-1)) == cell: _draw_nest_object(font, current)
@@ -272,39 +272,7 @@ func _draw() -> void:
 	if GridSpec.is_inside(hover_cell): _iso_outline(hover_cell, Color.WHITE, 2)
 
 func _draw_clean_ground(cell: Vector2i, value: int) -> void:
-	var palette := {
-		TerrainDB.PLAIN: Color("abb5a0"),
-		TerrainDB.GRASS: Color("83a777"),
-		TerrainDB.SHALLOW_GRASS: Color("9eb58c"),
-		TerrainDB.TREE: Color("94ae86"),
-		TerrainDB.OBSTACLE: Color("aab1a6"),
-		TerrainDB.ROCK_MOUNTAIN: Color("969e99"),
-		TerrainDB.WATER: Color("6eabb7"),
-		TerrainDB.DEEP: Color("4b7c92"),
-		TerrainDB.ICE: Color("a2ccd3"),
-		TerrainDB.FRAGILE: Color("b5b09a"),
-		TerrainDB.BLUE_FIRE: Color("a3afa3"),
-		TerrainDB.PIT: Color("36434c"),
-		TerrainDB.LAVA: Color("a9634d"),
-		TerrainDB.VINES: Color("789b7f"),
-	}
-	var base: Color = palette.get(value, TerrainDB.color_of(value))
-	if (cell.x + cell.y) % 2: base = base.lightened(0.018)
-	var shape := Iso.diamond(cell)
-	draw_colored_polygon(shape, base)
-	# Broad color surfaces and quiet seams; no gravel or stippling.
-	draw_line(shape[0], shape[1], base.lightened(0.09), 1)
-	draw_line(shape[0], shape[3], base.lightened(0.09), 1)
-	draw_line(shape[1], shape[2], base.darkened(0.14), 1)
-	draw_line(shape[3], shape[2], base.darkened(0.14), 1)
-	var center := cell_center(cell)
-	if value in [TerrainDB.GRASS, TerrainDB.SHALLOW_GRASS]:
-		var edge := center + Vector2(-31, 9)
-		draw_polyline(PackedVector2Array([edge + Vector2(-4,-4), edge, edge + Vector2(4,-6)]), base.darkened(0.14), 2)
-	elif value in [TerrainDB.WATER, TerrainDB.DEEP]:
-		var ripple := base.lightened(0.18)
-		draw_line(center + Vector2(-30,-5), center + Vector2(-10,-5), ripple, 2)
-		draw_line(center + Vector2(12,12), center + Vector2(30,12), ripple, 1)
+	preload("res://sample/simple_terrain.gd").paint(self, Iso.diamond(cell), value, (cell.x + cell.y) % 2 == 1)
 
 func _iso_outline(cell: Vector2i, color: Color, width: float) -> void:
 	if not GridSpec.is_inside(cell): return

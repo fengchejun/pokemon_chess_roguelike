@@ -13,6 +13,12 @@ func _initialize() -> void:
 
 func run_tests() -> void:
 	root.size = Vector2i(1280,720)
+	var materials = preload("res://sample/simple_terrain.gd")
+	var material_colors: Dictionary = {}
+	for terrain_id in TerrainDB.ALL:
+		check(materials.COLORS.has(terrain_id) and materials.CUES.has(terrain_id), "Each real terrain type has a material and recognition cue")
+		material_colors[materials.COLORS[terrain_id]] = true
+	check(material_colors.size() == TerrainDB.ALL.size(), "Every terrain has a distinct base color")
 	var view := BoardView.new()
 	root.add_child(view)
 	for y in 8:
