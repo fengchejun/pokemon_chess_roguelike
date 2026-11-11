@@ -14,6 +14,11 @@ func _initialize() -> void:
 func run_tests() -> void:
 	root.size = Vector2i(1280,720)
 	var material_set = preload("res://sample/unified_materials.gd")
+	var selection = preload("res://sample/selection_effect.gd")
+	for sprite_index in [4,5,6,7]:
+		var silhouette: Dictionary = selection.silhouette(sprite_index)
+		check(not silhouette["contours"].is_empty(), "Each starter sprite has a real alpha contour for selection")
+		check(silhouette["top"] >= 0 and silhouette["top"] < 96, "Arrow can anchor above the actual sprite head")
 	check(material_set.ground(TerrainDB.SHALLOW_GRASS) == material_set.ground(TerrainDB.GRASS), "Shallow and tall grass share ground art")
 	var shore: Array = []
 	shore.resize(64)

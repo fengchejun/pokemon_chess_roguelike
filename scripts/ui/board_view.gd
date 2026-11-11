@@ -9,6 +9,7 @@ const TILE := 72.0
 const Materials = preload("res://sample/unified_materials.gd")
 const Iso = preload("res://sample/iso_projection.gd")
 const SampleArt = preload("res://sample/pixel_art.gd")
+const SelectionEffect = preload("res://sample/selection_effect.gd")
 
 var biome := "rock" # Presentation only; terrain mechanics remain in TerrainDB.
 var terrain: Array = []
@@ -52,6 +53,13 @@ var badges: Array = []
 var presentation_offsets: Dictionary = {} # 只用于展示位移与回弹，不改变单位格子。
 var selected_uid: int = -1
 var hover_cell := Vector2i(-1, -1)
+var selection_clock := 0.0
+
+func _process(delta: float) -> void:
+	if selected_uid < 0: return
+	var previous_step := int(selection_clock/0.18)
+	selection_clock = fmod(selection_clock+delta,0.72)
+	if int(selection_clock/0.18) != previous_step: queue_redraw()
 
 
 func _ready() -> void:
@@ -284,6 +292,13 @@ func _draw() -> void:
 	for badge in badges:
 		if GridSpec.is_inside(badge.get("cell", Vector2i(-1,-1))): draw_string(font, cell_center(badge["cell"]) + Vector2(-25,-27), String(badge.get("text", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIKit.ACCENT)
 	if GridSpec.is_inside(hover_cell): _iso_outline(hover_cell, Color.WHITE, 2)
+	# Draw the pointer last so tall scenery cannot hide the selection marker.
+	for unit in units:
+		if unit.uid != selected_uid or not unit.is_on_board(): continue
+		var center := cell_center(unit.cell)+Vector2(presentation_offsets.get(unit.uid,Vector2.ZERO))
+		var index := SampleArt.unit_index(unit.species_id)
+		var head_y: float = center.y-66+SelectionEffect.silhouette(index)["top"] if index >= 0 else center.y-27
+		SelectionEffect.draw_arrow(self,Vector2(center.x,head_y-7+[0,-2,-4,-2][int(selection_clock/0.18)]))
 
 func _draw_clean_ground(cell: Vector2i, value: int) -> void:
 	var shape := Iso.diamond(cell)
@@ -468,9 +483,11 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	var art_index := SampleArt.unit_index(unit.species_id)
 	if art_index >= 0:
 		draw_rect(Rect2(center + Vector2(-29, 17), Vector2(58, 8)), Color(0.04, 0.04, 0.07, 0.5))
+		if unit.uid == selected_uid: SelectionEffect.draw_outline(self,art_index,center+Vector2(-48,-66))
 		draw_texture_rect(SampleArt.tile(art_index), Rect2(center + Vector2(-48, -66), Vector2(96, 96)), false)
 	else:
 		var radius := 26.0
+		if unit.uid == selected_uid: body_border = SelectionEffect.GOLD
 		var fill := Elements.color_of(unit.element)
 		if unit.is_trainer:
 			fill = Color(0.72, 0.7, 0.62)
@@ -485,9 +502,6 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	if ground_value == TerrainDB.GRASS: Materials.draw_grass(self,cell_center(unit.cell))
 	elif ground_value in [TerrainDB.WATER,TerrainDB.DEEP]:
 		Materials.draw_water_cover(self,_surface_shape(unit.cell),center,ground_value,biome)
-	if unit.uid == selected_uid:
-		if art_index >= 0: draw_rect(Rect2(center+Vector2(-40,-54),Vector2(80,80)),UIKit.ACCENT,false,2)
-		else: draw_arc(center,30,0,TAU,48,UIKit.ACCENT,3)
 	if unit.is_boss:
 		draw_string(font, center + Vector2(-30, -30), "首", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.8, 0.2))
 	# 生命条

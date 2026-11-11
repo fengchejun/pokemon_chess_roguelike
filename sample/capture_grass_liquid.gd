@@ -50,5 +50,13 @@ func capture() -> void:
 	await process_frame
 	await process_frame
 	root.get_texture().get_image().save_png("res://sample/grass-liquid-preview.png")
+	board.set_process(false)
+	board.selection_clock = 0
+	for selected in [1,2,3]:
+		board.selected_uid = selected
+		board.queue_redraw()
+		await process_frame
+		await process_frame
+		root.get_texture().get_image().save_png("res://sample/selection-%s.png" % ["grass","water","deep"][selected-1])
 	print("GRASS_LIQUID_RENDERED")
 	quit()
