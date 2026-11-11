@@ -38,7 +38,7 @@ func capture() -> void:
 	title.add_theme_font_size_override("font_size",23)
 	root.add_child(title)
 	var note := Label.new()
-	note.text = "草簇有人时淡化\n浅草沿用草地纹理\n\n水面 / 深水 / 岩浆\n下沉 6 px，露出岸壁\n相邻液体没有内侧壁"
+	note.text = "草簇不透明，单位半透明\n浅草沿用草地纹理\n\n水面 / 深水 / 岩浆\n下沉 6 px，露出岸壁\n相邻液体没有内侧壁"
 	note.position = Vector2(24,160)
 	note.add_theme_font_override("font",UIKit.font())
 	note.add_theme_font_size_override("font_size",16)

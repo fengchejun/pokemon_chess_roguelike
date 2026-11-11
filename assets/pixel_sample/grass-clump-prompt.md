@@ -4,4 +4,4 @@
 
 Prompt: One isolated upright tall-grass clump for an isometric pixel-art tactical RPG. Muted olive and moss greens, yellow-green top-left highlights, dark forest-green base. Wide low mound of pointed blades, elevated 3/4 view, stepped pixel edges and broad clusters. Effective resolution approximately 80x48. Transparent background, no ground, labels, border, or other objects.
 
-运行时按 94x52 绘制；单位占据格子时草簇透明度为 0.32，单位自身保持不透明。
+运行时按 94x52 绘制；草簇保持不透明。单位进入草丛格时本体为 50% 不透明度，离开后恢复；血条、选中框和状态提示保持清晰。

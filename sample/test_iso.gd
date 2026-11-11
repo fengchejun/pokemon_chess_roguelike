@@ -128,6 +128,19 @@ func run_tests() -> void:
 	check(screen.unit_panel.visible, "Selected-unit details restored below compact portrait rail")
 	var unit = screen.state.unit_by_uid(1)
 	var origin: Vector2i = unit.cell
+	var grass_test_cell := Vector2i(7,7)
+	var previous_ground: int = screen.board.terrain[GridSpec.index(grass_test_cell)]
+	screen.board.terrain[GridSpec.index(grass_test_cell)] = TerrainDB.GRASS
+	unit.cell = grass_test_cell
+	check(screen.board._unit_body_alpha(unit) == 0.5, "Unit body fades upon entering tall grass")
+	screen.board.terrain[GridSpec.index(grass_test_cell)] = TerrainDB.SHALLOW_GRASS
+	check(screen.board._unit_body_alpha(unit) == 1.0, "Shallow grass does not conceal units")
+	screen.board.terrain[GridSpec.index(grass_test_cell)] = previous_ground
+	unit.cell = origin
+	var origin_ground: int = screen.board.terrain[GridSpec.index(origin)]
+	screen.board.terrain[GridSpec.index(origin)] = TerrainDB.PLAIN
+	check(screen.board._unit_body_alpha(unit) == 1.0, "Unit body restores opacity after leaving tall grass")
+	screen.board.terrain[GridSpec.index(origin)] = origin_ground
 	screen.select_unit(1)
 	var options: Dictionary = screen.state.move_options(unit)
 	check(not options.is_empty(), "Test scenario offers movement")

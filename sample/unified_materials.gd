@@ -88,9 +88,9 @@ static func draw_banks(canvas: CanvasItem, shape: PackedVector2Array, edges: Arr
 		canvas.draw_line(a,b,soil.lightened(0.18),1)
 		canvas.draw_line(a+LIQUID_DEPTH,b+LIQUID_DEPTH,Color(0.08,0.09,0.12,0.7),1)
 
-static func draw_grass(canvas: CanvasItem, center: Vector2, occupied: bool) -> void:
+static func draw_grass(canvas: CanvasItem, center: Vector2) -> void:
 	if grass_sprite == null: grass_sprite = load("res://assets/pixel_sample/grass-clump-v1.png")
-	canvas.draw_texture_rect(grass_sprite,Rect2(center+Vector2(-47,-34),Vector2(94,52)),false,Color(1,1,1,0.32 if occupied else 1.0))
+	canvas.draw_texture_rect(grass_sprite,Rect2(center+Vector2(-47,-34),Vector2(94,52)),false)
 
 static func nest_index(data: Dictionary) -> int:
 	if not data.get("alive",false) or int(data.get("hp",0)) <= 0: return 13
