@@ -20,7 +20,9 @@ func _draw() -> void:
 		draw_colored_polygon(wall,Color("303440"))
 		if index < 14:
 			var value: int = TerrainDB.ALL[index]
-			Materials.paint(self,shape,value)
+			Materials.paint(self,Materials.surface(shape,value),value)
+			if Materials.is_liquid(value): Materials.draw_banks(self,shape,[0,3],"rock")
+			if value==TerrainDB.GRASS: Materials.draw_grass(self,c,false)
 			if value in [TerrainDB.TREE,TerrainDB.OBSTACLE]:
 				draw_texture_rect(Art.tile(12 if value==TerrainDB.TREE else 13),Rect2(c+Vector2(-43,-74),Vector2(86,86)),false)
 			elif value==TerrainDB.ROCK_MOUNTAIN:

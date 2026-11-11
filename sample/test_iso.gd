@@ -14,6 +14,22 @@ func _initialize() -> void:
 func run_tests() -> void:
 	root.size = Vector2i(1280,720)
 	var material_set = preload("res://sample/unified_materials.gd")
+	check(material_set.ground(TerrainDB.SHALLOW_GRASS) == material_set.ground(TerrainDB.GRASS), "Shallow and tall grass share ground art")
+	var shore: Array = []
+	shore.resize(64)
+	shore.fill(TerrainDB.PLAIN)
+	var pool := Vector2i(3,3)
+	shore[GridSpec.index(pool)] = TerrainDB.WATER
+	check(material_set.bank_edges(shore,pool).size() == 4, "Isolated pool exposes all four banks")
+	shore[GridSpec.index(pool+Vector2i.RIGHT)] = TerrainDB.DEEP
+	check(not material_set.bank_edges(shore,pool).has(1), "Water and deep water join without internal wall")
+	shore[GridSpec.index(pool+Vector2i.DOWN)] = TerrainDB.LAVA
+	check(not material_set.bank_edges(shore,pool).has(2), "Liquid neighbors share recessed level")
+	var original_shape := BoardView.Iso.diamond(pool)
+	for liquid in [TerrainDB.WATER,TerrainDB.DEEP,TerrainDB.LAVA]:
+		var lowered := material_set.surface(original_shape,liquid)
+		check(lowered[0] == original_shape[0]+Vector2(0,6), "Liquid surface visibly below land")
+	check(material_set.surface(original_shape,TerrainDB.PLAIN) == original_shape, "Land surface stays at original height")
 	for terrain_id in TerrainDB.ALL:
 		var texture: AtlasTexture = material_set.ground(terrain_id)
 		check(texture != null and texture.atlas != null and texture.region.has_area(), "Every actual terrain uses an imported pixel material")

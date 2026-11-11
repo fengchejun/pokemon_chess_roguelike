@@ -13,6 +13,7 @@ static var biome_atlas: Texture2D
 static var biome_cache: Dictionary = {}
 static var atlas: Texture2D
 static var cache: Dictionary = {}
+static var grass_sprite: Texture2D
 
 static func tile(index: int) -> AtlasTexture:
 	if atlas == null: atlas = load("res://assets/pixel_sample/terrain-nest-v1.png")
@@ -37,6 +38,7 @@ static func biome_tile(index: int) -> AtlasTexture:
 	return biome_cache[index]
 
 static func ground(value: int, biome: String = "rock") -> AtlasTexture:
+	if value == TerrainDB.SHALLOW_GRASS: return BaseArt.tile(0)
 	if value == TerrainDB.LAVA: return biome_tile(2)
 	if value in [TerrainDB.PLAIN, TerrainDB.OBSTACLE]:
 		match biome:
@@ -53,6 +55,42 @@ static func paint(canvas: CanvasItem, shape: PackedVector2Array, value: int, bio
 	var uv := PackedVector2Array([r.position/size,Vector2(r.end.x,r.position.y)/size,r.end/size,Vector2(r.position.x,r.end.y)/size])
 	canvas.draw_polygon(shape,PackedColorArray([Color(0.83,0.83,0.87)]),uv,part.atlas)
 	canvas.draw_polyline(shape+PackedVector2Array([shape[0]]),Color(0.12,0.13,0.16,0.65),1)
+
+const LIQUID_DEPTH := Vector2(0,6)
+const EDGE_NEIGHBORS := [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
+
+static func is_liquid(value: int) -> bool:
+	return value in [TerrainDB.WATER, TerrainDB.DEEP, TerrainDB.LAVA]
+
+static func surface(shape: PackedVector2Array, value: int) -> PackedVector2Array:
+	var result := shape.duplicate()
+	if is_liquid(value):
+		for i in result.size(): result[i] += LIQUID_DEPTH
+	return result
+
+static func bank_edges(values: Array, cell: Vector2i) -> Array[int]:
+	var edges: Array[int] = []
+	for i in 4:
+		var neighbor: Vector2i = cell + EDGE_NEIGHBORS[i]
+		if GridSpec.is_inside(neighbor) and not is_liquid(values[GridSpec.index(neighbor)]): edges.append(i)
+	return edges
+
+static func draw_banks(canvas: CanvasItem, shape: PackedVector2Array, edges: Array[int], biome: String) -> void:
+	var soil := Color("655442")
+	match biome:
+		"water": soil = Color("91764d")
+		"fire": soil = Color("49414a")
+		"rock": soil = Color("615d68")
+	for i in edges:
+		var a := shape[i]
+		var b := shape[(i+1)%4]
+		canvas.draw_colored_polygon(PackedVector2Array([a,b,b+LIQUID_DEPTH,a+LIQUID_DEPTH]),soil.darkened(0.12 if i in [0,3] else 0.3))
+		canvas.draw_line(a,b,soil.lightened(0.18),1)
+		canvas.draw_line(a+LIQUID_DEPTH,b+LIQUID_DEPTH,Color(0.08,0.09,0.12,0.7),1)
+
+static func draw_grass(canvas: CanvasItem, center: Vector2, occupied: bool) -> void:
+	if grass_sprite == null: grass_sprite = load("res://assets/pixel_sample/grass-clump-v1.png")
+	canvas.draw_texture_rect(grass_sprite,Rect2(center+Vector2(-47,-34),Vector2(94,52)),false,Color(1,1,1,0.32 if occupied else 1.0))
 
 static func nest_index(data: Dictionary) -> int:
 	if not data.get("alive",false) or int(data.get("hp",0)) <= 0: return 13

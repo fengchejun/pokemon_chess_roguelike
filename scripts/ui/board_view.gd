@@ -278,6 +278,8 @@ func _draw() -> void:
 				draw_circle(center + Vector2(0,-10), 10, Color("f9e2af"))
 				draw_string(font, center + Vector2(-7,-5), "电", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("313244"))
 			for unit in actors: _draw_unit(font, unit)
+			# Foreground blades cover feet; fade the grass, never the actor.
+			if value == TerrainDB.GRASS: Materials.draw_grass(self,center,not actors.is_empty())
 	for arrow in arrows: _draw_arrow(arrow)
 	for marker in markers: _draw_marker(font, marker)
 	for badge in badges:
@@ -285,18 +287,23 @@ func _draw() -> void:
 	if GridSpec.is_inside(hover_cell): _iso_outline(hover_cell, Color.WHITE, 2)
 
 func _draw_clean_ground(cell: Vector2i, value: int) -> void:
-	Materials.paint(self, Iso.diamond(cell), value, biome)
+	var shape := Iso.diamond(cell)
+	Materials.paint(self, Materials.surface(shape,value), value, biome)
+	if Materials.is_liquid(value): Materials.draw_banks(self,shape,Materials.bank_edges(terrain,cell),biome)
+
+func _surface_shape(cell: Vector2i) -> PackedVector2Array:
+	return Materials.surface(Iso.diamond(cell),terrain[GridSpec.index(cell)])
 
 func _iso_outline(cell: Vector2i, color: Color, width: float) -> void:
 	if not GridSpec.is_inside(cell): return
-	var p := Iso.diamond(cell)
+	var p := _surface_shape(cell)
 	draw_polyline(p + PackedVector2Array([p[0]]), color, width)
 
 
 func _draw_fill(cell: Vector2i, color: Color) -> void:
 	if not GridSpec.is_inside(cell):
 		return
-	draw_colored_polygon(Iso.diamond(cell), color)
+	draw_colored_polygon(_surface_shape(cell), color)
 
 
 func _draw_terrain(rect: Rect2, value: int) -> void:
