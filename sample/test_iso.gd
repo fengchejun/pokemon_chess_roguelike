@@ -138,6 +138,8 @@ func run_tests() -> void:
 		for point in cover:
 			check(point.y >= waterline-0.001, "Water foreground never covers the visible upper body")
 			check(Geometry2D.is_point_in_polygon(point,water_shape) or water_shape.has(point), "Immersion foreground stays inside its terrain tile")
+			var relative := point-water_center
+			check(absf(relative.x)/56.0+absf(relative.y)/38.0 <= 1.0001, "Foreground water cannot protrude across the original land shoreline")
 	screen.select_unit(1)
 	var options: Dictionary = screen.state.move_options(unit)
 	check(not options.is_empty(), "Test scenario offers movement")

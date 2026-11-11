@@ -103,7 +103,13 @@ static func water_cover_shape(shape: PackedVector2Array, line_y: float) -> Packe
 		if a.y >= line_y: clipped.append(a)
 		if (a.y >= line_y) != (b.y >= line_y):
 			clipped.append(a.lerp(b,(line_y-a.y)/(b.y-a.y)))
-	return clipped
+	# The lowered surface extends six pixels into the next cell. Ground draw order
+	# hides that overlap, but this foreground pass runs AFTER all the ground.
+	# Clip it to the logical tile too, so it cannot repaint the nearer bank.
+	var tile_boundary := shape.duplicate()
+	for i in tile_boundary.size(): tile_boundary[i] -= LIQUID_DEPTH
+	var intersections := Geometry2D.intersect_polygons(clipped,tile_boundary)
+	return intersections[0] if not intersections.is_empty() else PackedVector2Array()
 
 static func draw_water_cover(canvas: CanvasItem, shape: PackedVector2Array, center: Vector2, value: int, biome: String) -> void:
 	var line_y := center.y + immersion_line(value)
