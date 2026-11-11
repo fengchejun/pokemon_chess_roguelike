@@ -3,7 +3,7 @@ func _initialize() -> void:
 	call_deferred("capture")
 func capture() -> void:
 	root.size = Vector2i(1280,720)
-	var page = preload("res://sample/terrain_catalogue.gd").new()
+	var page = preload("res://sample/unified_catalogue.gd").new()
 	page.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	root.add_child(page)
 	await process_frame

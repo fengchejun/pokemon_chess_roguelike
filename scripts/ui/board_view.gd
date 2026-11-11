@@ -6,6 +6,7 @@ signal cell_right_clicked(cell: Vector2i)
 signal cell_hovered(cell: Vector2i)
 
 const TILE := 72.0
+const Materials = preload("res://sample/unified_materials.gd")
 const Iso = preload("res://sample/iso_projection.gd")
 const SampleArt = preload("res://sample/pixel_art.gd")
 
@@ -250,10 +251,12 @@ func _draw() -> void:
 			var obscures := units.any(func(u): return u.is_on_board() and u.cell.x + u.cell.y < x + y and obstacle_rect.intersects(Rect2(cell_center(u.cell) + Vector2(-40,-60), Vector2(80,86))))
 			var tint := Color(1, 1, 1, 0.5 if obscures else 1.0)
 			if value == TerrainDB.ROCK_MOUNTAIN:
-				preload("res://sample/simple_terrain.gd").mountain(self, center, tint.a)
+				draw_texture_rect(Materials.tile(9), Rect2(center + Vector2(-55,-94), Vector2(110,120)), false, tint)
 			elif value in [TerrainDB.TREE, TerrainDB.OBSTACLE]:
 				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), obstacle_rect, false, tint)
-			if value == TerrainDB.BLUE_FIRE or burning_cells.has(cell):
+			if value == TerrainDB.BLUE_FIRE:
+				draw_texture_rect(Materials.tile(10), Rect2(center + Vector2(-27,-46), Vector2(54,54)), false)
+			elif burning_cells.has(cell):
 				draw_texture_rect(SampleArt.tile(10), Rect2(center + Vector2(-21, -37), Vector2(42, 42)), false, Color(0.55, 0.7, 1) if value == TerrainDB.BLUE_FIRE else Color.WHITE)
 			if chests.has(cell): draw_texture_rect(SampleArt.tile(14), Rect2(center + Vector2(-24,-30), Vector2(48,48)), false)
 			for current in [nest] + extra_nests:
@@ -272,21 +275,7 @@ func _draw() -> void:
 	if GridSpec.is_inside(hover_cell): _iso_outline(hover_cell, Color.WHITE, 2)
 
 func _draw_clean_ground(cell: Vector2i, value: int) -> void:
-	var texture_index := SampleArt.terrain_index(value)
-	if value in [TerrainDB.TREE, TerrainDB.OBSTACLE]: texture_index = 0 if value == TerrainDB.TREE else 2
-	var polygon := Iso.diamond(cell)
-	if texture_index >= 0:
-		var part := SampleArt.tile(texture_index)
-		var region := part.region
-		var tex_size := Vector2(part.atlas.get_size())
-		var uv := PackedVector2Array([region.position / tex_size, Vector2(region.end.x,region.position.y) / tex_size, region.end / tex_size, Vector2(region.position.x,region.end.y) / tex_size])
-		draw_polygon(polygon, PackedColorArray([Color(0.83,0.83,0.87)]), uv, part.atlas)
-	else:
-		draw_colored_polygon(polygon, TerrainDB.color_of(value).darkened(0.12))
-	draw_polyline(polygon + PackedVector2Array([polygon[0]]), Color(0.12,0.13,0.16,0.65), 1)
-	if value == TerrainDB.FRAGILE:
-		var center := cell_center(cell)
-		draw_polyline(PackedVector2Array([center + Vector2(-18,-6),center,center + Vector2(-8,8),center + Vector2(16,12)]),Color("5c4a40"),2)
+	Materials.paint(self, Iso.diamond(cell), value)
 
 func _iso_outline(cell: Vector2i, color: Color, width: float) -> void:
 	if not GridSpec.is_inside(cell): return
@@ -604,22 +593,12 @@ func _skull(center: Vector2) -> void:
 
 
 func _draw_nest_object(font: Font, nest: Dictionary) -> void:
-	if not nest.is_empty() and bool(nest.get("alive", false)):
-		var cell: Vector2i = nest["cell"]
-		var center := cell_center(cell)
-		var points := PackedVector2Array([
-			center + Vector2(0, -22), center + Vector2(20, 0),
-			center + Vector2(0, 22), center + Vector2(-20, 0),
-		])
-		draw_colored_polygon(points, Color(0.55, 0.3, 0.7, 0.95))
-		draw_polyline(points + PackedVector2Array([points[0]]), Color(0.9, 0.8, 1.0), 2.0)
-		draw_string(font, center + Vector2(-10, 8), "巢", HORIZONTAL_ALIGNMENT_CENTER, 20, 18, Color.WHITE)
-		var maximum := maxi(1, int(nest.get("max_hp", Balance.NEST_BASE_HP)))
-		var life := int(nest.get("hp", 0))
-		draw_rect(Rect2(center + Vector2(-24, 22), Vector2(48, 4)), Color("373242"))
-		draw_rect(Rect2(center + Vector2(-24, 22), Vector2(48 * clampf(float(life) / maximum, 0.0, 1.0), 4)), Color("c39aef"))
-		draw_string(font, center + Vector2(-20, 35), "%d/%d" % [life, maximum], HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.9, 0.8, 1.0))
-
+	if nest.is_empty(): return
+	var cell: Vector2i = nest.get("cell", Vector2i(-1,-1))
+	if not GridSpec.is_inside(cell): return
+	var visual := nest.duplicate()
+	visual["guards"] = int(nest_guard_counts.get(cell,0))
+	Materials.draw_nest(self,font,cell_center(cell),visual)
 
 func _draw_storm_strikes(font: Font) -> void:
 	for strike in storm_strikes:

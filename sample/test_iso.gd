@@ -13,6 +13,13 @@ func _initialize() -> void:
 
 func run_tests() -> void:
 	root.size = Vector2i(1280,720)
+	var material_set = preload("res://sample/unified_materials.gd")
+	for terrain_id in TerrainDB.ALL:
+		var texture: AtlasTexture = material_set.ground(terrain_id)
+		check(texture != null and texture.atlas != null and texture.region.has_area(), "Every actual terrain uses an imported pixel material")
+	check(material_set.nest_index({"alive":true,"hp":30,"max_hp":30}) == 11, "Healthy nest has intact artwork")
+	check(material_set.nest_index({"alive":true,"hp":15,"max_hp":30}) == 12, "Half-health nest switches to damaged artwork")
+	check(material_set.nest_index({"alive":false,"hp":0,"max_hp":30}) == 13, "Destroyed nest switches to ruins")
 	var view := BoardView.new()
 	root.add_child(view)
 	for y in 8:
