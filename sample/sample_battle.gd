@@ -109,10 +109,10 @@ func _layout_overlays() -> void:
 	super._layout_overlays()
 	if board == null: return
 	board.scale = Vector2.ONE
-	board.position = Vector2(192, 34)
+	board.position = Vector2(192, 58)
 	board.queue_redraw()
-	hint_label.position = Vector2(438, 696)
-	hint_label.custom_minimum_size.x = 400
+	hint_label.position = Vector2(330, 16)
+	hint_label.custom_minimum_size.x = 560
 	_layout_compact_chrome()
 
 func _update_unit_card() -> void:
@@ -146,14 +146,22 @@ func _update_unit_card() -> void:
 
 func _position_action_panel() -> void:
 	super._position_action_panel()
-	if action_panel == null: return
-	action_panel.position = Vector2(1040, 388)
+	if action_panel == null or not action_panel.visible: return
 	action_panel.custom_minimum_size.x = 224
 	if action_scroll != null:
 		action_scroll.custom_minimum_size.y = minf(166, maxf(40, skill_box.get_combined_minimum_size().y))
 		action_panel.reset_size()
 		action_panel.size = Vector2(224, action_scroll.custom_minimum_size.y + 42)
-		action_panel.position.y = 596 - action_panel.size.y
+	var unit := state.unit_by_uid(selected_uid)
+	var cell: Vector2i = state.merchant.get("cell", Vector2i(-1,-1)) if merchant_actions_open else unit.cell if unit != null else Vector2i(-1,-1)
+	if not GridSpec.is_inside(cell): return
+	var anchor: Vector2 = board.get_global_transform() * BoardView.cell_center(cell) - global_position
+	var desired := anchor + Vector2(48, -42)
+	if desired.x + action_panel.size.x > size.x - 16:
+		desired.x = anchor.x - action_panel.size.x - 48
+	desired.y = clampf(desired.y, 94, size.y - action_panel.size.y - 16)
+	desired.x = clampf(desired.x, 16, size.x - action_panel.size.x - 16)
+	action_panel.position = desired.round()
 
 func _update_relic_panel() -> void:
 	super._update_relic_panel()

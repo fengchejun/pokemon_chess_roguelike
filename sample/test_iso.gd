@@ -12,6 +12,7 @@ func _initialize() -> void:
 	call_deferred("run_tests")
 
 func run_tests() -> void:
+	root.size = Vector2i(1280,720)
 	var view := BoardView.new()
 	root.add_child(view)
 	for y in 8:
@@ -40,6 +41,7 @@ func run_tests() -> void:
 	screen.playback.finish_all()
 	screen.battle_notice.finish_all()
 	var state = screen._display_state()
+	check(screen.size == Vector2(1280,720), "Interaction tests run in actual 16:9 game viewport")
 	check(not screen.objective_panel.visible, "Long objective panel replaced by round summary")
 	check(screen.round_summary.position.x > 900 and screen.round_summary.position.y < 30, "Round and phase occupy top-right")
 	check(screen.compact_toolbar.get_child_count() == 3, "Menu speed and retreat share one compact toolbar")
@@ -104,7 +106,22 @@ func run_tests() -> void:
 	screen._on_choose_skill_pressed()
 	var action_rect: Rect2 = screen.action_panel.get_global_rect()
 	var action_polygon := PackedVector2Array([action_rect.position, Vector2(action_rect.end.x,action_rect.position.y), action_rect.end, Vector2(action_rect.position.x,action_rect.end.y)])
-	check(Geometry2D.intersect_polygons(board_polygon, action_polygon).is_empty(), "Expanded skill panel in lower-right does not cover ground")
+	var selected_center: Vector2 = screen.board.get_global_transform() * BoardView.cell_center(unit.cell)
+	check(action_rect.position.x >= selected_center.x + 40, "Action popup opens immediately right of selected unit")
+	check(Rect2(Vector2.ZERO, Vector2(1280,720)).encloses(action_rect), "Context action popup stays inside viewport")
+	var saved_cell: Vector2i = unit.cell
+	for edge_cell in [Vector2i(0,0), Vector2i(7,0), Vector2i(7,7), Vector2i(0,7)]:
+		unit.cell = edge_cell
+		screen._position_action_panel()
+		var popup: Rect2 = screen.action_panel.get_global_rect()
+		var anchor: Vector2 = screen.board.get_global_transform() * BoardView.cell_center(edge_cell)
+		check(Rect2(Vector2.ZERO, Vector2(1280,720)).encloses(popup), "Popup remains in viewport at every board corner %s rect=%s screen=%s" % [edge_cell, popup, screen.size])
+		if anchor.x + 48 + popup.size.x <= 1264:
+			check(popup.position.x >= anchor.x + 40, "Popup prefers unit right when room exists")
+		else:
+			check(popup.end.x <= anchor.x - 40, "Popup flips left at right screen boundary")
+	unit.cell = saved_cell
+	screen._position_action_panel()
 	check(screen.find_child("SkillButton_fire_burst", true, false) != null, "Actual skill action remains connected")
 	var skill := String(unit.skills[0])
 	screen._on_skill_pressed(skill)

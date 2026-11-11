@@ -21,12 +21,15 @@ func run_sample() -> void:
 	var battle = app.current_screen
 	battle.battle_notice.finish_all()
 	battle.select_unit(1)
-	battle._on_choose_skill_pressed()
 	await process_frame
 	await process_frame
 	var image := root.get_texture().get_image()
 	image.save_png("res://sample/battle-isometric.png")
 	print("SAMPLE_RENDERED ", image.get_size())
+	battle._on_choose_skill_pressed()
+	await process_frame
+	await process_frame
+	root.get_texture().get_image().save_png("res://sample/isometric-actions.png")
 	battle._on_move_pressed()
 	await process_frame
 	await process_frame
