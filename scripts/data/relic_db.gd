@@ -16,23 +16,23 @@ const DEFINITIONS := {
 	# 普通
 	"fire_carbon": {
 		"name": "火之碳", "rarity": "common", "category": "属性",
-		"description": "火属性伤害 +30%。",
+		"description": "火属性伤害 +20%。",
 	},
 	"water_tear": {
 		"name": "水之泪", "rarity": "common", "category": "属性",
-		"description": "水属性伤害 +30%。",
+		"description": "水属性伤害 +20%。",
 	},
 	"grass_flute": {
 		"name": "草之笛", "rarity": "common", "category": "属性",
-		"description": "草属性伤害 +30%。",
+		"description": "草属性伤害 +20%。",
 	},
 	"thunder_fang": {
 		"name": "雷之牙", "rarity": "common", "category": "属性",
-		"description": "电属性伤害 +30%。",
+		"description": "电属性伤害 +20%。",
 	},
 	"mountain_jade": {
 		"name": "山之玉", "rarity": "common", "category": "属性",
-		"description": "岩属性伤害 +30%。",
+		"description": "岩属性伤害 +20%。",
 	},
 	"healing_berry": {
 		"name": "治愈莓果", "rarity": "common", "category": "资源",

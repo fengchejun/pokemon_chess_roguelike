@@ -26,6 +26,7 @@ const MOVE_ROCK := 2
 const WATER_EXTRA_COST := 0 # 浅水在阶段交接时赋予浸湿；冰面滑入浅水在整轮结算时补发
 
 const COLLISION_DAMAGE := 5
+const ELEMENT_RELIC_DAMAGE_PERCENT := 20
 const PUSH_DAMAGE := 11
 const PUSH_DISTANCE := 1
 const CHEST_BATTLE_CHANCE := 0.40

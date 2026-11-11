@@ -3389,21 +3389,21 @@ func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: D
 			match Elements.canonical(skill_element):
 				"fire":
 					if _relic_owned("fire_carbon"):
-						percent += 30
+						percent += Balance.ELEMENT_RELIC_DAMAGE_PERCENT
 				"water":
 					if _relic_owned("water_tear"):
-						percent += 30
+						percent += Balance.ELEMENT_RELIC_DAMAGE_PERCENT
 				"grass":
 					if _relic_owned("grass_flute"):
-						percent += 30
+						percent += Balance.ELEMENT_RELIC_DAMAGE_PERCENT
 				"electric":
 					if _relic_owned("thunder_fang"):
-						percent += 30
+						percent += Balance.ELEMENT_RELIC_DAMAGE_PERCENT
 					if _relic_owned("electric_echo") and bool(relic_state.get("electric_echo_active", false)):
 						percent += 20
 				"rock":
 					if _relic_owned("mountain_jade"):
-						percent += 30
+						percent += Balance.ELEMENT_RELIC_DAMAGE_PERCENT
 			if _relic_owned("prism_mirror"):
 				percent += 50
 			if _relic_owned("dragon_blue_flame") and Elements.canonical(skill_element) == "fire" and (

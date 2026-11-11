@@ -93,21 +93,32 @@ func _acquisition(t: TestContext) -> void:
 
 
 func _damage_and_status(t: TestContext) -> void:
-	var plain := _state(["fire_starter"], [["rock_wild1", Vector2i(4, 3)]], {})
-	var target := plain.unit_by_uid(100)
-	target.hp = 100
-	target.max_hp = 100
-	var normal := int(plain.damage_unit(plain.unit_by_uid(1), target, 10, {
-		"skill_direct": true, "element": "fire", "skill_id": "flame_jet",
-	}).get("amount", 0))
-	var boosted := _state(["fire_starter"], [["rock_wild1", Vector2i(4, 3)]], {"fire_carbon": 1})
-	var boosted_target := boosted.unit_by_uid(100)
-	boosted_target.hp = 100
-	boosted_target.max_hp = 100
-	var carbon := int(boosted.damage_unit(boosted.unit_by_uid(1), boosted_target, 10, {
-		"skill_direct": true, "element": "fire", "skill_id": "flame_jet",
-	}).get("amount", 0))
-	t.eq(carbon, roundi(normal * 1.30), "火之碳提高火属性伤害30%")
+	t.eq(Balance.ELEMENT_RELIC_DAMAGE_PERCENT, 20, "普通属性遗物使用统一的20%增伤")
+	var element_relics := {
+		"fire": "fire_carbon",
+		"water": "water_tear",
+		"grass": "grass_flute",
+		"electric": "thunder_fang",
+		"rock": "mountain_jade",
+	}
+	for element in element_relics:
+		var relic_id := String(element_relics[element])
+		t.check(RelicDB.description_of(relic_id).contains("+20%"), "%s说明显示20%%增伤" % relic_id)
+		var plain := _state(["fire_starter"], [["rock_wild1", Vector2i(4, 3)]], {})
+		var target := plain.unit_by_uid(100)
+		target.hp = 100
+		target.max_hp = 100
+		var normal := int(plain.damage_unit(plain.unit_by_uid(1), target, 10, {
+			"skill_direct": true, "element": element, "skill_id": "probe",
+		}).get("amount", 0))
+		var boosted := _state(["fire_starter"], [["rock_wild1", Vector2i(4, 3)]], {relic_id: 1})
+		var boosted_target := boosted.unit_by_uid(100)
+		boosted_target.hp = 100
+		boosted_target.max_hp = 100
+		var boosted_damage := int(boosted.damage_unit(boosted.unit_by_uid(1), boosted_target, 10, {
+			"skill_direct": true, "element": element, "skill_id": "probe",
+		}).get("amount", 0))
+		t.eq(boosted_damage, roundi(normal * 1.20), "%s提高%s属性伤害20%%" % [relic_id, element])
 	var mountains := _state(["rock_starter"], [["water_wild1", Vector2i(5, 5)]], {"layered_mountains": 1})
 	mountains.set_terrain(Vector2i(3, 3), TerrainDB.OBSTACLE)
 	mountains.obstacle_durability[Vector2i(3, 3)] = 2
