@@ -19,7 +19,7 @@ func run_tests() -> void:
 			var cell := Vector2i(x,y)
 			for offset in [Vector2.ZERO, Vector2(35,0), Vector2(-35,0), Vector2(0,20), Vector2(0,-20)]:
 				check(view.cell_at(BoardView.cell_center(cell) + offset) == cell, "Isometric hit test %s %s" % [cell, offset])
-	for point in [Vector2(-1,192),Vector2(641,192),Vector2(320,-1),Vector2(320,460)]:
+	for point in [Vector2(-1,192),Vector2(897,304),Vector2(448,-1),Vector2(448,640)]:
 		check(view.cell_at(point) == Vector2i(-1,-1), "Outside diamond must not select a cell")
 	view.queue_free()
 	var app = load("res://scripts/main.gd").new()
@@ -46,6 +46,18 @@ func run_tests() -> void:
 	check(screen.menu_button.position.y == screen.speed_button.position.y and screen.speed_button.position.y == screen.leave_node_button.position.y, "Toolbar controls stay on one row")
 	check(screen.team_panel.get_global_rect().end.y <= screen.unit_panel.global_position.y - 4, "Portrait rail leaves clear space for unit details")
 	check(screen.unit_body.get_parent() is ScrollContainer, "Status-rich unit details have their own scroll area")
+	var projection = preload("res://sample/iso_projection.gd")
+	var board_polygon := PackedVector2Array()
+	for grid in [Vector2.ZERO, Vector2(8,0), Vector2(8,8), Vector2(0,8)]:
+		var world: Vector2 = screen.board.get_global_transform() * projection.point(grid)
+		board_polygon.append(world)
+		check(Rect2(Vector2.ZERO, Vector2(1280,720)).has_point(world), "Expanded board vertex stays inside viewport")
+		check(Rect2(Vector2.ZERO, Vector2(1280,720)).has_point(world + Vector2(0,45)), "Platform depth and shadow remain inside viewport")
+	check(board_polygon[1].x - board_polygon[3].x >= 896, "Board enlarged to 896 pixels wide")
+	for panel in [screen.compact_toolbar, screen.team_panel, screen.round_summary, screen.unit_panel, screen.terrain_panel]:
+		var rect: Rect2 = panel.get_global_rect()
+		var polygon := PackedVector2Array([rect.position, Vector2(rect.end.x,rect.position.y), rect.end, Vector2(rect.position.x,rect.end.y)])
+		check(Geometry2D.intersect_polygons(board_polygon, polygon).is_empty(), "Corner HUD does not cover board surface")
 	var last_card = screen.team_list.get_child(screen.team_list.get_child_count() - 1)
 	check(last_card.get_global_rect().end.y <= screen.team_scroll.get_global_rect().end.y + 1, "All four portrait cards and both bars are visible")
 	var speed_before: float = app.battle_playback_speed
@@ -90,6 +102,9 @@ func run_tests() -> void:
 	screen.battle_notice.finish_all()
 	screen.select_unit(1)
 	screen._on_choose_skill_pressed()
+	var action_rect: Rect2 = screen.action_panel.get_global_rect()
+	var action_polygon := PackedVector2Array([action_rect.position, Vector2(action_rect.end.x,action_rect.position.y), action_rect.end, Vector2(action_rect.position.x,action_rect.end.y)])
+	check(Geometry2D.intersect_polygons(board_polygon, action_polygon).is_empty(), "Expanded skill panel in lower-right does not cover ground")
 	check(screen.find_child("SkillButton_fire_burst", true, false) != null, "Actual skill action remains connected")
 	var skill := String(unit.skills[0])
 	screen._on_skill_pressed(skill)

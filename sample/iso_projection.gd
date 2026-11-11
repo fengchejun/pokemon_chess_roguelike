@@ -1,7 +1,7 @@
 extends RefCounted
-const HALF_WIDTH := 40.0
-const HALF_HEIGHT := 28.0
-const ORIGIN := Vector2(320, 0)
+const HALF_WIDTH := 56.0
+const HALF_HEIGHT := 38.0
+const ORIGIN := Vector2(448, 0)
 
 static func point(grid: Vector2) -> Vector2:
 	return ORIGIN + Vector2((grid.x - grid.y) * HALF_WIDTH, (grid.x + grid.y) * HALF_HEIGHT)

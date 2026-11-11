@@ -54,7 +54,7 @@ var hover_cell := Vector2i(-1, -1)
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	custom_minimum_size = Vector2(640, 500)
+	custom_minimum_size = Vector2(896, 654)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 

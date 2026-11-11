@@ -4,6 +4,7 @@ var portrait_focus_hint: PanelContainer
 var round_summary: Control
 var compact_toolbar: HBoxContainer
 var turn_actions: HBoxContainer
+var action_scroll: ScrollContainer
 
 func _ready() -> void:
 	super._ready()
@@ -11,6 +12,14 @@ func _ready() -> void:
 	round_summary.reparent(self)
 	corner_top_left.hide()
 	objective_panel.hide()
+	var action_column := skill_box.get_parent()
+	action_scroll = ScrollContainer.new()
+	action_scroll.name = "CornerActionScroll"
+	action_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	action_scroll.custom_minimum_size = Vector2(188, 120)
+	action_column.add_child(action_scroll)
+	skill_box.reparent(action_scroll)
+	skill_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var details_column := unit_body.get_parent()
 	var details_scroll := UIKit.scroll()
 	details_scroll.name = "UnitDetailsScroll"
@@ -51,22 +60,35 @@ func _layout_compact_chrome() -> void:
 	corner_top_left.hide()
 	relic_panel.position = Vector2(980, 112)
 	round_summary.reset_size()
-	leave_node_button.text = "撤退" if not state.is_free_exploration() else "返回地图"
+	leave_node_button.text = "返回区域" if state.can_leave_node() else "撤退"
 
 func _layout_corner_cards() -> void:
 	if unit_panel == null or terrain_panel == null: return
-	unit_panel.position = Vector2(16, 480)
-	unit_panel.custom_minimum_size = Vector2(280, 220)
-	unit_panel.size = Vector2(280, 220)
+	unit_panel.position = Vector2(16, 500)
+	unit_panel.custom_minimum_size = Vector2(280, 204)
+	unit_panel.size = Vector2(280, 204)
 	unit_panel.show()
-	terrain_panel.position = Vector2(980, 584)
-	terrain_panel.custom_minimum_size = Vector2(278, 116)
+	terrain_panel.position = Vector2(1040, 608)
+	terrain_label.custom_minimum_size.x = 196
+	terrain_panel.custom_minimum_size = Vector2(224, 96)
 	_fit_terrain_panel()
+
+func _fit_terrain_panel() -> void:
+	if terrain_scroll == null or terrain_panel == null: return
+	terrain_label.custom_minimum_size.x = 196
+	terrain_scroll.custom_minimum_size = Vector2(196, 70)
+	terrain_panel.custom_minimum_size = Vector2(224, 96)
+	terrain_panel.size = Vector2(224, 96)
+
+func _fit_relic_panel() -> void:
+	if relic_scroll == null or relic_panel == null: return
+	relic_scroll.custom_minimum_size = Vector2(250, 60)
+	relic_panel.reset_size()
 
 func _update_action_buttons() -> void:
 	super._update_action_buttons()
 	if is_instance_valid(compact_toolbar):
-		leave_node_button.text = "撤退" if not state.is_free_exploration() else "返回地图"
+		leave_node_button.text = "返回区域" if state.can_leave_node() else "撤退"
 
 func _head_texture(index: int) -> AtlasTexture:
 	var source := Art.tile(index)
@@ -87,10 +109,10 @@ func _layout_overlays() -> void:
 	super._layout_overlays()
 	if board == null: return
 	board.scale = Vector2.ONE
-	board.position = Vector2(320, 135)
+	board.position = Vector2(192, 34)
 	board.queue_redraw()
-	hint_label.position = Vector2(352, 666)
-	hint_label.custom_minimum_size.x = 576
+	hint_label.position = Vector2(438, 696)
+	hint_label.custom_minimum_size.x = 400
 	_layout_compact_chrome()
 
 func _update_unit_card() -> void:
@@ -125,8 +147,13 @@ func _update_unit_card() -> void:
 func _position_action_panel() -> void:
 	super._position_action_panel()
 	if action_panel == null: return
-	action_panel.position = Vector2(980, 220 if relic_panel.visible else 112)
-	action_panel.custom_minimum_size.x = 278
+	action_panel.position = Vector2(1040, 388)
+	action_panel.custom_minimum_size.x = 224
+	if action_scroll != null:
+		action_scroll.custom_minimum_size.y = minf(166, maxf(40, skill_box.get_combined_minimum_size().y))
+		action_panel.reset_size()
+		action_panel.size = Vector2(224, action_scroll.custom_minimum_size.y + 42)
+		action_panel.position.y = 596 - action_panel.size.y
 
 func _update_relic_panel() -> void:
 	super._update_relic_panel()
@@ -249,9 +276,23 @@ func _hide_portrait_help() -> void:
 
 func _rebuild_skill_buttons() -> void:
 	super._rebuild_skill_buttons()
-	if action_mode != "skills" or skill_box == null: return
+	if skill_box == null: return
+	if action_mode != "skills":
+		var actions := skill_box.get_children()
+		if actions.size() <= 1: return
+		var compact_grid := GridContainer.new()
+		compact_grid.columns = 2
+		compact_grid.add_theme_constant_override("h_separation", 4)
+		compact_grid.add_theme_constant_override("v_separation", 4)
+		skill_box.add_child(compact_grid)
+		for action in actions:
+			if action is Button:
+				action.reparent(compact_grid)
+				action.add_theme_font_size_override("font_size", 13)
+				action.custom_minimum_size.x = 84
+		return
 	var grid := GridContainer.new()
-	grid.columns = 3
+	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	var children := skill_box.get_children()
@@ -262,7 +303,7 @@ func _rebuild_skill_buttons() -> void:
 		var id := String(child.name).trim_prefix("SkillButton_")
 		child.tooltip_text = child.text + "\n" + child.tooltip_text
 		child.text = ""
-		child.custom_minimum_size = Vector2(78, 78)
+		child.custom_minimum_size = Vector2(76, 76)
 		skill_box.remove_child(child)
 		grid.add_child(child)
 		var icon := TextureRect.new()
@@ -278,6 +319,3 @@ func _rebuild_skill_buttons() -> void:
 		caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		child.add_child(caption)
-	var instruction := UIKit.wrapped("选择招式后，点击棋盘上的有效目标。\n右键或 Esc 取消瞄准。", 13)
-	instruction.custom_minimum_size.x = 240
-	skill_box.add_child(instruction)

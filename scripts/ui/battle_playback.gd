@@ -297,7 +297,7 @@ func _draw_collisions() -> void:
 		var event: Dictionary = cue["event"]
 		var origin := BoardView.cell_center(event["cell"])
 		var destination := BoardView.cell_center(event["blocker_cell"])
-		var center := origin.lerp(destination, 0.5).clamp(Vector2(12, 12), Vector2(640, 500) - Vector2(12, 12))
+		var center := origin.lerp(destination, 0.5).clamp(Vector2(12, 12), Vector2(896, 654) - Vector2(12, 12))
 		var fade := clampf(1.0 - maxf(0.0, age) / 0.40, 0.0, 1.0)
 		var color := Color(1.0, 0.66, 0.22, fade)
 		var spikes := PackedVector2Array()
@@ -310,7 +310,7 @@ func _draw_collisions() -> void:
 			var outline := preload("res://sample/iso_projection.gd").diamond(event["blocker_cell"] )
 			draw_polyline(outline + PackedVector2Array([outline[0]]), color, 3.0)
 		var caption := "受阻" if event.get("object_kind") == "edge" else "碰撞"
-		var caption_origin := (center + Vector2(-22, 22)).clamp(Vector2.ZERO, Vector2(640, 500) - Vector2(44, 22))
+		var caption_origin := (center + Vector2(-22, 22)).clamp(Vector2.ZERO, Vector2(896, 654) - Vector2(44, 22))
 		draw_rect(Rect2(caption_origin, Vector2(44, 22)), Color(0.15, 0.10, 0.04, fade))
 		draw_string(UIKit.font(), caption_origin + Vector2(5, 17), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, color)
 		if event.get("object_kind") == "rock":
