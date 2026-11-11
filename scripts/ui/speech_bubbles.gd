@@ -75,7 +75,7 @@ func _process(delta: float) -> void:
 		var unit: CombatUnit = screen._display_state().unit_by_uid(entry["uid"])
 		if unit != null:
 			cell = unit.cell
-		var origin: Vector2 = screen.board.position + (Vector2(cell) + Vector2(0.5, 0)) * BoardView.TILE * screen.board.scale.x
+		var origin: Vector2 = (screen.board.get_global_transform() * (BoardView.cell_center(cell) + Vector2(0, -32))) - global_position
 		var desired := origin - Vector2(panel.size.x * 0.5, panel.size.y + 8)
 		if desired.y < 6:
 			desired.y = origin.y + BoardView.TILE * screen.board.scale.x + 8

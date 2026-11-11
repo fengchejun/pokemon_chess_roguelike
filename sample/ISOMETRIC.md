@@ -1,0 +1,26 @@
+# 等角棋盘可操作样板
+
+独立工作区 D:/godot/pixel-battle-sample，分支 codex/isometric-battle-sample。
+原项目 D:/godot/宝可梦战棋肉鸽 保留不变。
+
+运行 sample/run-isometric.cmd。该入口禁用自动存档，保持1280×720窗口；首次等待开场提示结束后可操作，不会在截图后自动关闭。命令行截图模式为 sample/capture_sample.gd 不带 --interactive。
+
+## 实现
+
+- 逻辑仍为8×8方格，移动距离、相邻判定、技能结算与寻路使用原规则。
+- 每格显示为80×56菱形；正投影与逆投影统一到iso_projection.gd。
+- 平台前沿30像素厚度与硬阴影。
+- 地面贴图投影，角色和树木保持直立，按x+y深度排序。靠近单位的前景树木半透明；角色素材仍是上一版图集，并非新的多朝向等角角色图集。
+- 移动、攻击、区域、路径、预告与悬停覆盖层按菱形绘制。
+- 飘字、弹道、推挤表现、离场表现与对话气泡锚点改用投影坐标。
+- 训练师、未绘制的敌人和部分特殊物件仍保留临时图形。本样板是普通战斗验证，不是所有营地设施、全部技能特效和多分辨率的完整上线替换。
+
+## 验证与截图
+
+- sample/test_iso.gd：332个检查点；64格每格5个位置、边界外命中、真实移动/撤销、技能瞄准与发动。
+- tests/cases/t09_ui_flow.gd：150检查点。
+- battle-isometric.png：主画面。
+- isometric-movement.png：实际移动范围。
+- isometric-targeting.png：实际技能范围。
+
+完整回归：101用例、13260检查点通过，见本地iso-regression.log；等角专项332检查点通过，见iso-test.log。实机渲染日志iso-render-error.log无脚本错误。全量逻辑测试不能代替所有技能的视觉验收。

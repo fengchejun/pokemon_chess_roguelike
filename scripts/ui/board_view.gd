@@ -6,6 +6,7 @@ signal cell_right_clicked(cell: Vector2i)
 signal cell_hovered(cell: Vector2i)
 
 const TILE := 72.0
+const Iso = preload("res://sample/iso_projection.gd")
 const SampleArt = preload("res://sample/pixel_art.gd")
 
 var terrain: Array = []
@@ -53,7 +54,7 @@ var hover_cell := Vector2i(-1, -1)
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	custom_minimum_size = Vector2(GridSpec.W * TILE, GridSpec.H * TILE)
+	custom_minimum_size = Vector2(640, 500)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 
@@ -163,15 +164,15 @@ func clear_overlays() -> void:
 
 
 func cell_at(position: Vector2) -> Vector2i:
-	var cell := Vector2i(int(position.x / TILE), int(position.y / TILE))
-	if not GridSpec.is_inside(cell):
-		return Vector2i(-1, -1)
-	return cell
-
+	var grid := Iso.inverse(position)
+	var cell := Vector2i(floori(grid.x), floori(grid.y))
+	return cell if GridSpec.is_inside(cell) else Vector2i(-1,-1)
 
 static func cell_center(cell: Vector2i) -> Vector2:
-	return Vector2(cell.x * 72.0 + 36.0, cell.y * 72.0 + 36.0)
+	return Iso.point(Vector2(cell) + Vector2.ONE * 0.5)
 
+static func project_point(cartesian: Vector2) -> Vector2:
+	return Iso.point(cartesian / TILE)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
@@ -191,118 +192,105 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _draw() -> void:
+	if terrain.size() < 64: return
 	var font := UIKit.font()
-	var hovered := Vector2i(-1, -1)
-	for y in GridSpec.H:
-		for x in GridSpec.W:
+	var depth := Vector2(0, 30)
+	var corners := PackedVector2Array([Iso.point(Vector2.ZERO), Iso.point(Vector2(8, 0)), Iso.point(Vector2(8, 8)), Iso.point(Vector2(0, 8))])
+	var shadow := PackedVector2Array()
+	for p in corners: shadow.append(p + Vector2(0, 45))
+	draw_colored_polygon(shadow, Color(0.02, 0.02, 0.03, 0.65))
+	for index in 8:
+		var left := Iso.point(Vector2(0, index))
+		var left_end := Iso.point(Vector2(0, index + 1))
+		var front := Iso.point(Vector2(index, 8))
+		var front_end := Iso.point(Vector2(index + 1, 8))
+		var right := Iso.point(Vector2(8, index))
+		var right_end := Iso.point(Vector2(8, index + 1))
+		for edge in [[front, front_end, Color("363641")], [right, right_end, Color("242631")]]:
+			var face := PackedVector2Array([edge[0], edge[1], edge[1] + depth, edge[0] + depth])
+			draw_colored_polygon(face, edge[2])
+			draw_line(edge[0] + depth, edge[1] + depth, Color("11111b"), 2)
+			draw_line(edge[0], edge[0] + depth, Color("171821"), 1)
+	for sum in 15:
+		for x in 8:
+			var y := sum - x
+			if y < 0 or y > 7: continue
 			var cell := Vector2i(x, y)
-			var rect := Rect2(x * TILE, y * TILE, TILE, TILE)
-			_draw_terrain(rect, terrain[GridSpec.index(cell)])
-			if burning_cells.has(cell):
-				draw_circle(rect.position + Vector2(55, 17), 9.0, Color(1.0, 0.32, 0.08, 0.88))
-			if steam_cells.has(cell):
-				draw_circle(rect.position + Vector2(28, 25), 17.0, Color(0.92, 0.94, 0.96, 0.38))
-				draw_circle(rect.position + Vector2(46, 42), 13.0, Color(0.92, 0.94, 0.96, 0.33))
-	for cell in electric_flowers:
-		var center := cell_center(cell)
-		draw_line(center + Vector2(0, 7), center + Vector2(0, 24), Color("263f2e"), 5)
-		draw_circle(center, 19, Color("4c421b"))
-		for offset in [Vector2(-9, 0), Vector2(9, 0), Vector2(0, -9), Vector2(0, 9)]:
-			draw_circle(center + offset, 8, Color("f4ca51"))
-		draw_polyline(PackedVector2Array([center + Vector2(3, -10), center + Vector2(-5, 1), center + Vector2(4, 1), center + Vector2(-3, 11)]), Color("594216"), 3)
-		draw_string(font, center + Vector2(20, -16), str(obstacle_durability.get(cell, 0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("fff0ad"))
-	for cell in extraction_cells:
-		var zone := Rect2(Vector2(cell) * TILE + Vector2(3,3), Vector2.ONE * (TILE - 6))
-		draw_rect(zone, Color(0.25, 0.85, 0.72, 0.18))
-		draw_rect(zone, Color("62d8be"), false, 2.0)
-		draw_string(font, zone.position + Vector2(3,14), "撤离", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("8cf7d9"))
-	for cell in capture_exits:
-		var zone := Rect2(Vector2(cell) * TILE + Vector2(3, 3), Vector2.ONE * (TILE - 6))
-		draw_rect(zone, Color(1.0, 0.6, 0.2, 0.23))
-		draw_rect(zone, Color("ffb35c"), false, 2.0)
-		draw_string(font, zone.position + Vector2(3, 14), "野生撤离", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("ffcc88"))
-	# 覆盖层：移动范围 / 攻击范围 / 区域 / 射线
-	for cell in movement_cells:
-		_draw_fill(cell, Color(0.35, 0.6, 1.0, 0.28))
-		if show_movement_costs:
-			var cost := int(movement_cells[cell]["cost"])
-			draw_string(font, cell_center(cell) + Vector2(20, 28), "∞" if bool(movement_cells[cell].get("terrain_travel", false)) else str(cost), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.9, 1.0, 0.9))
-	for cell in enemy_cells_view:
-		_draw_fill(cell, Color(1.0, 0.35, 0.3, 0.20))
-	for cell in area_cells:
-		_draw_fill(cell, Color(1.0, 0.55, 0.2, 0.22))
+			var value: int = terrain[GridSpec.index(cell)]
+			var texture_index := SampleArt.terrain_index(value)
+			if value in [TerrainDB.TREE, TerrainDB.OBSTACLE]: texture_index = 0 if value == TerrainDB.TREE else 2
+			var polygon := Iso.diamond(cell)
+			if texture_index >= 0:
+				var part := SampleArt.tile(texture_index)
+				var region := part.region
+				var tex_size := Vector2(part.atlas.get_size())
+				var uv := PackedVector2Array([region.position / tex_size, Vector2(region.end.x, region.position.y) / tex_size, region.end / tex_size, Vector2(region.position.x, region.end.y) / tex_size])
+				draw_polygon(polygon, PackedColorArray([Color(0.83, 0.83, 0.87)]), uv, part.atlas)
+			else:
+				draw_colored_polygon(polygon, TerrainDB.color_of(value).darkened(0.12))
+			draw_polyline(polygon + PackedVector2Array([polygon[0]]), Color(0.12, 0.13, 0.16, 0.65), 1)
+	for cell in extraction_cells: _draw_fill(cell, Color(0.2, 0.85, 0.65, 0.2))
+	for cell in deploy_cells: _iso_outline(cell, Color("75bda1"), 1)
+	for cell in capture_exits: _draw_fill(cell, Color(1, 0.6, 0.2, 0.3))
+	for cell in movement_cells: _draw_fill(cell, Color(0.35, 0.75, 0.9, 0.38))
+	for cell in enemy_cells_view: _draw_fill(cell, Color(1, 0.3, 0.3, 0.28))
+	for cell in area_cells: _draw_fill(cell, Color(1, 0.6, 0.2, 0.35))
 	for cell in attack_cells:
-		_draw_fill(cell, Color(1.0, 0.85, 0.35, 0.38))
-		if GridSpec.is_inside(cell):
-			draw_rect(Rect2(cell.x * TILE + 2, cell.y * TILE + 2, TILE - 4, TILE - 4), Color(1.0, 0.8, 0.3, 0.85), false, 2.0)
-	# 绘制网格线
-	for x in GridSpec.W + 1:
-		draw_line(Vector2(x * TILE, 0), Vector2(x * TILE, GridSpec.H * TILE), Color(0, 0, 0, 0.35), 1.0)
-	for y in GridSpec.H + 1:
-		draw_line(Vector2(0, y * TILE), Vector2(GridSpec.W * TILE, y * TILE), Color(0, 0, 0, 0.35), 1.0)
-	for cell in deploy_cells:
-		if GridSpec.is_inside(cell):
-			draw_rect(Rect2(cell.x * TILE + 2, cell.y * TILE + 2, TILE - 4, TILE - 4), Color(0.5, 0.75, 1.0, 0.5), false, 2.0)
-	if not ray_cells.is_empty():
-		var points: PackedVector2Array = []
-		for cell in ray_cells:
-			points.append(cell_center(cell))
-		if points.size() >= 2:
-			draw_polyline(points, Color(1.0, 0.9, 0.4, 0.8), 3.0)
-	if not path_cells.is_empty():
-		var route: PackedVector2Array = []
-		for cell in path_cells:
-			route.append(cell_center(cell))
-		if route.size() >= 2:
-			draw_polyline(route, Color(0.6, 1.0, 0.7, 0.9), 3.0)
-	# 物件
-	_draw_objects(font)
-	# 单位
-	for unit in units:
-		if unit.is_on_board():
-			_draw_unit(font, unit)
-	_draw_storm_strikes(font)
-	for slide in ice_slides:
-		_draw_ice_slide_arrow(slide)
-	for cell in vine_expire_round:
-		if not GridSpec.is_inside(cell):
-			continue
-		var base := int(vine_origin.get(cell, TerrainDB.PLAIN))
-		var color := Color(1.0, 0.35, 0.25, 0.95) if TerrainDB.is_lethal(base) else Color(0.9, 0.95, 0.45, 0.8)
-		draw_rect(Rect2(cell.x * TILE + 3, cell.y * TILE + 3, TILE - 6, TILE - 6), color, false, 3.0)
-		if TerrainDB.is_lethal(base):
-			draw_string(font, Vector2(cell.x * TILE + 6, cell.y * TILE + 16), "危", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
-	_draw_pending_casts(font)
-	_draw_nest_status(font)
-	if GridSpec.is_inside(merchant_cell):
-		_draw_marker(font, {"cell": merchant_cell, "kind": "facility", "text": "商人", "color": Color("257a70")})
-	if not camp_facilities.is_empty():
-		for unit in units:
-			if unit.side == "player" and unit.hp <= 0:
-				_draw_marker(font, {"cell": unit.cell, "kind": "facility", "text": "%s 濒死" % unit.display_name, "color": Color("654846")})
-	for facility in camp_facilities.values():
-		var cell: Vector2i = facility["cell"]
-		var destroyed: bool = facility.get("destroyed", false)
-		_draw_marker(font, {"cell": cell, "kind": "facility", "text": "%s\n%s" % [facility["name"], "已毁" if destroyed else "%d/%d" % [int(obstacle_durability.get(cell, 0)), int(facility["max_hp"])]], "color": Color("654846") if destroyed else Color("806435")})
-	# 标记与箭头
-	for arrow in arrows:
-		_draw_arrow(arrow)
-	for marker in markers:
-		_draw_marker(font, marker)
-	if badges.size() > 0:
-		for badge in badges:
-			var cell: Vector2i = badge.get("cell", Vector2i(-1, -1))
-			if GridSpec.is_inside(cell):
-				draw_string(font, cell_center(cell) + Vector2(-30, -26), String(badge.get("text", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, int(badge.get("size", 12)), badge.get("color", UIKit.ACCENT))
-	if GridSpec.is_inside(hover_cell):
-		hovered = hover_cell
-		draw_rect(Rect2(hovered.x * TILE + 1, hovered.y * TILE + 1, TILE - 2, TILE - 2), Color(1, 1, 1, 0.75), false, 2.0)
+		_draw_fill(cell, Color(1, 0.85, 0.4, 0.35))
+		_iso_outline(cell, Color("f9e2af"), 2)
+	for path in [path_cells, ray_cells]:
+		var points := PackedVector2Array()
+		for cell in path: points.append(cell_center(cell))
+		if points.size() > 1: draw_polyline(points, Color("f9e2af"), 3)
+	for strike in storm_strikes:
+		_draw_fill(strike["cell"], Color(1, 0.5, 0.1, 0.4))
+		_iso_outline(strike["cell"], Color("f9e2af"), 2)
+	for cast in pending_casts:
+		for cell in cast.get("cells", []): _iso_outline(cell, Color("cba6f7"), 2)
+	for cell in vine_expire_round: _iso_outline(cell, Color("cba6f7"), 2)
+	# All upright objects and actors share the same ground-depth order.
+	for sum in 15:
+		for x in 8:
+			var y := sum - x
+			if y < 0 or y > 7: continue
+			var cell := Vector2i(x, y)
+			var center := cell_center(cell)
+			var value: int = terrain[GridSpec.index(cell)]
+			var actors := units.filter(func(u): return u.is_on_board() and u.cell == cell)
+			var obscures := units.any(func(u): return u.is_on_board() and u.cell.y <= y and u.cell.x <= x and GridSpec.manhattan(u.cell, cell) <= 2)
+			var tint := Color(1, 1, 1, 0.55 if obscures and value == TerrainDB.TREE else 1.0)
+			if value in [TerrainDB.TREE, TerrainDB.OBSTACLE, TerrainDB.ROCK_MOUNTAIN]:
+				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), Rect2(center + Vector2(-35, -53), Vector2(70, 70)), false, tint)
+			if value == TerrainDB.BLUE_FIRE or burning_cells.has(cell):
+				draw_texture_rect(SampleArt.tile(10), Rect2(center + Vector2(-21, -37), Vector2(42, 42)), false, Color(0.55, 0.7, 1) if value == TerrainDB.BLUE_FIRE else Color.WHITE)
+			if value == TerrainDB.FRAGILE:
+				draw_polyline(PackedVector2Array([center + Vector2(-18,-6),center,center + Vector2(-8,8),center + Vector2(16,12)]), Color("5c4a40"), 2)
+			if chests.has(cell): draw_texture_rect(SampleArt.tile(14), Rect2(center + Vector2(-24,-30), Vector2(48,48)), false)
+			for current in [nest] + extra_nests:
+				if current.get("cell", Vector2i(-1,-1)) == cell: _draw_nest_object(font, current)
+			for point in [reward] + extra_rewards:
+				if point.get("cell", Vector2i(-1,-1)) == cell and point.get("state") in ["map", "guarding"]: _draw_star(cell)
+			if cell in food_cells: draw_texture_rect(SampleArt.tile(8), Rect2(center + Vector2(-14,-23), Vector2(28,28)), false)
+			if electric_flowers.has(cell):
+				draw_circle(center + Vector2(0,-10), 10, Color("f9e2af"))
+				draw_string(font, center + Vector2(-7,-5), "电", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("313244"))
+			for unit in actors: _draw_unit(font, unit)
+	for arrow in arrows: _draw_arrow(arrow)
+	for marker in markers: _draw_marker(font, marker)
+	for badge in badges:
+		if GridSpec.is_inside(badge.get("cell", Vector2i(-1,-1))): draw_string(font, cell_center(badge["cell"]) + Vector2(-25,-27), String(badge.get("text", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIKit.ACCENT)
+	if GridSpec.is_inside(hover_cell): _iso_outline(hover_cell, Color.WHITE, 2)
+
+func _iso_outline(cell: Vector2i, color: Color, width: float) -> void:
+	if not GridSpec.is_inside(cell): return
+	var p := Iso.diamond(cell)
+	draw_polyline(p + PackedVector2Array([p[0]]), color, width)
 
 
 func _draw_fill(cell: Vector2i, color: Color) -> void:
 	if not GridSpec.is_inside(cell):
 		return
-	draw_rect(Rect2(cell.x * TILE, cell.y * TILE, TILE, TILE), color)
+	draw_colored_polygon(Iso.diamond(cell), color)
 
 
 func _draw_terrain(rect: Rect2, value: int) -> void:

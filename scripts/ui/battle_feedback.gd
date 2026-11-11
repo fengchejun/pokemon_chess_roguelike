@@ -54,7 +54,7 @@ func _process(delta: float) -> void:
 		if age < 0:
 			continue
 		label.visible = true
-		var origin := (Vector2(entry["cell"]) + Vector2(0.5, 0.08)) * BoardView.TILE
+		var origin := BoardView.cell_center(entry["cell"]) + Vector2(0, -28)
 		var rise: float = age / entry["duration"] * 28.0
 		var row_offset: float = entry["row"] * 24.0
 		var desired := origin - Vector2(label.size.x * 0.5, rise + row_offset)

@@ -5,17 +5,10 @@ func _layout_overlays() -> void:
 	super._layout_overlays()
 	if board == null: return
 	board.scale = Vector2.ONE
-	board.position = Vector2(352, 72)
+	board.position = Vector2(320, 135)
 	board.queue_redraw()
 	hint_label.position = Vector2(352, 666)
 	hint_label.custom_minimum_size.x = 576
-
-func _draw() -> void:
-	var frame := Rect2(348, 68, 584, 584)
-	draw_rect(frame, Color("11111b"))
-	draw_rect(frame, Color("6e6376"), false, 2)
-	draw_line(Vector2(348, 68), Vector2(932, 68), Color("a39aab"), 2)
-	draw_line(Vector2(348, 652), Vector2(932, 652), Color("090910"), 4)
 
 func _update_unit_card() -> void:
 	super._update_unit_card()
@@ -73,6 +66,8 @@ func _update_team_list() -> void:
 		number.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		number.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		health.add_child(number)
+		if unit.summon_owner_uid < 0 and app != null and app.run != null:
+			_add_battle_xp_bar(unit)
 	call_deferred("_fit_team_panel")
 
 func _rebuild_skill_buttons() -> void:
