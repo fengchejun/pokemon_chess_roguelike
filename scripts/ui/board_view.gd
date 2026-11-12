@@ -489,7 +489,7 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	var art_index := SampleArt.unit_index(unit.species_id)
 	if art_index >= 0:
 		draw_rect(Rect2(center + Vector2(-29, 17), Vector2(58, 8)), Color(0.04, 0.04, 0.07, 0.5))
-			SelectionEffect.draw_outline(self,art_index,center+Vector2(-48,-66),unit.side,unit.uid==selected_uid)
+		SelectionEffect.draw_outline(self,art_index,center+Vector2(-48,-66),unit.side,unit.uid==selected_uid)
 		draw_texture_rect(SampleArt.tile(art_index), Rect2(center + Vector2(-48, -66), Vector2(96, 96)), false)
 	else:
 		var radius := 26.0
