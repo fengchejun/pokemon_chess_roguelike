@@ -2,6 +2,8 @@ extends RefCounted
 
 const Art = preload("res://sample/pixel_art.gd")
 const GOLD := Color("f9e2af")
+const ALLY := Color("78b8ff")
+const ENEMY := Color("ff7b79")
 static var silhouettes: Dictionary = {}
 
 static func silhouette(index: int) -> Dictionary:
@@ -25,12 +27,13 @@ static func silhouette(index: int) -> Dictionary:
 	silhouettes[index] = {"contours":contours,"top":top}
 	return silhouettes[index]
 
-static func draw_outline(canvas: CanvasItem, index: int, origin: Vector2) -> void:
+static func draw_outline(canvas: CanvasItem, index: int, origin: Vector2, side: String, selected: bool) -> void:
+	var color := GOLD if selected else ALLY if side == "player" else ENEMY
 	for path in silhouette(index)["contours"]:
 		var translated := PackedVector2Array()
 		for p in path: translated.append(p+origin)
-		canvas.draw_polyline(translated,Color("362c26"),5,false)
-		canvas.draw_polyline(translated,GOLD,3,false)
+		canvas.draw_polyline(translated,Color("262532"),5 if selected else 4,false)
+		canvas.draw_polyline(translated,color,3 if selected else 2,false)
 
 static func draw_arrow(canvas: CanvasItem, tip: Vector2) -> void:
 	var shape := PackedVector2Array([Vector2(-4,-16),Vector2(4,-16),Vector2(4,-10),Vector2(9,-10),Vector2(9,-7),Vector2(2,0),Vector2(-2,0),Vector2(-9,-7),Vector2(-9,-10),Vector2(-4,-10)])
