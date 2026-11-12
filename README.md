@@ -15,6 +15,19 @@ Godot / GDScript 的 2D 战棋肉鸽。当前新局采用三层、每层六战�
 
 验证命令：`godot --headless --path . --script res://tests/run_all.gd`；窗口画面截图：`godot --path . --script res://tests/capture_shots.gd`。
 
+### 隔离试玩环境
+
+使用 `tools/playtest.ps1` 启动测试实例，避免读写正式的 Godot `user://` 存档。脚本仅对子进程重定向 `APPDATA` 和 `LOCALAPPDATA`，测试数据与日志位于已被 Git 忽略的 `artifacts/playtest-user/`。
+
+```powershell
+.\tools\playtest.ps1
+.\tools\playtest.ps1 -Clean
+.\tools\playtest.ps1 -Mode Editor
+.\tools\playtest.ps1 -Mode Test -Filter t04
+```
+
+`-Clean` 会删除并重建隔离测试配置；普通 Play 模式保留该目录中的测试存档。若 Godot 不在默认安装路径，可传入 `-GodotExe <exe路径>`。
+
 ## 三层流程与战斗资料
 
 以下为当前逐场流程的规则。开放地图原型已保存为独立 Git 快照，恢复方式见 `ROLLBACK_RECOVERY.md`。

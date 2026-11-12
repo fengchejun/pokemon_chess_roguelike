@@ -2,3 +2,9 @@
 .godot/
 /android/
 artifacts/
+
+# Local test, generated outputs, and accidental shell redirection file
+/tmp/
+/outputs/
+/output/presentations/
+/$null
