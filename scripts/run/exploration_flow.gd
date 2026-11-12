@@ -347,74 +347,18 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 		preload("res://scripts/rules/capture_encounter.gd").prepare_map(map)
 
 static func prepare_battle_loot(run: RunState, map: Dictionary) -> void:
-	if map.get("battle_loot_generated", false):
-		return
 	var kind := role(run)
-	if kind not in ["starter", "battle", "elite", "group", "recapture", "boss"]:
+	if kind not in ["starter", "battle", "elite", "group", "recapture", "boss", "hunt"]:
 		return
+	map["chests"] = {}
+	map["extra_rewards"] = []
+	map["reward"] = {"state": "absent", "cell": Vector2i(-1, -1)}
+	map["battle_loot_generated"] = true
 	var cfg := run.place_region_enemies(run.battle_config(), map)
 	var enemies: Array = cfg["enemies"]
-	if enemies.is_empty():
-		return
-	var region: RegionState = run.get_region()
-	var node: Dictionary = region.nodes[region.active_node]
-	var tier := "high" if kind == "boss" else "medium" if node["role"] == "elite" else "common"
-	var reserved: Array = map.get("deploy_area", []).duplicate()
-	reserved.append_array(map.get("nest_cells", []))
-	reserved.append_array(enemies.map(func(pair): return pair[1]))
-	var terrain: Array = map["terrain"]
-	var walkable := terrain.duplicate()
-	for cell in map.get("electric_flowers", {}):
-		walkable[GridSpec.index(cell)] = TerrainDB.OBSTACLE
-	var candidates := GridSpec.all_cells().filter(func(cell): return cell.x >= 4 and not reserved.has(cell))
-	candidates.sort_custom(func(a, b): return a.x > b.x if a.x != b.x else a.y < b.y)
-	for cell in candidates:
-		var index := GridSpec.index(cell)
-		if walkable[index] not in [TerrainDB.PLAIN, TerrainDB.GRASS, TerrainDB.SHALLOW_GRASS, TerrainDB.ICE, TerrainDB.BLUE_FIRE]:
-			continue
-		walkable[index] = TerrainDB.OBSTACLE
-		var accessible := GridSpec.neighbors4(cell).any(func(near): return MapGenerator._validate(walkable, [near]))
-		walkable[index] = terrain[index]
-		if not accessible:
-			continue
-		map["chests"] = {cell: tier}
-		break
-	if map.get("chests", {}).is_empty():
-		_place_accessible_chest(map, reserved, candidates, tier)
-	map["battle_loot_generated"] = true
 	var carrier_tier := String(cfg.get("carrier_tier", ""))
 	map["carrier_uid"] = 100 + enemies.size() - 1 if not carrier_tier.is_empty() else -1
 	map["carrier_tier"] = carrier_tier
-
-
-static func _place_accessible_chest(map: Dictionary, reserved: Array, candidates: Array, tier: String) -> void:
-	# 极端地图才开一条最短补救通路。部署、巢穴和敌人出生格保持原样。
-	var terrain: Array = map["terrain"]
-	var frontier: Array = Balance.DEPLOY_AREA.duplicate()
-	var previous := {}
-	for cell in frontier:
-		previous[cell] = cell
-	while not frontier.is_empty():
-		var cell: Vector2i = frontier.pop_front()
-		for near in GridSpec.neighbors4(cell):
-			if previous.has(near) or reserved.has(near):
-				continue
-			previous[near] = cell
-			frontier.append(near)
-	for cell in candidates:
-		if not previous.has(cell):
-			continue
-		map["chests"] = {cell: tier}
-		var step: Vector2i = previous[cell]
-		while previous[step] != step:
-			map["electric_flowers"].erase(step)
-			map.get("steam_cells", {}).erase(step)
-			terrain[GridSpec.index(step)] = TerrainDB.PLAIN
-			map["obstacle_cells"].erase(step)
-			map.get("tree_cells", []).erase(step)
-			step = previous[step]
-		map["electric_flowers"].erase(cell)
-		return
 
 
 static func decorate_terrain(run: RunState, map: Dictionary, kind: String) -> void:
@@ -447,7 +391,7 @@ static func decorate_terrain(run: RunState, map: Dictionary, kind: String) -> vo
 static func prepare_state(run: RunState, state: BattleState) -> void:
 	state.exploration_v2 = true
 	state.exploration_role = role(run)
-	state.retreat_disabled = state.is_boss_encounter()
+	state.retreat_disabled = state.is_combat_node()
 	if state.exploration_role == "recapture" and state.storm_strikes.is_empty():
 		state.mark_storm(1)
 	if state.exploration_role == "treasure":

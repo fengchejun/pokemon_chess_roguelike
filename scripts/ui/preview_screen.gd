@@ -136,10 +136,10 @@ func _ready() -> void:
 	board_host.add_child(board)
 	board_host.resized.connect(_layout_preview_board)
 	var legend := "蓝框：部署选位 · 紫色：巢穴 · ★：奖励 · 粮：食物。悬停单位查看招式。"
-	if _uses_extraction_in_preview():
-		legend = "绿框：撤离区（区外队员撤离损失25%最大生命）。" + legend
-	elif _is_puzzle():
+	if _is_puzzle():
 		legend = "宝箱解谜可直接离开，回访保留现场。" + legend
+	elif run.region_mode and run.get_region().flow_version == 2 and preload("res://scripts/run/exploration_flow.gd").role(run) != "capture":
+		legend = "开战后不可撤退，清场后立即结算奖励。" + legend
 	preview.add_child(UIKit.wrapped(legend, 12))
 	deployment_toggle = UIKit.small_button("部署选位 · 点击单位，再点击蓝框格")
 	deployment_toggle.name = "DeploymentModeButton"
@@ -429,15 +429,7 @@ func _on_reset() -> void:
 
 
 func _uses_extraction_in_preview() -> bool:
-	var run: RunState = app.run
-	if int(run.battle_config().get("boss_index", -1)) >= 0:
-		return false
-	if not run.region_mode:
-		return true
-	var region = run.get_region()
-	if region.node_mode(region.active_node) != "battle":
-		return false
-	return region.flow_version != 2 or preload("res://scripts/run/exploration_flow.gd").role(run) not in ["capture", "group"]
+	return false
 
 
 func _is_puzzle() -> bool:

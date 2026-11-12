@@ -80,3 +80,42 @@ static func redeem(run: RunState, tier: String, source_key: String) -> Array:
 	run.essence += essence
 	results.push_front("%d 原质" % essence)
 	return results
+
+
+# Reuse the existing seeded loot table without applying it to the live inventory.
+static func preview(run: RunState, tier: String, source_key: String) -> Array:
+	var simulated := RunState.from_dict(run.to_dict())
+	redeem(simulated, tier, source_key)
+	var offers: Array = []
+	var essence := simulated.essence - run.essence
+	if essence > 0:
+		offers.append({"kind": "essence", "amount": essence, "label": "原质 ×%d" % essence})
+	for id in simulated.relic_stacks:
+		if int(simulated.relic_stacks[id]) > int(run.relic_stacks.get(id, 0)):
+			offers.append({"kind": "relic", "id": id, "label": RelicDB.display_name_of(id)})
+	for id in simulated.trainer_items:
+		var count := int(simulated.trainer_items[id]) - int(run.trainer_items.get(id, 0))
+		if count > 0:
+			var label := "技能书 · " + SkillDB.name_of(String(id).trim_prefix(Merchant.BOOK_PREFIX)) if String(id).begins_with(Merchant.BOOK_PREFIX) else String(Merchant.ITEMS[id][0])
+			offers.append({"kind": "item", "id": id, "amount": count, "label": label})
+	for choices in simulated.legendary_offers.slice(run.legendary_offers.size()):
+		offers.append({"kind": "legendary", "offers": choices.duplicate(), "label": "传奇遗物三选一"})
+	return offers
+
+
+static func grant_offer(run: RunState, offer: Dictionary) -> void:
+	match String(offer["kind"]):
+		"essence":
+			run.essence += int(offer["amount"])
+		"item":
+			var id := String(offer["id"])
+			run.trainer_items[id] = int(run.trainer_items.get(id, 0)) + int(offer["amount"])
+		"relic":
+			var id := String(offer["id"])
+			if RelicDB.rank(run.relic_stacks, id) >= RelicDB.MAX_RANK:
+				run.essence += int(CONVERSION[RelicDB.rarity_of(id)])
+			else:
+				run.relic_stacks[id] = RelicDB.rank(run.relic_stacks, id) + 1
+		"legendary":
+			run.legendary_offers.append(offer["offers"].duplicate())
+			run.pending_reward_choices += 1

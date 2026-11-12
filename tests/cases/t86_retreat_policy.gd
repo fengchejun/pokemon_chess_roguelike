@@ -8,7 +8,7 @@ func make_state(role: String, kind: String) -> BattleState:
 
 func run(t: TestContext) -> void:
 	t.begin("按节点分类撤退、旧存档兼容与结算")
-	for role in ["capture", "treasure", "group"]:
+	for role in ["capture", "treasure"]:
 		var state := make_state(role, "battle" if role != "treasure" else "event")
 		state.retreat_disabled = true # 旧快照遗留字段不能继续封锁新规则。
 		state.trainer().cell = Vector2i(3, 3)
@@ -20,17 +20,9 @@ func run(t: TestContext) -> void:
 	var ordinary := make_state("starter", "battle")
 	ordinary.trainer().cell = Vector2i(3, 3)
 	t.check(not ordinary.can_leave_node() and not ordinary.can_escape() and not ordinary.leave_node(true), "普通战斗训练师未到撤离点不能撤退")
-	ordinary.trainer().cell = ordinary.extraction_cells[0]
-	ordinary.unit_by_uid(1).cell = Vector2i(4, 3)
-	var hp := ordinary.unit_by_uid(1).hp
-	t.check(ordinary.can_escape() and not ordinary.leave_node(), "区外有队员时需确认紧急撤离")
-	t.check(ordinary.leave_node(true) and ordinary.end_reason == "escape", "原紧急撤离流程有效")
-	t.eq(ordinary.unit_by_uid(1).hp, hp - ceili(ordinary.unit_by_uid(1).max_hp / 4.0), "区外伙伴依旧扣25%最大生命")
-	for role in ["boss", "hunt"]:
-		var boss := make_state(role, "boss")
-		boss.trainer().cell = boss.extraction_cells[0]
-		t.check(not boss.can_escape() and not boss.can_leave_node() and not boss.leave_node(true), "首领及追猎禁止撤退")
-	# 用真实入口检查捕捉撤离按钮、捕获保留与未胜利事件不发遗物。
+	ordinary.trainer().cell = Vector2i(0,3)
+	t.check(not ordinary.can_escape() and not ordinary.leave_node(true), "站在旧撤退格也不能退出战斗")
+
 	var app = load("res://scripts/main.gd").new(); app.autosave_enabled = false
 	t.tree.root.add_child(app)
 	app.begin_new_run_with_collection(CollectionState.defaults().select_records([1, 2, 3]))
@@ -58,7 +50,7 @@ func run(t: TestContext) -> void:
 	app.run.region_data = region.to_dict()
 	app.run.pending_captures.clear()
 	var event_state := make_state("group", "battle")
-	t.check(event_state.leave_node(), "事件战斗可直接离开")
+	t.check(not event_state.leave_node(), "主动选择事件战斗后也不能撤退")
 	app.battle_settled = false; app.finish_battle(event_state)
 	t.check(not app.run.get_region().nodes["event_1"].get("done", false), "未胜利事件保持未完成")
 	t.check(not app.run.get_region().nodes["event_1"].get("challenge_reward_claimed", false), "未胜利事件不发挑战遗物")

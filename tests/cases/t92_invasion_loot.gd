@@ -62,9 +62,10 @@ func _defense(t: TestContext) -> void:
 	battle.exploration_v2 = true
 	battle.exploration_role = "recapture"
 	battle.units = run_state.build_deploy_units([reserve_uid])
-	battle.end_battle("escape")
+	battle.stop_nests()
+	battle.end_battle("victory")
 	run_state.settle_battle(battle)
-	t.check(not stored_a.has("defense_locked_levels"), "该成员实际参战并撤退结算后解锁学招")
+	t.check(not stored_a.has("defense_locked_levels"), "该成员实际参战并获胜结算后解锁学招")
 
 
 func _garrison_map(t: TestContext) -> void:
@@ -132,14 +133,14 @@ func _carrier(t: TestContext) -> void:
 	t.eq(restored.carrier_turns_left, 2, "战斗读档保留撤退时限")
 	var node := Flow.generate(0, "grass", 92)
 	var left := state.clone()
-	left.end_battle("escape")
+	left.end_battle("explored")
 	t.check(node.store_battle("battle_1", left), "撤退保存携带者所在节点")
 	var resumed := node.resume_node("battle_1", [left.trainer().dup()])
 	t.check(resumed != null and resumed.carrier_turns_left == 2 and resumed.unit_by_uid(101).reward_carrier, "撤退重访不会重置计时或刷新目标")
 	restored.end_enemy_phase()
 	t.check(restored.unit_by_uid(101).is_alive(), "第二轮后仍可继续追打")
 	restored.end_enemy_phase()
-	t.check(restored.is_free_exploration() and not restored.all_rewards().any(func(point): return point.get("id", "") == "enemy:101"), "第三轮末撤退，无掉落且可清场")
+	t.check(restored.battle_objective_met() and not restored.all_rewards().any(func(point): return point.get("id", "") == "enemy:101"), "第三轮末撤退，无掉落且可清场")
 
 	var storm := TestScenario.make_state(["fire_starter"], [["rock_wild1", Vector2i(6, 5)]])
 	storm.node_kind = "battle"

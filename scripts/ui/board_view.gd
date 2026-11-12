@@ -98,7 +98,7 @@ func set_from_state(state: BattleState) -> void:
 
 func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	camp_facilities = map.get("camp_facilities", {}).duplicate(true)
-	extraction_cells = map.get("extraction_cells", []).duplicate()
+	extraction_cells = []
 	capture_exits = map.get("capture_exits", []).duplicate()
 	nest_guard_counts.clear()
 	storm_strikes = map.get("storm_strikes", []).duplicate(true)
@@ -209,11 +209,6 @@ func _draw() -> void:
 			draw_circle(center + offset, 8, Color("f4ca51"))
 		draw_polyline(PackedVector2Array([center + Vector2(3, -10), center + Vector2(-5, 1), center + Vector2(4, 1), center + Vector2(-3, 11)]), Color("594216"), 3)
 		draw_string(font, center + Vector2(20, -16), str(obstacle_durability.get(cell, 0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("fff0ad"))
-	for cell in extraction_cells:
-		var zone := Rect2(Vector2(cell) * TILE + Vector2(3,3), Vector2.ONE * (TILE - 6))
-		draw_rect(zone, Color(0.25, 0.85, 0.72, 0.18))
-		draw_rect(zone, Color("62d8be"), false, 2.0)
-		draw_string(font, zone.position + Vector2(3,14), "撤离", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("8cf7d9"))
 	for cell in capture_exits:
 		var zone := Rect2(Vector2(cell) * TILE + Vector2(3, 3), Vector2.ONE * (TILE - 6))
 		draw_rect(zone, Color(1.0, 0.6, 0.2, 0.23))

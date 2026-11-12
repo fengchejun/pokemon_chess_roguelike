@@ -524,8 +524,6 @@ func _update_header() -> void:
 	if state.is_free_exploration():
 		objective_label.text += "\n自由探索 · 无限行动 · 禁用直接治疗"
 	objective_label.text += "\n宝箱 %d · 待拾 %d · 我持 %d · 敌持 %d" % [state.chests.size(), state.all_rewards().filter(func(p): return p.get("state") in ["map", "guarding"]).size(), state.reward_count_held("player"), state.reward_count_held("enemy")]
-	if not state.can_leave_node() and state.uses_extraction():
-		objective_label.text += "\n部署/撤离区：绿色框\n区外%d名：撤离损失25%%最大生命" % state.escape_stragglers().size()
 	objective_label.text += "\n原质 %d%s" % [app.run.essence + state.essence_earned - self.state.essence_applied, " · 捕获辅助生效" if state.capture_aid else ""]
 	if state.exploration_v2:
 		if state.exploration_role == "capture":
@@ -533,7 +531,7 @@ func _update_header() -> void:
 		elif state.exploration_role == "treasure":
 			objective_label.text = "宝箱解谜\n利用技能和地形到达宝箱\n地形变化与损耗保留\n可暂时离开，准备后回访"
 		elif state.exploration_role == "hunt" and not GridSpec.is_inside(state.boss_portal_cell):
-			objective_label.text = "强制追猎 · 敌方全员黑化\n不能撤退，清场后开启传送门\n敌人 %d" % state.alive_enemy_count()
+			objective_label.text = "强制追猎 · 敌方全员黑化\n不能撤退，清场后领取奖励\n敌人 %d" % state.alive_enemy_count()
 	if state.is_camp_map:
 		if state.is_free_exploration():
 			objective_label.text = "营地 · 自由布置\n可移动、施法、返回区域\n食物 %d · 原质 %d" % [app.run.total_food(), app.run.essence]
@@ -1085,8 +1083,9 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 
 func _update_action_buttons() -> void:
 	if leave_node_button != null:
-		leave_node_button.text = "返回区域" if state.can_leave_node() else "首领战不可撤退" if state.node_kind == "boss" or state.boss_uid >= 0 else "撤退" if state.can_escape() else "前往撤离区"
-		leave_node_button.tooltip_text = "首领战与追猎必须完成清场，不能撤退。" if state.is_boss_encounter() else "训练家进入部署/撤离区后可撤离；区外队员损失25%最大生命，可能濒死；濒死者奖励留原地。" if state.uses_extraction() else "可直接离开当前节点，保留已获得的捕获和奖励，不产生撤离区扣血。"
+		leave_node_button.visible = not state.is_combat_node()
+		leave_node_button.text = "返回区域"
+		leave_node_button.tooltip_text = "战斗开始后须清场获胜，胜利后立即领取奖励。" if state.is_combat_node() else "可直接离开当前节点，保留已获得的捕获和奖励。"
 
 		leave_node_button.disabled = busy or _playback_active() or state.ended or not (state.can_leave_node() or state.can_escape())
 	if end_turn_button != null:
@@ -2036,18 +2035,6 @@ func do_undo() -> bool:
 
 func do_leave_node() -> void:
 	if busy or _playback_active() or state == null:
-		return
-	if not state.can_leave_node() and state.can_escape() and not state.escape_stragglers().is_empty():
-		var names := state.escape_stragglers().map(func(u): return "%s (#%d)：%d→%d HP" % [u.display_name, u.uid, u.hp, state.escape_hp_after(u)])
-		_show_modal("撤离确认", "区外队员扣除最大生命25%%（向上取整）：\n%s\n0 HP者濒死，%d个携带奖励点留在原格，需重访拾取。存活者保留奖励。已入账经验保留，可取消返回撤离区。" % ["\n".join(names), state.escape_losses().size()])
-		var button := UIKit.button("确认撤离（区外扣血，可能濒死）")
-		button.name = "ConfirmEmergencyEscape"
-		button.pressed.connect(func() -> void:
-			_close_modal()
-			if state.leave_node(true):
-				app.sync_and_save(state)
-				refresh_all())
-		modal_layer.get_child(0).get_child(0).add_child(button)
 		return
 	if state.leave_node():
 		app.sync_and_save(state)

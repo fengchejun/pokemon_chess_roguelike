@@ -305,7 +305,7 @@ func capture_roll() -> float:
 
 func load_map(map_data: Dictionary) -> void:
 	terrain = map_data["terrain"].duplicate()
-	extraction_cells = map_data.get("extraction_cells", extraction_area(map_data)).duplicate()
+	extraction_cells = []
 	burning_cells = {}
 	burning_origin = {}
 	burning_forced = {}
@@ -2528,6 +2528,9 @@ func check_battle_end() -> bool:
 	try_release_boss()
 	if ended:
 		return true
+	if exploration_v2 and is_combat_node() and battle_objective_met():
+		end_battle("victory")
+		return true
 	var full_clear_boss := exploration_v2 and exploration_role in ["boss", "hunt"]
 	if full_clear_boss and not GridSpec.is_inside(boss_portal_cell) and battle_objective_met():
 		var defeated_boss := unit_by_uid(boss_uid)
@@ -2574,71 +2577,34 @@ func is_boss_encounter() -> bool:
 	return node_kind == "boss" or boss_uid >= 0 or (exploration_v2 and exploration_role in ["boss", "hunt"])
 
 
+func is_combat_node() -> bool:
+	if exploration_v2 and exploration_role in ["capture", "treasure", "camp"]:
+		return false
+	return is_boss_encounter() or node_kind in ["", "battle"]
+
+
 func uses_extraction() -> bool:
-	return not is_boss_encounter() and node_kind in ["", "battle"] and not (exploration_v2 and exploration_role in ["capture", "group"])
+	return false
 
 
 func can_leave_node() -> bool:
-	if ended or phase != PHASE_PLAYER or is_boss_encounter(): return false
-	return not uses_extraction() or battle_objective_met()
+	if ended or phase != PHASE_PLAYER or is_boss_encounter():
+		return false
+	return not is_combat_node() or battle_objective_met()
 
 
 static func extraction_area(map: Dictionary) -> Array:
-	return (map.get("deploy_area", Balance.DEPLOY_AREA) as Array).duplicate()
+	return []
 
 
 func can_escape() -> bool:
-	var actor := trainer()
-	return not ended and phase == PHASE_PLAYER and uses_extraction() and actor != null and actor.is_alive() and extraction_cells.has(actor.cell)
-
-
-func escape_stragglers() -> Array:
-	var actor := trainer()
-	if actor == null:
-		return []
-	return alive_units("player").filter(func(u): return not u.is_trainer and u.summon_owner_uid < 0 and not extraction_cells.has(u.cell))
-
-
-func escape_hp_after(unit: CombatUnit) -> int:
-	return maxi(0, unit.hp - ceili(unit.max_hp / 4.0))
-
-
-func escape_losses() -> Array:
-	var ids := escape_stragglers().filter(func(u): return escape_hp_after(u) == 0).map(func(u): return u.uid)
-	return all_rewards().filter(func(p): return p.get("state") == "carried" and ids.has(int(p.get("owner_uid", -1))) and not bool(p.get("credited", false)))
-
+	return false
 
 func leave_node(emergency: bool = false) -> bool:
-	if exploration_v2 and exploration_role in ["capture", "treasure"] and can_leave_node():
-		end_battle("explored")
-		return true
-	if can_leave_node():
-		end_battle("victory" if node_kind == "battle" and battle_objective_met() else "explored")
-	elif can_escape():
-		var missing := escape_stragglers()
-		if not missing.is_empty() and not emergency:
-			return false
-		for unit in missing:
-			var before: int = unit.hp
-			var after := escape_hp_after(unit)
-			if after == 0:
-				for point in all_rewards():
-					if point.get("state") == "carried" and int(point.get("owner_uid", -1)) == unit.uid and not bool(point.get("credited", false)):
-						point["state"] = "map"
-						point["cell"] = unit.cell
-						point["owner_uid"] = -1
-						point["guard_uid"] = -1
-						log_event("%s 撤离濒死，携带奖励留在 (%d,%d)。" % [unit.display_name, unit.cell.x, unit.cell.y])
-				kill_unit(unit, "撤离：区外队员损失25%最大生命")
-			else:
-				unit.hp = after
-			escape_penalties.append({"uid": unit.uid, "name": unit.display_name, "from": before, "to": unit.hp})
-			emit_feedback(unit, "damage", "撤离 -%d" % (before - unit.hp), before - unit.hp)
-		end_battle("escape")
-	else:
+	if not can_leave_node():
 		return false
+	end_battle("victory" if is_combat_node() else "explored")
 	return ended
-
 
 func add_garrison(count: int, species_pool: Array, preferred_cells: Array = []) -> int:
 	var added := 0
@@ -2698,7 +2664,7 @@ func set_enemy_level_bonus(bonus: int) -> void:
 
 
 func end_battle(reason: String) -> void:
-	if reason == "escape" and (node_kind == "boss" or boss_uid >= 0):
+	if reason == "escape" and ((exploration_v2 and is_combat_node()) or is_boss_encounter()):
 		return
 	if ended:
 		return
@@ -2907,6 +2873,8 @@ func clone() -> BattleState:
 
 
 func is_free_exploration() -> bool:
+	if exploration_v2 and is_combat_node():
+		return false
 	return node_kind == "event" or (node_kind == "battle" and battle_objective_met()) or GridSpec.is_inside(boss_portal_cell)
 
 

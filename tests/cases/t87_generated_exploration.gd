@@ -99,28 +99,14 @@ func run(t: TestContext) -> void:
 	boss_battle.phase = BattleState.PHASE_ENEMY
 	var final_round := boss_battle.round
 	boss_battle.end_enemy_phase()
-	t.check(not boss_battle.ended and GridSpec.is_inside(boss_battle.boss_portal_cell), "普通 Boss 在环境结算清场后也保留战场")
-	t.check(boss_battle.phase == BattleState.PHASE_PLAYER and boss_battle.round == final_round, "开门后回合停止，交还我方操作")
+	t.check(boss_battle.ended and boss_battle.end_reason == "victory", "普通 Boss 在环境清场后立即胜利")
+	t.check(boss_battle.phase == BattleState.PHASE_ENDED and boss_battle.round == final_round, "胜利后回合立即结束")
 	t.check(not run_state.get_region().invaded, "提前打 Boss 未触发入侵")
-	var boss_chests := boss_battle.chests.keys()
-	t.eq(boss_chests.size(), 1, "Boss 后排固定一个宝箱")
-	if not boss_chests.is_empty():
-		var chest: Vector2i = boss_chests[0]
-		t.eq(boss_battle.chests[chest], "high", "Boss 宝箱是高级奖励")
-		boss_battle.damage_obstacle(chest, 1, "player")
-		t.check(boss_battle.move_unit(boss_battle.trainer(), chest), "清场后实际移动拾取高级奖励")
-	var boss_trainer := boss_battle.trainer()
-	if not boss_battle.can_interact_at(boss_battle.boss_portal_cell):
-		var reachable := boss_battle.move_options(boss_trainer)
-		var neighbors := GridSpec.neighbors4(boss_battle.boss_portal_cell).filter(func(cell): return reachable.has(cell))
-		if not neighbors.is_empty():
-			boss_battle.move_unit(boss_trainer, neighbors[0])
-	app.current_screen.playback.finish_all()
-	app.current_screen.battle_notice.finish_all()
-	app.current_screen._on_board_clicked(boss_battle.boss_portal_cell)
-	t.check(boss_battle.ended and boss_battle.end_reason == "victory", "提前击败 Boss 可通过实际传送门操作离场")
-	app.current_screen.report_end_now()
-	t.check(run_state.legendary_offers.size() == 1 and run_state.pending_reward_choices == 1, "带出的高级点兑换一次传奇三选一")
+	t.check(boss_battle.chests.is_empty(), "首领战取消额外宝箱")
+	app.finish_battle(boss_battle)
+	t.check(run_state.has_pending_battle_loot(), "高级战利品等待选择领取")
+	for i in run_state.pending_battle_loot.size(): run_state.resolve_battle_loot(i, true)
+	t.check(run_state.legendary_offers.size() == 1 and run_state.pending_reward_choices == 1, "领取后进入传奇三选一")
 	var paid := run_state.essence
 	run_state.settle_battle(boss_battle)
 	t.eq(run_state.essence, paid, "重复结算不会再发高级奖励")

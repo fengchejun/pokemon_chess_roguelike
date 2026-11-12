@@ -112,6 +112,8 @@ func _summary_box(run: RunState) -> Control:
 		lines.append("捕获首领：永久首领之血 +%d（当前 %d 份）" % [int(outcome["boss_blood"]), app.collection.boss_blood])
 	if bool(outcome.get("bonus_choice_earned", false)):
 		lines.append("奖励点：本场额外获得一次三选一")
+	if not run.pending_battle_loot.is_empty():
+		lines.append("胜利战利品可逐项领取或放弃。")
 	if run.pending_reward_choices > 0:
 		lines.append("待选战后奖励：%d 次" % run.pending_reward_choices)
 	var pending_monster_levels: Array = run.pending_monster_levels()
@@ -158,6 +160,39 @@ func _show_next_step() -> void:
 	processing = false
 	UIKit.clear_children(choice_box)
 	var run: RunState = app.run
+	var taken := run.pending_battle_loot.filter(func(offer): return offer.get("status", "") == "taken")
+	if not taken.is_empty():
+		choice_box.add_child(UIKit.wrapped("已领取：" + "、".join(taken.map(func(offer): return offer["label"])), 14, UIKit.ACCENT))
+	if run.has_pending_battle_loot():
+		step_label.text = "胜利奖励 · 可分别领取或放弃"
+		choice_box.add_child(UIKit.wrapped("每项单独处理，领取原质后可以放弃遗物。放弃的奖励不会自动入账。", 14))
+		for index in run.pending_battle_loot.size():
+			var offer: Dictionary = run.pending_battle_loot[index]
+			if offer.get("status", "pending") != "pending":
+				continue
+			var row := UIKit.hbox(8)
+			choice_box.add_child(row)
+			var label := UIKit.wrapped(String(offer["label"]), 16)
+			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(label)
+			var take := UIKit.small_button("领取")
+			take.name = "TakeBattleLoot_%d" % index
+			take.pressed.connect(_resolve_loot.bind(index, true))
+			row.add_child(take)
+			var skip := UIKit.small_button("放弃")
+			skip.name = "SkipBattleLoot_%d" % index
+			skip.pressed.connect(_resolve_loot.bind(index, false))
+			row.add_child(skip)
+		var skip_all := UIKit.small_button("放弃剩余奖励")
+		skip_all.name = "SkipRemainingBattleLoot"
+		skip_all.pressed.connect(func() -> void:
+			for index in run.pending_battle_loot.size():
+				run.resolve_battle_loot(index, false)
+			app.autosave()
+			_show_next_step())
+		choice_box.add_child(skip_all)
+		continue_button.disabled = true
+		return
 	if not run.pending_captures.is_empty():
 		if run.region_mode and bool(run.options.get("exploration_v2", false)) and run.carried.size() >= Balance.CARRIED_LIMIT:
 			step_label.text = "新伙伴 · 选择随身替换或送入仓库"
@@ -241,6 +276,13 @@ func _show_next_step() -> void:
 			button.name = "RewardChoice_%s" % id.replace(":", "_")
 			button.pressed.connect(_choose_settlement_reward.bind(id))
 			choice_box.add_child(button)
+		var skip_reward := UIKit.small_button("放弃本次遗物选择")
+		skip_reward.name = "SkipRewardChoice"
+		skip_reward.pressed.connect(func() -> void:
+			run.skip_reward_choice()
+			app.autosave()
+			_show_next_step())
+		choice_box.add_child(skip_reward)
 		continue_button.disabled = true
 		return
 	step_label.text = "全部处理完成，可以进入下一场。"
@@ -318,3 +360,9 @@ func _show_capture_step(run: RunState) -> void:
 	)
 	choice_box.add_child(give_up)
 	continue_button.disabled = true
+
+
+func _resolve_loot(index: int, take: bool) -> void:
+	if app.run.resolve_battle_loot(index, take):
+		app.autosave()
+		_show_next_step()

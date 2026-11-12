@@ -127,7 +127,15 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		state.boss_retreat_used = true
 	if int(snapshot.get("version", 1)) < 6 and state.round > Balance.CORRUPTION_ROUND and not state.ended:
 		state._trigger_timed_corruption()
-	state.extraction_cells = state.deploy_area.duplicate()
+	state.extraction_cells = []
+	if state.exploration_v2 and state.is_combat_node():
+		for cell in state.chests:
+			state.obstacle_durability.erase(cell)
+		state.chests.clear()
+		if not String(state.reward.get("id", "")).begins_with("enemy:"):
+			state.reward["state"] = "absent"
+		state.extra_rewards = state.extra_rewards.filter(func(point): return String(point.get("id", "")).begins_with("enemy:"))
+		state.boss_portal_cell = Vector2i(-1, -1)
 	state._boss_effect_depth = 0
 	state.normalize_nest_terrain()
 	state.try_release_boss()

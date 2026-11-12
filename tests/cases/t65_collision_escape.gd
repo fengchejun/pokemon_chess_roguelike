@@ -63,10 +63,10 @@ func _escape(t: TestContext) -> void:
 		state.unit_by_uid(1).moved = true
 		state.unit_by_uid(1).skill_used = true
 		state.storm_strikes = [{"cell": Vector2i(2, 3), "due_round": current_round + 1}]
-		t.check(state.can_escape() and not state.can_leave_node(), "清场前任何轮次都可撤退，无需剩余动作")
-		t.check(state.leave_node(), "主动撤退入口成功")
-		t.eq(state.end_reason, "escape", "未清场撤退不误判胜利")
-		t.check(state.storm_strikes.is_empty(), "撤退清理战斗预告")
+		t.check(not state.can_escape() and not state.can_leave_node(), "任何轮次普通战斗都不可撤退")
+		t.check(not state.leave_node(), "主动撤退入口关闭")
+		t.eq(state.end_reason, "", "不能通过撤退结束战斗")
+		t.check(not state.storm_strikes.is_empty(), "被拒绝的撤退保留战斗预告")
 		t.check(not state.leave_node(), "结束后不能重复撤退结算")
 	var enemy_phase := _state()
 	enemy_phase.phase = BattleState.PHASE_ENEMY
@@ -97,15 +97,15 @@ func _ui(t: TestContext) -> void:
 	app._switch(screen)
 	screen.playback.finish_all()
 	screen.refresh_all()
-	t.eq(screen.leave_node_button.text, "撤退", "普通战斗显示撤退按钮")
-	t.check(not screen.leave_node_button.disabled, "首轮未清场也可点击撤退")
+	t.check(not screen.leave_node_button.visible, "普通战斗移除撤退按钮")
+	t.check(screen.leave_node_button.disabled, "首轮不可主动撤退")
 	screen.state.node_kind = "boss"
 	screen.refresh_all()
-	t.check(screen.leave_node_button.disabled and screen.leave_node_button.text.contains("不可撤退"), "首领战明确显示禁止撤退")
+	t.check(screen.leave_node_button.disabled and not screen.leave_node_button.visible, "首领也不显示撤退入口")
 	screen.do_leave_node()
 	t.check(not screen.state.ended, "UI调用不能绕过首领限制")
 	screen.state.node_kind = "battle"
 	screen.state.unit_by_uid(1).cell = Vector2i(1,3)
 	screen.do_leave_node()
-	t.eq(screen.state.end_reason, "escape", "UI实际触发撤退结算")
+	t.eq(screen.state.end_reason, "", "UI不能触发撤退结算")
 	app.free()

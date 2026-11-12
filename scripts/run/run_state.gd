@@ -155,6 +155,7 @@ var selected_reward_item: String = ""
 var preview_used_reward_item: String = ""
 var preview_modifications: Array = []
 var preview_deploy_positions: Dictionary = {}
+var pending_battle_loot: Array = []
 var pending_reward_choices: int = 0
 var legendary_offers: Array = []
 var reward_choice_index: int = 0
@@ -649,8 +650,9 @@ func sync_from_battle(battle: BattleState) -> void:
 		if region.nodes.has(region.active_node):
 			region.nodes[region.active_node]["corrupted"] = true
 		region_data = region.to_dict()
-	essence += maxi(0, battle.essence_earned - battle.essence_applied)
-	battle.essence_applied = battle.essence_earned
+	if not (battle.exploration_v2 and battle.is_combat_node()):
+		essence += maxi(0, battle.essence_earned - battle.essence_applied)
+		battle.essence_applied = battle.essence_earned
 	if region_mode:
 		add_food("basic", maxi(0, battle.food_collected - battle.food_applied))
 		battle.food_applied = battle.food_collected
@@ -851,6 +853,16 @@ func settle_battle(battle: BattleState) -> Dictionary:
 		legendary_offers.clear()
 		pending_bonus_choices = 0
 	var bonus_points := battle.earned_reward_points(true) if not failure else []
+	var victory_loot := battle.exploration_v2 and battle.is_combat_node() and battle.end_reason == "victory" and battle.battle_objective_met()
+	if victory_loot:
+		bonus_points = battle.all_rewards().filter(func(point): return String(point.get("id", "")).begins_with("enemy:") and not point.get("credited", false))
+		var tier := "common"
+		if battle.exploration_role in ["boss", "hunt"]:
+			tier = "high"
+		elif battle.exploration_role == "elite" or (battle.exploration_role == "recapture" and region_data.get("nodes", {}).get(region_data.get("active_node", ""), {}).get("role") == "elite"):
+			tier = "medium"
+		if battle.exploration_role != "hunt":
+			bonus_points.append({"id": "victory", "tier": tier})
 	var bonus_count := bonus_points.size()
 	var bonus_earned := bonus_count > 0
 	if not failure and (not region_mode or battle.node_kind != "event"):
@@ -891,6 +903,12 @@ func settle_battle(battle: BattleState) -> Dictionary:
 			kills += 1
 	stats["kills"] = int(stats["kills"]) + kills
 	var loot := []
+	pending_battle_loot.clear()
+	if victory_loot:
+		var earned := maxi(0, battle.essence_earned - battle.essence_applied)
+		if earned > 0:
+			pending_battle_loot.append({"kind": "essence", "amount": earned, "label": "战斗原质 ×%d" % earned})
+		battle.essence_applied = battle.essence_earned
 	if bonus_earned:
 		for point in bonus_points:
 			point["credited"] = true
@@ -900,14 +918,25 @@ func settle_battle(battle: BattleState) -> Dictionary:
 			else:
 				var node_id := String(region_data.get("active_node", ""))
 				var key := "%d:%s:%s:%s" % [floor_index(), node_id, battle.exploration_role, point["id"]]
-				loot.append_array(preload("res://scripts/run/battle_loot.gd").redeem(self, tier, key))
+				if victory_loot:
+					pending_battle_loot.append_array(preload("res://scripts/run/battle_loot.gd").preview(self, tier, key))
+				else:
+					loot.append_array(preload("res://scripts/run/battle_loot.gd").redeem(self, tier, key))
+	if victory_loot:
+		var total_essence := 0
+		for offer in pending_battle_loot:
+			if offer["kind"] == "essence":
+				total_essence += int(offer["amount"])
+		pending_battle_loot = pending_battle_loot.filter(func(offer): return offer["kind"] != "essence")
+		if total_essence > 0:
+			pending_battle_loot.push_front({"kind": "essence", "amount": total_essence, "label": "原质 ×%d" % total_essence})
 	outcome["loot"] = loot
 	if battle.exploration_v2 and battle.exploration_role in ["starter", "battle", "elite", "group", "recapture", "boss", "hunt"] and (battle.end_reason in ["victory", "escape"] or (battle.exploration_role == "group" and battle.end_reason == "explored")):
 		for uid in deployed_uids:
 			var member := record_by_uid(int(uid))
 			if not member.is_empty() and battle.unit_by_uid(int(uid)) != null:
 				member.erase("defense_locked_levels")
-	outcome["bonus_choice_earned"] = bonus_earned
+	outcome["bonus_choice_earned"] = bonus_earned and not victory_loot
 	outcome["bonus_choices_earned"] = bonus_count
 	pending_reward_choices += pending_bonus_choices
 	pending_bonus_choices = 0
@@ -1252,6 +1281,7 @@ func to_dict() -> Dictionary:
 		"preview_used_reward_item": preview_used_reward_item,
 		"preview_modifications": preview_modifications.duplicate(true),
 		"preview_deploy_positions": BattleSnapshot.encode(preview_deploy_positions),
+		"pending_battle_loot": pending_battle_loot.duplicate(true),
 		"pending_reward_choices": pending_reward_choices, "legendary_offers": legendary_offers.duplicate(true),
 		"reward_choice_index": reward_choice_index,
 		"settlement_pending": settlement_pending,
@@ -1356,6 +1386,7 @@ static func from_dict(data: Dictionary) -> RunState:
 		run.preview_used_reward_item = ""
 	run.preview_modifications = (data.get("preview_modifications", []) as Array).duplicate(true)
 	run.preview_deploy_positions = BattleSnapshot.decode(data.get("preview_deploy_positions", {}))
+	run.pending_battle_loot = (data.get("pending_battle_loot", []) as Array).duplicate(true)
 	run.pending_reward_choices = maxi(0, int(data.get("pending_reward_choices", 0)))
 	run.legendary_offers = data.get("legendary_offers", []).duplicate(true)
 	run.reward_choice_index = maxi(0, int(data.get("reward_choice_index", 0)))
@@ -1551,3 +1582,29 @@ func _normalize_record_growth(record: Dictionary, legacy_upgrade_style: bool) ->
 	record["upgrades_taken"] = kept_taken
 	record["claimed_even_levels"] = kept_claimed
 	record["level_choices"] = {} if legacy_upgrade_style else (record.get("level_choices", {}) as Dictionary).duplicate(true)
+
+
+func has_pending_battle_loot() -> bool:
+	return pending_battle_loot.any(func(offer): return offer.get("status", "pending") == "pending")
+
+
+func resolve_battle_loot(index: int, take: bool) -> bool:
+	if not settlement_pending or index < 0 or index >= pending_battle_loot.size():
+		return false
+	var offer: Dictionary = pending_battle_loot[index]
+	if offer.get("status", "pending") != "pending":
+		return false
+	if take:
+		preload("res://scripts/run/battle_loot.gd").grant_offer(self, offer)
+	offer["status"] = "taken" if take else "skipped"
+	return true
+
+
+func skip_reward_choice() -> bool:
+	if pending_reward_choices <= 0:
+		return false
+	if not legendary_offers.is_empty():
+		legendary_offers.pop_front()
+	pending_reward_choices -= 1
+	reward_choice_index += 1
+	return true

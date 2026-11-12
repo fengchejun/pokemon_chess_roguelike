@@ -66,6 +66,6 @@ func run(t: TestContext) -> void:
 	var state: BattleState = app.current_screen.state
 	t.eq(state.exploration_role, "elite", "正常入口进入精英战")
 	t.check(state.alive_units("enemy").all(func(enemy): return enemy.enemy_level == 2), "第一层精英战实际敌人等级加一")
-	t.check(state.uses_extraction(), "精英战沿用战斗撤离点")
+	t.check(not state.uses_extraction() and not state.can_escape(), "精英战取消撤退区与主动撤退")
 	app.free()
 	t.finish()
