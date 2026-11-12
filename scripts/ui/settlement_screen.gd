@@ -9,7 +9,16 @@ var outcome: Dictionary = {}
 var choice_box: VBoxContainer = null
 var step_label: Label = null
 var continue_button: Button = null
+var skip_remaining_button: Button
 var processing := false
+var card: PanelContainer
+var page: VBoxContainer
+var choice_scroll: ScrollContainer
+var details_scroll: ScrollContainer
+var progress_label: Label
+var layout_queued := false
+var layout_stage := ""
+var stage_height := 0.0
 
 
 func _ready() -> void:
@@ -19,34 +28,73 @@ func _ready() -> void:
 	battle = data.get("battle")
 	outcome = data.get("outcome", {})
 	var run: RunState = app.run
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 24)
-	margin.add_theme_constant_override("margin_right", 24)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_bottom", 16)
-	add_child(margin)
-	var columns := UIKit.hbox(16)
-	margin.add_child(columns)
-	var left := UIKit.vbox(10)
-	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	columns.add_child(left)
-	left.add_child(UIKit.label(_result_title(), 30, UIKit.ACCENT))
-	left.add_child(_summary_box(run))
-	var right := UIKit.vbox(10)
-	right.custom_minimum_size = Vector2(500, 0)
-	columns.add_child(right)
-	step_label = UIKit.label("", 19, UIKit.ACCENT)
-	right.add_child(step_label)
-	var scroll := UIKit.scroll()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	right.add_child(scroll)
-	choice_box = UIKit.vbox(8)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(center)
+	card = UIKit.panel(Color("202630"))
+	card.name = "SettlementCard"
+	var surface := card.get_theme_stylebox("panel").duplicate() as StyleBoxFlat
+	surface.set_content_margin_all(22)
+	surface.set_corner_radius_all(16)
+	surface.border_color = Color("394451")
+	surface.set_border_width_all(1)
+	card.add_theme_stylebox_override("panel", surface)
+	center.add_child(card)
+	page = UIKit.vbox(14)
+	card.add_child(page)
+	var header := UIKit.hbox(12)
+	page.add_child(header)
+	var title := UIKit.label(_result_title(), 29, UIKit.ACCENT)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var details := UIKit.small_button("查看战报")
+	details.name = "ToggleSettlementDetails"
+	_style_button(details, Color("2c3542"), UIKit.TEXT)
+	details.pressed.connect(func() -> void:
+		details_scroll.visible = not details_scroll.visible
+		details.text = "收起战报" if details_scroll.visible else "查看战报"
+		_schedule_layout())
+	header.add_child(details)
+	page.add_child(UIKit.label("击败 %d  ·  捕获 %d  ·  队伍经验 +%d" % [int(outcome.get("kills", 0)), int(outcome.get("captures", 0)), int(outcome.get("exp", 0))], 16, UIKit.TEXT_DIM))
+	details_scroll = UIKit.scroll()
+	details_scroll.name = "SettlementDetails"
+	details_scroll.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	details_scroll.custom_minimum_size.y = 140
+	details_scroll.add_child(_summary_box(run))
+	details_scroll.hide()
+	page.add_child(details_scroll)
+	page.add_child(HSeparator.new())
+	step_label = UIKit.wrapped("", 20, UIKit.ACCENT)
+	page.add_child(step_label)
+	choice_scroll = UIKit.scroll()
+	choice_scroll.name = "SettlementChoicesScroll"
+	choice_scroll.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	page.add_child(choice_scroll)
+	choice_box = UIKit.vbox(10)
+	choice_box.name = "SettlementChoices"
 	choice_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	choice_box.custom_minimum_size.x = 500
-	scroll.add_child(choice_box)
+	choice_scroll.add_child(choice_box)
+	choice_box.minimum_size_changed.connect(_schedule_layout)
+	page.add_child(HSeparator.new())
+	var footer := UIKit.hbox(16)
+	page.add_child(footer)
+	progress_label = UIKit.wrapped("", 14, UIKit.TEXT_DIM)
+	progress_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	footer.add_child(progress_label)
+	skip_remaining_button = UIKit.button("放弃剩余奖励", 15)
+	skip_remaining_button.name = "SkipRemainingBattleLoot"
+	skip_remaining_button.custom_minimum_size.x = 160
+	_style_button(skip_remaining_button, Color("34343d"), Color("c6b9c0"))
+	skip_remaining_button.pressed.connect(func() -> void:
+		for index in app.run.pending_battle_loot.size():
+			app.run.resolve_battle_loot(index, false)
+		app.autosave()
+		_show_next_step())
+	footer.add_child(skip_remaining_button)
 	continue_button = UIKit.button("继续", 18)
 	continue_button.name = "ContinueButton"
+	continue_button.custom_minimum_size = Vector2(176, 48)
+	_style_button(continue_button, UIKit.ACCENT, Color("25232b"))
 	continue_button.disabled = true
 	continue_button.pressed.connect(func() -> void:
 		var region = app.run.get_region() if app.run.region_mode else null
@@ -61,8 +109,10 @@ func _ready() -> void:
 		else:
 			app.continue_after_settlement()
 	)
-	right.add_child(continue_button)
+	footer.add_child(continue_button)
+	resized.connect(_schedule_layout)
 	_show_next_step()
+	_schedule_layout()
 
 
 func _result_title() -> String:
@@ -159,7 +209,10 @@ func _summary_box(run: RunState) -> Control:
 func _show_next_step() -> void:
 	processing = false
 	UIKit.clear_children(choice_box)
+	choice_scroll.scroll_vertical = 0
+	_schedule_layout()
 	var run: RunState = app.run
+	skip_remaining_button.visible = run.has_pending_battle_loot()
 	var taken := run.pending_battle_loot.filter(func(offer): return offer.get("status", "") == "taken")
 	if not taken.is_empty():
 		choice_box.add_child(UIKit.wrapped("已领取：" + "、".join(taken.map(func(offer): return offer["label"])), 14, UIKit.ACCENT))
@@ -170,27 +223,35 @@ func _show_next_step() -> void:
 			var offer: Dictionary = run.pending_battle_loot[index]
 			if offer.get("status", "pending") != "pending":
 				continue
-			var row := UIKit.hbox(8)
-			choice_box.add_child(row)
-			var label := UIKit.wrapped(String(offer["label"]), 16)
-			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			row.add_child(label)
-			var take := UIKit.small_button("领取")
+			var reward_card := UIKit.panel(Color("29323f"))
+			var style := reward_card.get_theme_stylebox("panel").duplicate() as StyleBoxFlat
+			var tint := Color("81c5be") if offer["kind"] == "essence" else Color("b9a3df") if offer["kind"] in ["relic", "legendary"] else Color("8db8df")
+			style.border_color = tint.darkened(0.35)
+			style.border_width_left = 3
+			style.set_content_margin_all(14)
+			reward_card.add_theme_stylebox_override("panel", style)
+			choice_box.add_child(reward_card)
+			var row := UIKit.hbox(16)
+			reward_card.add_child(row)
+			var info := UIKit.vbox(5)
+			info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(info)
+			info.add_child(UIKit.wrapped(String(offer["label"]), 19, UIKit.TEXT))
+			info.add_child(UIKit.wrapped(_reward_description(offer), 14, UIKit.TEXT_DIM))
+			var take := UIKit.button("领取", 16)
 			take.name = "TakeBattleLoot_%d" % index
+			take.custom_minimum_size.x = 104
+			take.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			_style_button(take, Color("365965"), Color("e3f6f5"))
 			take.pressed.connect(_resolve_loot.bind(index, true))
 			row.add_child(take)
-			var skip := UIKit.small_button("放弃")
+			var skip := UIKit.button("放弃", 16)
 			skip.name = "SkipBattleLoot_%d" % index
+			skip.custom_minimum_size.x = 80
+			skip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			_style_button(skip, Color("34343d"), Color("c6b9c0"))
 			skip.pressed.connect(_resolve_loot.bind(index, false))
 			row.add_child(skip)
-		var skip_all := UIKit.small_button("放弃剩余奖励")
-		skip_all.name = "SkipRemainingBattleLoot"
-		skip_all.pressed.connect(func() -> void:
-			for index in run.pending_battle_loot.size():
-				run.resolve_battle_loot(index, false)
-			app.autosave()
-			_show_next_step())
-		choice_box.add_child(skip_all)
 		continue_button.disabled = true
 		return
 	if not run.pending_captures.is_empty():
@@ -285,8 +346,8 @@ func _show_next_step() -> void:
 		choice_box.add_child(skip_reward)
 		continue_button.disabled = true
 		return
-	step_label.text = "全部处理完成，可以进入下一场。"
-	choice_box.add_child(UIKit.wrapped("战斗结算顺序已完成：怪物经验 → 捕获 → 怪物升级 → 战后奖励 → 下一场准备。", 13))
+	step_label.text = "结算完成"
+	choice_box.add_child(UIKit.wrapped("奖励与队伍整理已完成，可以继续探索。", 13))
 	continue_button.disabled = false
 
 
@@ -366,3 +427,89 @@ func _resolve_loot(index: int, take: bool) -> void:
 	if app.run.resolve_battle_loot(index, take):
 		app.autosave()
 		_show_next_step()
+
+
+func _schedule_layout() -> void:
+	if layout_queued:
+		return
+	layout_queued = true
+	call_deferred("_fit_layout")
+
+
+func _fit_layout() -> void:
+	layout_queued = false
+	if not is_inside_tree():
+		return
+	_style_choices(choice_box)
+	var available := get_viewport_rect().size
+	card.custom_minimum_size.x = minf(1080, available.x - 40)
+	var fixed_height := page.get_combined_minimum_size().y - choice_scroll.custom_minimum_size.y + 44
+	var max_height := maxf(100, available.y - 40 - fixed_height)
+	if layout_stage != step_label.text:
+		layout_stage = step_label.text
+		stage_height = 0.0
+	stage_height = maxf(stage_height, maxf(64, choice_box.get_combined_minimum_size().y + 4))
+	choice_scroll.custom_minimum_size.y = minf(max_height, stage_height)
+	var run: RunState = app.run
+	var taken := run.pending_battle_loot.filter(func(offer): return offer.get("status", "") == "taken").size()
+	var skipped := run.pending_battle_loot.filter(func(offer): return offer.get("status", "") == "skipped").size()
+	progress_label.text = "已领取 %d 项  ·  已放弃 %d 项" % [taken, skipped]
+	if continue_button.disabled:
+		progress_label.text += "  ·  请先完成当前选择"
+	else:
+		continue_button.text = "继续探索" if run.region_mode else "继续"
+	card.reset_size()
+
+
+func _style_choices(node: Node) -> void:
+	for child in node.get_children():
+		if child is Button and not child.has_meta("settlement_styled"):
+			_style_button(child, Color("303b4b"), UIKit.TEXT)
+			child.add_theme_font_size_override("font_size", 16)
+			child.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			child.clip_text = false
+			if child.text.contains("\n"):
+				child.alignment = HORIZONTAL_ALIGNMENT_LEFT
+				child.custom_minimum_size.y = 82
+		_style_choices(child)
+
+
+func _style_button(button: Button, background: Color, foreground: Color) -> void:
+	button.set_meta("settlement_styled", true)
+	button.custom_minimum_size.y = maxf(44, button.custom_minimum_size.y)
+	for state_name in ["normal", "hover", "pressed", "disabled", "focus"]:
+		var style := StyleBoxFlat.new()
+		style.bg_color = background
+		if state_name == "hover":
+			style.bg_color = background.lightened(0.12)
+		elif state_name == "pressed":
+			style.bg_color = background.darkened(0.10)
+		elif state_name == "disabled":
+			style.bg_color = Color("2a2e36")
+		style.set_corner_radius_all(8)
+		style.set_content_margin_all(12)
+		if state_name == "focus":
+			style.bg_color = Color.TRANSPARENT
+			style.set_border_width_all(2)
+			style.border_color = UIKit.ACCENT
+		button.add_theme_stylebox_override(state_name, style)
+	button.add_theme_color_override("font_color", foreground)
+	button.add_theme_color_override("font_hover_color", foreground)
+	button.add_theme_color_override("font_pressed_color", foreground)
+	button.add_theme_color_override("font_disabled_color", Color("737d8a"))
+
+
+func _reward_description(offer: Dictionary) -> String:
+	match String(offer["kind"]):
+		"essence":
+			return "用于商店购买与技能强化。"
+		"relic":
+			return RelicDB.description_of(String(offer["id"]))
+		"legendary":
+			return "从三个传奇遗物中选择一件，也可以跳过。"
+		"item":
+			var id := String(offer["id"])
+			if id.begins_with(Merchant.BOOK_PREFIX):
+				return String(SkillDB.get_def(id.trim_prefix(Merchant.BOOK_PREFIX)).get("desc", "选择伙伴学习招式。"))
+			return String(Merchant.ITEMS[id][2])
+	return ""
