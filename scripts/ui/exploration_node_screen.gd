@@ -135,7 +135,7 @@ func leave() -> void:
 	var run: RunState = app.run
 	var region = run.get_region()
 	if region.nodes[region.active_node].get("reward_pending", false): return
-	region.complete_visit()
+	region.notifications.append_array(region.complete_visit(app.run))
 	run.region_data = region.to_dict()
 	run.pending_region_entry_backup.clear()
 	app.autosave()

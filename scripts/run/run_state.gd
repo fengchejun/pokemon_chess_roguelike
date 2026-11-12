@@ -122,6 +122,7 @@ var region_mode: bool = false
 var region_data: Dictionary = {}
 var pending_region_entry_backup: Dictionary = {}
 var pending_region_battle_index: int = 0
+var building_materials: int = 0
 var food: int = 3
 var food_inventory: Dictionary = {"basic": 3}
 var battle_index: int = 0
@@ -1219,6 +1220,7 @@ func to_dict() -> Dictionary:
 		"region_data": region_data.duplicate(true),
 		"pending_region_entry_backup": pending_region_entry_backup.duplicate(true),
 		"pending_region_battle_index": pending_region_battle_index,
+		"building_materials": building_materials,
 		"food": food,
 		"food_inventory": food_inventory.duplicate(),
 		"battle_index": battle_index,
@@ -1277,6 +1279,7 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.region_data = (data.get("region_data", {}) as Dictionary).duplicate(true)
 	run.pending_region_entry_backup = (data.get("pending_region_entry_backup", {}) as Dictionary).duplicate(true)
 	run.pending_region_battle_index = int(data.get("pending_region_battle_index", 0))
+	run.building_materials = maxi(0, int(data.get("building_materials", 0)))
 	run.food = maxi(0, int(data.get("food", 3)))
 	run.food_inventory = (data.get("food_inventory", {"basic": run.food}) as Dictionary).duplicate()
 	run.food = run.total_food()

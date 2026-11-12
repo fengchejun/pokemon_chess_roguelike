@@ -36,9 +36,13 @@ static func breakdown(region: RegionState, assignment: Dictionary, member: Dicti
 	var available := int(member.get("hp", 0)) > 0
 	var on_site := available and (completed >= ready or bool(assignment.get("immediate", false)))
 	var level_bonus := 2 * (int(member.get("level", 1)) - 1)
-	var bonus := 20 if _matches(region, assignment["node"], member.get("equipped_skills", [])) else 0
-	var preparation := mini(12, 3 * maxi(0, completed - ready))
-	return {"ready": on_site, "base": BASE_DEFENSE, "level": level_bonus, "specialty": bonus, "preparation": preparation, "total": BASE_DEFENSE + level_bonus + bonus + preparation if on_site else 0}
+	var collecting: bool = assignment.get("duty", "guard") == "gather"
+	var bonus := 20 if not collecting and _matches(region, assignment["node"], member.get("equipped_skills", [])) else 0
+	var preparation := 0 if collecting else mini(12, 3 * maxi(0, completed - ready))
+	var base := int(BASE_DEFENSE / 2) if collecting else BASE_DEFENSE
+	if collecting:
+		level_bonus = int(level_bonus / 2)
+	return {"ready": on_site, "base": base, "level": level_bonus, "specialty": bonus, "preparation": preparation, "total": base + level_bonus + bonus + preparation if on_site else 0}
 
 
 static func contribution(region: RegionState, assignment: Dictionary, member: Dictionary) -> int:
@@ -61,10 +65,10 @@ static func chance(run: RunState, region: RegionState, id: String) -> int:
 		var assignment: Dictionary = region.garrisons[key]
 		if assignment["node"] == id:
 			total += contribution(region, assignment, run.owned_record_by_uid(int(key)))
-	return clampi(total - pressure(region, id), 0, 100)
+	return clampi(total + 10 * int(region.nodes[id].get("fortification", 0)) - pressure(region, id), 0, 100)
 
 
-static func assign(run: RunState, id: String, uid: int) -> bool:
+static func assign(run: RunState, id: String, uid: int, duty: String = "guard") -> bool:
 	var region: RegionState = run.get_region()
 	var key := str(uid)
 	if region.flow_version != 2 or region.invaded or not run.battle_snapshot.is_empty():
@@ -72,16 +76,22 @@ static func assign(run: RunState, id: String, uid: int) -> bool:
 	if not region.nodes.has(id) or id in ["boss", "hunt"] or not region.nodes[id].get("unlocked", false):
 		return false
 	var previous: Dictionary = region.garrisons.get(key, {})
-	if previous.get("node") == id:
+	if duty not in ["guard", "gather"]:
+		return false
+	if duty == "gather" and (not region.nodes[id].get("passable", false) or resource_kind(id).is_empty() or int(region.nodes[id].get("gathered_batches", 0)) >= 2):
+		return false
+	if previous.get("node") == id and previous.get("duty", "guard") == duty:
 		return true
 	var member := run.owned_record_by_uid(uid)
-	if int(member.get("hp", 0)) <= 0 or region.garrisons.values().filter(func(entry): return entry["node"] == id).size() >= 3:
+	if int(member.get("hp", 0)) <= 0 or (previous.get("node") != id and region.garrisons.values().filter(func(entry): return entry["node"] == id).size() >= 3):
 		return false
 	var carried := not run.record_by_uid(uid).is_empty()
 	if carried and previous.is_empty() and not run.carried.any(func(record):
 		return int(record["uid"]) != uid and int(record["hp"]) > 0 and not region.garrisons.has(str(record["uid"]))):
 		return false
 	region.garrisons[key] = assignment_for(region, id, carried)
+	region.garrisons[key]["duty"] = duty
+	region.garrisons[key]["gather_tick"] = region.visits - int(region.visit_pending)
 	run.region_data = region.to_dict()
 	return true
 
@@ -104,6 +114,7 @@ static func resolve(run: RunState, region: RegionState) -> bool:
 		if id in ["boss", "hunt"]:
 			continue
 		var node: Dictionary = region.nodes[id]
+		node["gather_progress"] = 0
 		var probability := chance(run, region, id)
 		var held := posmod(hash("defense:%d:%d:%s" % [run.seed, region.floor_index, id]), 100) < probability
 		node["defense"] = {"held": held, "chance": probability}
@@ -143,5 +154,61 @@ static func resolve(run: RunState, region: RegionState) -> bool:
 			run.storage.append(member)
 	region.garrisons.clear()
 	run.pending_region_entry_backup.clear()
+	run.region_data = region.to_dict()
+	return true
+
+
+# Stable node IDs also give existing exploration saves finite deposits.
+static func resource_kind(id: String) -> String:
+	if id in ["battle_1", "battle_2"]:
+		return "food"
+	if id in ["elite_1", "battle_3", "battle_4"]:
+		return "materials"
+	return ""
+
+
+static func resource_text(id: String, node: Dictionary) -> String:
+	var kind := resource_kind(id)
+	if kind.is_empty():
+		return ""
+	return "%s · 剩%d批 · 进度%d/3" % ["食物" if kind == "food" else "建材", maxi(0, 2 - int(node.get("gathered_batches", 0))), int(node.get("gather_progress", 0))]
+
+
+static func collect(run: RunState, region: RegionState) -> void:
+	if region.flow_version != 2 or region.invaded or region.visit_pending:
+		return
+	for key in region.garrisons:
+		var assignment: Dictionary = region.garrisons[key]
+		if assignment.get("duty", "guard") != "gather":
+			continue
+		var id := String(assignment["node"])
+		var member := run.owned_record_by_uid(int(key))
+		var elapsed := maxi(0, region.visits - maxi(int(assignment["ready"]), int(assignment.get("gather_tick", region.visits))))
+		assignment["gather_tick"] = region.visits
+		if int(member.get("hp", 0)) <= 0 or not region.nodes[id].get("passable", false):
+			continue
+		var node: Dictionary = region.nodes[id]
+		var progress := int(node.get("gather_progress", 0)) + elapsed
+		var batches := int(node.get("gathered_batches", 0))
+		while progress >= 3 and batches < 2:
+			progress -= 3
+			batches += 1
+			if resource_kind(id) == "food":
+				run.add_food("basic", 1)
+			else:
+				run.building_materials += 1
+			region.notifications.append("%s采集完成：%s +1" % [region.display_name(id), "食物" if resource_kind(id) == "food" else "建材"])
+		node["gathered_batches"] = batches
+		node["gather_progress"] = 0 if batches >= 2 else progress
+
+
+static func fortify(run: RunState, id: String) -> bool:
+	var region: RegionState = run.get_region()
+	if region.flow_version != 2 or region.invaded or not run.battle_snapshot.is_empty() or run.building_materials <= 0:
+		return false
+	if not region.nodes.has(id) or id in ["boss", "hunt"] or not region.nodes[id].get("unlocked", false) or int(region.nodes[id].get("fortification", 0)) >= 2:
+		return false
+	run.building_materials -= 1
+	region.nodes[id]["fortification"] = int(region.nodes[id].get("fortification", 0)) + 1
 	run.region_data = region.to_dict()
 	return true
