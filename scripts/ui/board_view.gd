@@ -10,6 +10,7 @@ const Materials = preload("res://sample/unified_materials.gd")
 const Iso = preload("res://sample/iso_projection.gd")
 const SampleArt = preload("res://sample/pixel_art.gd")
 const SelectionEffect = preload("res://sample/selection_effect.gd")
+const CastWarning = preload("res://sample/cast_warning.gd")
 
 var biome := "rock" # Presentation only; terrain mechanics remain in TerrainDB.
 var terrain: Array = []
@@ -56,7 +57,7 @@ var hover_cell := Vector2i(-1, -1)
 var selection_clock := 0.0
 
 func _process(delta: float) -> void:
-	if selected_uid < 0: return
+	if selected_uid < 0 and pending_casts.is_empty() and storm_strikes.is_empty(): return
 	var previous_step := int(selection_clock/0.18)
 	selection_clock = fmod(selection_clock+delta,0.72)
 	if int(selection_clock/0.18) != previous_step: queue_redraw()
@@ -251,10 +252,10 @@ func _draw() -> void:
 		for cell in path: points.append(cell_center(cell))
 		if points.size() > 1: draw_polyline(points, Color("f9e2af"), 3)
 	for strike in storm_strikes:
-		_draw_fill(strike["cell"], Color(1, 0.5, 0.1, 0.4))
-		_iso_outline(strike["cell"], Color("f9e2af"), 2)
+		CastWarning.paint(self,_surface_shape(strike["cell"]),false,true,int(selection_clock/0.18)%2==0)
 	for cast in pending_casts:
-		for cell in cast.get("cells", []): _iso_outline(cell, Color("cba6f7"), 2)
+		for cell in CastWarning.cells_for(cast,terrain):
+			CastWarning.paint(self,_surface_shape(cell),cast.get("skill_id","")=="herbal_heal",cast.get("side","")=="enemy",int(selection_clock/0.18)%2==0)
 	for cell in vine_expire_round: _iso_outline(cell, Color("cba6f7"), 2)
 	# All upright objects and actors share the same ground-depth order.
 	for sum in 15:

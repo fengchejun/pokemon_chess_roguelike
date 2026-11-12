@@ -95,6 +95,7 @@ func _update_action_buttons() -> void:
 func _head_texture(index: int) -> AtlasTexture:
 	var source := Art.tile(index)
 	var crop: Rect2 = {
+		100: Rect2(90,0,80,88),
 		4: Rect2(44, 36, 124, 116),
 		5: Rect2(50, 38, 130, 116),
 		6: Rect2(20, 92, 160, 128),

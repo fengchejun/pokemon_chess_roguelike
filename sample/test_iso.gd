@@ -15,6 +15,17 @@ func run_tests() -> void:
 	root.size = Vector2i(1280,720)
 	var material_set = preload("res://sample/unified_materials.gd")
 	var selection = preload("res://sample/selection_effect.gd")
+	var art = preload("res://sample/pixel_art.gd")
+	for species in SpeciesDB.SPECIES:
+		var sprite_index: int = art.unit_index(species)
+		check(sprite_index >= 0,"All real species including trainer and summon have pixel sprites: "+species)
+		check(art.tile(sprite_index).atlas != null,"All unit sprites are imported: "+species)
+		check(not selection.silhouette(sprite_index)["contours"].is_empty(),"All species support selection outline: "+species)
+	var warnings = preload("res://sample/cast_warning.gd")
+	check(warnings.cells_for({"skill_id":"fire_burst","cells":[Vector2i(3,3)]},[]).size()==9,"Fireball warning covers all nine damage cells")
+	check(warnings.cells_for({"skill_id":"fire_burst","cells":[Vector2i.ZERO]},[]).size()==4,"Fireball warning clips at board corner")
+	check(warnings.cells_for({"skill_id":"herbal_heal","cells":[Vector2i(3,3)]},[]).size()==13,"Healing warning matches actual Manhattan radius")
+	check(warnings.cells_for({"skill_id":"lightning","cells":[Vector2i(2,2),Vector2i(5,4)]},[]).size()==2,"Lightning warns exactly on locked cells")
 	for sprite_index in [4,5,6,7]:
 		var silhouette: Dictionary = selection.silhouette(sprite_index)
 		check(not silhouette["contours"].is_empty(), "Each starter sprite has a real alpha contour for selection")
