@@ -122,12 +122,10 @@ func record_entry(id: String) -> bool:
 	return true
 
 
-func complete_visit(run = null) -> Array:
+func complete_visit() -> Array:
 	if not visit_pending:
 		return []
 	visit_pending = false
-	if run != null:
-		preload("res://scripts/run/floor_invasion.gd").collect(run, self)
 	if active_node == "camp":
 		at_camp_scene = false
 	var result := notifications.duplicate()

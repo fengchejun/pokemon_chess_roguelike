@@ -1,5 +1,6 @@
 extends RefCounted
 
+const Rewards = preload("res://scripts/run/garrison_rewards.gd")
 const Invasion = preload("res://scripts/run/floor_invasion.gd")
 
 
@@ -52,17 +53,9 @@ static func open_node(owner: Control, app, id: String, changed: Callable) -> voi
 	page.add_child(summary)
 	var notice := UIKit.wrapped("", 14)
 	page.add_child(notice)
-	var list := UIKit.vbox(6)
-	var fortify := UIKit.small_button("加固（建材 −1，守住 +10%）")
-	fortify.name = "FortifyNode"
-	page.add_child(fortify)
-	fortify.pressed.connect(func() -> void:
-		if Invasion.fortify(app.run, id):
-			app.autosave()
-			changed.call()
-			_fill(list, summary, notice, app, id, changed))
 	var scroll := UIKit.scroll()
 	page.add_child(scroll)
+	var list := UIKit.vbox(6)
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(list)
 	_fill(list, summary, notice, app, id, changed)
@@ -75,9 +68,9 @@ static func _fill(list: VBoxContainer, summary: Label, notice: Label, app, id: S
 	var count := region.garrisons.values().filter(func(entry): return entry["node"] == id).size()
 	summary.text = "驻军 %d/3 · 防守成功率 %d%% · 入侵压力 −%d
 适配招式：%s" % [count, Invasion.chance(run, region, id), Invasion.pressure(region, id), Invasion.specialty(region, id)]
-	notice.text = "建材 %d · 加固 %d/2。%s\n采集须打通节点，每3人次行动产1份，最多2批。采集者基础与等级守备减半，无适配与准备加成。改派或切换职责重置准备；远程派驻下一次移动后就位。" % [run.building_materials, int(region.nodes[id].get("fortification", 0)), Invasion.resource_text(id, region.nodes[id])]
-	var fortify := notice.get_parent().get_node("FortifyNode") as Button
-	fortify.disabled = run.building_materials <= 0 or int(region.nodes[id].get("fortification", 0)) >= 2
+	notice.text = "就位后每3次探索行动累计1份随机奖励，结束驻守时领取；久驻提高稀有概率。撤回余数随伙伴保留；入侵或跨层时余数也结算。尚未就位与原地反复派驻不增加额度。"
+	if not run.garrison_reward_history.is_empty():
+		notice.text += "\n最近回报：" + String(run.garrison_reward_history.back())
 	for member in run.carried + run.storage:
 		var uid := int(member["uid"])
 		var assignment: Dictionary = region.garrisons.get(str(uid), {})
@@ -87,7 +80,7 @@ static func _fill(list: VBoxContainer, summary: Label, notice: Label, app, id: S
 		var points := Invasion.breakdown(region, preview, member)
 		var status := "随身" if carried else "仓库"
 		if not assignment.is_empty():
-			status += " · %s%s" % ["采集" if assignment.get("duty", "guard") == "gather" else "警戒", region.display_name(assignment["node"])]
+			status += " · 驻守%s" % region.display_name(assignment["node"])
 		var total := "已计入 +%d" % points["total"] if at_target and points["ready"] else "立即就位 +%d" % points["total"] if points["ready"] else "下一次移动后 +%d" % (int(points["base"]) + int(points["level"]) + int(points["specialty"]))
 		if int(member["hp"]) <= 0:
 			total = "濒死，无法派驻"
@@ -99,6 +92,11 @@ static func _fill(list: VBoxContainer, summary: Label, notice: Label, app, id: S
 			SpeciesDB.name_of(member["species_id"]), member["level"], status, total,
 			points["base"], points["level"], points["specialty"], points["preparation"],
 		], 15)
+		if at_target:
+			var actions := Rewards.duration(region, assignment)
+			var credit := int(run.garrison_reward_credits.get(str(uid), 0)) + actions
+			var odds := Rewards.odds(actions)
+			info.text += "\n驻守%d行动 · 累计%d份＋%d/3 · 普通%d%%／稀有%d%%／高级%d%%" % [actions, credit / 3, credit % 3, odds["common"], odds["rare"], odds["legendary"]]
 		info.name = "GarrisonDetails_%d" % uid
 		line.add_child(info)
 		var button := UIKit.small_button("撤回" if at_target else "指派" if assignment.is_empty() else "改派")
@@ -114,16 +112,4 @@ static func _fill(list: VBoxContainer, summary: Label, notice: Label, app, id: S
 			changed.call()
 			_fill(list, summary, notice, app, id, changed))
 		line.add_child(button)
-		var duty_button := UIKit.small_button("转为警戒" if at_target and assignment.get("duty", "guard") == "gather" else "派去采集")
-		duty_button.name = "GatherMember_%d" % uid
-		var duty := "guard" if at_target and assignment.get("duty", "guard") == "gather" else "gather"
-		duty_button.disabled = int(member["hp"]) <= 0 or (not at_target and count >= 3) or (duty == "gather" and (Invasion.resource_kind(id).is_empty() or not region.nodes[id].get("passable", false) or int(region.nodes[id].get("gathered_batches", 0)) >= 2))
-		duty_button.pressed.connect(func() -> void:
-			if Invasion.assign(run, id, uid, duty):
-				app.autosave()
-				changed.call()
-				_fill(list, summary, notice, app, id, changed)
-			else:
-				notice.text = "无法派驻，须保留至少一只可出战的随身成员。")
-		line.add_child(duty_button)
 		list.add_child(row)

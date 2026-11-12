@@ -374,7 +374,7 @@ func leave_camp() -> void:
 	var region = run.get_region()
 	region.at_camp_scene = false
 	run.battle_snapshot = {}
-	var notices: Array = region.complete_visit(run)
+	var notices: Array = region.complete_visit()
 	region.notifications.append_array(notices)
 	run.region_data = region.to_dict()
 	autosave()
@@ -392,7 +392,7 @@ func enter_region_node(id: String) -> void:
 			show_prep()
 			return
 		if region.nodes[id].get("recaptured", false):
-			region.notifications.append_array(region.complete_visit(run))
+			region.notifications.append_array(region.complete_visit())
 			run.region_data = region.to_dict()
 			run.pending_region_entry_backup.clear()
 			autosave()
@@ -403,7 +403,7 @@ func enter_region_node(id: String) -> void:
 			run.region_data = region.to_dict()
 		if role in ["camp", "shop", "item_shop", "skill_shop", "group", "request", "empty"] or (role in ["starter", "battle", "elite"] and region.nodes[id].get("done", false)):
 			if role in ["starter", "battle", "elite"]:
-				region.notifications.append_array(region.complete_visit(run)); run.region_data = region.to_dict(); autosave(); show_region()
+				region.notifications.append_array(region.complete_visit()); run.region_data = region.to_dict(); autosave(); show_region()
 			else:
 				_switch(preload("res://scripts/ui/exploration_node_screen.gd").new())
 		else:
@@ -575,6 +575,8 @@ func continue_after_settlement() -> void:
 		var region = run.get_region()
 		var boss_cleared: bool = region.active_node in ["boss", "hunt"] and bool(region.nodes[region.active_node]["cleared"])
 		if boss_cleared:
+			region.notifications.append_array(region.complete_visit())
+			preload("res://scripts/run/garrison_rewards.gd").finish_all(run, region, "离开本层")
 			if collection != null and not bool(run.options.get("exploration_v2", false)):
 				for member in run.storage:
 					var source := "run:%d:%d" % [run.seed, int(member.get("uid", -1))]
@@ -587,7 +589,7 @@ func continue_after_settlement() -> void:
 			run.region_data = {}
 			run.refresh_theme_offers()
 		else:
-			var notices: Array = region.complete_visit(run)
+			var notices: Array = region.complete_visit()
 			region.notifications.append_array(notices)
 			if region.active_node == "camp" and region.node_mode("camp") == "camp":
 				region.at_camp_scene = true
@@ -630,6 +632,8 @@ func leave_supply() -> void:
 
 
 func show_run_end() -> void:
+	if run != null and not run.region_data.is_empty() and run.get_region().flow_version == 2:
+		preload("res://scripts/run/garrison_rewards.gd").finish_all(run, run.get_region(), "本局结束")
 	if run != null and collection != null:
 		collection.absorb_run(run)
 		if autosave_enabled:

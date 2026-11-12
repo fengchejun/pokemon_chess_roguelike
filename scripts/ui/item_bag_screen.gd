@@ -68,6 +68,8 @@ func refresh() -> void:
 			growth_uid = uid
 			refresh())
 		content.add_child(growth_button)
+	if not run.garrison_reward_history.is_empty():
+		content.add_child(UIKit.wrapped("驻守回报记录\n" + "\n".join(run.garrison_reward_history), 14))
 	var has_items := false
 	for key in run.trainer_items:
 		var id := String(key)
@@ -86,6 +88,17 @@ func refresh() -> void:
 			elif id == Merchant.RARE_CANDY or Merchant.CANDY_XP.has(id):
 				for member in run.carried:
 					_candy_target(id, member)
+			elif id == Merchant.INTEL_ID:
+				var use_intel := UIKit.small_button("使用情报，解锁神秘栖息地")
+				use_intel.name = "UseRareIntel"
+				use_intel.pressed.connect(func() -> void:
+					if Merchant.use_intel(run):
+						message = "已解锁本层神秘栖息地。"
+						app.autosave()
+					else:
+						message = "本层暂时无法使用情报，情报已保留。"
+					refresh())
+				content.add_child(use_intel)
 			elif id == "capture_aid":
 				content.add_child(UIKit.wrapped("捕获辅助在战斗中通过训练师道具菜单使用。", 15))
 	for card in run.reward_inventory:

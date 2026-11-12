@@ -122,7 +122,9 @@ var region_mode: bool = false
 var region_data: Dictionary = {}
 var pending_region_entry_backup: Dictionary = {}
 var pending_region_battle_index: int = 0
-var building_materials: int = 0
+var garrison_reward_credits: Dictionary = {}
+var garrison_reward_rolls: Dictionary = {}
+var garrison_reward_history: Array = []
 var food: int = 3
 var food_inventory: Dictionary = {"basic": 3}
 var battle_index: int = 0
@@ -1220,7 +1222,9 @@ func to_dict() -> Dictionary:
 		"region_data": region_data.duplicate(true),
 		"pending_region_entry_backup": pending_region_entry_backup.duplicate(true),
 		"pending_region_battle_index": pending_region_battle_index,
-		"building_materials": building_materials,
+		"garrison_reward_credits": garrison_reward_credits.duplicate(),
+		"garrison_reward_rolls": garrison_reward_rolls.duplicate(),
+		"garrison_reward_history": garrison_reward_history.duplicate(),
 		"food": food,
 		"food_inventory": food_inventory.duplicate(),
 		"battle_index": battle_index,
@@ -1279,7 +1283,20 @@ static func from_dict(data: Dictionary) -> RunState:
 	run.region_data = (data.get("region_data", {}) as Dictionary).duplicate(true)
 	run.pending_region_entry_backup = (data.get("pending_region_entry_backup", {}) as Dictionary).duplicate(true)
 	run.pending_region_battle_index = int(data.get("pending_region_battle_index", 0))
-	run.building_materials = maxi(0, int(data.get("building_materials", 0)))
+	run.garrison_reward_credits = (data.get("garrison_reward_credits", {}) as Dictionary).duplicate()
+	run.garrison_reward_rolls = (data.get("garrison_reward_rolls", {}) as Dictionary).duplicate()
+	run.garrison_reward_history = (data.get("garrison_reward_history", []) as Array).duplicate()
+	run.essence += 3 * maxi(0, int(data.get("building_materials", 0)))
+	for node in run.region_data.get("nodes", {}).values():
+		run.essence += 3 * maxi(0, int(node.get("fortification", 0)))
+	for region in [run.region_data, run.pending_region_entry_backup]:
+		for node in region.get("nodes", {}).values():
+			node.erase("fortification")
+			node.erase("gather_progress")
+			node.erase("gathered_batches")
+		for assignment in region.get("garrisons", {}).values():
+			assignment.erase("duty")
+			assignment.erase("gather_tick")
 	run.food = maxi(0, int(data.get("food", 3)))
 	run.food_inventory = (data.get("food_inventory", {"basic": run.food}) as Dictionary).duplicate()
 	run.food = run.total_food()

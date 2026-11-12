@@ -47,12 +47,14 @@ func _ready() -> void:
 		var menu := UIKit.small_button("保存并返回菜单")
 		menu.pressed.connect(func() -> void: app.autosave(); app.show_menu())
 		row.add_child(menu)
-	column.add_child(UIKit.label("%s · 原质 %d · 食物 %d · 建材 %d" % [region.next_pressure_text(), app.run.essence, app.run.total_food(), app.run.building_materials], 20, UIKit.ACCENT))
+	column.add_child(UIKit.label("%s · 原质 %d · 食物 %d" % [region.next_pressure_text(), app.run.essence, app.run.total_food()], 20, UIKit.ACCENT))
 	if not region.notifications.is_empty():
 		column.add_child(UIKit.wrapped("\n".join(region.notifications), 15, UIKit.ACCENT))
 		region.notifications.clear()
 		app.run.region_data = region.to_dict()
 		app.autosave()
+	if not app.run.garrison_reward_history.is_empty():
+		column.add_child(UIKit.wrapped("驻守回报：" + String(app.run.garrison_reward_history.back()), 14, UIKit.ACCENT))
 	column.add_child(UIKit.wrapped("已知地点保留名称和连线。入侵后从保住的前线逐步夺回节点，失守服务在本层永久关闭。", 15))
 	graph = Control.new()
 	graph.name = "FogMap"
@@ -65,7 +67,7 @@ func _ready() -> void:
 			continue
 		var button := UIKit.button("", 17)
 		button.name = "Node_" + id
-		button.custom_minimum_size = Vector2(192, 84)
+		button.custom_minimum_size = Vector2(192, 66)
 		button.pressed.connect(_select_node.bind(id))
 		graph.add_child(button)
 	map_help = UIKit.wrapped("", 15, UIKit.TEXT_DIM)
@@ -115,8 +117,6 @@ func _update_node_button(id: String, button: Button) -> void:
 			status = "驻军 %d/3 · 守住 %d%%" % [count, Invasion.chance(app.run, region, id)]
 		elif id == "boss":
 			status = "不可驻防"
-	if known and not Invasion.resource_kind(id).is_empty():
-		status += "\n" + Invasion.resource_text(id, node)
 	button.text = "%s\n%s" % [label, status]
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("283647") if available else Color("22252b")

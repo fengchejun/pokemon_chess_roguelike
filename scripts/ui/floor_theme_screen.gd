@@ -25,6 +25,8 @@ func _ready() -> void:
 	elif run.region_mode:
 		floor_hint = "本层含营地、五个战斗节点、两个事件节点及首领。主题决定地形倾向和主要敌人。"
 	column.add_child(UIKit.wrapped(floor_hint, 16))
+	if not run.garrison_reward_history.is_empty():
+		column.add_child(UIKit.wrapped("最近驻守回报\n" + "\n".join(run.garrison_reward_history.slice(-3)), 15, UIKit.ACCENT))
 	var row := UIKit.hbox(20)
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(row)

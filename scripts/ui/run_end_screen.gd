@@ -56,6 +56,9 @@ func _ready() -> void:
 		lines.append("—— 战损记录 ——")
 		for entry in run.deaths:
 			lines.append("%s（第 %d 场，%s）" % [entry.get("name", "?"), int(entry.get("battle", 0)), entry.get("cause", "?")])
+	if not run.garrison_reward_history.is_empty():
+		lines.append("最近驻守回报")
+		lines.append_array(run.garrison_reward_history.slice(-5))
 	var box := UIKit.panel(UIKit.PANEL)
 	box.custom_minimum_size = Vector2(560, 0)
 	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER

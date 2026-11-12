@@ -20,6 +20,17 @@ const ITEMS := {
 const BOOK_PREFIX := "skill_book:"
 const BOOK_PRICE := 18
 
+static func use_intel(run: RunState) -> bool:
+	if int(run.trainer_items.get(INTEL_ID, 0)) <= 0 or not run.region_mode or not run.battle_snapshot.is_empty():
+		return false
+	var region: RegionState = run.get_region()
+	if region.flow_version != 2 or not preload("res://scripts/run/exploration_flow.gd").unlock_rare_habitat(region, run.seed):
+		return false
+	run.trainer_items[INTEL_ID] -= 1
+	run.region_data = region.to_dict()
+	return true
+
+
 static func use_skill_book(run: RunState, skill_id: String, uid: int) -> bool:
 	var id := BOOK_PREFIX + skill_id
 	var member := run.record_by_uid(uid)
