@@ -1,12 +1,12 @@
 class_name UIKit
 extends RefCounted
 
-const BG := Color("16161c")
-const PANEL := Color("23232c")
-const PANEL_LIGHT := Color("2d2d38")
-const ACCENT := Color("ffd166")
-const TEXT := Color("eeeef2")
-const TEXT_DIM := Color("9a9aa6")
+const BG := Color("11111b")
+const PANEL := Color("1e1e2e")
+const PANEL_LIGHT := Color("313244")
+const ACCENT := Color("f9e2af")
+const TEXT := Color("cdd6f4")
+const TEXT_DIM := Color("a6adc8")
 const GOOD := Color("7bd88f")
 const BAD := Color("ff6b6b")
 
@@ -73,7 +73,14 @@ static func panel(background: Color = PANEL) -> PanelContainer:
 	var node := PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = background
-	style.set_corner_radius_all(8)
+	style.set_corner_radius_all(0)
+	style.set_border_width_all(2)
+	style.border_color = Color("625d73")
+	style.border_width_bottom = 3
+	style.shadow_size = 3
+	style.shadow_offset = Vector2(2, 3)
+	style.shadow_color = Color("090910")
+	style.anti_aliasing = false
 	style.set_content_margin_all(10)
 	node.add_theme_stylebox_override("panel", style)
 	return node

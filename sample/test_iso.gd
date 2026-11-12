@@ -1,0 +1,245 @@
+extends SceneTree
+var failures := 0
+var checks := 0
+
+func check(ok: bool, message: String) -> void:
+	checks += 1
+	if not ok:
+		failures += 1
+		push_error(message)
+
+func _initialize() -> void:
+	call_deferred("run_tests")
+
+func run_tests() -> void:
+	root.size = Vector2i(1280,720)
+	var material_set = preload("res://sample/unified_materials.gd")
+	var fire = preload("res://sample/tile_fire.gd")
+	var fire_frames: Dictionary = {}
+	for fire_frame in 8:
+		var frame_mesh: ArrayMesh = fire.mesh(fire_frame,false,true)
+		fire_frames[hash(frame_mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX])] = true
+		check(frame_mesh.get_aabb().size.x >= 95,"Fire covers the width of a full tile")
+		check(frame_mesh.get_aabb().size.y > 40,"Fire rises above its ground footprint")
+		check(frame_mesh == fire.mesh(fire_frame,false,true),"Fire meshes are shared rather than rebuilt every redraw")
+	check(fire_frames.size()==8,"All eight flame frames have distinct animated silhouettes")
+	check(fire.mesh(0,true,true).surface_get_arrays(0)[Mesh.ARRAY_COLOR] != fire.mesh(0,false,true).surface_get_arrays(0)[Mesh.ARRAY_COLOR],"Blue fire uses its own palette")
+	var selection = preload("res://sample/selection_effect.gd")
+	var art = preload("res://sample/pixel_art.gd")
+	for species in SpeciesDB.SPECIES:
+		var sprite_index: int = art.unit_index(species)
+		check(sprite_index >= 0,"All real species including trainer and summon have pixel sprites: "+species)
+		check(art.tile(sprite_index).atlas != null,"All unit sprites are imported: "+species)
+		check(not selection.silhouette(sprite_index)["contours"].is_empty(),"All species support selection outline: "+species)
+	var warnings = preload("res://sample/cast_warning.gd")
+	check(warnings.cells_for({"skill_id":"fire_burst","cells":[Vector2i(3,3)]},[]).size()==9,"Fireball warning covers all nine damage cells")
+	check(warnings.cells_for({"skill_id":"fire_burst","cells":[Vector2i.ZERO]},[]).size()==4,"Fireball warning clips at board corner")
+	check(warnings.cells_for({"skill_id":"herbal_heal","cells":[Vector2i(3,3)]},[]).size()==13,"Healing warning matches actual Manhattan radius")
+	check(warnings.cells_for({"skill_id":"lightning","cells":[Vector2i(2,2),Vector2i(5,4)]},[]).size()==2,"Lightning warns exactly on locked cells")
+	for sprite_index in [4,5,6,7]:
+		var silhouette: Dictionary = selection.silhouette(sprite_index)
+		check(not silhouette["contours"].is_empty(), "Each starter sprite has a real alpha contour for selection")
+		check(silhouette["top"] >= 0 and silhouette["top"] < 96, "Arrow can anchor above the actual sprite head")
+	check(material_set.ground(TerrainDB.SHALLOW_GRASS) == material_set.ground(TerrainDB.GRASS), "Shallow and tall grass share ground art")
+	var shore: Array = []
+	shore.resize(64)
+	shore.fill(TerrainDB.PLAIN)
+	var pool := Vector2i(3,3)
+	shore[GridSpec.index(pool)] = TerrainDB.WATER
+	check(material_set.bank_edges(shore,pool).size() == 4, "Isolated pool exposes all four banks")
+	shore[GridSpec.index(pool+Vector2i.RIGHT)] = TerrainDB.DEEP
+	check(not material_set.bank_edges(shore,pool).has(1), "Water and deep water join without internal wall")
+	shore[GridSpec.index(pool+Vector2i.DOWN)] = TerrainDB.LAVA
+	check(not material_set.bank_edges(shore,pool).has(2), "Liquid neighbors share recessed level")
+	var original_shape := BoardView.Iso.diamond(pool)
+	for liquid in [TerrainDB.WATER,TerrainDB.DEEP,TerrainDB.LAVA]:
+		var lowered := material_set.surface(original_shape,liquid)
+		check(lowered[0] == original_shape[0]+Vector2(0,6), "Liquid surface visibly below land")
+	check(material_set.surface(original_shape,TerrainDB.PLAIN) == original_shape, "Land surface stays at original height")
+	for terrain_id in TerrainDB.ALL:
+		var texture: AtlasTexture = material_set.ground(terrain_id)
+		check(texture != null and texture.atlas != null and texture.region.has_area(), "Every actual terrain uses an imported pixel material")
+	check(material_set.nest_index({"alive":true,"hp":30,"max_hp":30}) == 11, "Healthy nest has intact artwork")
+	check(material_set.nest_index({"alive":true,"hp":15,"max_hp":30}) == 12, "Half-health nest switches to damaged artwork")
+	check(material_set.nest_index({"alive":false,"hp":0,"max_hp":30}) == 13, "Destroyed nest switches to ruins")
+	var plain_resources: Dictionary = {}
+	for biome in BattleDB.THEME_IDS:
+		plain_resources[material_set.ground(TerrainDB.PLAIN,biome)] = true
+		check(material_set.ground(TerrainDB.LAVA,biome) == material_set.biome_tile(2), "Lethal lava retains liquid material in every region")
+		check(material_set.ground(TerrainDB.PLAIN,biome) != material_set.ground(TerrainDB.LAVA,biome), "Walkable ground is visually separate from lava")
+	check(plain_resources.size() == 4, "All four regions have distinct normal ground")
+	check(material_set.ground(TerrainDB.PLAIN,"fire") == material_set.tile(1), "Former cooled lava becomes fire-region normal ground")
+	for theme in BattleDB.THEME_IDS:
+		var region_app = load("res://scripts/main.gd").new()
+		region_app.autosave_enabled = false
+		root.add_child(region_app)
+		region_app.begin_new_run_with_collection(CollectionState.defaults().select_records([1,2,3]))
+		region_app.run.region_mode = false
+		region_app.run.offered_floor_themes = [theme]
+		region_app.run.choose_floor_theme(theme)
+		region_app.show_preview([1,2,3])
+		await process_frame
+		await process_frame
+		var preview = region_app.current_screen
+		var visual_bounds := Rect2(preview.board.position+Vector2(0,-60)*preview.board.scale,Vector2(896,714)*preview.board.scale)
+		check(Rect2(Vector2(-1,-1),preview.board_host.size+Vector2(2,2)).encloses(visual_bounds),"Integrated preview fits the full isometric board and scenery")
+		check(region_app.current_screen.board.biome == theme, "Preview uses selected region ground")
+		region_app.begin_battle([1,2,3],region_app.current_screen.map)
+		check(region_app.current_screen.board.biome == theme, "Actual battle uses same selected region ground")
+		region_app.queue_free()
+		await process_frame
+	var view := BoardView.new()
+	root.add_child(view)
+	for y in 8:
+		for x in 8:
+			var cell := Vector2i(x,y)
+			for offset in [Vector2.ZERO, Vector2(35,0), Vector2(-35,0), Vector2(0,20), Vector2(0,-20)]:
+				check(view.cell_at(BoardView.cell_center(cell) + offset) == cell, "Isometric hit test %s %s" % [cell, offset])
+	for point in [Vector2(-1,192),Vector2(897,304),Vector2(448,-1),Vector2(448,640)]:
+		check(view.cell_at(point) == Vector2i(-1,-1), "Outside diamond must not select a cell")
+	view.terrain.resize(64)
+	view.terrain.fill(TerrainDB.PLAIN)
+	view.terrain[0] = TerrainDB.BLUE_FIRE
+	view.selected_uid = -1
+	view._process(0.11)
+	check(view.fire_clock > 0.1,"Blue fire animates even without selected units or channeling")
+	view.terrain[0] = TerrainDB.PLAIN
+	view.burning_cells[Vector2i(1,1)] = 3
+	view._process(0.11)
+	check(view.fire_clock > 0.2,"Ordinary burning cells also drive animation independently")
+	view.burning_cells.clear()
+	var stopped_fire_clock := view.fire_clock
+	view._process(0.11)
+	check(view.fire_clock == stopped_fire_clock,"Fire animation idles when there are no burning tiles")
+	view.queue_free()
+	var app = load("res://scripts/main.gd").new()
+	app.autosave_enabled = false
+	root.add_child(app)
+	app.begin_new_run_with_collection(CollectionState.defaults().select_records([1,2,3]))
+	app.run.region_mode = false
+	app.run.seed = 20261111
+	app.run.offered_floor_themes = ["grass"]
+	app.run.choose_floor_theme("grass")
+	app.show_preview([1,2,3])
+	app.begin_battle([1,2,3], app.current_screen.map)
+	var screen = app.current_screen
+	check(screen.theme != null and screen.theme.has_stylebox("normal","Button"),"Normal main-project route applies the pixel button theme")
+	screen.battle_notice.finish_all()
+	screen.speech_layer.set_suppressed(true)
+	await process_frame
+	await process_frame
+	screen.playback.finish_all()
+	screen.battle_notice.finish_all()
+	var state = screen._display_state()
+	check(screen.board.biome == app.run.current_theme(), "Battle renderer follows current region theme")
+	check(screen.size == Vector2(1280,720), "Interaction tests run in actual 16:9 game viewport")
+	check(not screen.objective_panel.visible, "Long objective panel replaced by round summary")
+	check(screen.round_summary.position.x > 900 and screen.round_summary.position.y < 30, "Round and phase occupy top-right")
+	check(screen.compact_toolbar.get_child_count() == 3, "Menu speed and retreat share one compact toolbar")
+	check(screen.menu_button.position.y == screen.speed_button.position.y and screen.speed_button.position.y == screen.leave_node_button.position.y, "Toolbar controls stay on one row")
+	check(screen.team_panel.get_global_rect().end.y <= screen.unit_panel.global_position.y - 4, "Portrait rail leaves clear space for unit details")
+	check(screen.unit_body.get_parent() is ScrollContainer, "Status-rich unit details have their own scroll area")
+	var projection = preload("res://sample/iso_projection.gd")
+	var board_polygon := PackedVector2Array()
+	for grid in [Vector2.ZERO, Vector2(8,0), Vector2(8,8), Vector2(0,8)]:
+		var world: Vector2 = screen.board.get_global_transform() * projection.point(grid)
+		board_polygon.append(world)
+		check(Rect2(Vector2.ZERO, Vector2(1280,720)).has_point(world), "Expanded board vertex stays inside viewport")
+		check(Rect2(Vector2.ZERO, Vector2(1280,720)).has_point(world + Vector2(0,45)), "Platform depth and shadow remain inside viewport")
+	check(board_polygon[1].x - board_polygon[3].x >= 896, "Board enlarged to 896 pixels wide")
+	for panel in [screen.compact_toolbar, screen.team_panel, screen.round_summary, screen.unit_panel, screen.terrain_panel]:
+		var rect: Rect2 = panel.get_global_rect()
+		var polygon := PackedVector2Array([rect.position, Vector2(rect.end.x,rect.position.y), rect.end, Vector2(rect.position.x,rect.end.y)])
+		check(Geometry2D.intersect_polygons(board_polygon, polygon).is_empty(), "Corner HUD does not cover board surface")
+	var last_card = screen.team_list.get_child(screen.team_list.get_child_count() - 1)
+	check(last_card.get_global_rect().end.y <= screen.team_scroll.get_global_rect().end.y + 1, "All four portrait cards and both bars are visible")
+	var speed_before: float = app.battle_playback_speed
+	screen.speed_button.pressed.emit()
+	check(app.battle_playback_speed != speed_before, "Compact speed button remains functional")
+	for member in state.units:
+		if member.side != "player": continue
+		var card = screen.find_child("TeamPortraitCard_%d" % member.uid, true, false)
+		check(card != null and card.get_child_count() == 3, "Portrait card has only portrait and two bars")
+		var portrait = card.get_child(0)
+		check(portrait is Button and portrait.text.is_empty(), "Portrait has no visible name")
+		check(portrait.tooltip_text.contains(member.display_name), "Member identity remains available on hover")
+		var health = card.get_child(1)
+		check(health.value == member.hp and health.max_value == member.max_hp, "Health bar uses live state")
+		check(health.get_child(0).text == "%d/%d" % [member.hp, member.max_hp], "Health value centered as n/n")
+		var experience = card.get_child(2)
+		check(experience.get_child(0).text.contains("/"), "Experience displays only fraction")
+	var second = screen.find_child("SelectPortrait_2", true, false)
+	second.pressed.emit()
+	check(screen.selected_uid == 2, "Portrait button selects its actual unit")
+	check(screen.unit_panel.visible, "Selected-unit details restored below compact portrait rail")
+	var unit = screen.state.unit_by_uid(1)
+	var origin: Vector2i = unit.cell
+	var water_shape := material_set.surface(BoardView.Iso.diamond(Vector2i(3,3)),TerrainDB.WATER)
+	var water_center := BoardView.cell_center(Vector2i(3,3))
+	check(material_set.immersion_line(TerrainDB.DEEP) < material_set.immersion_line(TerrainDB.WATER), "Deep water covers more of the body than shallow water")
+	for water_value in [TerrainDB.WATER,TerrainDB.DEEP]:
+		var waterline: float = water_center.y + material_set.immersion_line(water_value)
+		var cover: PackedVector2Array = material_set.water_cover_shape(water_shape,waterline)
+		check(cover.size() >= 3, "Immersion foreground is a valid polygon")
+		for point in cover:
+			check(point.y >= waterline-0.001, "Water foreground never covers the visible upper body")
+			check(Geometry2D.is_point_in_polygon(point,water_shape) or water_shape.has(point), "Immersion foreground stays inside its terrain tile")
+			var relative := point-water_center
+			check(absf(relative.x)/56.0+absf(relative.y)/38.0 <= 1.0001, "Foreground water cannot protrude across the original land shoreline")
+	screen.select_unit(1)
+	var options: Dictionary = screen.state.move_options(unit)
+	check(not options.is_empty(), "Test scenario offers movement")
+	if not options.is_empty():
+		var target: Vector2i = options.keys()[0]
+		screen._on_move_pressed()
+		check(screen.board.movement_cells.has(target), "Projected movement overlay contains actual target")
+		var click := InputEventMouseButton.new()
+		click.position = BoardView.cell_center(target)
+		click.pressed = true
+		click.button_index = MOUSE_BUTTON_LEFT
+		screen.board._gui_input(click)
+		check(unit.cell == target, "Mouse click on projected diamond performs actual movement")
+		screen.playback.finish_all()
+		screen.battle_notice.finish_all()
+		screen.do_undo()
+		check(unit.cell == origin, "Undo restores logical grid position")
+	screen.playback.finish_all()
+	screen.battle_notice.finish_all()
+	screen.select_unit(1)
+	screen._on_choose_skill_pressed()
+	var action_rect: Rect2 = screen.action_panel.get_global_rect()
+	var action_polygon := PackedVector2Array([action_rect.position, Vector2(action_rect.end.x,action_rect.position.y), action_rect.end, Vector2(action_rect.position.x,action_rect.end.y)])
+	var selected_center: Vector2 = screen.board.get_global_transform() * BoardView.cell_center(unit.cell)
+	check(action_rect.position.x >= selected_center.x + 40, "Action popup opens immediately right of selected unit")
+	check(Rect2(Vector2.ZERO, Vector2(1280,720)).encloses(action_rect), "Context action popup stays inside viewport")
+	var saved_cell: Vector2i = unit.cell
+	for edge_cell in [Vector2i(0,0), Vector2i(7,0), Vector2i(7,7), Vector2i(0,7)]:
+		unit.cell = edge_cell
+		screen._position_action_panel()
+		var popup: Rect2 = screen.action_panel.get_global_rect()
+		var anchor: Vector2 = screen.board.get_global_transform() * BoardView.cell_center(edge_cell)
+		check(Rect2(Vector2.ZERO, Vector2(1280,720)).encloses(popup), "Popup remains in viewport at every board corner %s rect=%s screen=%s" % [edge_cell, popup, screen.size])
+		if anchor.x + 48 + popup.size.x <= 1264:
+			check(popup.position.x >= anchor.x + 40, "Popup prefers unit right when room exists")
+		else:
+			check(popup.end.x <= anchor.x - 40, "Popup flips left at right screen boundary")
+	unit.cell = saved_cell
+	screen._position_action_panel()
+	check(screen.find_child("SkillButton_fire_burst", true, false) != null, "Actual skill action remains connected")
+	var skill := String(unit.skills[0])
+	screen._on_skill_pressed(skill)
+	check(screen.aim_skill == skill, "Skill enters targeting state on isometric board")
+	check(not screen.board.attack_cells.is_empty(), "Skill target range projected from live state")
+	if not screen.board.attack_cells.is_empty():
+		var target: Vector2i = screen.board.attack_cells[0]
+		var click := InputEventMouseButton.new()
+		click.position = BoardView.cell_center(target)
+		click.pressed = true
+		click.button_index = MOUSE_BUTTON_LEFT
+		screen.board._gui_input(click)
+		check(unit.skill_used or not screen.state.pending_casts.is_empty(), "Clicking projected skill target consumes action or starts channel")
+		screen.playback.finish_all()
+	app.queue_free()
+	await process_frame
+	print("ISO_TEST checks=%d failures=%d" % [checks, failures])
+	quit(1 if failures else 0)

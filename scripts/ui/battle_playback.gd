@@ -185,20 +185,20 @@ func _draw() -> void:
 	var color: Color = {"fire": Color("ff975a"), "water": Color("66cfff"), "electric": Color("ffe271"), "grass": Color("7ce291"), "rock": Color("d3b58b")}.get(SkillDB.element_of(skill), Color("b4ccf4"))
 	var progress := clampf(elapsed / duration, 0.0, 1.0)
 	if actor != null:
-		var center := (Vector2(actor.cell) + Vector2.ONE * 0.5) * BoardView.TILE
+		var center := BoardView.cell_center(actor.cell)
 		draw_arc(center, 28.0 + sin(progress * PI) * 4.0, 0, TAU, 32, color, 3.0)
 		if info["kind"] == "move":
 			var route := PackedVector2Array([center])
 			for cell in info.get("path", []):
-				route.append((Vector2(cell) + Vector2.ONE * 0.5) * BoardView.TILE)
+				route.append(BoardView.cell_center(cell))
 			if route.size() > 1:
 				draw_polyline(route, color, 3.0)
 	if info["kind"] != "skill":
 		return
 	var pushed: Dictionary = current["meta"].get("obstacle_push", {})
 	if not pushed.is_empty() and (pushed.get("moved", false) or pushed.get("filled", false)):
-		var rock_from := (Vector2(pushed["from"]) + Vector2.ONE * 0.5) * BoardView.TILE
-		var rock_to := (Vector2(pushed["to"]) + Vector2.ONE * 0.5) * BoardView.TILE
+		var rock_from := BoardView.cell_center(pushed["from"])
+		var rock_to := BoardView.cell_center(pushed["to"])
 		draw_line(rock_from, rock_to, Color("d3b58b"), 3.0)
 		if elapsed >= 0.4 and elapsed <= 0.7:
 			var rock_pos := rock_from.lerp(rock_to, clampf((elapsed - 0.4) / 0.3, 0.0, 1.0))
@@ -223,7 +223,7 @@ func _draw() -> void:
 	for cell in cells:
 		if _collision_cell_active(cell):
 			continue
-		var target := (Vector2(cell) + Vector2.ONE * 0.5) * BoardView.TILE
+		var target := BoardView.cell_center(cell)
 		if declaration:
 			draw_rect(Rect2(target - Vector2.ONE * 25, Vector2.ONE * 50), Color(color, 0.15 + progress * 0.1), false, 2.0)
 			continue
@@ -243,7 +243,7 @@ func _draw() -> void:
 				var centers: Array = info.get("cells", [])
 				if not centers.is_empty() and cell != centers[0]:
 					continue
-			var start := (Vector2(actor.cell) + Vector2.ONE * 0.5) * BoardView.TILE
+			var start := BoardView.cell_center(actor.cell)
 			if skill in ["lightning", "rock_slide", "earth_shake"]:
 				start = target - Vector2(0, 60)
 			var tip := start.lerp(target, flight)
@@ -276,13 +276,13 @@ func _update_collision_motion() -> void:
 		if age < -0.22 or age > 0.36:
 			continue
 		var event: Dictionary = cue["event"]
-		var origin := (Vector2(event["cell"]) + Vector2.ONE * 0.5) * BoardView.TILE
-		var start := (Vector2(event["start_cell"]) + Vector2.ONE * 0.5) * BoardView.TILE
-		var direction := (Vector2(event["blocker_cell"]) - Vector2(event["cell"])).normalized()
+		var origin := BoardView.cell_center(event["cell"])
+		var start := BoardView.cell_center(event["start_cell"])
+		var direction := (BoardView.cell_center(event["blocker_cell"]) - BoardView.cell_center(event["cell"])).normalized()
 		var desired := start.lerp(origin, smoothstep(0.0, 1.0, (age + 0.22) / 0.22)) if age < 0 else origin + direction * sin(clampf(age / 0.30, 0.0, 1.0) * PI) * 11.0
 		var mover := visual.unit_by_uid(int(event["uid"]))
 		if mover != null and mover.is_alive():
-			var logical := (Vector2(mover.cell) + Vector2.ONE * 0.5) * BoardView.TILE
+			var logical := BoardView.cell_center(mover.cell)
 			screen.board.presentation_offsets[mover.uid] = desired - logical
 		var blocker := visual.unit_by_uid(int(event.get("blocker_uid", -1)))
 		if blocker != null and blocker.is_alive() and age >= 0:
@@ -295,9 +295,9 @@ func _draw_collisions() -> void:
 		if age < -0.08 or age > 0.40:
 			continue
 		var event: Dictionary = cue["event"]
-		var origin := (Vector2(event["cell"]) + Vector2.ONE * 0.5) * BoardView.TILE
-		var destination := (Vector2(event["blocker_cell"]) + Vector2.ONE * 0.5) * BoardView.TILE
-		var center := origin.lerp(destination, 0.5).clamp(Vector2(12, 12), Vector2(GridSpec.W, GridSpec.H) * BoardView.TILE - Vector2(12, 12))
+		var origin := BoardView.cell_center(event["cell"])
+		var destination := BoardView.cell_center(event["blocker_cell"])
+		var center := origin.lerp(destination, 0.5).clamp(Vector2(12, 12), Vector2(896, 654) - Vector2(12, 12))
 		var fade := clampf(1.0 - maxf(0.0, age) / 0.40, 0.0, 1.0)
 		var color := Color(1.0, 0.66, 0.22, fade)
 		var spikes := PackedVector2Array()
@@ -307,9 +307,10 @@ func _draw_collisions() -> void:
 		draw_colored_polygon(spikes, color)
 		draw_arc(center, 22.0 + maxf(0.0, age) * 35.0, 0, TAU, 24, color, 2.0)
 		if GridSpec.is_inside(event["blocker_cell"]):
-			draw_rect(Rect2(Vector2(event["blocker_cell"]) * BoardView.TILE + Vector2(5, 5), Vector2.ONE * (BoardView.TILE - 10)), color, false, 3.0)
+			var outline := preload("res://sample/iso_projection.gd").diamond(event["blocker_cell"] )
+			draw_polyline(outline + PackedVector2Array([outline[0]]), color, 3.0)
 		var caption := "受阻" if event.get("object_kind") == "edge" else "碰撞"
-		var caption_origin := (center + Vector2(-22, 22)).clamp(Vector2.ZERO, Vector2(GridSpec.W, GridSpec.H) * BoardView.TILE - Vector2(44, 22))
+		var caption_origin := (center + Vector2(-22, 22)).clamp(Vector2.ZERO, Vector2(896, 654) - Vector2(44, 22))
 		draw_rect(Rect2(caption_origin, Vector2(44, 22)), Color(0.15, 0.10, 0.04, fade))
 		draw_string(UIKit.font(), caption_origin + Vector2(5, 17), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, color)
 		if event.get("object_kind") == "rock":
@@ -326,7 +327,7 @@ func _draw_departures() -> void:
 		if unit == null or age >= 1.0:
 			continue
 		var falling: bool = String(event["text"]) in ["坠落", "溺水", "落入熔岩"]
-		var center := (Vector2(event["cell"]) + Vector2.ONE * 0.5) * BoardView.TILE + Vector2(0, age * 16.0 if falling else 0.0)
+		var center := BoardView.cell_center(event["cell"]) + Vector2(0, age * 16.0 if falling else 0.0)
 		var radius := 24.0 * (1.0 - age) if falling else 24.0
 		draw_arc(center, maxf(1.0, radius), 0, TAU, 24, Color(1.0, 0.55, 0.4, 1.0 - age), 2.0)
 		draw_string(UIKit.font(), center + Vector2(-10, 8), unit.glyph, HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(10, int(26.0 * (1.0 - age))) if falling else 26, Color(0.9, 0.8, 0.7, 1.0 - age))

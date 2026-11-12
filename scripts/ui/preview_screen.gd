@@ -225,9 +225,10 @@ func _build_roster() -> Control:
 func _layout_preview_board() -> void:
 	if board_host == null or board == null:
 		return
-	var factor := minf(board_host.size.x / (GridSpec.W * BoardView.TILE), board_host.size.y / (GridSpec.H * BoardView.TILE))
+	var visual_size := Vector2(896,714) # Includes upright scenery above the ground and the platform sides.
+	var factor := minf(board_host.size.x / visual_size.x, board_host.size.y / visual_size.y)
 	board.scale = Vector2.ONE * factor
-	board.position = (board_host.size - Vector2(GridSpec.W, GridSpec.H) * BoardView.TILE * factor) * 0.5
+	board.position = (board_host.size-visual_size*factor)*0.5+Vector2(0,60)*factor
 
 
 func _cards_box() -> Control:
