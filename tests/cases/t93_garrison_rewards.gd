@@ -73,9 +73,9 @@ func run(t: TestContext) -> void:
 		t.check(all_ids.has("card:" + id), "包含卡片与改造 " + id)
 	for id in all_ids:
 		t.check(not Rewards.grant(state, id).is_empty(), "奖励均可发放 " + id)
-	state.relic_stacks["fire_mark"] = RelicDB.MAX_RANK
+	state.relic_stacks["fire_carbon"] = 1
 	var before := state.essence
-	Rewards.grant(state, "relic:fire_mark")
+	Rewards.grant(state, "relic:fire_carbon")
 	t.eq(state.essence, before + 6, "满级遗物折算原质")
 	var legacy := state.to_dict()
 	legacy["building_materials"] = 2

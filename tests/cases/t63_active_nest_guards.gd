@@ -143,7 +143,7 @@ func _capture_and_area(t: TestContext) -> void:
 	state.begin_nest_guard(state.unit_by_uid(101), state.nest["cell"])
 	SkillResolver.resolve_channel(state, state.unit_by_uid(1), "fire_burst", [state.nest["cell"]])
 	t.eq(state.nest_guard_charges(state.nest["cell"]), 2, "范围攻击不消耗守护")
-	t.eq(state.nest["hp"], 21, "火球中心守护后仍伤巢9生命")
+	t.eq(state.nest["hp"], 22, "火球中心守护后仍伤巢8生命")
 	var captured := _state()
 	var guard := captured.unit_by_uid(100)
 	captured.begin_nest_guard(guard, captured.nest["cell"])

@@ -41,6 +41,7 @@ func _battle_actions(t: TestContext) -> void:
 	var caster := state.unit_by_uid(1)
 	var target := state.unit_by_uid(100)
 	caster.cell = Vector2i(1, 2)
+	target.element = ""
 	caster.skills.append("ice_shard")
 	t.check(bool(DebugActions.set_damage_bonus(state, "player", 2).get("ok", false)), "我方伤害可调")
 	t.eq(int(state.clone().debug_skill_damage_bonus["player"]), 2, "克隆保留伤害覆盖")

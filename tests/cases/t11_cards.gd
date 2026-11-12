@@ -75,7 +75,7 @@ func _t_grass_duel(t: TestContext) -> void:
 	player.cell = Vector2i(2, 3)
 	var hp_before := player.hp
 	SkillResolver.apply(state, state.unit_by_uid(100), "rock_smash", {"type": "unit", "unit": player.uid, "cell": player.cell}, false)
-	t.eq(player.hp, hp_before - Balance.skill_damage_for_side(SkillDB.damage_of("rock_smash"), "enemy") + Balance.DIRECT_GUARD_REDUCTION, "密林：草丛中的我方单位远程伤害减少 4")
+	t.eq(player.hp, hp_before - roundi((Balance.skill_damage_for_side(SkillDB.damage_of("rock_smash"), "enemy") - Balance.DIRECT_GUARD_REDUCTION) * 0.9), "密林：远程减伤4后结算草丛10%掩护")
 	var state2 := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(1, 3)]], terrain)
 	var player2 := state2.unit_by_uid(1)
 	player2.cell = Vector2i(2, 3)

@@ -81,6 +81,7 @@ func refresh() -> void:
 			_show_book(run, id.trim_prefix(Merchant.BOOK_PREFIX), count)
 		elif Merchant.ITEMS.has(id):
 			content.add_child(UIKit.label("%s ×%d" % [Merchant.ITEMS[id][0], count], 19, UIKit.ACCENT))
+			content.add_child(UIKit.wrapped(String(Merchant.ITEMS[id][2]), 14))
 			if id == "potion":
 				_potion_target(Balance.TRAINER_UID, "训练师", run.trainer_hp, run.trainer_max_hp())
 				for member in run.carried:

@@ -76,6 +76,7 @@ var slow_ticks: int = 0:
 		slow_ticks = value
 		if announce:
 			feedback_changed.emit("status" if active else "clear", "浸湿" + ("解除" if not active else ""), int(value), cell)
+var wet_layers: int = 0
 var burn_ticks: int = 0:
 	set(value):
 		var was_active := burn_ticks > 0
@@ -84,6 +85,7 @@ var burn_ticks: int = 0:
 		burn_ticks = value
 		if announce:
 			feedback_changed.emit("status" if active else "clear", "灼烧" + ("解除" if not active else ""), int(value), cell)
+var burn_layers: int = 0
 var burn_source_uid: int = -1
 var burn_source_side: String = ""
 var shock_ticks: int = 0:
@@ -94,6 +96,7 @@ var shock_ticks: int = 0:
 		shock_ticks = value
 		if announce:
 			feedback_changed.emit("status" if active else "clear", "感电" + ("解除" if not active else ""), int(value), cell)
+var shock_layers: int = 0
 var paralyzed_ticks: int = 0:
 	set(value):
 		var was_active := paralyzed_ticks > 0
@@ -140,6 +143,7 @@ var extra_casts: int = 0:
 		extra_casts = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "额外施法" + ("解除" if not active else ""), int(value), cell)
+var relay_move_bonus: int = 0
 var battle_skill_uses: Dictionary = {}
 var channel_lock_round: int = 0
 var battle_buffs: Dictionary = {}
@@ -179,6 +183,7 @@ var mirror_until_round: int = 0:
 		mirror_until_round = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "镜花水月" + ("解除" if not active else ""), int(value), cell)
+var relic_attack_immune: bool = false
 var fire_amp_stacks: int = 0:
 	set(value):
 		var was_active := fire_amp_stacks > 0
@@ -203,6 +208,7 @@ var mountain_form_ticks: int = 0:
 		mountain_form_ticks = value
 		if announce:
 			feedback_changed.emit("buff" if active else "clear", "山岳形态" + ("解除" if not active else ""), int(value), cell)
+var heavy_wound_layers: int = 0
 var shield_hp: int = 0:
 	set(value):
 		var was_active := shield_hp > 0
@@ -252,6 +258,7 @@ func effective_move() -> int:
 		value += 2
 	if has_buff("move_plus"):
 		value += 1
+	value += relay_move_bonus
 	return maxi(0, value)
 
 
@@ -263,9 +270,56 @@ func can_act_skill() -> bool:
 	return is_on_board() and guard_nest.x < 0 and not fresh_spawn and not frozen and paralyzed_ticks <= 0 and (not skill_used or extra_casts > 0)
 
 
+func max_pp(skill_id: String) -> int:
+	return SkillDB.pp_of(skill_id)
+
+
+func pp_used(skill_id: String) -> int:
+	return clampi(int(battle_skill_uses.get(skill_id, 0)), 0, max_pp(skill_id))
+
+
+func pp_remaining(skill_id: String) -> int:
+	return maxi(0, max_pp(skill_id) - pp_used(skill_id))
+
+
 func can_use_in_battle(skill_id: String) -> bool:
-	var limit := SkillDB.battle_limit_of(skill_id)
-	return limit <= 0 or int(battle_skill_uses.get(skill_id, 0)) < limit
+	return pp_remaining(skill_id) > 0
+
+
+func has_pp_deficit() -> bool:
+	for skill_id in skills:
+		var id := String(skill_id)
+		if SkillDB.is_battle_only(id):
+			continue
+		if pp_remaining(id) < max_pp(id):
+			return true
+	return false
+
+
+func restore_pp(amount: int) -> int:
+	## amount < 0 表示回满；否则每项已装备技能最多恢复 amount 点。
+	var restored := 0
+	for skill_id in skills:
+		var id := String(skill_id)
+		if SkillDB.is_battle_only(id):
+			continue
+		var before := pp_remaining(id)
+		if before >= max_pp(id) or max_pp(id) <= 0:
+			continue
+		var spend := pp_used(id)
+		var after_spend := 0 if amount < 0 else maxi(0, spend - amount)
+		if after_spend == spend:
+			continue
+		battle_skill_uses[id] = after_spend
+		restored += pp_remaining(id) - before
+	return restored
+
+
+func consume_skill_pp(skill_id: String) -> bool:
+	if not can_use_in_battle(skill_id):
+		return false
+	battle_skill_uses[skill_id] = mini(max_pp(skill_id), pp_used(skill_id) + 1)
+	return true
 
 
 func can_move_now(free_terrain: bool = false) -> bool:
@@ -306,10 +360,13 @@ func dup() -> CombatUnit:
 	copy.vine_reapply_round = vine_reapply_round
 	copy.vine_reapply_cell = vine_reapply_cell
 	copy.slow_ticks = slow_ticks
+	copy.wet_layers = wet_layers
 	copy.burn_ticks = burn_ticks
+	copy.burn_layers = burn_layers
 	copy.burn_source_uid = burn_source_uid
 	copy.burn_source_side = burn_source_side
 	copy.shock_ticks = shock_ticks
+	copy.shock_layers = shock_layers
 	copy.paralyzed_ticks = paralyzed_ticks
 	copy.frozen = frozen
 	copy.frozen_ticks = frozen_ticks
@@ -317,6 +374,7 @@ func dup() -> CombatUnit:
 	copy.vine_sources = vine_sources.duplicate()
 	copy.haste_ticks = haste_ticks
 	copy.extra_casts = extra_casts
+	copy.relay_move_bonus = relay_move_bonus
 	copy.battle_skill_uses = battle_skill_uses.duplicate()
 	copy.channel_lock_round = channel_lock_round
 	copy.battle_buffs = battle_buffs.duplicate()
@@ -328,9 +386,11 @@ func dup() -> CombatUnit:
 	copy.ice_glide_until_round = ice_glide_until_round
 	copy.surf_until_round = surf_until_round
 	copy.mirror_until_round = mirror_until_round
+	copy.relic_attack_immune = relic_attack_immune
 	copy.fire_amp_stacks = fire_amp_stacks
 	copy.electric_resonance_bonus = electric_resonance_bonus
 	copy.mountain_form_ticks = mountain_form_ticks
+	copy.heavy_wound_layers = heavy_wound_layers
 	copy.shield_hp = shield_hp
 	copy.shield_ticks = shield_ticks
 	copy.shield_source_uid = shield_source_uid

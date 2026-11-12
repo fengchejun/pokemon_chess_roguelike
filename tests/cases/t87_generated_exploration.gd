@@ -106,12 +106,12 @@ func run(t: TestContext) -> void:
 	app.finish_battle(boss_battle)
 	t.check(run_state.has_pending_battle_loot(), "高级战利品等待选择领取")
 	for i in run_state.pending_battle_loot.size(): run_state.resolve_battle_loot(i, true)
-	t.check(run_state.legendary_offers.size() == 1 and run_state.pending_reward_choices == 1, "领取后进入传奇三选一")
+	t.check(run_state.pending_reward_choices == 1, "领取后进入新版遗物三选一")
 	var paid := run_state.essence
 	run_state.settle_battle(boss_battle)
 	t.eq(run_state.essence, paid, "重复结算不会再发高级奖励")
-	if not run_state.legendary_offers.is_empty():
-		t.check(run_state.choose_reward(run_state.reward_choices()[0]), "提前过层可领取传奇遗物")
+	while run_state.pending_reward_choices > 0:
+		t.check(run_state.skip_reward_choice(), "提前过层可放弃遗物")
 	app.continue_after_settlement()
 	t.eq(run_state.floor_index(), 2, "提前过层进入下一层")
 	run_state.floor_themes = ["fire", "water", "grass"]

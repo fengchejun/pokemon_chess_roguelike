@@ -6,6 +6,10 @@
 
 `Balance.SKILL_SLOTS` 统一限制敌我装备数量为 3；`CollectionScreen` 把玩家选择的 `starting_skill_id` 传给 `RunState.new_run()`，仅把这一招加入开局 `known_skills` 与 `equipped_skills`。物种其余基础招式进入 `available_new_skills()`，可在偶数级选择学习。旧本局记录读取时保留已学招式库并将装备裁到三格。`RunState.settle_battle()` 不再给出战者自动回血；携带留守成员按 `BENCH_RECOVERY_RATIO` 恢复，0 HP 特判为 1 HP，仓库恢复流程仍独立。
 
+PP 是局内持久资源：宝可梦记录的 `skill_pp_uses` 保存每个已学技能已消耗次数，`RunState.build_deploy_units()` 在开战前注入 `CombatUnit.battle_skill_uses`，`sync_from_battle()` 在施法、读档和结算后回写。`BattleState.setup()` 不再清空我方 PP；敌方每场新生成并自然满 PP。存档 v19 对旧快照按五倍比例迁移消耗次数；旧记录无 PP 数据时默认满 PP。营地基础食物调用 `restore_record_pp()` 回满全队，商人 `pp_tonic` 通过 `CombatUnit.restore_pp(5)` 为每项已装备技能恢复至多 5 PP。
+
+遗物机制于 2026-11-10 以57项新池重新接入。`RelicDB` 保存稀有度、类型、文本、进化前置与即时选择标记；正式区域普通/首领胜利提供1次三选一，商人每层库存1件遗物，收集区、失败和撤离不提供。`RunState` 保存本局遗物、待选次数、后续选择和永久/本层伤害修正，`BattleState.relic_state` 保存场内触发；本局存档为 v21，战斗快照为 v10。旧 v19及更早存档的旧遗物ID与待选次数会清理，v20 旧档按空遗物集合迁移。奖励点继续作为额外经验来源，不额外换成遗物选择。完整实现边界见 `docs/遗物机制-v2.md`。
+
 `SkillResolver` 让冲浪、溜冰保留施放前的移动消耗状态，截止回合为当前回合加一；`PathFinder._connected_terrain_paths()` 允许路线经过敌方占据格，`stop_cells()` 仍禁止停在任何单位所在格。普通移动寻路及阻挡不变。推风射程、海啸区域和顺风长度分别由 `SkillDB` 与 `SkillResolver` 的共享规则定义。
 
 推风现在使用 `direction` 选点。`SkillResolver.front_area_cells()` 统一产生横宽三格的方向区域：推风纵深 2，顺风纵深 3（强化可再延长）；瞄准、预览与实际结算复用该函数。推风只收集施法时位于区域内的敌方单位，按投影距离从远到近交给 `PushResolver`，保证同列多目标不会因遍历顺序不同而产生预览分叉。敌人 AI 继续在克隆战场执行技能并比较结果。

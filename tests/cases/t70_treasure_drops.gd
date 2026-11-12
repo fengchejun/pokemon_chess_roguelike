@@ -128,7 +128,7 @@ func _drops(t: TestContext) -> void:
 	var run := RunState.new_run(7070)
 	var unpicked := _state()
 	unpicked.end_battle("victory")
-	t.eq(run.settle_battle(unpicked)["pending_reward_choices"], 0, "清场没有自动三选一")
+	t.eq(run.settle_battle(unpicked)["reward_points_earned"], 0, "清场没有未持有点数的额外经验")
 
 func _settle(t: TestContext) -> void:
 	var state := _state()
@@ -145,10 +145,10 @@ func _settle(t: TestContext) -> void:
 	var run := RunState.new_run(7071)
 	run.mark_deployed([1])
 	var result := run.settle_battle(state)
-	t.eq(result["bonus_choices_earned"], 2, "保住两个奖励点发两次三选一")
-	t.eq(run.pending_reward_choices, 2, "取消基础奖励后数量精确等于拾取数")
+	t.eq(result["reward_points_earned"], 2, "保住两个奖励点获得两点额外经验")
+	var xp_after := int(run.record_by_uid(1)["xp"])
 	run.settle_battle(state)
-	t.eq(run.pending_reward_choices, 2, "重复结算不多发")
+	t.eq(int(run.record_by_uid(1)["xp"]), xp_after, "重复结算不重复发放奖励经验")
 	var dead := _state()
 	dead.add_reward_point(cell, "test")
 	dead.unit_by_uid(1).cell = cell
@@ -156,7 +156,7 @@ func _settle(t: TestContext) -> void:
 	dead._finish_reward_guard()
 	dead.kill_unit(dead.unit_by_uid(1), "测试")
 	dead.end_battle("escape")
-	t.eq(RunState.new_run(7072).settle_battle(dead)["bonus_choices_earned"], 0, "持有者倒下失去奖励")
+	t.eq(RunState.new_run(7072).settle_battle(dead)["reward_points_earned"], 0, "持有者倒下失去奖励")
 
 func _persist(t: TestContext) -> void:
 	var state := _state()

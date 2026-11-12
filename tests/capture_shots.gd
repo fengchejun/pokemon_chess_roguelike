@@ -129,9 +129,15 @@ func _run() -> void:
 	if not battle.state.ended:
 		for enemy in battle.state.alive_units("enemy"):
 			battle.state.kill_unit(enemy, "截图清场", "player")
+		battle.state.end_battle("victory")
 		battle.refresh_all()
+	battle.report_end_now()
 	await process_frame
 	await process_frame
+	if app.current_screen.name != "SettlementScreen":
+		push_error("截图流程未进入战后结算：%s" % app.current_screen.name)
+		quit(1)
+		return
 	await _shot("10_settlement")
 	var settlement = app.current_screen
 	# 捕获处理选项（名单满员）
@@ -148,10 +154,6 @@ func _run() -> void:
 		var level_entry: Dictionary = app.run.pending_monster_levels()[0]
 		var choices: Array = app.run.available_monster_upgrades(int(level_entry["uid"]))
 		if choices.is_empty() or not app.run.take_monster_level_choice(int(level_entry["uid"]), int(level_entry["level"]), String(choices[0])):
-			break
-	while app.run.pending_reward_choices > 0:
-		var offers: Array = app.run.reward_choices()
-		if offers.is_empty() or not app.run.choose_reward(String(offers[0])):
 			break
 	settlement._show_next_step()
 	await process_frame

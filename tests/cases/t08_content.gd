@@ -13,7 +13,8 @@ func run(t: TestContext) -> void:
 func _t_data_integrity(t: TestContext) -> void:
 	for skill_id in SkillDB.DEFS:
 		var def: Dictionary = SkillDB.DEFS[skill_id]
-		t.check(Elements.LIST.has(String(def.get("element", ""))), "技能 %s 属性有效" % skill_id)
+		var element := String(def.get("element", ""))
+		t.check(Elements.LIST.has(element) or (element == "" and SkillDB.is_special(String(skill_id))), "技能 %s 属性有效" % skill_id)
 		t.check(String(def.get("desc", "")) != "", "技能 %s 有描述" % skill_id)
 	for species_id in SpeciesDB.SPECIES:
 		var species: Dictionary = SpeciesDB.SPECIES[species_id]

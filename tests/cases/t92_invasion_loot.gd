@@ -165,26 +165,30 @@ func _loot(t: TestContext) -> void:
 		for i in 60:
 			var run_state := RunState.new_run(92)
 			run_state.essence = 0
-			Loot.redeem(run_state, tier, str(i))
+			var offers := Loot.preview(run_state, tier, str(i))
+			t.check(run_state.essence == 0 and run_state.relic_stacks.is_empty(), "预览不触发获得效果")
+			var money := int(offers[0]["amount"])
 			match tier:
-				"common":
-					t.check(run_state.essence in range(3, 8) and run_state.relic_stacks.size() == 1 and run_state.pending_reward_choices == 0, "普通点自动发遗物及3–7原质")
-					saw_upgrade[tier] = saw_upgrade[tier] or RelicDB.rarity_of(run_state.relic_stacks.keys()[0]) == RelicDB.RARE
-					saw_bonus[tier] = saw_bonus[tier] or run_state.trainer_items.has("xp_candy_small")
-				"medium":
-					t.check(run_state.essence in range(7, 13) and run_state.relic_stacks.size() == 1 and run_state.pending_reward_choices == 0, "中级点自动发遗物及7–12原质")
-					saw_upgrade[tier] = saw_upgrade[tier] or RelicDB.rarity_of(run_state.relic_stacks.keys()[0]) == RelicDB.LEGENDARY
-					saw_bonus[tier] = saw_bonus[tier] or not run_state.trainer_items.is_empty()
+				"common", "medium":
+					var relic := String(offers[1]["id"])
+					t.check(money in (range(3, 8) if tier == "common" else range(7, 13)), "基础原质位于该档范围")
+					saw_upgrade[tier] = saw_upgrade[tier] or RelicDB.rarity_of(relic) == (RelicDB.RARE if tier == "common" else RelicDB.LEGENDARY)
+					saw_bonus[tier] = saw_bonus[tier] or offers.size() > 2
+					Loot.redeem(run_state, tier, str(i))
+					t.check(RelicDB.owned(run_state.relic_stacks, relic), "实际领取应用新版遗物效果")
 				"high":
-					var offers := run_state.reward_choices()
-					t.check(run_state.essence in range(12, 21) and run_state.pending_reward_choices == 1 and not run_state.trainer_items.is_empty(), "高级点发原质、道具及传奇选择")
-					t.check(offers.size() == 3 and offers.all(func(id): return RelicDB.rarity_of(id) == RelicDB.LEGENDARY), "高级点候选均为传奇")
+					t.check(money in range(12, 21), "高级点原质范围")
+					var choices: Array = offers[1]["offers"]
+					t.check(choices.size() == 3 and choices.all(func(id): return RelicDB.rarity_of(id) == RelicDB.LEGENDARY), "预览提供三个传奇候选")
+					Loot.redeem(run_state, tier, str(i))
+					t.check(run_state.pending_reward_choices == 1 and run_state.reward_choices().all(func(id): return RelicDB.rarity_of(id) == RelicDB.LEGENDARY), "获得副遗物后候选仅保留仍可领取的传奇")
 	t.check(saw_upgrade.values().all(func(value): return value) and saw_bonus.values().all(func(value): return value), "两档奖励的升稀有和道具概率分支均可触发")
 	var exhausted := RunState.new_run(92)
-	for id in RelicDB.ids():
-		exhausted.relic_stacks[id] = RelicDB.MAX_RANK
+	exhausted.essence = 0
+	for id in RelicDB.ids(): exhausted.relic_stacks[id] = 1
+	var offers := Loot.preview(exhausted, "high", "maxed")
+	var total: int = offers.filter(func(offer): return offer["kind"] == "essence").reduce(func(sum, offer): return sum + int(offer["amount"]), 0)
 	Loot.redeem(exhausted, "high", "maxed")
 	var reloaded := RunState.from_dict(exhausted.to_dict())
-	var before := reloaded.essence
-	t.check(reloaded.choose_reward(reloaded.reward_choices()[0]), "传奇候选满级时仍可结算")
-	t.eq(reloaded.essence, before + 16, "满级传奇折算16原质")
+	t.eq(reloaded.pending_reward_choices, 0, "唯一遗物池耗尽后不产生空选择")
+	t.eq(reloaded.essence, total, "耗尽奖励按档折算原质并保存")

@@ -88,6 +88,7 @@ func run(t: TestContext) -> void:
 	invaded.stop_nests()
 	invaded.end_battle("victory")
 	app.finish_battle(invaded)
+	while app.run.pending_reward_choices > 0: app.run.skip_reward_choice()
 	app.continue_after_settlement()
 	t.eq(app.current_screen.name, "CampScreen", "夺回后返回同一营地")
 	t.check(not app.run.camp_service_available("fire") and not app.run.camp_service_available("storage"), "夺回不修复已毁设施")

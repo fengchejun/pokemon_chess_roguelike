@@ -11,9 +11,11 @@ static func odds(actions: int) -> Dictionary:
 	var legendary := mini(10, 1 + maxi(0, actions) / 2)
 	return {"common": 100 - rare - legendary, "rare": rare, "legendary": legendary}
 
-static func reward_pool(rarity: String) -> Array:
+static func reward_pool(rarity: String, run: RunState = null) -> Array:
 	var pool: Array = []
 	for id in RelicDB.ids_of_rarity(rarity):
+		if run != null and not RelicDB.available_ids(run.relic_stacks).has(id):
+			continue
 		pool.append("relic:" + id)
 	for id in Merchant.ITEMS:
 		var price := int(Merchant.ITEMS[id][1])
@@ -55,11 +57,10 @@ static func grant(run: RunState, id: String) -> String:
 		run.trainer_items[item] = int(run.trainer_items.get(item, 0)) + 1
 		return "技能书 · " + SkillDB.name_of(item.trim_prefix(Merchant.BOOK_PREFIX)) if item.begins_with(Merchant.BOOK_PREFIX) else String(Merchant.ITEMS[item][0])
 	var relic := id.trim_prefix("relic:")
-	if RelicDB.rank(run.relic_stacks, relic) >= RelicDB.MAX_RANK:
+	if not run.acquire_relic(relic, "garrison"):
 		var compensation := int(Loot.CONVERSION[RelicDB.rarity_of(relic)])
 		run.essence += compensation
-		return "原质 ×%d（遗物满级折算）" % compensation
-	run.relic_stacks[relic] = RelicDB.rank(run.relic_stacks, relic) + 1
+		return "原质 ×%d（遗物不可重复折算）" % compensation
 	return RelicDB.display_name_of(relic)
 
 static func settle(run: RunState, region: RegionState, uid: int, reason: String, forced: bool = false) -> Array:
@@ -84,7 +85,7 @@ static func settle(run: RunState, region: RegionState, uid: int, reason: String,
 		rng.seed = hash("garrison:%d:%s:%d" % [run.seed, key, serial])
 		var roll := rng.randi_range(0, 99)
 		var rarity := "legendary" if roll < int(chances["legendary"]) else "rare" if roll < int(chances["legendary"]) + int(chances["rare"]) else "common"
-		var pool := reward_pool(rarity)
+		var pool := reward_pool(rarity, run)
 		rewards.append(grant(run, pool[rng.randi_range(0, pool.size() - 1)]))
 		run.garrison_reward_rolls[key] = serial + 1
 	if actions > 0 or not rewards.is_empty():

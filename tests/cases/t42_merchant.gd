@@ -57,15 +57,8 @@ func run(t: TestContext) -> void:
 	t.check((app.run.record_by_uid(second_uid).get("upgrades_taken", []) as Array).has(second_upgrade), "商人界面强化写入对应宝可梦")
 	app.run.essence = 100
 	t.check(not app.merchant_trade(state, "food", "basic", 99)["ok"], "禁止超量出售食物")
-	var first_relic := ""
-	for key in state.merchant["stock"]:
-		if String(key).begins_with("relic:"):
-			first_relic = String(key)
-			break
-	app.run.relic_stacks[first_relic.trim_prefix("relic:")] = 3
-	t.check(not app.merchant_trade(state, "buy", first_relic)["ok"], "满级遗物不能购买")
-	t.check(app.merchant_trade(state, "relic", first_relic.trim_prefix("relic:"))["ok"], "遗物逐级出售")
-	t.eq(RelicDB.rank(state.relic_stacks, first_relic.trim_prefix("relic:")), 2, "出售更新战场遗物等级")
+	t.check(state.merchant["stock"].keys().any(func(key): return String(key).begins_with("relic:")), "商人库存包含新版遗物")
+	t.check(not app.merchant_trade(state, "buy", "relic:camp_ember")["ok"], "旧遗物SKU不能购买")
 	app.run.essence = 100
 	var round_before := state.round
 	t.check(app.merchant_trade(state, "buy", "potion")["ok"], "购买治疗药")
@@ -79,19 +72,48 @@ func run(t: TestContext) -> void:
 	t.eq(app.run.essence, 95, "回滚余额")
 	t.eq(state.merchant["stock"], stock_before, "回滚库存")
 	t.eq(app.run.trainer_items["potion"], 1, "回滚商品")
+	app.run.essence = 100
+	t.check(app.merchant_trade(state, "buy", "pp_tonic")["ok"], "购买技能药剂")
+	t.eq(app.run.essence, 93, "技能药剂正确扣款")
+	t.eq(state.merchant["stock"]["pp_tonic"], 0, "技能药剂正确扣库存")
 	trainer = state.unit_by_uid(Balance.TRAINER_UID)
 	var target := state.unit_by_uid(1)
 	target.cell = trainer.cell + Vector2i.RIGHT
 	state.set_terrain(target.cell, TerrainDB.PLAIN)
 	target.hp = 1
-	t.check(Merchant.use_item(app.run, state, "potion", target.uid)["ok"], "自由探索可使用治疗药")
-	t.eq(target.hp, 16, "非战斗棋盘恢复15HP")
+	t.check(not Merchant.use_item(app.run, state, "potion", target.uid)["ok"], "旧自由探索棋盘禁止恢复道具")
+	t.eq(target.hp, 1, "禁用时不消耗道具也不治疗")
 	t.check(not trainer.skill_used and not trainer.capture_used, "自由探索用药不占战斗行动")
 	app.run.trainer_items["potion"] = 1
 	target.hp = 1
 	state.node_kind = "battle"
 	state.nest["alive"] = true
 	state.add_garrison(1, ["rock_wild1"])
+	var pp_target := state.unit_by_uid(1)
+	var depleted_skill := String(pp_target.skills[0])
+	for skill_id in pp_target.skills:
+		var pp_id := String(skill_id)
+		pp_target.battle_skill_uses[pp_id] = SkillDB.pp_of(pp_id) if pp_id == depleted_skill else maxi(1, SkillDB.pp_of(pp_id) - 5)
+	t.check(Merchant.item_target_valid(state, pp_target, "pp_tonic"), "PP 缺失时可选择技能药剂目标")
+	var pp_before := {}
+	for skill_id in pp_target.skills:
+		pp_before[String(skill_id)] = pp_target.pp_remaining(String(skill_id))
+	t.check(Merchant.use_item(app.run, state, "pp_tonic", pp_target.uid)["ok"], "正式战斗训练师使用技能药剂")
+	for skill_id in pp_target.skills:
+		var pp_skill_id := String(skill_id)
+		t.eq(pp_target.pp_remaining(pp_skill_id), mini(SkillDB.pp_of(pp_skill_id), int(pp_before[pp_skill_id]) + Merchant.PP_TONIC_RESTORE), "技能药剂为每项已装备技能恢复5 PP")
+	t.eq(pp_target.pp_remaining(depleted_skill), Merchant.PP_TONIC_RESTORE, "技能药剂可以恢复完全耗尽的技能")
+	t.eq(int(app.run.trainer_items.get("pp_tonic", 0)), 0, "技能药剂使用后扣除")
+	t.check(trainer.skill_used and trainer.capture_used, "技能药剂消耗训练家本次行动")
+	trainer.skill_used = false
+	trainer.capture_used = false
+	var full_target := state.unit_by_uid(2)
+	for skill_id in full_target.skills:
+		var full_id := String(skill_id)
+		full_target.battle_skill_uses[full_id] = mini(SkillDB.pp_of(full_id), Merchant.PP_TONIC_RESTORE)
+	full_target.restore_pp(Merchant.PP_TONIC_RESTORE)
+	t.check(not full_target.has_pp_deficit(), "单项技能恢复至上限后不再有 PP 缺失")
+	t.check(not Merchant.item_target_valid(state, full_target, "pp_tonic"), "PP 已满时不能继续使用技能药剂")
 	t.check(Merchant.use_item(app.run, state, "potion", target.uid)["ok"], "正式战斗训练师使用治疗药")
 	t.eq(target.hp, 16, "治疗15HP")
 	t.check(trainer.skill_used and trainer.capture_used and not state.can_undo(), "道具消耗行动并提交移动")

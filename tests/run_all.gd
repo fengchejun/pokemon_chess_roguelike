@@ -58,6 +58,7 @@ func _run() -> void:
 		else:
 			t.current = ""
 	print("运行用例：%d 个，检查点 %d 个" % [executed, t.checks])
+	t.failures.append_array(failures)
 	if not t.failures.is_empty():
 		print("失败 %d 项：" % t.failures.size())
 		for message in t.failures:

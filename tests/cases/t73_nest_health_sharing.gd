@@ -42,8 +42,11 @@ func _growth(t: TestContext) -> void:
 	t.eq(raw.nest["hp"], 23, "直接伤害按数值扣血")
 	var high := _state()
 	var rockfall := SkillResolver.resolve_channel(high, high.unit_by_uid(1), "rock_slide", [high.nest["cell"]])
-	t.check(not high.nest["alive"], "无守护时30点岩崩可摧毁第一层巢穴")
+	t.eq(high.nest["hp"], 10, "无守护时20点岩崩对第一层巢穴造成全额伤害")
+	t.check(high.nest["alive"], "单次岩崩不再直接摧毁第一层巢穴")
 	t.eq(rockfall["nests_damaged"].size(), 1, "巢穴只命中一次")
+	SkillResolver.resolve_channel(high, high.unit_by_uid(1), "rock_slide", [high.nest["cell"]])
+	t.check(not high.nest["alive"], "第二次岩崩完成毁巢")
 	t.eq(high.all_rewards().filter(func(p): return p.get("id", "").begins_with("nest:")).size(), 1, "毁巢奖励点只掉落一次")
 
 func _sharing(t: TestContext) -> void:
@@ -86,10 +89,6 @@ func _modifiers(t: TestContext) -> void:
 	upgraded.unit_by_uid(1).upgrades[info["key"]] = info["value"]
 	_attack(upgraded)
 	t.eq(upgraded.nest["hp"], 20 - int(info.get("damage_bonus", 0)), "技能强化提高拆巢伤害")
-	var relic := _state()
-	relic.relic_stacks["first_strike"] = 1
-	_attack(relic)
-	t.eq(relic.nest["hp"], 16, "适用遗物对无属性巢穴生效")
 	var amp := _state()
 	amp.unit_by_uid(1).fire_amp_stacks = 5
 	_attack(amp)
@@ -142,10 +141,12 @@ func _migration(t: TestContext) -> void:
 	run.battle_snapshot = data
 	var old := run.to_dict()
 	old["version"] = 13
-	var path := "user://test_t73_legacy.json"
+	var path := "res://.test_t73_legacy.json"
 	var file := FileAccess.open(path, FileAccess.WRITE)
-	file.store_string(JSON.stringify(old))
-	file.close()
+	t.check(file != null, "旧版巢穴档案可写入测试路径")
+	if file != null:
+		file.store_string(JSON.stringify(old))
+		file.close()
 	var loaded := SaveSystem.load_run(path)
 	t.check(loaded != null, "实际v13存档入口可读")
 	if loaded != null:

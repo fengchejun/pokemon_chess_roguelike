@@ -10,11 +10,12 @@ func run(t: TestContext) -> void:
 	_persistence(t)
 	t.finish()
 
-func _run_state() -> RunState:
+func _run_state(floor: int = 0) -> RunState:
 	var run := RunState.new_run(7401)
 	run.region_mode = true
+	run.battle_index = floor * Balance.BATTLES_PER_FLOOR
 	run.choose_floor_theme(String(run.offered_floor_themes[0]))
-	var region = run.get_region()
+	var region = RegionState.create_floor(floor, run.current_theme())
 	for node in region.nodes.values():
 		node["unlocked"] = true
 	region.active_node = "battle_1"
@@ -81,12 +82,12 @@ func _growth_and_damage(t: TestContext) -> void:
 	var enemy := state.unit_by_uid(100)
 	enemy.skills = ["rock_break"]
 	var opts := {"skill_direct": true, "no_element": true, "skill_id": "rock_break"}
-	t.eq(state.calculate_damage(enemy, state.trainer(), 10, opts), 7, "普通敌人基础10按70%结算")
+	t.eq(state.calculate_damage(enemy, state.trainer(), 10, opts), 10, "普通敌人技能不再承受70%减益")
 	enemy.max_hp = 50
 	enemy.hp = 25
 	enemy.set_corrupted(true)
 	t.eq(enemy.max_hp, 55, "50生命精确变55，不因浮点误差变56")
-	t.eq(state.calculate_damage(enemy, state.trainer(), 10, opts), 8, "黑化先提升技能威力，再按敌方比例结算")
+	t.eq(state.calculate_damage(enemy, state.trainer(), 10, opts), 11, "黑化技能按完整基础伤害提升10%")
 	t.eq(state.calculate_damage(enemy, state.trainer(), 5, {"no_element": true, "collision": true}), 5, "碰撞伤害不获得技能威力加成")
 	state.unit_by_uid(1).cell = Vector2i(3, 3)
 	var target := {"type": "unit", "unit": 1, "cell": Vector2i(3, 3)}
@@ -134,7 +135,7 @@ func _movement(t: TestContext) -> void:
 	t.eq(run.invasion_level_bonus, 1, "旧的区域等级增长仍跨层保留")
 
 func _occupation(t: TestContext) -> void:
-	var run := _run_state()
+	var run := _run_state(2)
 	var region = run.get_region()
 	region.nodes["battle_2"]["cleared"] = true
 	region.nodes["battle_2"]["mode"] = "event"
@@ -195,6 +196,8 @@ func _camp_ui(t: TestContext) -> void:
 	t.eq(app.run.get_region().node_mode("camp"), "camp", "营地清场恢复营地模式")
 	t.check(not app.run.get_region().camp_invaded, "营地占领标记解除")
 	var visits: int = app.run.get_region().visits
+	app.run.pending_reward_choices = 0
+	app.current_screen._show_next_step()
 	app.continue_after_settlement()
 	t.eq(app.current_screen.name, "CampScreen", "夺回结算后直接进入营地，无需再走一次")
 	t.check(app.current_screen.find_child("CampFeedback", true, false).text.contains("已夺回"), "营地提示已恢复服务")
@@ -236,10 +239,12 @@ func _persistence(t: TestContext) -> void:
 	run.battle_snapshot = old
 	var data := run.to_dict()
 	data["version"] = 14
-	var path := "user://test_t74_legacy.json"
+	var path := "res://.test_t74_legacy.json"
 	var file := FileAccess.open(path, FileAccess.WRITE)
-	file.store_string(JSON.stringify(data))
-	file.close()
+	t.check(file != null, "旧版区域档案可写入测试路径")
+	if file != null:
+		file.store_string(JSON.stringify(data))
+		file.close()
 	var loaded := SaveSystem.load_run(path)
 	t.check(loaded != null, "真实v14文件仍可读取")
 	if loaded != null:

@@ -110,10 +110,9 @@ func _collision(t: TestContext) -> void:
 	var bonus := _state()
 	bonus.unit_by_uid(100).cell = DST
 	bonus.effects["push_collision"] = 2
-	bonus.relic_stacks["wall_crash"] = 1
 	var before := bonus.unit_by_uid(100).hp
 	_hit(bonus)
-	t.eq(bonus.unit_by_uid(100).hp, before - 11, "沿用碰撞加成而非技能直伤克制")
+	t.eq(bonus.unit_by_uid(100).hp, before - 7, "碰撞加成按环境效果结算")
 
 func _fill(t: TestContext) -> void:
 	for kind in [TerrainDB.DEEP, TerrainDB.LAVA, TerrainDB.PIT]:

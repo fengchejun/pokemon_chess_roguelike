@@ -77,11 +77,9 @@ func run(t: TestContext) -> void:
 	clearing.nest["alive"] = false
 	clearing.end_battle("victory")
 	clear_app.finish_battle(clearing)
-	while clear_app.run.pending_reward_choices > 0:
-		clear_app.run.choose_reward(String(clear_app.run.reward_choices()[0]))
 	clear_app.continue_after_settlement()
 	t.eq(clear_app.run.get_region().node_mode("battle_1"), "event", "普通战斗真正清空后成为收集区")
-	t.check(not bool(clear_app.run.get_region().nodes["battle_1"].get("reward_claimed", false)), "取消清场基础三选一，不自动记领取账")
+	t.check(not bool(clear_app.run.get_region().nodes["battle_1"].get("reward_claimed", false)), "清场不自动记录奖励领取")
 	var cleared_visit: BattleState = _start(clear_app, "battle_1")
 	t.eq(cleared_visit.alive_enemy_count(), 0, "已清场重访无敌人")
 	var old_terrain := cleared_visit.terrain.duplicate()
@@ -125,20 +123,14 @@ func run(t: TestContext) -> void:
 	boss_app.current_screen.report_end_now()
 	t.check(boss_app.run.get_region().nodes["boss"]["cleared"], "使用传送门后的结算记录首领完成")
 	var abandoned: Dictionary = boss_app.run._make_record("fire_starter")
-	boss_app.run.carried.append(abandoned)
-	boss_app.collection.absorb_run(boss_app.run)
-	boss_app.run.carried.erase(abandoned)
 	boss_app.run.storage.append(abandoned)
 	var previous_collection_id := int(boss_app.collection.owned[0]["id"])
 	var prior_owned: Dictionary = boss_app.run._make_record("water_starter")
 	prior_owned["collection_id"] = previous_collection_id
 	boss_app.run.storage.append(prior_owned)
-	var abandoned_source := "run:%d:%d" % [boss_app.run.seed, int(abandoned["uid"])]
-	while boss_app.run.pending_reward_choices > 0:
-		boss_app.run.choose_reward(String(boss_app.run.reward_choices()[0]))
 	boss_app.continue_after_settlement()
-	t.check(boss_app.run.storage.is_empty(), "进入下一层后丢弃营地留守成员")
-	t.check(boss_app.collection.owned.all(func(entry): return String(entry.get("source", "")) != abandoned_source), "本局留守成员不进入永久收藏")
+	t.eq(boss_app.run.storage.size(), 2, "进入下一层后仓库成员保留")
+	t.check(boss_app.collection.owned.all(func(entry): return String(entry.get("source", "")) != "run:%d:%d" % [boss_app.run.seed, int(abandoned["uid"])]), "跨层结算不提前登记仓库成员")
 	t.check(not boss_app.collection.record_by_id(previous_collection_id).is_empty(), "已有永久收藏不会因留守被删除")
 	boss_app.queue_free()
 	var support_app = _new_app(t, 74)

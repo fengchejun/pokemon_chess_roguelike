@@ -56,7 +56,7 @@ static func save_state(state: BattleState) -> Dictionary:
 	var members: Array = []
 	for unit in state.units:
 		members.append(_fields(unit))
-	return {"version": 8, "fields": _fields(state), "units": members, "rng": {
+	return {"version": 10, "fields": _fields(state), "units": members, "rng": {
 		"spawn_seed": str(state.spawn_rng.seed), "spawn_state": str(state.spawn_rng.state),
 		"capture_seed": str(state.capture_rng.seed), "capture_state": str(state.capture_rng.state),
 		"terrain_seed": str(state.terrain_rng.seed), "terrain_state": str(state.terrain_rng.state),
@@ -67,8 +67,9 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 	if not snapshot.has("fields") or not snapshot.has("units") or not snapshot.has("rng"):
 		return null
 	var state := BattleState.new()
-	for key in snapshot["fields"]:
-		state.set(key, decode(snapshot["fields"][key]))
+	var fields: Dictionary = (snapshot["fields"] as Dictionary).duplicate()
+	for key in fields:
+		state.set(key, decode(fields[key]))
 	for member in snapshot["units"]:
 		var unit := CombatUnit.new()
 		for key in member:
@@ -76,12 +77,20 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		if not member.has("parasite_ticks") and unit.parasite_source_uid >= 0:
 			unit.parasite_ticks = Balance.PARASITE_TICKS
 		unit.element = Elements.canonical(unit.element)
-		var had_retired_skill := unit.skills.has("wind_gust")
+		var had_removed_skill := unit.skills.any(func(id): return SkillDB.get_def(String(id)).is_empty())
 		unit.skills = unit.skills.filter(func(id): return not SkillDB.get_def(String(id)).is_empty())
-		if had_retired_skill and unit.skills.is_empty():
+		if had_removed_skill and unit.skills.is_empty() and not unit.is_trainer:
 			unit.skills = SpeciesDB.skills_of(unit.species_id).slice(0, 1)
 		unit.upgrades.erase("wind_gust_distance")
 		unit.upgrades.erase("volt_replace_flex")
+		for key in unit.upgrades.keys():
+			if String(key).begins_with("trial_"):
+				unit.upgrades.erase(key)
+		if unit.last_skill_id != "" and SkillDB.get_def(unit.last_skill_id).is_empty():
+			unit.last_skill_id = ""
+			unit.last_skill_from = Vector2i(-1, -1)
+			unit.last_skill_target = {}
+			unit.last_skill_upgraded = false
 		if int(snapshot.get("version", 1)) < 3:
 			RunState.rebase_upgrade_values(unit.upgrades)
 		state.restore_vine_binding(unit, member.has("vine_imprison_cell"))
@@ -90,6 +99,12 @@ static func load_state(snapshot: Dictionary) -> BattleState:
 		elif unit.frozen_ticks > 0:
 			unit.frozen = true
 		state.units.append(unit)
+	state.pending_casts = state.pending_casts.filter(func(cast): return not SkillDB.get_def(String(cast.get("skill_id", ""))).is_empty())
+	for side in ["player", "enemy"]:
+		var counts: Dictionary = state.skill_use_counts.get(side, {})
+		for skill_id in counts.keys():
+			if SkillDB.get_def(String(skill_id)).is_empty():
+				counts.erase(skill_id)
 	if not snapshot["fields"].has("extra_rewards") and state.reward.get("state") in ["map", "guarding"]:
 		state.reward["state"] = "absent"
 		state.reward["cell"] = Vector2i(-1, -1)

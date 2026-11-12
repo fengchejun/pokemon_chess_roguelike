@@ -21,7 +21,7 @@ func _ready() -> void:
 	var column := UIKit.vbox(10)
 	margin.add_child(column)
 	column.add_child(UIKit.title("选择新一局的三只怪物", 30))
-	column.add_child(UIKit.wrapped("永久收藏会保留携带队伍和仓库的怪物，包括濒死成员。开局选三只并为每只选择一招起始技能，恢复满生命；亲密度会继承，当前暂不提供数值效果。本局等级、经验与怪物强化在新局重置。", 15))
+	column.add_child(UIKit.wrapped("携带队伍会在本局结束时进入永久收藏，包括濒死成员；仓库成员默认被抛弃，只有最终结局页明确勾选者才会保留。开局选三只并为每只选择一招起始技能，恢复满生命；亲密度会继承。本局等级、经验与怪物强化在新局重置。", 15))
 	column.add_child(UIKit.wrapped("首领之血：%d 份（永久）；未来可用 5 份合成首领血浆，当前尚不能使用。" % app.collection.boss_blood, 15, UIKit.ACCENT))
 	var scroll := UIKit.scroll()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL

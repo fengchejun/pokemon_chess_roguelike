@@ -27,6 +27,11 @@ func _build_roster() -> Control:
 			deploy_uids = deploy_selection.duplicate()
 			show_prep_after_mode_change()))
 	column.add_child(UIKit.wrapped("训练师生命 %d/%d · 最多选择 %d 只出战；濒死成员不可选。" % [app.run.trainer_hp, app.run.trainer_max_hp(), MAX_DEPLOY], 13))
+	var relic_names: Array = []
+	for relic_id in app.run.relic_stacks:
+		if RelicDB.owned(app.run.relic_stacks, String(relic_id)):
+			relic_names.append("%s【%s】" % [RelicDB.name_of(String(relic_id)), RelicDB.rarity_name(String(relic_id))])
+	column.add_child(UIKit.wrapped("本局遗物 %d 件：%s" % [relic_names.size(), "、".join(relic_names) if not relic_names.is_empty() else "尚无"], 12, UIKit.TEXT_DIM))
 	team_scroll = UIKit.scroll()
 	column.add_child(team_scroll)
 	team_box = UIKit.vbox(6)
@@ -96,7 +101,7 @@ func _team_row(record: Dictionary) -> Control:
 	for skill_id in known:
 		var id := String(skill_id)
 		var enhanced := (record.get("upgrades_taken", []) as Array).has(RunState.upgrade_id_for_skill(id))
-		library_names.append("%s%s%s%s" % [SkillDB.name_of(id), "★" if enhanced else "", "（占位）" if SkillDB.is_placeholder(id) else "", "（特殊）" if SkillDB.is_special(id) else ""])
+		library_names.append("%s%s%s" % [SkillDB.name_of(id), "★" if enhanced else "", "（特殊）" if SkillDB.is_special(id) else ""])
 	info.add_child(UIKit.wrapped("本局招式库：" + "、".join(library_names), 12, UIKit.TEXT_DIM))
 	for slot in range(RunState.MAX_EQUIPPED_SKILLS):
 		var selector := OptionButton.new()
@@ -117,7 +122,10 @@ func _team_row(record: Dictionary) -> Control:
 		selector.item_selected.connect(_on_skill_slot_selected.bind(record, slot, selector))
 		info.add_child(selector)
 	if Elements.MATCHUPS_ENABLED:
-		info.add_child(UIKit.wrapped(Elements.counter_hint(SpeciesDB.element_of(species_id)), 12))
+		var counter_hint := Elements.counter_hint(SpeciesDB.element_of(species_id))
+		if RelicDB.owned(app.run.relic_stacks, "prism_mirror"):
+			counter_hint = counter_hint.replace("×1.25", "×1.50")
+		info.add_child(UIKit.wrapped(counter_hint, 12))
 	return row
 
 

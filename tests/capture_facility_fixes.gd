@@ -145,12 +145,6 @@ func _run() -> void:
 	await _shot("portal_adjacent_action")
 	app.run.storage.append(app.run._make_record("fire_starter"))
 	await _click(screen.skill_box.find_child("PortalInteractButton", true, false))
-	var portal_confirm: Button = screen.modal_layer.find_child("ConfirmPortalButton", true, false)
-	if portal_confirm == null:
-		push_error("Portal storage confirmation missing")
-		quit(1)
-		return
-	await _click(portal_confirm)
 	await create_timer(0.7).timeout
 	if not state.ended or app.current_screen == screen:
 		push_error("Portal action did not advance scene")

@@ -29,7 +29,8 @@ const MOVE_ROCK := 2
 const WATER_EXTRA_COST := 0 # 浅水在阶段交接时赋予浸湿；冰面滑入浅水在整轮结算时补发
 
 const COLLISION_DAMAGE := 5
-const PUSH_DAMAGE := 13
+const ELEMENT_RELIC_DAMAGE_PERCENT := 20
+const PUSH_DAMAGE := 11
 const PUSH_DISTANCE := 1
 const CHEST_BATTLE_CHANCE := 0.40
 const CHEST_EVENT_CHANCE := 0.70
@@ -63,9 +64,7 @@ static func burn_damage_for(max_hp: int) -> int:
 const MIRROR_WATER_MOON_ROUNDS := 3
 const MIRROR_WATER_DAMAGE_BONUS := 5
 
-# 战斗数值刻度：Lv1 普通敌人 20–30 HP，常规技能约 10–13 直伤。
-# 敌人通常成群行动，单次技能伤害按此比例结算，避免放大数字后集火过猛。
-const ENEMY_SKILL_DAMAGE_RATIO := 0.7
+# 战斗数值刻度：Lv1 普通敌人 20–30 HP，常规技能约 9–13 直伤。
 const SKILL_DAMAGE_UPGRADE := 5
 const DIRECT_GUARD_REDUCTION := 4
 const PARASITE_DAMAGE := 4
@@ -81,14 +80,14 @@ const BENCH_REVIVE_HP := 5
 const CAPTURE_GUARANTEE_HP := 5
 const CAPTURE_DEBUFF_GUARANTEE_HP := 10
 
-static func skill_damage_for_side(base: int, side: String) -> int:
-	if base <= 0:
-		return 0
-	return maxi(1, roundi(float(base) * ENEMY_SKILL_DAMAGE_RATIO)) if side == "enemy" else base
+static func skill_damage_for_side(base: int, _side: String) -> int:
+	return maxi(0, base)
+
 
 const EXP_PER_KILL := 2
 const EXP_PER_CAPTURE := 2
 const EXP_PER_NEST := 3
+
 
 static func xp_for_enemy_level(level: int) -> int:
 	return MonsterProgression.enemy_xp_reward(level)
@@ -102,7 +101,7 @@ const SKILL_SLOTS := 3
 const STORAGE_LIMIT := 30
 const MOD_POINTS := 2
 
-# 捕获范围使用训练家周围两格的方形邻域（5×5）。
+# 捕获范围使用训练家周围曼哈顿距离 2 格的菱形范围。
 const CAPTURE_RANGE := 2
 const CAPTURE_CHANCE_MIN := 0.01
 const CAPTURE_CHANCE_MAX := 0.60

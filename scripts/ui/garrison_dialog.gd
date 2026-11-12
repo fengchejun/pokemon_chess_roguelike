@@ -109,6 +109,8 @@ static func _fill(list: VBoxContainer, summary: Label, notice: Label, app, id: S
 				notice.text = "无法派驻，须保留至少一只可出战的随身成员。"
 				return
 			app.autosave()
+			if run.has_pending_relic_actions():
+				app.call_deferred("show_relic_actions", "region")
 			changed.call()
 			_fill(list, summary, notice, app, id, changed))
 		line.add_child(button)

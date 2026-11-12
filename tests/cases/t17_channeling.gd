@@ -33,7 +33,7 @@ func _player_fireball(t: TestContext) -> void:
 	enemy.cell = Vector2i(6, 3)
 	state.start_round()
 	t.eq(enemy.hp, old_hp, "敌人离开落点后躲避")
-	t.eq(ally.hp, ally_hp - 9, "留在外围的友军受到九点火球误伤")
+	t.eq(ally.hp, ally_hp - 8, "留在外围的友军受到八点火球误伤")
 	t.eq(state.pending_casts.size(), 0, "结算后移除待发技能")
 	t.check(caster.moved and caster.skill_used, "结算当阶段施法者不能移动或施法")
 	state.start_round()

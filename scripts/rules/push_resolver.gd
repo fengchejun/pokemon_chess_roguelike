@@ -24,11 +24,8 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 		summary["blocked"] = true
 		state.log_event("%s 站稳脚跟，没有被推离。" % target.display_name)
 		return summary
-	var other_relic_bonus := 0
-	if source_side == "player" and target.side == "enemy":
-		other_relic_bonus += 4 * RelicDB.rank(state.relic_stacks, "wall_crash")
-		other_relic_bonus += 6 * RelicDB.rank(state.relic_stacks, "pulling_hammer")
-		collision_bonus += other_relic_bonus
+	if source_side == "player" and RelicDB.owned(state.relic_stacks, "impact_code"):
+		distance += 1
 	for step in distance:
 		if not target.is_alive():
 			break
@@ -39,12 +36,12 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 			break
 		if state.is_interaction_cell(next) or state.is_nest_cell(next):
 			summary["blocked"] = true
-			_summarize_collision(state, summary, target, null, next, collision_bonus, source_side, source_uid, other_relic_bonus)
+			_summarize_collision(state, summary, target, null, next, collision_bonus, source_side, source_uid)
 			break
 		var terrain: int = state.terrain_at(next)
 		var occupant: CombatUnit = state.unit_at(next)
 		if occupant != null:
-			_summarize_collision(state, summary, target, occupant, next, collision_bonus, source_side, source_uid, other_relic_bonus)
+			_summarize_collision(state, summary, target, occupant, next, collision_bonus, source_side, source_uid)
 			break
 		if target.side == "player" and state.is_nest_cell(next):
 			summary["blocked"] = true
@@ -52,7 +49,7 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 			state.log_event("%s 被巢穴边界挡住，不能被推上巢穴格。" % target.display_name)
 			break
 		if state.terrain_blocks_move(next):
-			_summarize_collision(state, summary, target, null, next, collision_bonus, source_side, source_uid, other_relic_bonus)
+			_summarize_collision(state, summary, target, null, next, collision_bonus, source_side, source_uid)
 			break
 		if not target.has_buff("flight") and TerrainDB.is_lethal(terrain) and (terrain != TerrainDB.DEEP or target.element != "water"):
 			target.last_move_direction = direction
@@ -63,6 +60,9 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 			summary["to"] = next
 			summary["death"] = true
 			break
+		if TerrainDB.blocks_move(terrain):
+			_summarize_collision(state, summary, target, null, next, collision_bonus, source_side, source_uid)
+			break
 		target.cell = next
 		target.last_move_direction = direction
 		summary["moved"] = true
@@ -72,9 +72,17 @@ static func push(state, target: CombatUnit, direction: Vector2i, distance: int, 
 	return summary
 
 
-static func _summarize_collision(state, summary: Dictionary, target: CombatUnit, occupant, cell: Vector2i, collision_bonus: int, source_side: String, source_uid: int, other_relic_bonus: int) -> void:
+static func _summarize_collision(state, summary: Dictionary, target: CombatUnit, occupant, cell: Vector2i, collision_bonus: int, source_side: String, source_uid: int) -> void:
 	var target_damage := Balance.COLLISION_DAMAGE + collision_bonus
-	var other_damage := Balance.COLLISION_DAMAGE + (other_relic_bonus if occupant != null and occupant.side == "enemy" else 0)
+	var other_damage := Balance.COLLISION_DAMAGE
+	if source_side == "player":
+		if RelicDB.owned(state.relic_stacks, "collision_expert"):
+			target_damage += 5
+			other_damage += 5
+		if RelicDB.owned(state.relic_stacks, "impact_code"):
+			target_damage += ceili(target.max_hp * 0.10)
+			if occupant != null:
+				other_damage += ceili(occupant.max_hp * 0.10)
 	var entry := {
 		"kind": "unit" if occupant != null else "obstacle",
 		"cell": cell,
@@ -117,9 +125,10 @@ static func push_obstacle(state: BattleState, caster: CombatUnit, cell: Vector2i
 		var amount := Balance.COLLISION_DAMAGE
 		if caster.side == "player":
 			amount += int(state.effects.get("push_collision", 0))
-			if occupant.side == "enemy":
-				amount += 4 * RelicDB.rank(state.relic_stacks, "wall_crash")
-				amount += 6 * RelicDB.rank(state.relic_stacks, "pulling_hammer")
+			if RelicDB.owned(state.relic_stacks, "collision_expert"):
+				amount += 5
+			if RelicDB.owned(state.relic_stacks, "impact_code"):
+				amount += ceili(occupant.max_hp * 0.10)
 		state.emit_collision(null, cell, next, occupant.uid, cell, "rock")
 		var hit := state.damage_unit(null, occupant, amount, {"no_element": true, "collision": true, "cause": name + "碰撞", "killer_side": caster.side, "killer_uid": caster.uid})
 		result["hits"].append({"uid": occupant.uid, "name": occupant.display_name, "cell": next, "damage": int(hit.get("amount", 0)), "killed": bool(hit.get("killed", false)), "modifier": 0, "statuses": [], "push": null})

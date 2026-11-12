@@ -18,6 +18,7 @@ var viewed_enemy_uid: int = 0
 var action_mode: String = "main" # main / move / skills；仅界面状态，不写入战斗快照。
 var aim_skill: String = ""
 var aim_entries: Array = []
+var aim_direction_by_cell: Dictionary = {}
 var aim_cells: Array = []
 var aim_first_uid: int = 0
 var capture_mode := false
@@ -44,10 +45,10 @@ var terrain_panel: Control = null
 var terrain_label: Label = null
 var terrain_scroll: ScrollContainer = null
 var objective_panel: Control = null
+var objective_label: Label = null
 var relic_panel: PanelContainer = null
 var relic_list: VBoxContainer = null
 var relic_scroll: ScrollContainer = null
-var objective_label: Label = null
 var corner_top_left: Control = null
 var team_panel: Control = null
 var team_list: VBoxContainer = null
@@ -133,7 +134,7 @@ func _ready() -> void:
 	add_child(relic_panel)
 	var relic_column := UIKit.vbox(5)
 	relic_panel.add_child(relic_column)
-	relic_column.add_child(UIKit.label("遗物加成", 15, UIKit.ACCENT))
+	relic_column.add_child(UIKit.label("遗物", 15, UIKit.ACCENT))
 	relic_scroll = ScrollContainer.new()
 	relic_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	relic_column.add_child(relic_scroll)
@@ -339,9 +340,10 @@ func _layout_overlays() -> void:
 	corner_top_left.custom_minimum_size.x = side_space - 28.0
 	objective_panel.position = Vector2(size.x - side_space + 10.0, 12)
 	objective_panel.custom_minimum_size = Vector2(side_space - 24.0, 105)
+	objective_panel.reset_size()
 	relic_panel.position = Vector2(size.x - side_space + 10.0, 130)
 	relic_panel.custom_minimum_size.x = side_space - 24.0
-	relic_scroll.custom_minimum_size = Vector2(260, minf(170.0, maxf(50.0, size.y * 0.22)))
+	relic_scroll.custom_minimum_size = Vector2(260, minf(170.0, maxf(50.0, size.y * 0.20)))
 	relic_panel.reset_size()
 	_fit_relic_panel()
 	team_panel.position = Vector2(14, maxf(178, corner_top_left.position.y + corner_top_left.get_combined_minimum_size().y + 10))
@@ -548,26 +550,32 @@ func _update_relic_panel() -> void:
 	var stacks: Dictionary = _display_state().relic_stacks
 	var owned: Array = []
 	for relic_id in stacks:
-		if RelicDB.rank(stacks, String(relic_id)) > 0:
+		if RelicDB.DEFINITIONS.has(String(relic_id)) and RelicDB.owned(stacks, String(relic_id)):
 			owned.append(String(relic_id))
-	owned.sort()
+	owned.sort_custom(func(a: String, b: String) -> bool:
+		var order := {"legendary": 0, "rare": 1, "common": 2}
+		var left := int(order.get(RelicDB.rarity_of(a), 3))
+		var right := int(order.get(RelicDB.rarity_of(b), 3))
+		return left < right if left != right else RelicDB.name_of(a) < RelicDB.name_of(b)
+	)
 	if owned.is_empty():
 		relic_list.add_child(UIKit.wrapped("暂无遗物", 13, UIKit.TEXT_DIM))
 	else:
 		for relic_id in owned:
-			var rank := RelicDB.rank(stacks, relic_id)
-			var line := UIKit.wrapped("%s Lv.%d  %s" % [RelicDB.display_name_of(relic_id), rank, RelicDB.description_of(relic_id)], 12, UIKit.TEXT)
+			var line := UIKit.wrapped("%s【%s】\n%s" % [
+				RelicDB.name_of(relic_id), RelicDB.rarity_name(relic_id), RelicDB.description_of(relic_id),
+			], 11, UIKit.TEXT)
 			line.custom_minimum_size.x = 248
 			relic_list.add_child(line)
 	call_deferred("_fit_relic_panel")
 
 
 func _fit_relic_panel() -> void:
-	if relic_list == null or relic_scroll == null:
+	if relic_list == null or relic_scroll == null or relic_panel == null:
 		return
 	objective_panel.reset_size()
 	relic_panel.position.y = maxf(130.0, objective_panel.position.y + objective_panel.size.y + 10.0)
-	relic_scroll.custom_minimum_size.y = minf(170.0, maxf(34.0, relic_list.get_combined_minimum_size().y))
+	relic_scroll.custom_minimum_size.y = minf(190.0, maxf(34.0, relic_list.get_combined_minimum_size().y))
 	relic_panel.reset_size()
 	_fit_terrain_panel()
 
@@ -608,7 +616,10 @@ func _update_unit_card() -> void:
 			lines.append("敌方技能强化：%s" % "、".join(upgrades_list))
 	lines.append("生命 %d/%d　移动 %s（基础 %d）" % [unit.hp, unit.max_hp, "无限" if state.is_free_exploration() else str(state.move_budget_for(unit)), unit.move_points])
 	if Elements.MATCHUPS_ENABLED:
-		lines.append(Elements.counter_hint(unit.element))
+		var counter_hint := Elements.counter_hint(unit.element)
+		if RelicDB.owned(state.relic_stacks, "prism_mirror"):
+			counter_hint = counter_hint.replace("×1.25", "×1.50")
+		lines.append(counter_hint)
 	var statuses: Array = []
 	if unit.corrupted:
 		statuses.append("黑化：最大生命+10%、技能威力+10%，击杀无经验")
@@ -617,7 +628,10 @@ func _update_unit_card() -> void:
 	if unit.side == "enemy" and unit.spawned_from_nest and unit.spawn_round > Balance.REINFORCEMENT_XP_LAST_ROUND:
 		statuses.append("第%d轮增援：击杀不提供经验" % unit.spawn_round)
 	if unit.burn_ticks > 0:
-		statuses.append("灼烧 %d 回合（每回合损失 %d HP）" % [unit.burn_ticks, Balance.burn_damage_for(unit.max_hp)])
+		var burn_tick := Balance.burn_damage_for(unit.max_hp) * maxi(1, unit.burn_layers)
+		if RelicDB.owned(state.relic_stacks, "ember_relic"):
+			burn_tick = roundi(float(burn_tick) * 1.05)
+		statuses.append("灼烧 %d 回合 · %d 层（每回合损失 %d HP）" % [unit.burn_ticks, maxi(1, unit.burn_layers), burn_tick])
 	if unit.parasite_source_uid >= 0:
 		var parasite_source := state.unit_by_uid(unit.parasite_source_uid)
 		var parasite_bonus := int(parasite_source.upgrades.get("leech_seed_tick_bonus", 0)) if parasite_source != null and parasite_source.side == unit.parasite_source_side else 0
@@ -629,13 +643,17 @@ func _update_unit_card() -> void:
 	if unit.mountain_form_ticks > 0:
 		statuses.append("山岳形态 %d 回合：3×3 内友军与自身伤害减免三分之一后转移给施法者" % unit.mountain_form_ticks)
 	if unit.shield_hp > 0:
-		statuses.append("护盾 %d：优先抵挡伤害，破坏时冲击四邻格敌人；剩余 %d 回合" % [unit.shield_hp, unit.shield_ticks])
+		statuses.append("护盾 %d：优先抵挡伤害，破坏时冲击四邻格敌人；%s" % [
+			unit.shield_hp, "不会随时间消失" if unit.shield_ticks <= 0 else "剩余 %d 回合" % unit.shield_ticks,
+		])
 	if unit.ice_glide_until_round > 0 and unit.ice_glide_until_round >= state.round:
 		statuses.append("溜冰：至第 %d 回合，沿连通冰面移动不消耗普通移动机会" % unit.ice_glide_until_round)
 	if unit.surf_until_round > 0 and unit.surf_until_round >= state.round:
 		statuses.append("冲浪：至第 %d 回合，沿连通水域移动不消耗普通移动机会" % unit.surf_until_round)
 	if unit.mirror_until_round > 0 and unit.mirror_until_round >= state.round:
 		statuses.append("镜花水月：至第 %d 回合，可免费跃迁至任意水格，水系技能直伤 +%d，可免疫一次伤害" % [unit.mirror_until_round, Balance.MIRROR_WATER_DAMAGE_BONUS])
+	if unit.relic_attack_immune:
+		statuses.append("时镜跃迁：免疫下一次有施法者的攻击")
 	if unit.root_pending:
 		statuses.append("定身待生效")
 	if unit.move_cancelled:
@@ -645,13 +663,15 @@ func _update_unit_card() -> void:
 	if unit.vine_reapply_round > 0:
 		statuses.append("藤蔓禁锢将在第 %d 回合再次触发" % unit.vine_reapply_round)
 	if unit.slow_ticks > 0:
-		statuses.append("浸湿 %d 层（移动 -1）" % unit.slow_ticks)
+		statuses.append("浸湿 %d 层（下一次行动移动力 -1%s）" % [maxi(1, unit.wet_layers), "，水中仙再 -1" if RelicDB.owned(state.relic_stacks, "water_nymph") else ""])
 	if unit.shock_ticks > 0:
-		statuses.append("感电 %d 层" % unit.shock_ticks)
+		statuses.append("感电 %d 层%s" % [maxi(1, unit.shock_layers), "（不衰减）" if RelicDB.owned(state.relic_stacks, "electric_echo") else ""])
 	if unit.paralyzed_ticks > 0:
 		statuses.append("麻痹 %d 回合（每轮开始时衰减）" % unit.paralyzed_ticks)
+	if unit.heavy_wound_layers > 0:
+		statuses.append("重伤 %d 层：受到的治疗与护盾效果降低" % unit.heavy_wound_layers)
 	if unit.frozen:
-		statuses.append("冰冻 %d 回合（无法行动；受到伤害时解除）" % unit.frozen_ticks)
+		statuses.append("冰冻（无法行动；下次行动后解除，受到实际伤害会提前解除）")
 	if unit.channel_lock_round > state.round:
 		statuses.append("吟唱中：第 %d 回合本方阶段结算，届时不能行动" % unit.channel_lock_round)
 	elif unit.channel_lock_round == state.round:
@@ -713,8 +733,9 @@ func _update_unit_card() -> void:
 		lines.append("地形赋予技能威力 +%d" % unit.summon_power_bonus)
 	for skill_id in unit.skills:
 		var id := String(skill_id)
-		var used_text := "（本场已用尽）" if not unit.can_use_in_battle(id) else ""
-		lines.append("· %s%s：%s" % [SkillDB.name_of(id), used_text, SkillDB.get_def(id).get("desc", "")])
+		var pp_text := "PP %d/%d" % [unit.pp_remaining(id), unit.max_pp(id)]
+		var used_text := "（PP耗尽）" if not unit.can_use_in_battle(id) else ""
+		lines.append("· %s【%s】%s：%s" % [SkillDB.name_of(id), pp_text, used_text, SkillDB.get_def(id).get("desc", "")])
 	unit_body.text = "\n".join(lines)
 
 
@@ -771,20 +792,20 @@ func _rebuild_skill_buttons() -> void:
 			var id := String(item_id)
 			var button := UIKit.small_button("%s ×%d" % [Merchant.ITEMS[id][0], int(app.run.trainer_items.get(id, 0))])
 			button.tooltip_text = Merchant.ITEMS[id][2]
-			var free_heal: bool = id == "potion" and state.is_free_exploration()
-			button.disabled = int(app.run.trainer_items.get(id, 0)) <= 0 or (not free_heal and (unit.capture_used or not unit.can_act_skill())) or (id == "capture_aid" and state.capture_aid)
-			if id == "potion" and state.alive_units("player").filter(func(target): return Merchant.item_target_valid(state, target)).is_empty():
+			button.disabled = (id == "potion" and state.is_free_exploration()) or int(app.run.trainer_items.get(id, 0)) <= 0 or unit.capture_used or not unit.can_act_skill() or (id == "capture_aid" and state.capture_aid)
+			var needs_target := Merchant.item_requires_unit_target(id)
+			var valid_targets: Array = state.alive_units("player").filter(func(target): return Merchant.item_target_valid(state, target, id)) if needs_target else []
+			if needs_target and valid_targets.is_empty():
 				button.disabled = true
-				button.tooltip_text += "\n当前没有可治疗目标。"
+				button.tooltip_text += "\n当前没有合法目标。"
 			button.pressed.connect(func() -> void:
-				if id == "potion":
+				if needs_target:
 					item_aim = id
 					board.clear_overlays()
-					for target in state.alive_units("player"):
-						if Merchant.item_target_valid(state, target):
-							board.attack_cells.append(target.cell)
+					for target in valid_targets:
+						board.attack_cells.append(target.cell)
 					_position_action_panel()
-					hint_label.text = "治疗药：点击三格内受伤己方单位；右键或Esc取消。"
+					hint_label.text = "治疗药：点击三格内受伤己方单位；右键或Esc取消。" if id == "potion" else "技能药剂：点击三格内仍有PP缺失的己方单位；右键或Esc取消。"
 					board.queue_redraw()
 				else:
 					_use_trainer_item(id)
@@ -805,7 +826,7 @@ func _rebuild_skill_buttons() -> void:
 			if phase_reason != "":
 				button_text += "·" + phase_reason
 			elif not unit.can_use_in_battle(id):
-				button_text += "·本场已用"
+				button_text += "·PP耗尽"
 			var button := UIKit.small_button(button_text)
 			button.name = "SkillButton_%s" % id
 			button.tooltip_text = String(def.get("desc", ""))
@@ -815,7 +836,7 @@ func _rebuild_skill_buttons() -> void:
 				button.tooltip_text += "\n（%s）" % phase_reason
 			elif not unit.can_use_in_battle(id):
 				button.disabled = true
-				button.tooltip_text += "\n（本场使用次数已耗尽）"
+				button.tooltip_text += "\n（PP已耗尽）"
 			elif id == "tree_man" and state.active_summon(unit.uid) != null:
 				button.disabled = true
 				button.tooltip_text += "\n（已有存活召唤物）"
@@ -852,11 +873,6 @@ func _rebuild_skill_buttons() -> void:
 			merchant_action.name = "MerchantInteractButton"
 			merchant_action.pressed.connect(_interact_with_merchant)
 			skill_box.add_child(merchant_action)
-		if not state.mentor.is_empty() and state.can_interact_at(state.mentor["cell"]):
-			var training := UIKit.small_button("向技能导师学习强化")
-			training.name = "MentorInteractButton"
-			training.pressed.connect(_show_mentor)
-			skill_box.add_child(training)
 		if state.can_interact_at(state.boss_portal_cell):
 			var portal_action := UIKit.small_button("进入传送门")
 			portal_action.name = "PortalInteractButton"
@@ -948,6 +964,7 @@ func _skill_phase_block_reason(unit: CombatUnit, skill_id: String = "") -> Strin
 func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 	var def := SkillDB.get_def(skill_id)
 	var parts: Array = []
+	parts.append("PP %d/%d" % [unit.pp_remaining(skill_id), unit.max_pp(skill_id)])
 	var base_damage := int(def.get("damage", 0))
 	base_damage = SkillResolver.upgraded_base_damage(unit, skill_id, base_damage)
 	if String(def.get("element", "")) == "water" and state.mirror_water_travel_active(unit):
@@ -984,11 +1001,16 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 		parts.append("前方 %d 格 · 生成藤蔓 · 进入禁锢" % SkillResolver.wild_vines_reach(unit))
 	elif skill_id == "water_magic_burst":
 		var center_damage := Balance.skill_damage_for_side(SkillResolver.upgraded_base_damage(unit, skill_id, 11), unit.side)
-		parts.append("十字 5 格 · 伤害 %d · 中心 %d · 击退" % [damage, center_damage])
+		parts.append("正交 4 格落点 · 十字 5 格 · 伤害 %d · 中心 %d · 两侧击退" % [damage, center_damage])
 	elif skill_id == "ice_breath":
 		parts.append("前方 3 格宽 × 2 格深 · 伤害 %d · 浸湿转冰冻" % damage)
 	elif skill_id == "tree_man":
-		parts.append("即时召唤 · 上限 1")
+		var summon_limit := 2 if unit.side == "player" and RelicDB.owned(state.relic_stacks, "summoner_crown") else 1
+		parts.append("即时召唤 · 上限 %d%s" % [summon_limit, " · 不耗施法次数" if summon_limit > 1 else ""])
+	elif skill_id == "ultra_death_ray":
+		parts.append("直线 6 格 · 伤害 %d · 摧毁途经障碍" % damage)
+	elif skill_id == "time_mirror_leap":
+		parts.append("任意空格 · 免疫下次伤害 · 不耗施法次数")
 	elif skill_id == "herbal_heal":
 		parts.append("吟唱治疗 %d · 固定曼哈顿 2 格" % (Balance.HERBAL_HEAL + int(unit.upgrades.get("herbal_heal_amount", 0))))
 	elif skill_id == "first_aid":
@@ -1046,23 +1068,25 @@ func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
 			damage,
 			3 + (2 if int(unit.upgrades.get("water_drop_stone_damage", 0)) > 0 else 0),
 		])
-	elif skill_id == "fire_burst" and int(unit.upgrades.get("fireball_damage", 0)) > 0:
-		parts.append("伤害 %d · 中心 %d" % [damage, Balance.skill_damage_for_side(base_damage + int(unit.upgrades["fireball_damage"]), unit.side)])
 	elif skill_id == "double_cast" and int(unit.upgrades.get("double_cast_range", 0)) > 0:
 		parts.append("相邻双目标")
 	elif damage > 0:
 		parts.append("伤害 %d" % damage)
 	var kind := String(def.get("kind", ""))
 	if kind == "ray":
-		parts.append("射线 %d-%d" % [int(def.get("min_range", 1)), int(def.get("max_range", 8)) + SkillResolver._range_bonus(state, unit, skill_id) + (int(unit.upgrades.get("freeze_ray_range", 0)) if skill_id == "freeze_ray" else 0)])
+		parts.append("射线 %d-%d" % [int(def.get("min_range", 1)), int(def.get("max_range", 8)) + SkillResolver._range_bonus(state, unit, skill_id)])
 	elif skill_id == "lightning":
 		parts.append("全场锁定 · 蓄力")
 	elif skill_id == "flame_rush":
 		parts.append("全图燃烧格落点")
+	elif skill_id == "ultra_death_ray":
+		parts.append("直线 6 格")
+	elif skill_id == "time_mirror_leap":
+		parts.append("全图空格")
 	elif kind == "unit":
 		var actual_range := int(def.get("range", 1))
-		if SkillDB.is_placeholder(skill_id):
-			actual_range += int(unit.upgrades.get(skill_id + "_range", 0))
+		if skill_id == "drain":
+			actual_range += int(unit.upgrades.get("drain_range", 0))
 		elif skill_id == "rock_break":
 			actual_range += int(unit.upgrades.get(skill_id + "_range", 0))
 		parts.append("射程 %d" % actual_range)
@@ -1203,12 +1227,7 @@ func _on_board_clicked(cell: Vector2i) -> void:
 			camp_services._open_storage()
 		return
 	if aim_skill == "" and not capture_mode and state.is_interaction_cell(cell):
-		if not state.mentor.is_empty() and cell == state.mentor["cell"]:
-			if state.can_interact_at(cell):
-				_show_mentor()
-			else:
-				hint_label.text = "导师暂停服务，清场后恢复。" if state.node_kind != "event" else "训练家需走到导师相邻格。"
-		elif cell == state.boss_portal_cell:
+		if cell == state.boss_portal_cell:
 			_request_portal()
 		else:
 			selected_uid = 0
@@ -1311,15 +1330,13 @@ func _on_board_hovered(cell: Vector2i) -> void:
 			var preview := state.preview_skill(unit, aim_skill, entry)
 			if bool(preview.get("ok", false)):
 				var matchup: Array = []
-				var relic_feedback: Array = []
+				var status_feedback: Array = []
 				for hit in preview.get("hits", []):
 					if int(hit.get("modifier", 0)) != 0:
 						matchup.append("%s %s" % [hit.get("name", "?"), "克制 ×1.25" if int(hit["modifier"]) > 0 else "抵抗 ×0.75"])
 					if not (hit.get("statuses", []) as Array).is_empty():
-						relic_feedback.append("%s：%s" % [hit.get("name", "?"), "、".join(hit["statuses"])])
-					if int(hit.get("relic_healed", 0)) > 0:
-						relic_feedback.append("余烬回复 %d HP" % int(hit["relic_healed"]))
-				hint_label.text = "%s：%s%s%s" % [SkillDB.name_of(aim_skill), preview.get("text", ""), "｜" + "、".join(matchup) if not matchup.is_empty() else "", "｜" + "、".join(relic_feedback) if not relic_feedback.is_empty() else ""]
+						status_feedback.append("%s：%s" % [hit.get("name", "?"), "、".join(hit["statuses"])])
+				hint_label.text = "%s：%s%s%s" % [SkillDB.name_of(aim_skill), preview.get("text", ""), "｜" + "、".join(matchup) if not matchup.is_empty() else "", "｜" + "、".join(status_feedback) if not status_feedback.is_empty() else ""]
 				hint_label.add_theme_color_override("font_color", UIKit.TEXT)
 				_preview_overlays(preview)
 				board.queue_redraw()
@@ -1567,38 +1584,6 @@ func _use_trainer_item(id: String, uid: int = -1) -> void:
 		refresh_all()
 
 
-func _show_mentor(message: String = "") -> void:
-	if state.mentor.is_empty() or not state.can_interact_at(state.mentor["cell"]):
-		return
-	var price := SkillMentor.cost(state.mentor)
-	_show_modal("技能导师 · 本次%d原质" % price, message)
-	var content = modal_layer.get_child(0).get_child(0)
-	var scroll = content.get_child(1)
-	for child in scroll.get_children():
-		scroll.remove_child(child)
-		child.queue_free()
-	var list := UIKit.vbox(7)
-	scroll.add_child(list)
-	list.add_child(UIKit.wrapped(message if message != "" else "选择携带队伍的已学招式，每招每局强化一次。成功后下次费用增加8原质。", 14))
-	var count := 0
-	for record in app.run.carried:
-		var uid := int(record["uid"])
-		for upgrade_id in app.run.available_monster_upgrades(uid):
-			var info := RunState.upgrade_info(upgrade_id)
-			var skill := String(info["requires_skill"])
-			var button := UIKit.button("%s · %s\n%s · %d原质" % [SpeciesDB.name_of(record["species_id"]), SkillDB.name_of(skill), info["desc"], price], 14)
-			button.name = "MentorTrain_%d_%s" % [uid, skill]
-			button.disabled = app.run.essence < price
-			button.pressed.connect(func() -> void:
-				var result: Dictionary = app.mentor_train(state, uid, skill)
-				_refresh_after_action()
-				_show_mentor(result["reason"]))
-			list.add_child(button)
-			count += 1
-	if count == 0:
-		list.add_child(UIKit.label("携带队伍没有可强化的已学招式。", 14))
-
-
 func _show_merchant(message: String = "") -> void:
 	_show_modal("商人 · 原质 %d" % app.run.essence, message)
 	var content = modal_layer.get_child(0).get_child(0)
@@ -1613,12 +1598,18 @@ func _show_merchant(message: String = "") -> void:
 	for item_id in state.merchant["stock"]:
 		var id := String(item_id)
 		var is_relic := id.begins_with("relic:")
-		var relic := id.trim_prefix("relic:")
-		var price := 16 if is_relic else int(Merchant.ITEMS[id][1])
-		var title := RelicDB.display_name_of(relic) if is_relic else String(Merchant.ITEMS[id][0])
+		var relic_id := id.trim_prefix("relic:")
+		if is_relic and not RelicDB.DEFINITIONS.has(relic_id):
+			continue
+		if is_relic and not RelicDB.merchant_allowed(relic_id):
+			continue
+		if not is_relic and not Merchant.ITEMS.has(id):
+			continue
+		var price := Merchant.relic_price(relic_id) if is_relic else Merchant.item_price(app.run, id)
+		var title := "%s【%s】" % [RelicDB.name_of(relic_id), RelicDB.rarity_name(relic_id)] if is_relic else String(Merchant.ITEMS[id][0])
 		var button := UIKit.small_button("购买 %s · %d原质 · 剩%d" % [title, price, int(state.merchant["stock"][id])])
-		button.disabled = int(state.merchant["stock"][id]) == 0 or app.run.essence < price or (is_relic and RelicDB.rank(app.run.relic_stacks, relic) >= 3)
-		button.tooltip_text = RelicDB.description_of(relic) if is_relic else Merchant.ITEMS[id][2]
+		button.disabled = int(state.merchant["stock"][id]) <= 0 or app.run.essence < price or (is_relic and RelicDB.owned(app.run.relic_stacks, relic_id))
+		button.tooltip_text = RelicDB.description_of(relic_id) if is_relic else Merchant.ITEMS[id][2]
 		button.pressed.connect(func() -> void: _trade("buy", id))
 		list.add_child(button)
 	list.add_child(UIKit.label("技能强化 · 每次12原质（亲密度可折扣）", 18, UIKit.ACCENT))
@@ -1659,13 +1650,6 @@ func _show_merchant(message: String = "") -> void:
 		button.pressed.connect(func() -> void: _trade("food", id, int(quantity.value)))
 		row.add_child(button)
 		list.add_child(row)
-	for relic_id in app.run.relic_stacks:
-		var id := String(relic_id)
-		if RelicDB.rank(app.run.relic_stacks, id) <= 0:
-			continue
-		var button := UIKit.small_button("出售一级 %s（当前%d级）· 8原质" % [RelicDB.display_name_of(id), RelicDB.rank(app.run.relic_stacks, id)])
-		button.pressed.connect(func() -> void: _trade("relic", id))
-		list.add_child(button)
 	for record in app.run.carried:
 		var uid := int(record["uid"])
 		var rarity := String(Merchant.RARITIES[Merchant.rarity(String(record["species_id"]))][0])
@@ -1768,6 +1752,7 @@ func _on_skill_pressed(skill_id: String) -> void:
 		_clear_aim()
 		return
 	aim_skill = skill_id
+	aim_direction_by_cell.clear()
 	aim_cells = []
 	aim_first_uid = 0
 	capture_mode = false
@@ -1797,27 +1782,35 @@ func _on_skill_pressed(skill_id: String) -> void:
 					var reach: Vector2i = unit.cell + direction * distance
 					if GridSpec.is_inside(reach):
 						board.area_cells.append(reach)
-		if skill_id == "earth_shake":
-			for affected in SkillResolver.front_area_cells(unit.cell, entry["dir"], 3):
-				if not board.area_cells.has(affected):
-					board.area_cells.append(affected)
-		if skill_id == "windfire_breath":
-			for affected in SkillResolver.half_circle_cells(unit.cell, entry["dir"]):
-				if not board.area_cells.has(affected):
-					board.area_cells.append(affected)
-		if skill_id == "wild_vines":
-			for affected in SkillResolver.wild_vines_cells(state, unit, entry["dir"]):
-				if not board.area_cells.has(affected):
-					board.area_cells.append(affected)
-		if skill_id == "electric_spark":
-			for affected in SkillResolver.electric_spark_cells(state, unit, entry["dir"]):
-				if not board.area_cells.has(affected):
-					board.area_cells.append(affected)
-	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。点击金色格；右键或 Esc 取消。" % SkillDB.name_of(skill_id)
+	if SkillDB.kind_of(skill_id) == "direction":
+		board.area_cells = _directional_aim_area(unit, skill_id)
+	var aim_hint := "点击金色方向格或橙色作用格" if SkillDB.kind_of(skill_id) == "direction" else "点击金色格"
+	hint_label.text = "电力引擎：依次点击两名高亮友军；右键或 Esc 取消。" if _double_cast_pair_mode() else "瞄准：%s。%s；右键或 Esc 取消。" % [SkillDB.name_of(skill_id), aim_hint]
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_rebuild_skill_buttons()
 	_position_action_panel()
 	board.queue_redraw()
+
+
+func _directional_aim_area(unit: CombatUnit, skill_id: String) -> Array:
+	var cells: Array = []
+	aim_direction_by_cell.clear()
+	for entry in aim_entries:
+		if String(entry.get("type", "")) != "dir":
+			continue
+		var preview := state.preview_skill(unit, skill_id, entry)
+		if not bool(preview.get("ok", false)):
+			continue
+		for key in ["area_cells", "ray_cells"]:
+			for cell in preview.get(key, []):
+				if not GridSpec.is_inside(cell):
+					continue
+				if not cells.has(cell):
+					cells.append(cell)
+				var anchor_distance := GridSpec.manhattan(cell, entry["cell"])
+				if not aim_direction_by_cell.has(cell) or anchor_distance < GridSpec.manhattan(cell, aim_direction_by_cell[cell]["cell"]):
+					aim_direction_by_cell[cell] = entry
+	return cells
 
 
 func _on_capture_pressed() -> void:
@@ -1829,6 +1822,7 @@ func _on_capture_pressed() -> void:
 	capture_mode = true
 	aim_skill = ""
 	aim_cells = []
+	aim_direction_by_cell.clear()
 	aim_first_uid = 0
 	board.clear_overlays()
 	for cell in GridSpec.all_cells():
@@ -1837,7 +1831,7 @@ func _on_capture_pressed() -> void:
 			board.area_cells.append(cell)
 	for enemy in _capture_targets(trainer):
 		board.attack_cells.append(enemy.cell)
-	hint_label.text = "捕获：橙色为周围两格捕捉范围（金色为合法目标，包含斜向，不受障碍阻挡）。"
+	hint_label.text = "捕获：点击曼哈顿距离两格内（菱形范围）的合法目标。"
 	hint_label.add_theme_color_override("font_color", UIKit.ACCENT)
 	_position_action_panel()
 	board.queue_redraw()
@@ -1849,6 +1843,7 @@ func _clear_aim() -> void:
 		return
 	aim_skill = ""
 	aim_cells = []
+	aim_direction_by_cell.clear()
 	aim_first_uid = 0
 	capture_mode = false
 	aim_entries = []
@@ -1904,6 +1899,8 @@ func _find_entry(cell: Vector2i) -> Dictionary:
 		var entry_cell: Vector2i = entry.get("cell", Vector2i(-1, -1))
 		if entry_cell == cell:
 			return entry
+	if aim_skill != "" and aim_direction_by_cell.has(cell):
+		return aim_direction_by_cell[cell]
 	return {}
 
 
@@ -1990,6 +1987,7 @@ func do_cast(skill_id: String, entry: Dictionary) -> bool:
 		return false
 	aim_skill = ""
 	aim_entries = []
+	aim_direction_by_cell.clear()
 	aim_cells = []
 	aim_first_uid = 0
 	capture_mode = false
@@ -2009,7 +2007,7 @@ func do_capture(target_uid: int) -> bool:
 		return false
 	var result := state.capture_attempt(trainer, target)
 	if not bool(result.get("ok", false)):
-		hint_label.text = "无法捕获：目标须在周围两格，本回合尚未尝试，且满足当前生命规则。"
+		hint_label.text = "无法捕获：目标须在曼哈顿距离两格内，本回合尚未尝试，且满足当前生命规则。"
 		hint_label.add_theme_color_override("font_color", UIKit.BAD)
 		return false
 	capture_mode = false

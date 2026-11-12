@@ -102,7 +102,7 @@ var storm_last_round: int = 0
 var boss_retreat_used: bool = false
 var _boss_effect_depth: int = 0
 var boss_portal_cell: Vector2i = Vector2i(-1, -1)
-var mentor: Dictionary = {}
+var mentor: Dictionary = {} # 旧存档兼容字段；导师机制已删除。
 var merchant: Dictionary = {}
 var essence_earned: int = 0
 var essence_applied: int = 0
@@ -117,6 +117,10 @@ func earn_essence(key: String, amount: int, at: Vector2i = Vector2i(-1, -1)) -> 
 	if node_kind == "" or essence_claims.has(key):
 		return
 	essence_claims[key] = true
+	if amount > 0 and _relic_owned("essence_pouch"):
+		amount += 1
+	if amount > 0 and _relic_owned("treasure_pocket"):
+		amount = ceili(float(amount) * 1.50)
 	essence_earned += amount
 	log_event("原质 +%d。" % amount)
 	if amount > 0:
@@ -140,6 +144,7 @@ var enemy_kills: Array = []
 var captured: Array = []
 var effects: Dictionary = {}
 var relic_stacks: Dictionary = {}
+var relic_state: Dictionary = {}
 var upgrades: Dictionary = {}
 var capture_options: Dictionary = {}
 var debug_skill_damage_bonus: Dictionary = {"player": 0, "enemy": 0} # 仅本场调试覆盖，不写入本局存档。
@@ -172,6 +177,8 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	skill_use_counts = {"player": {}, "enemy": {}}
 	effects = effects_value.duplicate()
 	relic_stacks = relic_stacks_value.duplicate()
+	relic_state = {}
+	relic_state["blood_orb_active_floor"] = bool(effects.get("blood_orb_active", false))
 	upgrades = upgrades_value.duplicate()
 	capture_options = capture_options_value.duplicate()
 	reinforcement_pool = pool_value.duplicate()
@@ -186,6 +193,9 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	for unit in player_units:
 		if slot >= deploy_cells.size():
 			break
+		for skill_id in unit.skills.duplicate():
+			if SkillDB.is_battle_only(String(skill_id)):
+				unit.battle_skill_uses.erase(String(skill_id))
 		unit.cell = map_data.get("deploy_positions", {}).get(unit.uid, deploy_cells[slot])
 		if is_nest_cell(unit.cell):
 			for fallback in deploy_cells:
@@ -215,9 +225,230 @@ func setup(map_data: Dictionary, cfg: Dictionary, seed_value: int, battle_index_
 	spawn_rng.seed = hash("spawn:%d:%d" % [seed_value, battle_index_value])
 	capture_rng.seed = hash("capture:%d:%d" % [seed_value, battle_index_value])
 	terrain_rng.seed = hash("terrain:%d:%d" % [seed_value, battle_index_value])
+	if _relic_owned("healing_berry") and node_kind != "event":
+		_place_relic_fruit()
 	log_event("战斗开始：%s，敌方 %d 只。" % [String(cfg.get("region", "?")), cfg.get("enemies", []).size()])
 	relocate_nest_occupants()
 	start_round()
+	_apply_battle_start_relics()
+
+
+func _relic_owned(relic_id: String) -> bool:
+	return RelicDB.owned(relic_stacks, relic_id)
+
+
+func _relic_state_dict(key: String) -> Dictionary:
+	var value = relic_state.get(key, {})
+	if value is Dictionary:
+		return value
+	relic_state[key] = {}
+	return relic_state[key]
+
+
+func _place_relic_fruit() -> void:
+	var candidates := GridSpec.all_cells()
+	candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return _cell_order(a) < _cell_order(b))
+	for cell in candidates:
+		if food_cell_valid(cell) and unit_at(cell) == null and not fruits.has(cell) and not food_cells.has(cell):
+			fruits.append(cell)
+			return
+
+
+func _apply_battle_start_relics() -> void:
+	if is_free_exploration():
+		return
+	if _relic_owned("dawn_lord_radiance"):
+		for unit in alive_units("player"):
+			apply_guard_rock_shield(unit, ceili(unit.max_hp * 0.20), unit.uid, true)
+	if _relic_owned("haste_clock"):
+		for unit in alive_units():
+			unit.relay_move_bonus += 1
+	if _relic_owned("fenrir_lock"):
+		_try_fenrir_lock()
+	if _relic_owned("white_cloak"):
+		relic_state["white_cloak_used"] = {}
+
+
+func _grant_marching_banner() -> void:
+	var leader: CombatUnit = null
+	for unit in alive_units("player"):
+		if unit.is_trainer:
+			continue
+		if leader == null or unit.reg_index < leader.reg_index:
+			leader = unit
+	if leader != null:
+		leader.relay_move_bonus += 1
+		emit_feedback(leader, "buff", "行军旗 +1")
+
+
+func _try_fenrir_lock() -> void:
+	if not _relic_owned("fenrir_lock") or bool(relic_state.get("fenrir_triggered", false)):
+		return
+	var players := alive_units("player").filter(func(unit): return not unit.is_trainer)
+	if players.is_empty():
+		return
+	var total_ratio := 0.0
+	var lowest: CombatUnit = players[0]
+	for unit in players:
+		total_ratio += unit.hp_ratio()
+		if unit.hp_ratio() < lowest.hp_ratio():
+			lowest = unit
+	var average := total_ratio / players.size()
+	relic_state["fenrir_triggered"] = true
+	if average > 0.75:
+		for unit in players:
+			unit.relay_move_bonus += 2
+		log_event("芬里尔之锁：全队行动力 +2。")
+	elif average > 0.50:
+		relic_state["fenrir_immune_uid"] = lowest.uid
+		log_event("芬里尔之锁：%s 获得下一次伤害免疫。" % lowest.display_name)
+	else:
+		for enemy in alive_units("enemy"):
+			apply_imprison(enemy)
+			clear_guard_rock_shield(enemy)
+		relic_state["fenrir_vulnerable"] = true
+		log_event("芬里尔之锁：敌方全员禁锢、失去护盾且受到伤害 +20%。")
+
+
+func relic_max_hp_for_side(side: String, base: int) -> int:
+	if side != "player":
+		return base
+	var multiplier := 1.0
+	if _relic_owned("crimson_heart"):
+		multiplier *= 1.15
+	if _relic_owned("bottled_dragon_blood"):
+		multiplier *= 1.20
+	if _relic_owned("sealed_necronomicon"):
+		multiplier *= 0.80
+	return maxi(1, roundi(float(base) * multiplier))
+
+
+func _shield_relic_multiplier(target: CombatUnit) -> float:
+	var multiplier := 1.0
+	if target.side == "player":
+		if _relic_owned("holy_shield_fragment"):
+			multiplier *= 1.0
+		if _relic_owned("nameless_shield"):
+			multiplier *= 1.20
+		if _relic_owned("dawn_lord_radiance"):
+			multiplier *= 1.30
+	if _relic_owned("thorn_mark") and _target_has_heavy_wound(target):
+		multiplier *= 0.70
+	if target.side == "enemy" and _relic_owned("dead_poem"):
+		multiplier *= 0.50
+	return multiplier
+
+
+func _adjusted_shield_amount(target: CombatUnit, amount: int) -> int:
+	if target == null or amount <= 0:
+		return 0
+	var adjusted := float(amount) * _shield_relic_multiplier(target)
+	if target.side == "player" and _relic_owned("holy_shield_fragment"):
+		adjusted += 5.0
+	return maxi(1, roundi(adjusted))
+
+
+func _target_has_heavy_wound(target: CombatUnit) -> bool:
+	if target == null:
+		return false
+	if target.heavy_wound_layers > 0:
+		return true
+	if _relic_owned("thorn_mark"):
+		return target.imprison_ticks > 0 or target.parasite_source_uid >= 0 or target.vine_ticks > 0
+	return false
+
+
+func relic_healing_multiplier(target: CombatUnit) -> float:
+	if target == null:
+		return 1.0
+	if target.side == "player" and _relic_owned("blood_dragon_dance"):
+		return 0.0
+	var multiplier := 1.0
+	if _relic_owned("thorn_mark") and _target_has_heavy_wound(target):
+		multiplier *= 0.70
+	if target.side == "enemy" and _relic_owned("dead_poem"):
+		multiplier *= 0.50
+	return multiplier
+
+
+func relic_adjusted_healing(target: CombatUnit, amount: int) -> int:
+	if amount <= 0:
+		return 0
+	return maxi(0, roundi(float(amount) * relic_healing_multiplier(target)))
+
+
+func relic_heal(target: CombatUnit, amount: int) -> int:
+	if target == null or not target.is_alive() or amount <= 0:
+		return 0
+	var adjusted := relic_adjusted_healing(target, amount)
+	if adjusted <= 0:
+		return 0
+	var before := target.hp
+	target.hp = mini(target.max_hp, target.hp + adjusted)
+	var gained := target.hp - before
+	if gained > 0:
+		feedback_heal(target, gained)
+		if target.side == "player" and _relic_owned("dawn_lord_radiance"):
+			apply_guard_rock_shield(target, ceili(target.max_hp * 0.10), target.uid, true)
+	return gained
+
+
+func _consume_white_cloak(target: CombatUnit) -> bool:
+	if target == null or target.side != "player" or not _relic_owned("white_cloak"):
+		return false
+	var used := _relic_state_dict("white_cloak_used")
+	var key := str(target.uid)
+	if bool(used.get(key, false)):
+		return false
+	used[key] = true
+	relic_state["white_cloak_used"] = used
+	emit_feedback(target, "shield", "纯白斗篷")
+	log_event("纯白斗篷免疫了 %s 的第一次异常。" % target.display_name)
+	return true
+
+
+func _mark_debuff_received(target: CombatUnit, movement_penalty: bool = false) -> void:
+	if target == null or target.side != "player":
+		return
+	if _relic_owned("ward_charm"):
+		var active := _relic_state_dict("ward_active")
+		var key := str(target.uid)
+		if not bool(active.get(key, false)):
+			active[key] = true
+			relic_state["ward_active"] = active
+			target.relay_move_bonus += 1
+			emit_feedback(target, "buff", "驱邪符 +1")
+	if movement_penalty and _relic_owned("haste_clock"):
+		apply_guard_rock_shield(target, ceili(target.max_hp * 0.10), target.uid)
+
+
+func _clear_debuff_relic_flags(target: CombatUnit) -> void:
+	if target == null:
+		return
+	var active := _relic_state_dict("ward_active")
+	var key := str(target.uid)
+	if bool(active.get(key, false)) and not has_removable_debuff(target):
+		active.erase(key)
+		relic_state["ward_active"] = active
+	target.heavy_wound_layers = 0
+
+
+func _add_heavy_wound(target: CombatUnit, layers: int = 1) -> void:
+	if target == null or not target.is_alive() or layers <= 0:
+		return
+	target.heavy_wound_layers = maxi(target.heavy_wound_layers, layers)
+	emit_feedback(target, "status", "重伤")
+
+
+func _nearest_enemy_of(unit: CombatUnit) -> CombatUnit:
+	var result: CombatUnit = null
+	for other in alive_units("enemy"):
+		if unit == null:
+			continue
+		var distance := GridSpec.manhattan(unit.cell, other.cell)
+		if result == null or distance < GridSpec.manhattan(unit.cell, result.cell):
+			result = other
+	return result
 
 
 func _configure_enemy(enemy: CombatUnit, spawn_index: int, make_boss: bool = false) -> void:
@@ -350,8 +581,6 @@ func load_map(map_data: Dictionary) -> void:
 		terrain[GridSpec.index(cell)] = TerrainDB.OBSTACLE
 		obstacle_durability[cell] = 1
 		natural_essence_cells.erase(cell)
-	if GridSpec.is_inside(map_data.get("mentor_cell", Vector2i(-1, -1))):
-		mentor = {"cell": map_data["mentor_cell"], "services": 0}
 	fruits = []
 
 
@@ -421,7 +650,18 @@ func set_terrain(cell: Vector2i, value: int, break_mountain: bool = false) -> vo
 	var previous := terrain_at(cell)
 	if previous == TerrainDB.ROCK_MOUNTAIN and not break_mountain:
 		return
-	var was_vines := previous == TerrainDB.VINES
+	var previous_terrain := previous
+	if value == TerrainDB.WATER and _relic_owned("deep_sapphire"):
+		var water_counts := _relic_state_dict("deep_water_counts")
+		var key := str(cell)
+		var count := int(water_counts.get(key, 0)) + 1
+		if count >= 3:
+			value = TerrainDB.DEEP
+			water_counts.erase(key)
+		else:
+			water_counts[key] = count
+		relic_state["deep_water_counts"] = water_counts
+	var was_vines := terrain_at(cell) == TerrainDB.VINES
 	terrain[GridSpec.index(cell)] = value
 	_adjust_electric_flower_hp(cell, previous, value)
 	if was_vines and value != TerrainDB.VINES:
@@ -439,6 +679,12 @@ func set_terrain(cell: Vector2i, value: int, break_mountain: bool = false) -> vo
 		steam_cells.erase(cell)
 	if value == TerrainDB.VINES:
 		apply_vine_bind(unit_at(cell))
+	if value != previous_terrain and value not in [
+		TerrainDB.OBSTACLE, TerrainDB.TREE, TerrainDB.FRAGILE, TerrainDB.PLAIN,
+	] and _relic_owned("terrain_obelisk"):
+		var occupant := unit_at(cell)
+		if occupant != null and occupant.side == "player" and occupant.is_alive():
+			apply_guard_rock_shield(occupant, ceili(occupant.max_hp * 0.10), occupant.uid)
 
 
 func place_temp_vines(cell: Vector2i) -> void:
@@ -447,7 +693,10 @@ func place_temp_vines(cell: Vector2i) -> void:
 	if terrain_at(cell) != TerrainDB.VINES:
 		vine_origin[cell] = terrain_at(cell)
 	set_terrain(cell, TerrainDB.VINES)
-	vine_expire_round[cell] = round + 1
+	if not _relic_owned("leyline_rope"):
+		vine_expire_round[cell] = round + 1
+	else:
+		vine_expire_round.erase(cell)
 
 
 func ignite(cell: Vector2i, source_side: String = "", force: bool = false) -> bool:
@@ -649,11 +898,11 @@ func camp_facility_at(cell: Vector2i) -> String:
 
 
 func is_interaction_cell(cell: Vector2i) -> bool:
-	return (GridSpec.is_inside(boss_portal_cell) and cell == boss_portal_cell) or (not mentor.is_empty() and cell == mentor["cell"]) or (node_kind == "event" and not merchant.is_empty() and cell == merchant["cell"])
+	return (GridSpec.is_inside(boss_portal_cell) and cell == boss_portal_cell) or (node_kind == "event" and not merchant.is_empty() and cell == merchant["cell"])
 
 func can_interact_at(cell: Vector2i) -> bool:
 	var actor := trainer()
-	return not ended and phase == PHASE_PLAYER and is_interaction_cell(cell) and (mentor.is_empty() or cell != mentor["cell"] or node_kind == "event") and actor != null and actor.is_alive() and GridSpec.manhattan(actor.cell, cell) == 1
+	return not ended and phase == PHASE_PLAYER and is_interaction_cell(cell) and actor != null and actor.is_alive() and GridSpec.manhattan(actor.cell, cell) == 1
 
 
 func move_cost_for(unit: CombatUnit, cell: Vector2i) -> int:
@@ -732,9 +981,24 @@ func active_summon(owner_uid: int) -> CombatUnit:
 	return null
 
 
+func active_summon_count(owner_uid: int) -> int:
+	var count := 0
+	for unit in units:
+		if unit.summon_owner_uid == owner_uid and unit.is_alive():
+			count += 1
+	return count
+
+
 func summon_tree(owner: CombatUnit, cell: Vector2i) -> CombatUnit:
-	if owner == null or not owner.is_alive() or active_summon(owner.uid) != null or not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or is_nest_cell(cell) or terrain_blocks_move(cell) or not TerrainDB.can_stand(terrain_at(cell), "grass"):
+	var summon_limit := 2 if owner != null and owner.side == "player" and _relic_owned("summoner_crown") else 1
+	if owner == null or not owner.is_alive() or active_summon_count(owner.uid) >= summon_limit or not GridSpec.is_inside(cell) or unit_at(cell) != null or is_interaction_cell(cell) or is_nest_cell(cell) or terrain_blocks_move(cell) or not TerrainDB.can_stand(terrain_at(cell), "grass"):
 		return null
+	if owner.side == "player" and _relic_owned("summoner_crown"):
+		var summoned_rounds := _relic_state_dict("summoned_rounds")
+		if int(summoned_rounds.get(str(owner.uid), -1)) == round:
+			return null
+		summoned_rounds[str(owner.uid)] = round
+		relic_state["summoned_rounds"] = summoned_rounds
 	if owner.side == "player" and is_nest_cell(cell):
 		return null
 	var next_uid := 1
@@ -763,6 +1027,8 @@ func summon_tree(owner: CombatUnit, cell: Vector2i) -> CombatUnit:
 			summon.max_hp += 5
 			summon.summon_power_bonus += 5
 	summon.hp = summon.max_hp
+	if owner.side == "player" and _relic_owned("summoner_crown"):
+		apply_guard_rock_shield(summon, ceili(owner.max_hp * 0.30), owner.uid, true)
 	if inspiration_triggered:
 		_grant_inspiration(summon)
 	if summon.side == "enemy" and corruption_active:
@@ -814,6 +1080,21 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 		text = "落入熔岩"
 	emit_feedback(unit, "death", text)
 	cancel_channel(unit, "施法者倒下")
+	if unit.side == "player" and unit.summon_owner_uid < 0 and _relic_owned("dead_poem") and not bool(relic_state.get("dead_poem_used", false)):
+		var revive_cell := unit.cell
+		if TerrainDB.is_lethal(terrain_kind) and (terrain_kind != TerrainDB.DEEP or unit.element != "water"):
+			revive_cell = _find_capture_join_cell(unit)
+		if GridSpec.is_inside(revive_cell):
+			relic_state["dead_poem_used"] = true
+			unit.cell = revive_cell
+			unit.last_move_direction = Vector2i.ZERO
+			unit.hp = maxi(1, ceili(unit.max_hp * 0.50))
+			emit_feedback(unit, "heal", "亡者诗篇·复苏")
+			log_event("亡者诗篇：%s 首次阵亡后在安全位置复苏，恢复 50%% 最大生命。" % unit.display_name)
+			apply_vine_on_landing(unit)
+			return
+	if unit.side == "player" and _relic_owned("witch_cauldron"):
+		_transfer_player_statuses(unit)
 	for point in all_rewards():
 		if point.get("state") == "guarding" and int(point.get("guard_uid", -1)) == unit.uid:
 			point["state"] = "map"
@@ -853,6 +1134,8 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 		})
 		log_event("%s 倒下（濒死）（%s），可在基地休养恢复。" % [unit.display_name, cause])
 	else:
+		if killer_side == "player" and _relic_owned("ancient_dragon_roar"):
+			relic_state["ancient_dragon_kills"] = int(relic_state.get("ancient_dragon_kills", 0)) + 1
 		enemy_outcomes[unit.uid] = "defeated"
 		var killer := unit_by_uid(killer_uid)
 		if killer_side == "player":
@@ -880,6 +1163,37 @@ func _kill_unit_rules(unit: CombatUnit, cause: String, killer_side: String = "",
 			enemy_defeated.emit(enemy_kills.back().duplicate())
 
 
+func _transfer_player_statuses(unit: CombatUnit) -> void:
+	var target := _nearest_enemy_of(unit)
+	if target == null or not target.is_alive():
+		return
+	if unit.burn_ticks > 0:
+		target.burn_ticks = maxi(1, unit.burn_ticks)
+		target.burn_layers = maxi(1, unit.burn_layers)
+		target.burn_source_side = "player"
+	if unit.slow_ticks > 0:
+		target.slow_ticks = maxi(1, unit.slow_ticks)
+		target.wet_layers = maxi(1, unit.wet_layers)
+	if unit.shock_ticks > 0 or unit.paralyzed_ticks > 0:
+		target.shock_ticks = maxi(1, unit.shock_ticks)
+		target.shock_layers = maxi(1, unit.shock_layers)
+		target.paralyzed_ticks = maxi(0, unit.paralyzed_ticks)
+	if unit.imprison_ticks > 0:
+		target.imprison_ticks = maxi(1, unit.imprison_ticks)
+	if unit.root_pending or unit.move_cancelled:
+		target.move_cancelled = true
+	if unit.parasite_source_uid >= 0:
+		target.parasite_source_uid = unit.parasite_source_uid
+		target.parasite_source_side = unit.parasite_source_side
+		target.parasite_ticks = maxi(1, unit.parasite_ticks)
+	if unit.frozen:
+		target.frozen = true
+		target.frozen_ticks = maxi(1, unit.frozen_ticks)
+	if unit.heavy_wound_layers > 0:
+		target.heavy_wound_layers = maxi(1, unit.heavy_wound_layers)
+	log_event("女巫坩埚将 %s 剩余的异常转给 %s。" % [unit.display_name, target.display_name])
+
+
 func award_battle_experience(event_id: String, amount: int, include_fainted: bool = false, recipient_amounts: Dictionary = {}) -> void:
 	if experience_events.has(event_id):
 		return
@@ -892,7 +1206,11 @@ func award_battle_experience(event_id: String, amount: int, include_fainted: boo
 		var old_level := unit.combat_level
 		unit.combat_xp = mini(MonsterProgression.threshold_for_level(10), unit.combat_xp + maxi(0, int(recipient_amounts.get(uid, amount))))
 		unit.combat_level = maxi(old_level, MonsterProgression.level_for_xp(unit.combat_xp))
-		var added := MonsterProgression.max_hp(unit.species_id, unit.combat_level) - MonsterProgression.max_hp(unit.species_id, old_level)
+		var base_old_max := MonsterProgression.max_hp(unit.species_id, old_level)
+		var base_new_max := MonsterProgression.max_hp(unit.species_id, unit.combat_level)
+		var added := base_new_max - base_old_max
+		if unit.side == "player":
+			added = relic_max_hp_for_side("player", base_new_max) - relic_max_hp_for_side("player", base_old_max)
 		unit.max_hp += added
 		if unit.is_alive():
 			unit.hp += added
@@ -987,14 +1305,24 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var break_frozen := target.frozen and bool(opts.get("break_frozen", false))
 	var was_frozen_before_hit := target.frozen
 	var hit_element := String(opts.get("element", ""))
-	var was_burning := target.burn_ticks > 0
 	var matchup_modifier := 0 if bool(opts.get("no_element", false)) else Elements.modifier(hit_element, target.element)
 	var amount := calculate_damage(source, target, base, opts)
+	var true_damage := bool(opts.get("true_damage", false))
 	if bool(opts.get("guard_share_half", false)):
 		amount = amount / 2
 	var guard_divisor := maxi(1, int(opts.get("guard_divisor", 1)))
 	if guard_divisor > 1:
 		amount = amount / guard_divisor + (1 if int(opts.get("guard_rank", 0)) < amount % guard_divisor else 0)
+	if amount > 0 and int(relic_state.get("fenrir_immune_uid", -1)) == target.uid:
+		relic_state.erase("fenrir_immune_uid")
+		emit_feedback(target, "shield", "芬里尔之锁·免疫", 0)
+		log_event("芬里尔之锁替 %s 免疫了本次伤害。" % target.display_name)
+		return {"amount": 0, "killed": false, "previous_hp": target.hp, "hp": target.hp, "relic_immune": true}
+	if amount > 0 and source != null and target.relic_attack_immune:
+		target.relic_attack_immune = false
+		emit_feedback(target, "shield", "时镜跃迁·免疫", 0)
+		log_event("时镜跃迁替 %s 免疫下一次攻击。" % target.display_name)
+		return {"amount": 0, "killed": false, "previous_hp": target.hp, "hp": target.hp, "time_mirror_immune": true}
 	if amount > 0 and target.mirror_until_round > 0 and target.mirror_until_round >= round:
 		target.mirror_until_round = 0
 		emit_feedback(target, "shield", "镜花水月·免疫", 0)
@@ -1003,7 +1331,7 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var shield_absorbed := 0
 	var shield_broken := false
 	var shield_burst_hits: Array = []
-	if amount > 0 and target.shield_hp > 0:
+	if amount > 0 and target.shield_hp > 0 and not true_damage:
 		shield_absorbed = mini(amount, target.shield_hp)
 		target.shield_hp -= shield_absorbed
 		amount -= shield_absorbed
@@ -1027,7 +1355,7 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		}
 	var absorbed_from_uid := -1
 	var absorbed_by_uid := -1
-	if amount > 0:
+	if amount > 0 and not true_damage:
 		var mountain_bearer := _mountain_form_bearer(target)
 		if mountain_bearer != null:
 			absorbed_from_uid = target.uid
@@ -1041,7 +1369,6 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 				target = mountain_bearer
 				break_frozen = false
 				was_frozen_before_hit = target.frozen
-				was_burning = target.burn_ticks > 0
 				matchup_modifier = 0
 			else:
 				log_event("%s 的山岳形态将受到的伤害减免至 %d。" % [target.display_name, amount])
@@ -1062,23 +1389,42 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var cause: String = opts.get("cause", "伤害")
 	var previous_hp := target.hp
 	target.hp -= amount
+	var actual_hp_damage := mini(maxi(0, previous_hp), amount)
 	if bool(opts.get("collision", false)):
 		emit_feedback(target, "collision_damage", "碰撞 -%d" % amount if amount > 0 else "碰撞未受伤", amount)
 	else:
 		emit_feedback(target, "damage" if amount > 0 else "zero", "-%d" % amount if amount > 0 else "未受伤", amount)
 	if amount > 0 and source != null and bool(opts.get("skill_direct", false)) and not bool(opts.get("no_element", false)) and matchup_modifier != 0:
 		emit_feedback(target, "effective" if matchup_modifier > 0 else "resisted", "效果拔群（克制）" if matchup_modifier > 0 else "效果不佳（抵抗）", matchup_modifier)
+	if amount > 0 and source != null and source.side == "player" and target.side == "enemy" and bool(opts.get("skill_direct", false)):
+		if bool(relic_state.get("breach_pick_ready", false)):
+			relic_state.erase("breach_pick_ready")
+		var hits := _relic_state_dict("combo_hits")
+		hits[str(target.uid)] = int(hits.get(str(target.uid), 0)) + 1
+		relic_state["combo_hits"] = hits
+		if Elements.canonical(hit_element) == "grass" and _relic_owned("thorn_crown"):
+			_add_heavy_wound(target)
+		_record_bagua_attack(source, target)
+	if amount > 0 and source != null and source.side == "player" and _relic_owned("blood_dragon_dance") and actual_hp_damage > 0:
+		var healed := mini(source.max_hp - source.hp, ceili(actual_hp_damage * 0.30))
+		if healed > 0:
+			source.hp += healed
+			feedback_heal(source, healed)
+	if amount > 0 and source != null and bool((relic_state.get("storm_charged", {}) as Dictionary).get(str(source.uid), false)):
+		var charged := _relic_state_dict("storm_charged")
+		charged.erase(str(source.uid))
+		relic_state["storm_charged"] = charged
+		apply_paralysis(target)
 	if target.uid == boss_uid and target.side == "enemy" and amount > 0 and previous_hp * 2 > target.max_hp and target.hp > 0 and target.hp * 2 <= target.max_hp:
 		_trigger_inspiration()
 	var source_name := source.display_name if source != null else "环境"
 	var matchup_text := ""
 	if matchup_modifier > 0:
-		matchup_text = "（属性克制 ×1.25）"
+		matchup_text = "（属性克制 ×%s）" % ("1.50" if _relic_owned("prism_mirror") else "1.25")
 	elif matchup_modifier < 0:
 		matchup_text = "（属性逆克制 ×0.75）"
 	log_event("%s 对 %s 造成 %d 伤害%s。" % [source_name, target.display_name, amount, matchup_text])
 	var killed := false
-	var relic_healed := 0
 	if target.is_trainer and target.hp <= 0:
 		target.hp = 0
 		emit_feedback(target, "death", "倒下")
@@ -1092,19 +1438,6 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 	var thawed_wet := false
 	if amount > 0 and was_frozen_before_hit and target.is_alive() and source != null and bool(opts.get("skill_direct", false)) and hit_element == "fire":
 		thawed_wet = apply_wet(target, 1)
-	if source != null and source.side == "player" and target.side == "enemy" and bool(opts.get("skill_direct", false)) and amount > 0:
-		if killed and was_burning and source.is_alive():
-			var healed := mini(source.max_hp - source.hp, 4 * RelicDB.rank(relic_stacks, "ember_recovery"))
-			if healed > 0:
-				source.hp += healed
-				feedback_heal(source, healed)
-				relic_healed = healed
-				log_event("余烬：%s 恢复 %d HP。" % [source.display_name, healed])
-		elif not killed:
-			if hit_element == "fire" and RelicDB.rank(relic_stacks, "fire_mark") > 0 and target.burn_ticks <= 0:
-				apply_burn(target, source)
-			if hit_element == "water" and RelicDB.rank(relic_stacks, "water_mark") > 0 and target.slow_ticks <= 0:
-				apply_slow(target)
 	if amount > 0 and target.uid == boss_uid:
 		_try_shelter_boss()
 	return {
@@ -1112,7 +1445,6 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		"killed": killed,
 		"previous_hp": previous_hp,
 		"hp": target.hp,
-		"relic_healed": relic_healed,
 		"thawed_wet": thawed_wet,
 		"absorbed_from_uid": absorbed_from_uid,
 		"absorbed_by_uid": absorbed_by_uid,
@@ -1120,6 +1452,39 @@ func damage_unit(source: CombatUnit, target: CombatUnit, base: int, opts: Dictio
 		"shield_broken": shield_broken,
 		"shield_burst_hits": shield_burst_hits,
 	}
+
+
+func _record_bagua_attack(source: CombatUnit, target: CombatUnit) -> void:
+	if not _relic_owned("bagua_compass") or source == null or target == null or target.side != "enemy":
+		return
+	var marks := _relic_state_dict("bagua_marks")
+	var key := str(target.uid)
+	var entry = marks.get(key, {})
+	if not entry is Dictionary or int(entry.get("round", -1)) != round:
+		entry = {"round": round, "sources": {}, "triggered": false}
+	(entry["sources"] as Dictionary)[str(source.uid)] = true
+	if not bool(entry.get("triggered", false)) and (entry["sources"] as Dictionary).size() >= 2 and target.is_alive():
+		entry["triggered"] = true
+		var counter_element := ""
+		for element in Elements.LIST:
+			if Elements.BEATS[element].has(target.element):
+				counter_element = String(element)
+				break
+		var percent := spawn_rng.randi_range(10, 20)
+		var compass_damage := ceili(target.max_hp * percent / 100.0)
+		if counter_element != "":
+			compass_damage = Elements.direct_damage(compass_damage, counter_element, target.element)
+		var result := damage_unit(null, target, compass_damage, {
+			"no_element": true, "cause": "八卦罗盘", "killer_side": "player",
+			"killer_uid": source.uid, "bagua_trigger": true, "element": counter_element,
+		})
+		log_event("八卦罗盘引爆 %s，造成 %d%% 最大生命的%s伤害。" % [
+			target.display_name, percent, Elements.name_of(counter_element),
+		])
+		if bool(result.get("killed", false)):
+			pass
+	marks[key] = entry
+	relic_state["bagua_marks"] = marks
 
 
 func _trigger_guard_rock_break(target: CombatUnit, shield_source: CombatUnit) -> Array:
@@ -1166,17 +1531,19 @@ func _mountain_form_bearer(target: CombatUnit) -> CombatUnit:
 	return null
 
 
-func apply_guard_rock_shield(target: CombatUnit, amount: int, source_uid: int = -1) -> bool:
+func apply_guard_rock_shield(target: CombatUnit, amount: int, source_uid: int = -1, persistent: bool = false) -> bool:
 	if target == null or not target.is_alive() or amount <= 0:
 		return false
+	amount = _adjusted_shield_amount(target, amount)
 	var was_active := target.shield_hp > 0
 	target.shield_hp = maxi(target.shield_hp, amount)
-	target.shield_ticks = Balance.SHIELD_TICKS
+	var keep_forever := persistent or (target.side == "player" and _relic_owned("dawn_lord_radiance"))
+	target.shield_ticks = 0 if keep_forever else Balance.SHIELD_TICKS
 	target.shield_source_uid = source_uid
-	log_event("%s 获得 %d 点护盾，持续 %d 回合%s。" % [
+	log_event("%s 获得 %d 点护盾%s%s。" % [
 		target.display_name,
 		target.shield_hp,
-		target.shield_ticks,
+		"，持续 %d 回合" % target.shield_ticks if target.shield_ticks > 0 else "，不会随时间消失",
 		"（刷新）" if was_active else "",
 	])
 	return true
@@ -1196,17 +1563,28 @@ func clear_guard_rock_shield(target: CombatUnit, expired: bool = false) -> void:
 func apply_burn(target: CombatUnit, source: CombatUnit) -> bool:
 	if target.has_buff("status_immune"):
 		return false
-	if target.element == "fire":
+	var blue_flame_force := source != null and source.side == "player" and _relic_owned("dragon_blue_flame") and burning_cells.has(source.cell)
+	if target.element == "fire" and not blue_flame_force:
 		return false
 	if not target.is_alive():
 		return false
+	if _consume_white_cloak(target):
+		return false
 	var was_burning := target.burn_ticks > 0
-	var burn_ticks := Balance.BURN_TICKS
+	var burn_ticks := Balance.BURN_TICKS + (1 if target.side == "player" and _relic_owned("witch_cauldron") else 0)
 	target.burn_ticks = burn_ticks
+	if _relic_owned("sun_totem"):
+		var added_layers := 1 + (1 if target.side == "player" and _relic_owned("witch_cauldron") else 0)
+		target.burn_layers = maxi(1, target.burn_layers + added_layers)
+	else:
+		target.burn_layers = 1
 	target.burn_source_uid = source.uid if source != null else -1
 	target.burn_source_side = source.side if source != null else ""
+	_mark_debuff_received(target)
+	if _relic_owned("sun_totem") and target.burn_layers >= 5:
+		_detonate_sun_totem(target, source)
 	if not was_burning:
-		log_event("%s 被点燃（灼烧 %d 回合）。" % [target.display_name, burn_ticks])
+		log_event("%s 被点燃（灼烧 %d 回合，%d 层）。" % [target.display_name, burn_ticks, target.burn_layers])
 	return true
 
 
@@ -1225,26 +1603,68 @@ func clear_burn(target: CombatUnit) -> void:
 	if target == null:
 		return
 	target.burn_ticks = 0
+	target.burn_layers = 0
 	target.burn_source_uid = -1
 	target.burn_source_side = ""
+	_clear_debuff_relic_flags(target)
+
+
+func _detonate_sun_totem(target: CombatUnit, source: CombatUnit) -> void:
+	if target == null or not target.is_alive() or target.burn_layers < 5:
+		return
+	var layers := target.burn_layers
+	var overflow := maxi(0, layers - 5)
+	var source_side := target.burn_source_side
+	var source_uid := target.burn_source_uid
+	clear_burn(target)
+	var result := damage_unit(source, target, Balance.burn_damage_for(target.max_hp) * 5, {
+		"no_element": true, "cause": "太阳图腾引爆", "killer_side": source_side, "killer_uid": source_uid,
+	})
+	log_event("太阳图腾引爆 %s 的 5 层灼烧。" % target.display_name)
+	if bool(result.get("killed", false)):
+		var impact_cell := target.cell
+		for cell in GridSpec.all_cells():
+			if absi(cell.x - impact_cell.x) > 1 or absi(cell.y - impact_cell.y) > 1:
+				continue
+			var other := unit_at(cell)
+			if other == null or other == target or not other.is_alive():
+				continue
+			damage_unit(null, other, ceili(other.max_hp * 0.20), {
+				"no_element": true, "cause": "太阳图腾余爆", "killer_side": source_side, "killer_uid": source_uid,
+			})
+		if overflow > 0:
+			var nearby := _nearest_enemy_of(target)
+			if nearby != null and _relic_owned("sun_totem"):
+				nearby.burn_ticks = Balance.BURN_TICKS
+				nearby.burn_layers = overflow
+				nearby.burn_source_side = source_side
+				nearby.burn_source_uid = source_uid
 
 
 func apply_root(target: CombatUnit) -> void:
+	if target == null or not target.is_alive() or _consume_white_cloak(target):
+		return
 	target.root_pending = true
+	_mark_debuff_received(target, true)
 	log_event("%s 被定身：下一次移动机会将被取消。" % target.display_name)
 
 
 func apply_imprison(target: CombatUnit, after_movement: bool = false, vine_cell: Vector2i = Vector2i(-1, -1)) -> bool:
 	if target == null or not target.is_alive():
 		return false
+	if _consume_white_cloak(target):
+		return false
 	var ticks := 2
 	if phase == target.side and (after_movement or target.moved):
 		ticks = 3
 	if GridSpec.is_inside(vine_cell) or ticks > target.imprison_ticks:
 		target.vine_imprison_cell = vine_cell
+	if target.side == "player" and _relic_owned("witch_cauldron"):
+		ticks += 1
 	if ticks <= target.imprison_ticks:
 		return false
 	target.imprison_ticks = ticks
+	_mark_debuff_received(target, true)
 	log_event("%s 被禁锢 %d 回合：不能普通移动，但仍可进行其他行动。" % [target.display_name, ticks])
 	return true
 
@@ -1252,10 +1672,13 @@ func apply_imprison(target: CombatUnit, after_movement: bool = false, vine_cell:
 func apply_freeze(target: CombatUnit) -> bool:
 	if target == null or not target.is_alive():
 		return false
+	if _consume_white_cloak(target):
+		return false
 	var was_frozen := target.frozen
-	target.frozen_ticks = Balance.FREEZE_TICKS
+	target.frozen_ticks = Balance.FREEZE_TICKS + (1 if target.side == "player" and _relic_owned("witch_cauldron") else 0)
 	target.frozen = true
 	target.paralyzed_ticks = 0
+	_mark_debuff_received(target, true)
 	cancel_channel(target, "冰冻")
 	if not was_frozen:
 		log_event("%s 被冰冻 %d 回合，无法行动。" % [target.display_name, Balance.FREEZE_TICKS])
@@ -1265,16 +1688,35 @@ func apply_freeze(target: CombatUnit) -> bool:
 func apply_shock(target: CombatUnit, ticks: int = 1) -> bool:
 	if target == null or not target.is_alive() or target.has_buff("status_immune"):
 		return false
+	if _consume_white_cloak(target):
+		return false
+	if _relic_owned("electric_echo"):
+		var added := 2 if _relic_owned("electric_echo") else 1
+		if target.side == "player" and _relic_owned("witch_cauldron"):
+			added += 1
+		target.shock_layers += added
+		target.shock_ticks = 999
+		_mark_debuff_received(target)
+		if target.shock_layers >= 4:
+			target.shock_layers = maxi(0, target.shock_layers - 4)
+			target.shock_ticks = 0 if target.shock_layers <= 0 else 999
+			relic_state["electric_echo_active"] = true
+			emit_feedback(target, "buff", "电能回响")
+			log_event("电能回响达到 4 层：本场电系伤害 +20%。")
+		return true
 	if target.paralyzed_ticks > 0:
 		target.shock_ticks = 0
 		log_event("%s 仍处于麻痹，麻痹消除前不能施加感电。" % target.display_name)
 		return false
 	if target.shock_ticks > 0:
 		target.shock_ticks = 0
+		target.shock_layers = 0
 		apply_paralysis(target)
 		log_event("%s 的感电叠层转为麻痹。" % target.display_name)
 		return true
-	target.shock_ticks = maxi(1, ticks)
+	target.shock_ticks = maxi(1, ticks + (1 if target.side == "player" and _relic_owned("witch_cauldron") else 0))
+	target.shock_layers = maxi(1, target.shock_layers + 1 + (1 if target.side == "player" and _relic_owned("witch_cauldron") else 0))
+	_mark_debuff_received(target)
 	log_event("%s 获得感电。" % target.display_name)
 	return true
 
@@ -1282,33 +1724,63 @@ func apply_shock(target: CombatUnit, ticks: int = 1) -> bool:
 func apply_paralysis(target: CombatUnit, ticks: int = Balance.PARALYSIS_TICKS) -> bool:
 	if target == null or not target.is_alive():
 		return false
+	if _consume_white_cloak(target):
+		return false
+	if _relic_owned("electric_echo"):
+		target.shock_layers += 2 + (1 if target.side == "player" and _relic_owned("witch_cauldron") else 0)
+		target.shock_ticks = 999
+		_mark_debuff_received(target)
+		if target.shock_layers >= 4:
+			target.shock_layers -= 4
+			target.shock_ticks = 0 if target.shock_layers <= 0 else 999
+			relic_state["electric_echo_active"] = true
+		return true
 	var next_ticks := maxi(1, ticks)
+	if target.side == "player" and _relic_owned("witch_cauldron"):
+		next_ticks += 1
 	var changed := next_ticks > target.paralyzed_ticks
 	target.shock_ticks = 0
+	target.shock_layers = 0
 	target.paralyzed_ticks = maxi(target.paralyzed_ticks, next_ticks)
+	_mark_debuff_received(target, true)
 	cancel_channel(target, "麻痹")
 	if changed:
 		log_event("%s 被麻痹 %d 回合。" % [target.display_name, target.paralyzed_ticks])
 	return changed
 
 
-func apply_wet(target: CombatUnit, ticks: int = 2) -> bool:
+func apply_wet(target: CombatUnit, ticks: int = 1) -> bool:
 	if target == null or not target.is_alive() or target.element == "water" or target.has_buff("status_immune"):
 		return false
+	if ticks <= 0:
+		return false
+	if _consume_white_cloak(target):
+		return false
 	var was_wet := target.slow_ticks > 0
-	target.slow_ticks = maxi(target.slow_ticks, maxi(1, ticks))
+	target.slow_ticks = maxi(target.slow_ticks, 1)
+	if not was_wet and _relic_owned("water_nymph"):
+		target.relay_move_bonus -= 1
+	target.wet_layers = maxi(1, target.wet_layers + 1 + (1 if target.side == "player" and _relic_owned("witch_cauldron") else 0))
+	_mark_debuff_received(target, true)
 	if not was_wet:
 		log_event("%s 获得浸湿：下一次移动力 -1。" % target.display_name)
+	if _relic_owned("sorrow") and target.wet_layers >= 3:
+		target.wet_layers = 0
+		clear_wet(target)
+		apply_freeze(target)
+		log_event("悲伤叠至 3 层，转为冰冻。")
 	return true
 
 
 func apply_slow(target: CombatUnit) -> void:
-	apply_wet(target, 2)
+	apply_wet(target, 1)
 
 
 func clear_wet(target: CombatUnit) -> void:
 	if target != null:
 		target.slow_ticks = 0
+		target.wet_layers = 0
+		_clear_debuff_relic_flags(target)
 
 
 func has_removable_debuff(target: CombatUnit) -> bool:
@@ -1317,7 +1789,9 @@ func has_removable_debuff(target: CombatUnit) -> bool:
 	return (
 		target.burn_ticks > 0
 		or target.slow_ticks > 0
+		or target.wet_layers > 0
 		or target.shock_ticks > 0
+		or target.shock_layers > 0
 		or target.paralyzed_ticks > 0
 		or target.root_pending
 		or target.move_cancelled
@@ -1339,6 +1813,7 @@ func clear_debuff_status(target: CombatUnit) -> bool:
 	clear_burn(target)
 	clear_wet(target)
 	target.shock_ticks = 0
+	target.shock_layers = 0
 	target.paralyzed_ticks = 0
 	target.root_pending = false
 	target.move_cancelled = false
@@ -1349,6 +1824,8 @@ func clear_debuff_status(target: CombatUnit) -> bool:
 	target.vine_reapply_cell = Vector2i(-1, -1)
 	target.parasite_source_uid = -1
 	target.parasite_source_side = ""
+	target.heavy_wound_layers = 0
+	_clear_debuff_relic_flags(target)
 	if ended_imprison and remains_on_vines:
 		target.vine_reapply_round = round + 2
 		target.vine_reapply_cell = target.cell
@@ -1369,9 +1846,15 @@ func _apply_shallow_wet_to_unit(unit: CombatUnit, ticks: int) -> void:
 		return
 	if terrain_at(unit.cell) != TerrainDB.WATER:
 		return
-	if unit.slow_ticks == 0:
+	var was_wet := unit.slow_ticks > 0
+	if not was_wet:
 		log_event("%s 站在浅水中，获得浸湿（下一次移动力 -1）。" % unit.display_name)
+		if _relic_owned("water_nymph"):
+			unit.relay_move_bonus -= 1
 	unit.slow_ticks = maxi(unit.slow_ticks, ticks)
+	unit.wet_layers = maxi(1, unit.wet_layers)
+	if not was_wet:
+		_mark_debuff_received(unit, true)
 
 
 func _movement_effect_ticks(unit: CombatUnit) -> int:
@@ -1470,6 +1953,8 @@ func _finish_movement_effects(side: String) -> void:
 	for unit in units:
 		if unit.side != side or unit.sheltered:
 			continue
+		unit.slow_ticks = 0
+		unit.wet_layers = 0
 		if unit.vine_sources.is_empty():
 			unit.vine_ticks = maxi(0, unit.vine_ticks - 1)
 		else:
@@ -1532,6 +2017,8 @@ func damage_obstacle(cell: Vector2i, amount: int, source_side: String = "", skil
 	var durability_damage := 1 if mountain else amount
 	var left := int(obstacle_durability[cell]) - durability_damage
 	if left <= 0:
+		if source_side == "player" and _relic_owned("breach_pick"):
+			relic_state["breach_pick_ready"] = true
 		claim_obstacle_essence(cell, source_side)
 		var drop_food := node_kind != "" and terrain_at(cell) == TerrainDB.TREE and terrain_rng.randf() < 0.25 and not food_cells.has(cell)
 		obstacle_durability.erase(cell)
@@ -1680,7 +2167,10 @@ func place_temp_obstacle(cell: Vector2i, origin: int, expire_round: int) -> void
 	set_terrain(cell, TerrainDB.OBSTACLE)
 	obstacle_durability[cell] = Balance.OBSTACLE_DURABILITY
 	obstacle_origin[cell] = origin
-	obstacle_expire_round[cell] = expire_round
+	if not _relic_owned("leyline_rope"):
+		obstacle_expire_round[cell] = expire_round
+	else:
+		obstacle_expire_round.erase(cell)
 
 
 # ---------------------------------------------------------------- 我方移动
@@ -1718,6 +2208,7 @@ func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 	var burn_source_uid_before := unit.burn_source_uid
 	var burn_source_side_before := unit.burn_source_side
 	var direction_before := unit.last_move_direction
+	var relay_bonus_before := unit.relay_move_bonus
 	var imprison_ticks_before := unit.imprison_ticks
 	var vine_imprison_cell_before := unit.vine_imprison_cell
 	var vine_reapply_round_before := unit.vine_reapply_round
@@ -1728,6 +2219,7 @@ func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 		unit.last_move_direction = step - unit.cell
 		unit.cell = step
 	unit.moved = movement_used_before if free_terrain_move else true
+	unit.relay_move_bonus = 0
 	apply_vine_on_landing(unit)
 	var pickup := try_pickup_fruit(unit)
 	undo_stack.append({
@@ -1738,6 +2230,7 @@ func _move_unit_rules(unit: CombatUnit, dest: Vector2i) -> bool:
 		"burn_source_uid": burn_source_uid_before,
 		"burn_source_side": burn_source_side_before,
 		"direction": direction_before,
+		"relay_move_bonus": relay_bonus_before,
 		"moved_before": movement_used_before,
 		"imprison_ticks": imprison_ticks_before,
 		"vine_imprison_cell": vine_imprison_cell_before,
@@ -1776,6 +2269,7 @@ func undo_last_move() -> bool:
 	unit.last_move_direction = entry.get("direction", Vector2i.ZERO)
 	unit.imprison_ticks = int(entry.get("imprison_ticks", 0))
 	unit.vine_imprison_cell = entry.get("vine_imprison_cell", Vector2i(-1, -1))
+	unit.relay_move_bonus = int(entry.get("relay_move_bonus", unit.relay_move_bonus))
 	unit.vine_reapply_round = int(entry.get("vine_reapply_round", unit.vine_reapply_round))
 	unit.vine_reapply_cell = entry.get("vine_reapply_cell", unit.vine_reapply_cell)
 	unit.vine_ticks = int(entry.get("vine_ticks", 0))
@@ -1828,8 +2322,15 @@ func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) ->
 	var skill_used_before := unit.skill_used
 	var result := SkillResolver.apply(self, unit, skill_id, target_entry, false)
 	if bool(result.get("ok", false)):
+		unit.consume_skill_pp(skill_id)
 		_record_skill_use(unit.side, skill_id)
-		if skill_used_before and unit.extra_casts > 0:
+		var free_relic_action := (
+			(skill_id == "tree_man" and unit.side == "player" and _relic_owned("summoner_crown"))
+			or skill_id == "time_mirror_leap"
+		)
+		if free_relic_action:
+			pass
+		elif skill_used_before and unit.extra_casts > 0:
 			unit.extra_casts -= 1
 		else:
 			unit.skill_used = true
@@ -1964,15 +2465,13 @@ func _start_round_rules() -> void:
 		unit.vine_reapply_cell = Vector2i(-1, -1)
 		if same_vine and unit.imprison_ticks <= 0:
 			apply_imprison(unit, false, unit.cell)
-	var grass_heal := 2 * RelicDB.rank(relic_stacks, "root_rest") + 3 * RelicDB.rank(relic_stacks, "forest_shelter")
-	if grass_heal > 0:
-		for unit in units:
-			if unit.side == "player" and unit.is_alive() and RelicDB.on_grass_or_vines(self, unit):
-				var restored := mini(unit.max_hp - unit.hp, grass_heal)
-				if restored > 0:
-					unit.hp += restored
-					feedback_heal(unit, restored)
-					log_event("草地遗物：%s 恢复 %d HP。" % [unit.display_name, restored])
+	for unit in units:
+		_clear_debuff_relic_flags(unit)
+		if unit.wet_layers <= 0 and unit.slow_ticks <= 0 and unit.shock_layers <= 0 and unit.paralyzed_ticks <= 0:
+			unit.heavy_wound_layers = 0
+	_apply_round_start_relics()
+	if ended:
+		return
 	if boss_portal_cell == Vector2i(-1, -1) and Balance.nest_warning_due(round):
 		log_event("巢穴预警：下回合将尝试产怪。")
 	for current in all_nests():
@@ -1987,6 +2486,88 @@ func _start_round_rules() -> void:
 		if int(current.get("pending_waves", 0)) > 0:
 			_try_spawn_wave(current)
 	_resolve_due_channels("player")
+
+
+func _apply_round_start_relics() -> void:
+	var ice_positions := _relic_state_dict("ice_age_positions")
+	if _relic_owned("ice_age"):
+		for unit in alive_units("enemy"):
+			if terrain_at(unit.cell) == TerrainDB.ICE:
+				unit.relay_move_bonus -= 1
+	for unit in alive_units():
+		if terrain_at(unit.cell) == TerrainDB.ICE:
+			ice_positions[str(unit.uid)] = [unit.cell.x, unit.cell.y]
+		else:
+			ice_positions.erase(str(unit.uid))
+	relic_state["ice_age_positions"] = ice_positions
+	if _relic_owned("marching_banner"):
+		_grant_marching_banner()
+	if _relic_owned("fenrir_lock"):
+		_try_fenrir_lock()
+	if _relic_owned("safety_button"):
+		var players := alive_units("player")
+		var enemies := alive_units("enemy")
+		if players.size() == enemies.size():
+			for unit in players:
+				relic_heal(unit, ceili(maxi(0, unit.max_hp - unit.hp) * 0.10))
+	if _relic_owned("forest_myriad") and round >= 2:
+		_expand_forest_relic()
+	if _relic_owned("crashing_waves") and round >= 2:
+		_crashing_waves_relic()
+	if _relic_owned("storm_ascension"):
+		_storm_ascension_relic()
+	if _relic_owned("blood_dragon_dance"):
+		for unit in alive_units("player"):
+			damage_unit(null, unit, ceili(unit.max_hp * 0.10), {
+				"no_element": true, "cause": "血龙狂舞", "true_damage": true,
+			})
+
+
+func _expand_forest_relic() -> void:
+	var processed := _relic_state_dict("forest_expanded")
+	var sources: Array = []
+	for cell in GridSpec.all_cells():
+		if terrain_at(cell) == TerrainDB.GRASS and not bool(processed.get(str(cell), false)):
+			sources.append(cell)
+	for source in sources:
+		processed[str(source)] = true
+		for dx in range(-1, 2):
+			for dy in range(-1, 2):
+				var origin: Vector2i = source
+				var target: Vector2i = origin + Vector2i(dx, dy)
+				if not GridSpec.is_inside(target) or is_nest_cell(target) or is_chest_cell(target):
+					continue
+				var current := terrain_at(target)
+				if current == TerrainDB.PLAIN or current == TerrainDB.WATER:
+					set_terrain(target, TerrainDB.GRASS)
+	relic_state["forest_expanded"] = processed
+
+
+func _crashing_waves_relic() -> void:
+	for unit in alive_units():
+		if terrain_at(unit.cell) == TerrainDB.WATER and not unit.has_buff("flight"):
+			damage_unit(null, unit, ceili(unit.max_hp * 0.10), {
+				"no_element": true, "cause": "惊涛骇浪",
+			})
+		if unit.side == "player" and unit.element == "water" and terrain_at(unit.cell) in [TerrainDB.WATER, TerrainDB.DEEP]:
+			unit.relay_move_bonus += 1
+
+
+func _storm_ascension_relic() -> void:
+	var candidates := GridSpec.all_cells()
+	var strikes: Array = []
+	for index in 3:
+		var pick_index := spawn_rng.randi_range(0, candidates.size() - 1)
+		var cell: Vector2i = candidates.pop_at(pick_index)
+		strikes.append(cell)
+		_relay_feedback("action", "天雷证道", 0, cell, -1)
+		var target := unit_at(cell)
+		if target != null and target.element == "electric" and not target.sheltered:
+			var charged := _relic_state_dict("storm_charged")
+			charged[str(target.uid)] = true
+			relic_state["storm_charged"] = charged
+			emit_feedback(target, "buff", "天雷证道")
+	log_event("天雷证道随机劈落 3 格；被命中的电系宝可梦下次攻击 +50% 并附加麻痹。")
 
 
 func _try_spawn_wave(target: Dictionary = {}) -> void:
@@ -2108,6 +2689,7 @@ func _step_enemy_phase_rules() -> Dictionary:
 		var skill_used_before := unit.skill_used
 		var result := SkillResolver.apply(self, unit, String(skill["id"]), skill["target"], false)
 		if bool(result.get("ok", false)):
+			unit.consume_skill_pp(String(skill["id"]))
 			_record_skill_use(unit.side, String(skill["id"]))
 			if skill_used_before and unit.extra_casts > 0:
 				unit.extra_casts -= 1
@@ -2136,7 +2718,7 @@ func _end_enemy_phase_rules() -> void:
 	if ended:
 		return
 	_finish_movement_effects("enemy")
-	_apply_shallow_wet("player", 2)
+	_apply_shallow_wet("player", 1)
 	_finish_reward_guard()
 	_begin_reward_guard("enemy")
 	_tick_reward_carrier()
@@ -2211,6 +2793,8 @@ func _settle_round_rules() -> void:
 		return
 	# 1. 临时障碍到期（本轮敌方阶段结束）
 	for cell in obstacle_expire_round.keys().duplicate():
+		if _relic_owned("leyline_rope"):
+			break
 		if int(obstacle_expire_round[cell]) <= round:
 			var origin := int(obstacle_origin.get(cell, TerrainDB.PLAIN))
 			obstacle_expire_round.erase(cell)
@@ -2231,7 +2815,10 @@ func _settle_round_rules() -> void:
 	for unit in alive_units():
 		if unit.burn_ticks > 0:
 			unit.burn_ticks -= 1
-			damage_unit(null, unit, Balance.burn_damage_for(unit.max_hp), {"no_element": true, "cause": "灼烧", "killer_side": unit.burn_source_side})
+			var burn_amount := Balance.burn_damage_for(unit.max_hp) * maxi(1, unit.burn_layers)
+			if _relic_owned("ember_relic"):
+				burn_amount = roundi(float(burn_amount) * 1.05)
+			damage_unit(null, unit, burn_amount, {"no_element": true, "cause": "灼烧", "killer_side": unit.burn_source_side})
 	if ended:
 		return
 	for unit in alive_units():
@@ -2245,10 +2832,8 @@ func _settle_round_rules() -> void:
 		var parasite_bonus := int(source.upgrades.get("leech_seed_tick_bonus", 0)) if source != null and source.side == source_side else 0
 		var result := damage_unit(null, unit, Balance.PARASITE_DAMAGE + parasite_bonus, {"no_element": true, "parasite_tick": true, "cause": "寄生", "killer_side": source_side, "killer_uid": source_uid})
 		if int(result.get("amount", 0)) > 0 and source != null and source.is_alive() and source.side == source_side:
-			var healed := mini(source.max_hp - source.hp, Balance.PARASITE_HEAL + parasite_bonus)
+			var healed := relic_heal(source, Balance.PARASITE_HEAL + parasite_bonus)
 			if healed > 0:
-				source.hp += healed
-				feedback_heal(source, healed)
 				log_event("%s 从寄生中恢复 %d HP。" % [source.display_name, healed])
 	_settle_burning_cells()
 	if ended:
@@ -2261,12 +2846,10 @@ func _settle_round_rules() -> void:
 		steam_cells[cell] = int(steam_cells[cell]) - 1
 		if int(steam_cells[cell]) <= 0:
 			steam_cells.erase(cell)
-	# 4. 减速衰减
+	# 4. 其他持续效果衰减；浸湿在所属方完成下一次行动阶段时清除。
 	for unit in units:
 		if unit.sheltered:
 			continue
-		if unit.slow_ticks > 0:
-			unit.slow_ticks = maxi(0, unit.slow_ticks - 1)
 		if unit.mountain_form_ticks > 0:
 			unit.mountain_form_ticks = maxi(0, unit.mountain_form_ticks - 1)
 		if unit.shield_ticks > 0:
@@ -2275,10 +2858,20 @@ func _settle_round_rules() -> void:
 				clear_guard_rock_shield(unit, true)
 		if unit.shock_ticks > 0:
 			unit.shock_ticks -= 1
+			if unit.shock_ticks <= 0 and not _relic_owned("electric_echo"):
+				unit.shock_layers = 0
 		if unit.frozen and unit.frozen_ticks > 0:
 			unit.frozen_ticks -= 1
 			if unit.frozen_ticks <= 0:
 				unit.frozen = false
+	if _relic_owned("ice_age"):
+		var positions := _relic_state_dict("ice_age_positions")
+		for unit in alive_units():
+			var previous = positions.get(str(unit.uid), null)
+			if previous is Array and previous.size() == 2:
+				var cell := Vector2i(int(previous[0]), int(previous[1]))
+				if cell == unit.cell and terrain_at(unit.cell) == TerrainDB.ICE:
+					apply_freeze(unit)
 	# 5. 停留拾取食物
 	_pickups()
 	# 6. 胜负、黑化与持续天雷压力
@@ -2375,7 +2968,7 @@ func _settle_ice_slides() -> void:
 			if terrain_at(next) == TerrainDB.WATER and not unit.has_buff("flight"):
 				unit.burn_ticks = 0
 				# 浅水阶段检查已发生；滑行入水仍须影响下一次移动。
-				_apply_shallow_wet_to_unit(unit, 2)
+				_apply_shallow_wet_to_unit(unit, 1)
 			apply_vine_on_landing(unit)
 
 
@@ -2396,6 +2989,9 @@ func _settle_burning_cells() -> void:
 		var occupant := unit_at(cell)
 		if occupant == null and is_nest_cell(cell):
 			damage_nest(1, String(burning_sources.get(cell, "")), cell)
+		if _relic_owned("dragon_blue_flame"):
+			burning_cells[cell] = maxi(2, int(burning_cells[cell]))
+			continue
 		burning_cells[cell] = int(burning_cells[cell]) - 1
 		if int(burning_cells[cell]) <= 0:
 			if not electric_flowers.has(cell):
@@ -2423,6 +3019,8 @@ func _settle_burning_cells() -> void:
 
 
 func _settle_temp_vines() -> void:
+	if _relic_owned("leyline_rope"):
+		return
 	var cells: Array = vine_expire_round.keys().duplicate()
 	cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y * GridSpec.W + a.x < b.y * GridSpec.W + b.x)
 	for cell in cells:
@@ -2451,8 +3049,14 @@ func _settle_ice_growth(sources: Array) -> void:
 
 
 func try_pickup_fruit(unit: CombatUnit) -> Dictionary:
-	# 保留旧调用入口用于读取历史撤回记录；恢复果实已删除。
-	return {}
+	if unit == null or unit.side != "player" or not unit.is_alive() or not fruits.has(unit.cell):
+		return {}
+	var heal := ceili(unit.max_hp * 0.10) if _relic_owned("healing_berry") else Balance.FRUIT_HEAL
+	var gained := relic_heal(unit, heal)
+	fruits.erase(unit.cell)
+	if gained > 0:
+		log_event("%s 拾取果实，回复 %d 生命。" % [unit.display_name, gained])
+	return {"cell": unit.cell, "gained": gained}
 
 
 func _pickups() -> void:
@@ -2706,6 +3310,7 @@ func forecast() -> Array:
 func _signature() -> String:
 	var parts: PackedStringArray = ["%d|%s|%s|%s" % [round, phase, ended, end_reason]]
 	parts.append("mode:%s|level:%d|corruption:%s:%s" % [node_kind, enemy_level_bonus, corruption_active, timed_corruption_triggered])
+	parts.append("relic:%s:%s" % [str(relic_stacks), str(relic_state)])
 	var terrain_text := ""
 	for value in terrain:
 		terrain_text += str(int(value))
@@ -2744,6 +3349,7 @@ func _signature() -> String:
 		parts.append("sheltered:%d:%s" % [unit.uid, str(unit.sheltered)])
 		parts.append("parasite_layers:%d:%d" % [unit.uid, unit.parasite_ticks])
 		parts.append("new_status:%d:%d:%s:%d:%d:%d:%d:%d" % [unit.uid, unit.parasite_source_uid, unit.parasite_source_side, unit.ice_glide_until_round, unit.surf_until_round, unit.fire_amp_stacks, unit.electric_resonance_bonus, unit.summon_owner_uid])
+		parts.append("relic_status:%d:%d:%d:%d:%d" % [unit.uid, unit.wet_layers, unit.burn_layers, unit.shock_layers, unit.heavy_wound_layers])
 		parts.append("mountain_form:%d:%d" % [unit.uid, unit.mountain_form_ticks])
 		parts.append("shield:%d:%d:%d:%d" % [unit.uid, unit.shield_hp, unit.shield_ticks, unit.shield_source_uid])
 		parts.append("last_skill:%d:%s:%s:%s" % [unit.uid, unit.last_skill_id, str(unit.last_skill_from), str(unit.last_skill_target)])
@@ -2845,6 +3451,7 @@ func clone() -> BattleState:
 	copy.captured = captured.duplicate(true)
 	copy.effects = effects.duplicate()
 	copy.relic_stacks = relic_stacks.duplicate()
+	copy.relic_state = relic_state.duplicate(true)
 	copy.upgrades = upgrades.duplicate()
 	copy.capture_options = capture_options.duplicate()
 	copy.debug_skill_damage_bonus = debug_skill_damage_bonus.duplicate()
@@ -2904,7 +3511,6 @@ func reset_exploration_actions() -> void:
 		unit.root_pending = false
 		unit.vine_ticks = 0
 		unit.vine_sources.clear()
-		unit.battle_skill_uses.clear()
 
 
 func all_nests() -> Array:
@@ -2970,20 +3576,94 @@ func check_speech_events() -> void:
 
 
 func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: Dictionary) -> int:
-	# 纯数值计算，巢穴使用无属性目标复用技能与遗物加成，不施加状态或触发击杀。
+	# 纯数值计算，巢穴使用无属性目标复用技能强化，不施加状态或触发击杀。
 	var amount := base
+	if bool(opts.get("true_damage", false)):
+		return maxi(0, base)
 	if source != null and source.side == "enemy" and source.corrupted and bool(opts.get("skill_direct", false)):
 		amount = roundi(amount * Balance.CORRUPTION_MULTIPLIER)
 	if source != null and bool(opts.get("skill_direct", false)):
 		amount = Balance.skill_damage_for_side(amount, source.side)
+	var skill_element := String(opts.get("element", ""))
+	var no_element := bool(opts.get("no_element", false))
 	if not bool(opts.get("no_element", false)):
-		var skill_element: String = opts.get("element", "")
 		if source != null and bool(opts.get("skill_direct", false)):
-			amount = Elements.direct_damage(amount, skill_element, target.element)
+			var relation := Elements.modifier(skill_element, target.element)
+			if _relic_owned("prism_mirror") and relation > 0:
+				amount = roundi(float(amount) * 1.50)
+			else:
+				amount = Elements.direct_damage(amount, skill_element, target.element)
 		if skill_element == "fire" and int(effects.get("fire_bonus", 0)) > 0:
 			if source != null and source.side == "player":
 				amount += int(effects["fire_bonus"])
+	if source != null and source.side == "player" and target.side == "enemy":
+		var percent := 0
+		if bool(opts.get("skill_direct", false)):
+			if _relic_owned("broken_sword"):
+				percent += 5
+			if _relic_owned("nameless_blade"):
+				percent += 30
+			if _relic_owned("bottled_dragon_blood"):
+				percent += 20
+			if _relic_owned("ancient_dragon_roar"):
+				percent += 50 + int(relic_state.get("ancient_dragon_kills", 0)) * 10
+			if _relic_owned("blood_orb") and relic_layer_damage_percent_active():
+				percent += 30
+			if _relic_owned("blood_dragon_dance"):
+				percent += 50
+			if bool(relic_state.get("breach_pick_ready", false)):
+				percent += 5
+			percent += int(effects.get("relic_damage_bonus", 0))
+			if _relic_owned("safety_button") and alive_units("player").size() > alive_units("enemy").size():
+				percent += 10
+		if _relic_owned("layered_mountains") and Elements.canonical(source.element) == "rock":
+			percent += _rock_cell_count() * 10
+		if not no_element:
+			match Elements.canonical(skill_element):
+				"fire":
+					if _relic_owned("fire_carbon"):
+						percent += Balance.ELEMENT_RELIC_DAMAGE_PERCENT
+				"water":
+					if _relic_owned("water_tear"):
+						percent += Balance.ELEMENT_RELIC_DAMAGE_PERCENT
+				"grass":
+					if _relic_owned("grass_flute"):
+						percent += Balance.ELEMENT_RELIC_DAMAGE_PERCENT
+				"electric":
+					if _relic_owned("thunder_fang"):
+						percent += Balance.ELEMENT_RELIC_DAMAGE_PERCENT
+					if _relic_owned("electric_echo") and bool(relic_state.get("electric_echo_active", false)):
+						percent += 20
+				"rock":
+					if _relic_owned("mountain_jade"):
+						percent += Balance.ELEMENT_RELIC_DAMAGE_PERCENT
+			if _relic_owned("prism_mirror"):
+				percent += 30
+			if _relic_owned("dragon_blue_flame") and Elements.canonical(skill_element) == "fire" and (
+				target.burn_ticks > 0 or burning_cells.has(source.cell)
+			):
+				percent += 20
+		if bool((relic_state.get("storm_charged", {}) as Dictionary).get(str(source.uid), false)):
+			percent += 50
+		if _relic_owned("electric_echo") and Elements.canonical(skill_element) == "electric":
+			percent += 0
+		if _relic_owned("combo_dagger") and bool(opts.get("skill_direct", false)):
+			var previous_hits := int((_relic_state_dict("combo_hits")).get(str(target.uid), 0))
+			if (previous_hits + 1) % 2 == 0:
+				amount += 5
+		amount = roundi(float(amount) * (1.0 + float(percent) / 100.0))
+	if target.shock_ticks > 0 or target.paralyzed_ticks > 0:
+		if _relic_owned("thunder_echo_stone"):
+			amount = roundi(float(amount) * 1.05)
+	if target.frozen and _relic_owned("sorrow"):
+		amount = roundi(float(amount) * 1.20)
+	if _relic_owned("fenrir_lock") and bool(relic_state.get("fenrir_vulnerable", false)) and target.side == "enemy":
+		amount = roundi(float(amount) * 1.20)
 	var target_in_grass := GridSpec.is_inside(target.cell) and terrain_at(target.cell) == TerrainDB.GRASS
+	if _relic_owned("forest_myriad") and target.element == "grass" and target_in_grass:
+		amount = roundi(float(amount) * 0.90)
+		if Elements.canonical(skill_element) == "fire":
+			amount = roundi(float(amount) * 1.20)
 	if bool(opts.get("ranged", false)) and target.side == "player":
 		## 密林（草丛中）与岩脊（障碍旁）的远程减伤取其一，不叠加。
 		var covered := false
@@ -3000,15 +3680,29 @@ func calculate_damage(source: CombatUnit, target: CombatUnit, base: int, opts: D
 				amount += int(effects["grass_strike"])
 	if source != null and bool(opts.get("skill_direct", false)):
 		amount += int(debug_skill_damage_bonus.get(source.side, 0))
-	if source != null and bool(opts.get("skill_direct", false)):
-		amount += RelicDB.damage_bonus(self, source, target, opts)
-		amount -= RelicDB.incoming_reduction(self, source, target, opts)
 	amount = maxi(0, amount)
-	if amount > 0 and source != null and not bool(opts.get("no_element", false)) and target.has_buff("direct_guard") and not bool(opts.get("conductive", false)):
+	if amount > 0 and source != null and not bool(opts.get("no_element", false)) and target.has_buff("direct_guard") and not bool(opts.get("conductive", false)) and not bool(opts.get("true_damage", false)):
 		amount = maxi(0, amount - Balance.DIRECT_GUARD_REDUCTION)
 	if target_in_grass and not bool(opts.get("ignore_grass_cover", false)):
 		amount = roundi(amount * 0.9)
+	if amount > 0 and _relic_owned("safety_button"):
+		var players := alive_units("player").size()
+		var enemies := alive_units("enemy").size()
+		if target.side == "player" and enemies > players:
+			amount = roundi(float(amount) * 0.90)
 	return amount
+
+
+func relic_layer_damage_percent_active() -> bool:
+	return bool(relic_state.get("blood_orb_active_floor", true))
+
+
+func _rock_cell_count() -> int:
+	var count := 0
+	for cell in obstacle_durability:
+		if terrain_at(cell) == TerrainDB.OBSTACLE:
+			count += 1
+	return count
 
 
 

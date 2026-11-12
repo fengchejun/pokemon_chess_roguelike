@@ -91,12 +91,6 @@ func _eighteen_battle_route(t: TestContext) -> void:
 		app.finish_battle(state)
 		t.eq(app.current_screen.name, "SettlementScreen", "第 %d 战进入结算" % (index + 1))
 		_claim_monster_levels(app.run)
-		while app.run.pending_reward_choices > 0:
-			var choices: Array = app.run.reward_choices()
-			t.check(not choices.is_empty(), "第 %d 战有可领取的消耗卡" % (index + 1))
-			if choices.is_empty():
-				break
-			app.run.choose_reward(String(choices[0]))
 		app.continue_after_settlement()
 		if index == Balance.BATTLES_PER_RUN - 1:
 			t.eq(app.current_screen.name, "RunEndScreen", "第十八战后进入明确结局")
@@ -144,7 +138,7 @@ func _enemy_levels_and_boss(t: TestContext) -> void:
 				unique_upgrades[upgrade_id] = true
 			t.eq(upgrades.size(), unique_upgrades.size(), "同一技能不会重复强化")
 	var water_skills := BattleDB.enemy_skills_for_level("water_wild1", 4)
-	t.check(not SkillDB.is_placeholder(water_skills[2]) and not SkillDB.get_def(water_skills[2]).is_empty(), "水系只用正式招式补齐第三招")
+	t.eq(water_skills[2], "surf", "水系以同属性正式招式补齐第三招")
 	for floor_index in 3:
 		var index := floor_index * 6 + 5
 		var cfg := BattleDB.config_for(index, seed_value, "fire")

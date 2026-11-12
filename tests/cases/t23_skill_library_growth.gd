@@ -2,30 +2,12 @@ extends RefCounted
 
 
 func run(t: TestContext) -> void:
-	t.begin("招式库、占位技能与旧局升级迁移")
-	_test_placeholder_effect(t)
+	t.begin("招式库与旧局升级迁移")
 	_test_missing_skill_upgrades(t)
 	_test_save_and_equipment(t)
 	_test_v2_migration(t)
 	_test_growth_and_prep_ui(t)
 	t.finish()
-
-
-func _test_placeholder_effect(t: TestContext) -> void:
-	for element in Elements.LIST + ["ice", "wind"]:
-		t.check(SkillDB.placeholder_ids_for(element).is_empty(), "不再生成试招 " + element)
-		for suffix in ["1", "2"]:
-			var id := "trial_%s_%s" % [element, suffix]
-			t.check(SkillDB.get_def(id).is_empty(), "试招无可执行定义 " + id)
-			t.check(not SkillDB.learnable_ids_for(element).has(id), "试招不进入学习池 " + id)
-	var run_state := RunState.new_run(8001)
-	run_state._add_capture("fire_starter", 10)
-	var record: Dictionary = run_state.carried[0]
-	record["known_skills"] = ["flame_jet", "trial_fire_1"]
-	record["equipped_skills"] = ["flame_jet", "trial_fire_1"]
-	var loaded := RunState.from_dict(run_state.to_dict())
-	t.eq(loaded.carried[0]["known_skills"], ["flame_jet"], "读档清理试招并保留正式招式")
-	t.eq(loaded.carried[0]["equipped_skills"], ["flame_jet"], "读档清理装备中的试招")
 
 
 func _test_missing_skill_upgrades(t: TestContext) -> void:
@@ -66,8 +48,12 @@ func _test_missing_skill_upgrades(t: TestContext) -> void:
 	var ice_caster := ice.unit_by_uid(1)
 	ice_caster.cell = Vector2i(0, 3)
 	t.check(not ice.skill_targets(ice_caster, "freeze_ray").has({"type": "cell", "cell": Vector2i(7, 3)}), "急冻原射程不足七格")
-	ice_caster.upgrades["freeze_ray_range"] = 1
-	t.check(ice.skill_targets(ice_caster, "freeze_ray").has({"type": "cell", "cell": Vector2i(6, 3)}), "急冻强化射程达到七格")
+	ice_caster.upgrades["freeze_ray_damage"] = 4
+	t.check(not ice.skill_targets(ice_caster, "freeze_ray").has({"type": "cell", "cell": Vector2i(7, 3)}), "急冻强化不再增加第七格射程")
+	ice.unit_by_uid(100).cell = Vector2i(4, 3)
+	ice.unit_by_uid(100).element = ""
+	var upgraded_freeze := ice.preview_skill(ice_caster, "freeze_ray", {"type": "cell", "cell": Vector2i(4, 3)})
+	t.eq(int(upgraded_freeze["hits"][0]["damage"]), 10, "急冻强化伤害提高至十点")
 	var wind := TestScenario.make_state(["wind_starter", "fire_starter", "grass_starter"], [["rock_wild1", Vector2i(7, 7)]])
 	var wind_caster := wind.unit_by_uid(1)
 	wind_caster.cell = Vector2i(1, 3)

@@ -21,6 +21,17 @@ func finish(app) -> void:
 	app.show_region()
 
 func resolve_growth(run: RunState) -> void:
+	while run.has_pending_relic_actions():
+		match String(run.pending_relic_action().get("kind", "")):
+			"mage_notes": run.resolve_mage_notes(run.mage_note_eligible_uids().slice(0, 3))
+			"unbalanced_scales":
+				var candidates := run.unbalanced_candidates()
+				if candidates.is_empty(): run.pending_relic_actions.pop_front()
+				else: run.resolve_unbalanced_scales(String(candidates[0]))
+			"magic_end":
+				var uid := int(run.carried[0]["uid"])
+				run.resolve_magic_end(uid, "ultra_death_ray")
+			_: run.pending_relic_actions.pop_front()
 	while not run.pending_monster_levels().is_empty():
 		var entry: Dictionary = run.pending_monster_levels()[0]
 		var uid := int(entry["uid"]); var level := int(entry["level"])
@@ -88,7 +99,7 @@ func run(t: TestContext) -> void:
 	app.finish_battle(state)
 	# 结算所有奖励，避免测试跳过待处理步骤。
 	while run.pending_reward_choices > 0:
-		run.choose_reward(run.reward_choices()[0])
+		run.skip_reward_choice()
 	resolve_growth(run)
 	for i in run.pending_battle_loot.size(): run.resolve_battle_loot(i, false)
 	app.continue_after_settlement()
@@ -105,7 +116,7 @@ func run(t: TestContext) -> void:
 		state.end_enemy_phase()
 	t.check(state.ended and state.end_reason == "explored", "第八回合结束野生目标逃走")
 	app.finish_battle(state)
-	while run.pending_reward_choices > 0: run.choose_reward(run.reward_choices()[0])
+	while run.pending_reward_choices > 0: run.skip_reward_choice()
 	resolve_growth(run)
 	for i in run.pending_battle_loot.size(): run.resolve_battle_loot(i, false)
 	app.continue_after_settlement()
@@ -174,7 +185,7 @@ func run(t: TestContext) -> void:
 	var stored_uid := int(run.storage.back()["uid"])
 	app.finish_battle(state)
 	for i in run.pending_battle_loot.size(): run.resolve_battle_loot(i, false)
-	while run.pending_reward_choices > 0: run.choose_reward(run.reward_choices()[0])
+	while run.pending_reward_choices > 0: run.skip_reward_choice()
 	resolve_growth(run)
 	for i in run.pending_battle_loot.size(): run.resolve_battle_loot(i, false)
 	app.continue_after_settlement()

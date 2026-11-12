@@ -31,11 +31,11 @@ func _water(t: TestContext) -> void:
 			caster.upgrades = {"water_flow_push": 0}
 		var entry := {"type": "cell", "cell": Vector2i(3, 3)}
 		var preview := state.preview_skill(caster, "water_flow", entry)
-		t.eq(preview["hits"][0]["damage"], 12 if upgraded else 8, "水炮基础与强化伤害")
+		t.eq(preview["hits"][0]["damage"], 16 if upgraded else 12, "水炮基础与强化伤害")
 		var result := state.cast_skill(caster, "water_flow", entry)
 		t.eq(result["hits"], preview["hits"], "水炮预览与实战一致")
 		t.eq(state.unit_by_uid(100).cell, Vector2i(4, 3), "强化不增加水炮击退")
-		t.eq(state.unit_by_uid(100).slow_ticks, 0, "水炮不附加浸湿")
+		t.eq(state.unit_by_uid(100).slow_ticks, 1, "水炮附加一层浸湿")
 	var pushed := _state("water_flow", [["rock_wild1", Vector2i(3, 3)]])
 	pushed.set_terrain(Vector2i(4, 3), TerrainDB.PIT)
 	pushed.cast_skill(pushed.unit_by_uid(1), "water_flow", {"type": "cell", "cell": Vector2i(3, 3)})
@@ -58,16 +58,16 @@ func _fire(t: TestContext) -> void:
 		t.check(state.skill_targets(caster, "fire_burst").has({"type": "cell", "cell": Vector2i(4, 3)}), "火球保留越障选点")
 		state.nest["cell"] = Vector2i(5, 3)
 		var result := SkillResolver.resolve_channel(state, caster, "fire_burst", [Vector2i(4, 3)])
-		t.eq(200 - state.unit_by_uid(100).hp, 23 if upgraded else 18, "火球中心伤害")
-		t.eq(200 - state.unit_by_uid(101).hp, 9, "火球外围伤害不随强化提高")
-		t.eq(state.nest["hp"], 21, "火球外围伤巢9生命且只结算一次")
+		t.eq(200 - state.unit_by_uid(100).hp, 20 if upgraded else 15, "火球中心伤害")
+		t.eq(200 - state.unit_by_uid(101).hp, 8, "火球外围伤害不随强化提高")
+		t.eq(state.nest["hp"], 22, "火球外围伤巢8生命且只结算一次")
 		t.eq(result["area_cells"].size(), 9, "火球仍为九宫格")
 	var covered := _state("fire_burst", [["rock_wild1", Vector2i(4, 3)]])
 	covered.nest["cell"] = Vector2i(4, 3)
 	covered.relocate_nest_occupants()
 	covered.unit_by_uid(100).hp = 1
 	SkillResolver.resolve_channel(covered, covered.unit_by_uid(1), "fire_burst", [Vector2i(4, 3)])
-	t.eq(covered.nest["hp"], 12, "敌人位于巢穴邻格时火球中心仍伤巢18生命")
+	t.eq(covered.nest["hp"], 15, "敌人位于巢穴邻格时火球中心仍伤巢15生命")
 	var ai := _state("fire_burst", [["fire_wild1", Vector2i(4, 3)]])
 	ai.unit_by_uid(100).skills = ["fire_burst"]
 	ai.unit_by_uid(1).hp = 100
@@ -108,19 +108,17 @@ func _arc(t: TestContext) -> void:
 	dry.unit_by_uid(1).upgrades["electric_arc_damage"] = 3
 	var result := dry.cast_skill(dry.unit_by_uid(1), "electric_arc", {"type": "cell", "cell": Vector2i(3, 3)})
 	t.eq(result["hits"][0]["damage"], 13, "旱地单体强化只追加三伤")
-	# Two equal water paths must hit once, including friendly units. Relics are
-	# added after the distance penalty and existing elemental adjustment.
+	# Two equal water paths must hit once, including friendly units.
 	var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[Vector2i(2, 3), TerrainDB.WATER], [Vector2i(2, 2), TerrainDB.WATER], [Vector2i(3, 3), TerrainDB.WATER], [Vector2i(3, 2), TerrainDB.WATER]])
 	var loop := _state("electric_arc", [["water_wild1", Vector2i(3, 2)]], terrain)
 	loop.unit_by_uid(100).element = "water"
 	loop.unit_by_uid(100).slow_ticks = 2
-	loop.relic_stacks["wet_conductor"] = 1
 	loop.trainer().cell = Vector2i(2, 2)
 	result = loop.cast_skill(loop.unit_by_uid(1), "electric_arc", {"type": "cell", "cell": Vector2i(2, 3)})
 	t.eq(result["hits"].size(), 2, "多路径去重且友伤保留")
 	for hit in result["hits"]:
 		if hit["uid"] == 100:
-			t.eq(hit["damage"], Elements.direct_damage(8, "electric", "water") + 6, "基础衰减后按既有顺序结算克制与遗物")
+			t.eq(hit["damage"], Elements.direct_damage(8, "electric", "water"), "传导伤害只按技能与属性结算")
 
 func _rain(t: TestContext) -> void:
 	var state := _state("rain_call", [["rock_wild1", Vector2i(7, 6)]])
@@ -259,7 +257,7 @@ func _ui(t: TestContext) -> void:
 	screen.state.unit_by_uid(1).upgrades["electric_arc_damage"] = 3
 	t.check(screen._skill_tag("electric_arc", screen.state.unit_by_uid(1)).contains("伤害 13"), "技能面板放电强化伤害准确")
 	screen.state.unit_by_uid(1).upgrades["fireball_damage"] = 5
-	t.check(screen._skill_tag("fire_burst", screen.state.unit_by_uid(1)).contains("中心 23 · 外围 9"), "技能面板区分火球中心与外围")
+	t.check(screen._skill_tag("fire_burst", screen.state.unit_by_uid(1)).contains("中心 20 · 外围 8"), "技能面板区分火球中心与外围")
 	var feedbacks: Array = []
 	screen.state.feedback.connect(func(event):
 		if event["kind"] == "experience":

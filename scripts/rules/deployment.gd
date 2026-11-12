@@ -4,7 +4,7 @@ extends RefCounted
 static func legal(map: Dictionary, enemies: Array, unit: CombatUnit, cell: Vector2i) -> bool:
 	if not GridSpec.is_inside(cell) or enemies.any(func(other): return other.is_alive() and other.cell == cell):
 		return false
-	if (map.get("nest_cells", [map["nest_cell"]]) as Array).has(cell) or cell == map.get("merchant_cell", Vector2i(-1, -1)) or cell == map.get("portal_cell", Vector2i(-1, -1)) or cell == map.get("mentor_cell", Vector2i(-1, -1)):
+	if (map.get("nest_cells", [map["nest_cell"]]) as Array).has(cell) or cell == map.get("merchant_cell", Vector2i(-1, -1)) or cell == map.get("portal_cell", Vector2i(-1, -1)):
 		return false
 	if map.get("electric_flowers", {}).has(cell):
 		return false

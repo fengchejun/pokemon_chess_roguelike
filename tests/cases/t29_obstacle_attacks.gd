@@ -14,7 +14,7 @@ func run(t: TestContext) -> void:
 
 func _unit_skills(t: TestContext) -> void:
 	var cell := Vector2i(3, 3)
-	for pair in [["ice_starter", "ice_shard"], ["rock_starter", "rock_push"], ["grass_wild1", "drain"]]:
+	for pair in [["ice_starter", "ice_shard"], ["rock_starter", "rock_push"]]:
 		var terrain := TestScenario.with_cells(TestScenario.plain_terrain(), [[cell, TerrainDB.OBSTACLE]])
 		var state := TestScenario.make_state([], [[pair[0], Vector2i(2, 3)]], terrain)
 		var caster := state.unit_by_uid(100)

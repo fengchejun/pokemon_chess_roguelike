@@ -2,8 +2,7 @@ extends RefCounted
 
 
 func run(t: TestContext) -> void:
-	t.begin("战后奖励三选一与背包")
-	_test_offer_and_claim(t)
+	t.begin("战后背包与迁移")
 	_test_inventory_roundtrip(t)
 	_test_legacy_migration(t)
 	_test_monster_growth_in_battle(t)
@@ -11,45 +10,13 @@ func run(t: TestContext) -> void:
 	t.finish()
 
 
-func _test_offer_and_claim(t: TestContext) -> void:
-	var run_state := RunState.new_run(20261014)
-	run_state.pending_reward_choices = 2
-	var first: Array = run_state.reward_choices()
-	t.eq(first.size(), 3, "每次奖励提供三个选项")
-	t.eq(first, run_state.reward_choices(), "相同种子、场次和选择序号给出稳定选项")
-	var unique := {}
-	for reward_id in first:
-		var id := String(reward_id)
-		unique[id] = true
-		t.check(RelicDB.DEFINITIONS.has(id), "奖励池仅含本局遗物：%s" % id)
-		t.check(RelicDB.name_of(id) != id and RelicDB.description_of(id) != "", "每项奖励有可读名称与说明")
-	t.eq(unique.size(), 3, "同一次三选一不会出现重复项目")
-	t.eq(run_state.choose_reward("upgrade:team_move"), false, "不能越过经验系统从战后池领取局内强化")
-	t.eq(run_state.choose_reward("position:not_real"), false, "奖励列表之外的项目不能领取")
-	var chosen := String(first[0])
-	t.eq(run_state.choose_reward(chosen), true, "从三个选项中领取一项")
-	t.eq(RelicDB.rank(run_state.relic_stacks, chosen), 1, "遗物进入本局构筑")
-	t.eq(run_state.pending_reward_choices, 1, "领取后仅扣除一次待选机会")
-	t.eq(run_state.reward_choice_index, 1, "下一次奖励使用新的选择序号")
-	var second: Array = run_state.reward_choices()
-	t.eq(second, RunState.from_dict(run_state.to_dict()).reward_choices(), "读档后续选项保持可复现")
-	t.check(run_state.choose_reward(String(second[0])), "可领取第二次奖励")
-	t.eq(run_state.relic_stacks.values().reduce(func(total: int, value: int) -> int: return total + value, 0), 2, "两次选择可累计两级遗物")
-	t.eq(run_state.pending_reward_choices, 0, "待领次数归零")
-	t.eq(run_state.choose_reward(String(second[0])), false, "次数归零后不能重复领取")
-
-
 func _test_inventory_roundtrip(t: TestContext) -> void:
 	var run_state := RunState.new_run(20261015)
 	run_state.reward_inventory = ["position:forest", "map:water", RewardDB.MOD_ITEM]
 	run_state.select_reward_item("position:forest")
-	run_state.pending_reward_choices = 1
-	run_state.reward_choice_index = 3
 	var restored := RunState.from_dict(run_state.to_dict())
 	t.eq(restored.reward_inventory, run_state.reward_inventory, "背包顺序与种类在本局存档中保留")
 	t.eq(restored.selected_reward_item, "position:forest", "战前所选消耗卡在本局存档中保留")
-	t.eq(restored.pending_reward_choices, 1, "尚未领取的奖励选择次数保留")
-	t.eq(restored.reward_choice_index, 3, "奖励随机序号保留，防止反复读档刷新选项")
 	var previous_inventory: Array = restored.reward_inventory.duplicate()
 	t.eq(restored.select_reward_item(""), true, "可选择下一场不使用卡")
 	t.eq(restored.consume_selected_reward_item(), "", "不使用卡时开战不消耗背包")
@@ -61,6 +28,9 @@ func _test_legacy_migration(t: TestContext) -> void:
 	old["cards"] = ["stream", "forest"]
 	old["environment_deck"] = ["water", "electric"]
 	old["environment_reward_pending"] = true
+	old["relic_stacks"] = {"camp_ember": 1}
+	old["pending_reward_choices"] = 2
+	old["homeward_waypoint_floors"] = [0]
 	old["options"]["card_mode"] = "environment"
 	var restored := RunState.from_dict(old)
 	t.eq(restored.cards, [], "旧版免费站位卡全部清除")
@@ -68,6 +38,8 @@ func _test_legacy_migration(t: TestContext) -> void:
 	t.eq(restored.environment_reward_pending, false, "旧版待领地貌卡不再保留")
 	t.eq(restored.reward_inventory, [], "旧卡不会折算成新消耗卡")
 	t.eq(restored.options.has("card_mode"), false, "旧环境模式开关移除")
+	t.eq((restored.to_dict().get("relic_stacks", {}) as Dictionary).is_empty(), true, "不存在的旧遗物ID不会进入新池")
+	t.eq(int(restored.to_dict().get("pending_reward_choices", 0)), 2, "v21遗物待选次数保留")
 
 
 func _test_monster_growth_in_battle(t: TestContext) -> void:
@@ -114,9 +86,10 @@ func _test_settlement_resume(t: TestContext) -> void:
 	battle.check_battle_end()
 	run_state.sync_from_battle(battle)
 	run_state.settle_battle(battle)
+	run_state.pending_reward_choices = 0
 	t.eq(run_state.settlement_pending, true, "战后有待处理结算标记")
 	var restored := RunState.from_dict(run_state.to_dict())
-	t.eq(restored.pending_reward_choices, 1, "读档仍有一次待领奖励")
+	t.eq(int(restored.last_settlement.get("reward_points_earned", 0)), 1, "奖励点经验收益可从结算摘要恢复")
 	t.eq(restored.last_settlement.get("reason", ""), "victory", "结算摘要可从本局存档恢复")
 	var main_script = load("res://scripts/main.gd")
 	var app = main_script.new()
@@ -127,17 +100,10 @@ func _test_settlement_resume(t: TestContext) -> void:
 	app.battle_settled = true
 	app._switch(load("res://scripts/ui/settlement_screen.gd").new())
 	t.eq(app.current_screen.name, "SettlementScreen", "没有内存中的 BattleState 仍能恢复结算界面")
-	var offered: Array = restored.reward_choices()
-	var id := String(offered[0])
-	var choice: Button = app.current_screen.find_child("RewardChoice_%s" % id.replace(":", "_"), true, false)
-	t.check(choice != null, "恢复后的结算界面仍可领取三选一")
-	if choice != null:
-		choice.pressed.emit()
-		t.eq(RelicDB.rank(restored.relic_stacks, id), 1, "恢复后领取的遗物进入构筑")
-		var next: Button = app.current_screen.find_child("ContinueButton", true, false)
-		t.check(next != null and not next.disabled, "领取后可继续下一场")
-		if next != null:
-			next.pressed.emit()
-			t.eq(restored.battle_index, 1, "恢复结算不会重打一场或重复发奖")
-			t.eq(restored.settlement_pending, false, "进入下一场后结算待办清除")
+	var next: Button = app.current_screen.find_child("ContinueButton", true, false)
+	t.check(next != null and not next.disabled, "恢复结算后可直接继续下一场")
+	if next != null:
+		next.pressed.emit()
+		t.eq(restored.battle_index, 1, "恢复结算不会重打一场或重复发奖")
+		t.eq(restored.settlement_pending, false, "进入下一场后结算待办清除")
 	app.queue_free()

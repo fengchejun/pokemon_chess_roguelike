@@ -55,7 +55,6 @@ func _test_ordered_settlement_choices(t: TestContext) -> void:
 	var run_state := RunState.new_run(20261019)
 	MonsterProgression.award_xp(run_state.record_by_uid(1), MonsterProgression.threshold_for_level(4))
 	MonsterProgression.award_xp(run_state.record_by_uid(2), MonsterProgression.threshold_for_level(2))
-	run_state.pending_reward_choices = 1
 	run_state.settlement_pending = true
 	var pending: Array = run_state.pending_monster_levels()
 	t.eq(pending.size(), 3, "跨级怪物和另一只怪物共有三项待选偶数级强化")
@@ -88,13 +87,7 @@ func _test_ordered_settlement_choices(t: TestContext) -> void:
 		button.pressed.emit()
 		t.check((app.run.record_by_uid(uid).get("known_skills", []) as Array).has(skill_id), "选择记录到对应怪物")
 	t.eq(app.run.pending_monster_levels().size(), 0, "全部怪物强化已逐项处理")
-	t.eq(app.run.pending_reward_choices, 1, "怪物升级完成后才进入战后卡牌选择")
-	var reward_id := String(app.run.reward_choices()[0])
-	var reward_button: Button = app.current_screen.find_child("RewardChoice_%s" % reward_id.replace(":", "_"), true, false)
-	t.check(reward_button != null and continue_button.disabled, "战后卡牌仍需领取，不能跳过")
-	if reward_button != null:
-		reward_button.pressed.emit()
-		t.eq(continue_button.disabled, false, "怪物强化和卡牌领取完毕后可继续")
+	t.eq(continue_button.disabled, false, "怪物升级完成后可直接继续")
 	app.queue_free()
 
 

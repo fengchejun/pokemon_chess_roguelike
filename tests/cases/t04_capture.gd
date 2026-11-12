@@ -1,6 +1,6 @@
 extends RefCounted
 
-## 两格方形邻域捕获；低血量保证与原地转阵营分别由设置控制。
+## 曼哈顿距离两格捕获；低血量保证与原地转阵营分别由设置控制。
 
 
 func run(t: TestContext) -> void:
@@ -41,9 +41,19 @@ func _t_range(t: TestContext) -> void:
 	wild.cell = Vector2i(3, 3)
 	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "直线两格可尝试")
 	wild.cell = Vector2i(3, 5)
-	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "斜角两格可尝试")
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), false, "曼哈顿距离四的斜角两格不可尝试")
+	wild.cell = Vector2i(2, 4)
+	t.eq(CaptureSystem.can_attempt(state, trainer, wild), true, "曼哈顿距离二的斜角一格可尝试")
 	wild.cell = Vector2i(4, 3)
 	t.eq(CaptureSystem.can_attempt(state, trainer, wild), false, "直线三格不可尝试")
+	trainer.cell = Vector2i(3, 3)
+	var reachable: Array = []
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			wild.cell = trainer.cell + Vector2i(dx, dy)
+			if CaptureSystem.can_attempt(state, trainer, wild):
+				reachable.append(wild.cell)
+	t.eq(reachable.size(), 13, "曼哈顿距离两格范围恰好包含 13 格")
 
 
 func _t_flow(t: TestContext) -> void:

@@ -108,8 +108,6 @@ func _build_prep() -> void:
 	skill_option = OptionButton.new()
 	skill_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var skill_ids: Array = SkillDB.DEFS.keys()
-	for element in Elements.LIST:
-		skill_ids.append_array(SkillDB.placeholder_ids_for(element))
 	skill_ids.sort()
 	for skill_id in skill_ids:
 		var id := String(skill_id)
@@ -132,7 +130,7 @@ func _build_prep() -> void:
 	var xp_button := UIKit.small_button("给予所选怪物")
 	xp_button.pressed.connect(_add_xp)
 	xp_row.add_child(xp_button)
-	content.add_child(UIKit.wrapped("技能可跨属性学习；装备位有空会自动装备，否则留在招式库。经验按现有 Lv10 上限计算，2、5、7级学习机会按正常战后流程领取，技能强化请找导师。", 13, UIKit.TEXT_DIM))
+	content.add_child(UIKit.wrapped("技能可跨属性学习；装备位有空会自动装备，否则留在招式库。经验按现有 Lv10 上限计算，2、5、7级学习机会按正常战后流程领取，技能强化请找商人。", 13, UIKit.TEXT_DIM))
 
 
 func _build_battle() -> void:

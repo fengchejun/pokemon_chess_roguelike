@@ -46,7 +46,7 @@ static func load_profile(path: String = SAVE_PATH) -> CollectionState:
 		for raw_id in counts:
 			var skill_id := String(raw_id)
 			var amount := maxi(0, int(counts[raw_id]))
-			if skill_id != "" and amount > 0:
+			if skill_id != "" and amount > 0 and not SkillDB.get_def(skill_id).is_empty():
 				(profile.skill_use_counts[side] as Dictionary)[skill_id] = amount
 	var saved_battles: Dictionary = parsed.get("recorded_skill_battles", {}) if parsed.get("recorded_skill_battles", {}) is Dictionary else {}
 	for raw_key in saved_battles:
@@ -105,8 +105,8 @@ func record_battle_skill_usage(battle: BattleState) -> bool:
 		var total: Dictionary = skill_use_counts[side]
 		for raw_id in source:
 			var amount := maxi(0, int(source[raw_id]))
-			if amount > 0:
-				var skill_id := String(raw_id)
+			var skill_id := String(raw_id)
+			if amount > 0 and not SkillDB.get_def(skill_id).is_empty():
 				total[skill_id] = int(total.get(skill_id, 0)) + amount
 	recorded_skill_battles[key] = true
 	return true
@@ -162,15 +162,19 @@ func select_records(ids: Array) -> Array:
 	return selected
 
 
-func absorb_run(run: RunState) -> int:
-	## 战斗结束后同步亲密度，并登记携带与仓库（含濒死）里的新怪物。
+func absorb_run(run: RunState, retained_storage_uids: Array = []) -> int:
+	## 战斗结束后同步亲密度。携带队伍始终登记；仓库仅在最终结算明确选择时登记。
 	if run.debug_tainted:
 		return 0
 	for uid in run.sold_monster_uids:
 		var source := "run:%d:%d" % [run.seed, int(uid)]
 		owned = owned.filter(func(entry): return String(entry.get("source", "")) != source)
 	var added := 0
-	for group in ([run.carried] if run.region_mode else [run.carried, run.storage]):
+	var retained_storage: Array = []
+	for record in run.storage:
+		if retained_storage_uids.has(int(record.get("uid", -1))):
+			retained_storage.append(record)
+	for group in [run.carried, retained_storage]:
 		for record in group:
 			if bool(record.get("debug_spawned", false)):
 				continue
@@ -191,6 +195,21 @@ func absorb_run(run: RunState) -> int:
 			record["collection_id"] = existing_id
 			_sync_affinity(record_by_id(existing_id), record)
 	return added
+
+
+func settle_run(run: RunState, retained_storage_uids: Array = []) -> int:
+	## 本局最终登记：清除未获保留的仓库来源，再吸收携带队伍和明确勾选的仓库成员。
+	if run == null or run.debug_tainted:
+		return 0
+	var retained_lookup := {}
+	for uid in retained_storage_uids:
+		retained_lookup[int(uid)] = true
+	for record in run.storage:
+		if retained_lookup.has(int(record.get("uid", -1))):
+			continue
+		var source := "run:%d:%d" % [run.seed, int(record.get("uid", -1))]
+		owned = owned.filter(func(entry): return String(entry.get("source", "")) != source)
+	return absorb_run(run, retained_storage_uids)
 
 
 func _sync_affinity(destination: Dictionary, source: Dictionary) -> void:

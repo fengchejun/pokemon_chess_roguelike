@@ -63,8 +63,8 @@ func _windfire_breath(t: TestContext) -> void:
 	var result := state.cast_skill(caster, "windfire_breath", {"type": "dir", "dir": Vector2i.RIGHT, "cell": Vector2i(4, 3)})
 	t.check(bool(result.get("ok", false)), "风怒炎息可朝前方施放")
 	t.eq((result.get("area_cells", []) as Array).size(), 8, "风怒炎息覆盖前方八格")
-	t.eq(first.hp, first_hp - 12, "前排气格敌人受到十二点伤害")
-	t.eq(second.hp, second_hp - 12, "第二排远处敌人也受到伤害")
+	t.eq(first.hp, first_hp - 10, "前排气格敌人受到十点伤害")
+	t.eq(second.hp, second_hp - 10, "第二排远处敌人也受到十点伤害")
 	t.eq(first.cell, Vector2i(5, 1), "前排气格敌人沿远离施法者方向被推开")
 	t.eq(second.cell, Vector2i(6, 6), "第二排敌人沿远离施法者方向被推开")
 

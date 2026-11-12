@@ -1,7 +1,7 @@
 class_name CaptureSystem
 extends RefCounted
 
-## 两格方形邻域为统一距离；低血量保证与战中转阵营由本局设置控制。
+## 曼哈顿距离两格为统一范围；低血量保证与战中转阵营由本局设置控制。
 
 
 static func capture_chance(target: CombatUnit, low_hp_rules: bool = false, debug_percent: int = -1) -> float:
@@ -41,7 +41,7 @@ static func chance_for(state, target: CombatUnit) -> float:
 	var base := capture_chance(target, bool(state.capture_options.get("capture_low_hp", false)), int(state.debug_capture_percent))
 	# 调试指定概率仍覆盖自然概率，便于复现0%/100%等验收场景。
 	var allies := mini(3, support_count(state, target))
-	var per_ally := 0.1 + 0.02 * RelicDB.rank(state.relic_stacks, "companion_oath")
+	var per_ally := 0.1
 	var support := allies * per_ally if int(state.debug_capture_percent) < 0 else 0.0
 	return minf(1.0, base + support + (0.2 if state.capture_aid else 0.0))
 
@@ -57,8 +57,7 @@ static func has_debuff(target: CombatUnit) -> bool:
 static func in_range(trainer: CombatUnit, target: CombatUnit) -> bool:
 	if trainer == null or target == null:
 		return false
-	var delta := target.cell - trainer.cell
-	return maxi(absi(delta.x), absi(delta.y)) <= Balance.CAPTURE_RANGE
+	return GridSpec.manhattan(trainer.cell, target.cell) <= Balance.CAPTURE_RANGE
 
 
 static func can_attempt(state, trainer: CombatUnit, target: CombatUnit) -> bool:

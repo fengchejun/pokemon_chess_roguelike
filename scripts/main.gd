@@ -149,11 +149,11 @@ func show_skill_stats() -> void:
 
 
 func start_new_run() -> void:
-	## 主菜单放弃旧存档时，先登记身上与仓库的成员，避免覆盖单槽本局存档后丢失已收容的怪物。
+	## 主菜单放弃旧存档时只登记携带队伍；未在最终结算勾选的仓库成员视为抛弃。
 	if autosave_enabled and SaveSystem.has_save():
 		var previous := SaveSystem.load_run()
 		if previous != null:
-			collection.absorb_run(previous)
+			collection.settle_run(previous)
 			collection.save()
 		else:
 			# 当前流程无法续读的旧本局文件必须先留底，避免新局自动存档覆盖。
@@ -274,6 +274,7 @@ func merchant_trade(state: BattleState, operation: String, id: String, quantity:
 		state.units = restored.units
 		state.merchant = restored.merchant
 		state.relic_stacks = restored.relic_stacks
+		state.relic_state = restored.relic_state
 		return {"ok": false, "reason": "存档写入失败，交易已撤回。"}
 	if collection != null:
 		collection.absorb_run(run)
@@ -294,7 +295,6 @@ func purchase_skill_upgrade(state: BattleState, uid: int, skill_id: String, save
 		run = RunState.from_dict(previous)
 		var restored := BattleSnapshot.load_state(battle_before)
 		state.units = restored.units
-		state.relic_stacks = restored.relic_stacks
 		return {"ok": false, "reason": "存档写入失败，技能强化已撤回。"}
 	if collection != null:
 		collection.absorb_run(run)
@@ -317,6 +317,9 @@ func show_floor_theme() -> void:
 
 func show_region() -> void:
 	battle_settled = false
+	if run != null and run.has_pending_relic_actions() and not run.settlement_pending:
+		show_relic_actions("region")
+		return
 	if run != null and run.get_region().flow_version == 2:
 		var region = run.get_region()
 		if region.active_node == "hunt" and not region.nodes["hunt"].get("cleared", false):
@@ -347,27 +350,6 @@ func show_camp() -> void:
 	run.battle_snapshot = {}
 	battle_settled = false
 	_switch(CampScreen.new())
-
-
-func mentor_train(state: BattleState, uid: int, skill_id: String, save_path: String = SaveSystem.DEFAULT_PATH) -> Dictionary:
-	run.sync_from_battle(state)
-	var prior := run.to_dict()
-	var before := BattleSnapshot.save_state(state)
-	var result := SkillMentor.train(run, state, uid, skill_id)
-	if not result["ok"]:
-		return result
-	var region = run.get_region()
-	region.nodes[region.active_node]["mentor"] = state.mentor.duplicate(true)
-	region.nodes[region.active_node]["mentor"]["cell"] = [state.mentor["cell"].x, state.mentor["cell"].y]
-	run.region_data = region.to_dict()
-	run.battle_snapshot = BattleSnapshot.save_state(state)
-	if autosave_enabled and not SaveSystem.save_run(run, save_path):
-		run = RunState.from_dict(prior)
-		var restored := BattleSnapshot.load_state(before)
-		state.units = restored.units
-		state.mentor = restored.mentor
-		return {"ok": false, "reason": "存档写入失败，强化已撤回。"}
-	return result
 
 
 func leave_camp() -> void:
@@ -473,15 +455,6 @@ func begin_battle(deploy_uids: Array, final_map: Dictionary) -> void:
 	if run.region_mode:
 		var current = run.get_region()
 		var node: Dictionary = current.nodes[current.active_node]
-		if node.has("mentor"):
-			state.mentor = node["mentor"].duplicate(true)
-			var point: Array = state.mentor["cell"]
-			state.mentor["cell"] = Vector2i(int(point[0]), int(point[1]))
-			if not GridSpec.is_inside(state.mentor["cell"]):
-				state.mentor["cell"] = final_map.get("mentor_cell", SkillMentor.choose_cell(state, final_map.get("deploy_positions", {})))
-			node["mentor"] = state.mentor.duplicate(true)
-			node["mentor"]["cell"] = [state.mentor["cell"].x, state.mentor["cell"].y]
-			run.region_data = current.to_dict()
 		if node.has("merchant"):
 			if state.merchant.is_empty():
 				state.merchant = node["merchant"].duplicate(true)
@@ -532,10 +505,6 @@ func finish_battle(battle: BattleState) -> void:
 	if run.region_mode and run.get_region().flow_version == 2:
 		var region = run.get_region()
 		var node: Dictionary = region.nodes[region.active_node]
-		if battle.end_reason == "victory" and battle.battle_objective_met() and node.get("role") == "hunt" and not node.get("challenge_reward_claimed", false):
-			run.pending_bonus_choices += 2
-			node["challenge_reward_claimed"] = true
-			run.region_data = region.to_dict()
 	var outcome := run.settle_battle(battle)
 	if run.region_mode:
 		var region = run.get_region()
@@ -563,8 +532,25 @@ func continue_after_settlement() -> void:
 	if run == null:
 		show_menu()
 		return
-	if not run.pending_captures.is_empty() or run.pending_upgrades() or run.pending_reward_choices > 0 or run.has_pending_battle_loot():
+	if not run.pending_captures.is_empty() or run.pending_upgrades() or run.pending_reward_choices > 0 or run.has_pending_battle_loot() or run.has_pending_relic_actions():
 		return
+	if run.last_settlement.has("return_to"):
+		var return_to := String(run.last_settlement["return_to"])
+		run.settlement_pending = false
+		run.last_settlement.clear()
+		autosave()
+		if return_to == "node":
+			_switch(preload("res://scripts/ui/exploration_node_screen.gd").new())
+		elif return_to == "run_end":
+			show_run_end()
+		elif return_to == "progress":
+			if run.run_finished() or run.run_lost(): show_run_end()
+			elif run.needs_theme_choice(): show_floor_theme()
+			else: show_region()
+		else:
+			show_region()
+		return
+	run.relic_notices.clear()
 	if collection != null:
 		collection.absorb_run(run)
 		if autosave_enabled:
@@ -577,14 +563,6 @@ func continue_after_settlement() -> void:
 		if boss_cleared:
 			region.notifications.append_array(region.complete_visit())
 			preload("res://scripts/run/garrison_rewards.gd").finish_all(run, region, "离开本层")
-			if collection != null and not bool(run.options.get("exploration_v2", false)):
-				for member in run.storage:
-					var source := "run:%d:%d" % [run.seed, int(member.get("uid", -1))]
-					collection.owned = collection.owned.filter(func(entry: Dictionary) -> bool: return String(entry.get("source", "")) != source)
-				if autosave_enabled:
-					collection.save()
-			if not bool(run.options.get("exploration_v2", false)):
-				run.storage.clear()
 			run.battle_index = (region.floor_index + 1) * 6
 			run.region_data = {}
 			run.refresh_theme_offers()
@@ -596,7 +574,9 @@ func continue_after_settlement() -> void:
 			run.region_data = region.to_dict()
 			run.pending_region_entry_backup.clear()
 		autosave()
-		if run.run_finished() or run.run_lost():
+		if run.has_pending_relic_actions():
+			show_relic_actions("progress")
+		elif run.run_finished() or run.run_lost():
 			show_run_end()
 		elif run.needs_theme_choice():
 			show_floor_theme()
@@ -634,12 +614,36 @@ func leave_supply() -> void:
 func show_run_end() -> void:
 	if run != null and not run.region_data.is_empty() and run.get_region().flow_version == 2:
 		preload("res://scripts/run/garrison_rewards.gd").finish_all(run, run.get_region(), "本局结束")
+	if run != null and run.has_pending_relic_actions():
+		run.settlement_pending = false
+		show_relic_actions("run_end")
+		return
 	if run != null and collection != null:
 		collection.absorb_run(run)
 		if autosave_enabled:
 			collection.save()
 			autosave()
 	_switch(RunEndScreen.new())
+
+
+func resolve_run_end_storage(retained_storage_uids: Array) -> Dictionary:
+	## 最终结局确认：携带队伍必然保留，仓库只有明确勾选者进入永久收藏。
+	if run == null or collection == null:
+		return {"ok": false, "reason": "本局或永久收藏尚未就绪。"}
+	var retained: Array = []
+	for record in run.storage:
+		var uid := int(record.get("uid", -1))
+		if retained_storage_uids.has(uid) and not retained.has(uid):
+			retained.append(uid)
+	var discarded := run.storage.size() - retained.size()
+	var added := 0
+	if not run.debug_tainted:
+		added = collection.settle_run(run, retained)
+		if autosave_enabled and not collection.save():
+			return {"ok": false, "reason": "永久收藏写入失败，请重试。"}
+	run.storage.clear()
+	autosave()
+	return {"ok": true, "added": added, "retained": retained.size(), "discarded": discarded}
 
 
 func end_run_to_menu() -> void:
@@ -651,3 +655,13 @@ func end_run_to_menu() -> void:
 
 func quit_game() -> void:
 	get_tree().quit()
+
+
+func show_relic_actions(return_to: String = "region") -> void:
+	if run == null or not run.has_pending_relic_actions() or run.settlement_pending:
+		return
+	run.settlement_pending = true
+	run.last_settlement = {"reason": "relic_action", "return_to": return_to}
+	pending_settlement = {"outcome": run.last_settlement.duplicate(true)}
+	autosave()
+	_switch(SettlementScreen.new())

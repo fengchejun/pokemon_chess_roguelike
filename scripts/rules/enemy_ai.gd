@@ -719,6 +719,7 @@ static func _execute_on(work: BattleState, action: Dictionary) -> void:
 		var skill_used_before := unit.skill_used
 		var result := SkillResolver.apply(work, unit, String(skill["id"]), skill["target"], false)
 		if bool(result.get("ok", false)):
+			unit.consume_skill_pp(String(skill["id"]))
 			if skill_used_before and unit.extra_casts > 0:
 				unit.extra_casts -= 1
 			else:

@@ -360,23 +360,82 @@ func to_dict() -> Dictionary:
 static func from_dict(data: Dictionary) -> RegionState:
 	var region := RegionState.new()
 	region.flow_version = int(data.get("flow_version", 1))
+	region.invaded = bool(data.get("invaded", false))
+	region.invasion_origin = String(data.get("invasion_origin", ""))
+	var saved_garrisons = data.get("garrisons", {})
+	region.garrisons = saved_garrisons.duplicate(true) if saved_garrisons is Dictionary else {}
 	region.floor_index = int(data.get("floor", 0))
 	region.theme = String(data.get("theme", ""))
 	region.visits = int(data.get("visits", 0))
-	region.invaded = bool(data.get("invaded", false))
-	region.invasion_origin = String(data.get("invasion_origin", ""))
-	region.garrisons = data.get("garrisons", {}).duplicate(true)
 	region.active_node = String(data.get("active_node", ""))
-	region.nodes = (data.get("nodes", {}) as Dictionary).duplicate(true)
+	var supplied_nodes = data.get("nodes", {})
+	if not supplied_nodes is Dictionary:
+		supplied_nodes = {}
+	var template := create_floor(region.floor_index, region.theme)
+	region.nodes = template.nodes.duplicate(true) if template != null and region.flow_version != 2 else {}
+	for raw_id in supplied_nodes:
+		var id := String(raw_id)
+		var raw_node = supplied_nodes[raw_id]
+		if not raw_node is Dictionary:
+			continue
+		var node: Dictionary = region.nodes.get(id, {}).duplicate(true)
+		node.merge((raw_node as Dictionary).duplicate(true), true)
+		var kind := String(node.get("type", inferred_node_type(id)))
+		if not NODE_TYPES.has(kind):
+			kind = inferred_node_type(id)
+		node["type"] = kind
+		var cleared := bool(node.get("cleared", false))
+		var default_mode := "event" if kind == "battle" and cleared else kind
+		var mode := String(node.get("mode", default_mode))
+		if not NODE_TYPES.has(mode):
+			mode = default_mode
+		node["mode"] = mode
+		node["visits"] = maxi(0, int(node.get("visits", 0)))
+		node["cleared"] = cleared
+		if region.flow_version != 2:
+			node["withdrawn"] = bool(node.get("withdrawn", false))
+		node["pending_garrison"] = bool(node.get("pending_garrison", false))
+		node["pending_replenish"] = bool(node.get("pending_replenish", false))
+		node["unlocked"] = bool(node.get("unlocked", id == "camp"))
+		if not (node.get("links", []) is Array):
+			node["links"] = []
+		if not (node.get("snapshot", {}) is Dictionary):
+			node["snapshot"] = {}
+		region.nodes[id] = node
 	region.visit_pending = bool(data.get("visit_pending", false))
 	region.support_triggered = bool(data.get("support_triggered", false))
 	region.corrupted = bool(data.get("corrupted", region.visits >= Balance.CORRUPTION_VISITS))
 	region.boss_level_bonus = int(data.get("boss_level_bonus", 0))
 	region.camp_invaded = bool(data.get("camp_invaded", false))
-	region.notifications = (data.get("notifications", []) as Array).duplicate()
+	var supplied_notifications = data.get("notifications", [])
+	region.notifications = supplied_notifications.duplicate() if supplied_notifications is Array else []
 	region.at_camp_scene = bool(data.get("at_camp_scene", false))
-	for id in region.nodes:
-		var node: Dictionary = region.nodes[id]
-		if not node.has("mode"):
-			node["mode"] = "event" if node["type"] == "battle" and bool(node.get("cleared", false)) else node["type"]
+	if not region.nodes.has(region.active_node):
+		region.active_node = "camp" if region.nodes.has("camp") else ""
+		region.visit_pending = false
+	if region.node_mode(region.active_node) != "camp":
+		region.at_camp_scene = false
 	return region
+
+
+static func inferred_node_type(id: String) -> String:
+	if id == "camp":
+		return "camp"
+	if id == "boss":
+		return "boss"
+	if id.begins_with("battle_"):
+		return "battle"
+	return "event"
+
+
+func node_type(id: String) -> String:
+	if not nodes.has(id):
+		return ""
+	var node = nodes[id]
+	if not node is Dictionary:
+		return inferred_node_type(id)
+	var kind := String(node.get("type", inferred_node_type(id)))
+	if not NODE_TYPES.has(kind):
+		kind = inferred_node_type(id)
+	node["type"] = kind
+	return kind

@@ -66,6 +66,8 @@ func persist(region) -> void:
 	refresh()
 
 func refresh() -> void:
+	if app.run.has_pending_relic_actions() and not app.run.settlement_pending:
+		app.call_deferred("show_relic_actions", "node")
 	UIKit.clear_children(column)
 	var run: RunState = app.run
 	var region = run.get_region()
@@ -77,13 +79,21 @@ func refresh() -> void:
 	return_button.tooltip_text = "先选择本次奖励，再返回地图。" if return_button.disabled else "结算当前节点后检查楼层入侵。"
 	column.add_child(UIKit.wrapped(message, 16))
 	if node.get("reward_pending", false):
+		var offers: Array = node.get("offers", []).filter(func(id): return RelicDB.available_ids(run.relic_stacks).has(id))
+		if offers.is_empty():
+			offers = RelicDB.offer(run.seed, region.floor_index, int(node.get("visits", 0)), run.relic_stacks)
+			node["offers"] = offers
+		if offers.is_empty():
+			node["reward_pending"] = false
+			run.essence += 6
+			persist(region)
+			return
 		column.add_child(UIKit.wrapped("选择本次事件的遗物奖励，再结束这次行动。", 17))
-		for id in node.get("offers", []):
+		for id in offers:
 			var relic: String = id
 			button("%s · %s" % [RelicDB.display_name_of(relic), RelicDB.description_of(relic)], "EventRelic_" + relic, func() -> void:
 				if not node.get("reward_pending", false): return
-				if RelicDB.rank(run.relic_stacks, relic) >= 3: return
-				run.relic_stacks[relic] = RelicDB.rank(run.relic_stacks, relic) + 1
+				if not run.acquire_relic(relic, "event"): return
 				node["reward_pending"] = false
 				persist(region))
 		return
@@ -182,7 +192,7 @@ func deliver(uid: int) -> void:
 
 func _camp(run: RunState, region) -> void:
 	column.add_child(UIKit.wrapped("营地服务不消耗额外行动。共享仓库成员跨层保留。", 16))
-	button("消耗3份食物休息（濒死成员恢复半血）", "CampRestButton", func() -> void:
+	button("消耗3份食物休息（恢复生命与全部技能PP）", "CampRestButton", func() -> void:
 		var result := run.rest_with_food({"basic": 3})
 		message = "\n".join(result.get("results", [])) if result.get("ok", false) else String(result.get("reason", ""))
 		app.autosave(); refresh(), int(run.food_inventory.get("basic", 0)) < 3 or not run.needs_camp_rest())
@@ -216,9 +226,9 @@ func _shop(run: RunState, region) -> void:
 			for index in mini(3, pool.size()):
 				stock[Merchant.BOOK_PREFIX + String(pool.pop_at(rng.randi_range(0, pool.size() - 1)))] = 1
 		else:
-			stock = {"food": 6, "potion": 2, "capture_aid": 2}
-			for relic in RelicDB.offer(run.seed, region.floor_index, 501, {}):
-				stock["relic:" + relic] = 1
+			stock = {"food": 6, "potion": 2, "pp_tonic": 2, "capture_aid": 2}
+			var relic := RelicDB.weighted_random_id(hash("node-shop:%d:%d" % [run.seed, region.floor_index]), run.relic_stacks, {}, false)
+			if not relic.is_empty(): stock["relic:" + relic] = 1
 		node["stock"] = stock
 		run.region_data = region.to_dict(); app.autosave()
 	if node["role"] == "item_shop" and not node.get("growth_stock_initialized", false):
@@ -234,6 +244,8 @@ func _shop(run: RunState, region) -> void:
 		var relic := id.trim_prefix("relic:")
 		var price := _price(id)
 		var title: String
+		if id.begins_with("relic:") and (not RelicDB.DEFINITIONS.has(relic) or not RelicDB.merchant_allowed(relic)):
+			continue
 		if id.begins_with(Merchant.BOOK_PREFIX):
 			title = "技能书 · " + SkillDB.name_of(id.trim_prefix(Merchant.BOOK_PREFIX))
 		elif id.begins_with("relic:"):
@@ -241,14 +253,14 @@ func _shop(run: RunState, region) -> void:
 		else:
 			title = "基础食物" if id == "food" else String(Merchant.ITEMS[id][0])
 		var unavailable := id == Merchant.INTEL_ID and not intel_reason.is_empty()
-		var disabled := unavailable or run.essence < price or int(node["stock"][id]) <= 0 or (id.begins_with("relic:") and RelicDB.rank(run.relic_stacks, relic) >= 3)
+		var disabled := unavailable or run.essence < price or int(node["stock"][id]) <= 0 or (id.begins_with("relic:") and RelicDB.owned(run.relic_stacks, relic))
 		button("购买%s · %d原质 · 剩余%d" % [title, price, int(node["stock"][id])], "Buy_" + id.replace(":", "_"), func() -> void: buy(id), disabled)
 	if node["role"] != "skill_shop":
 		for relic_id in run.relic_stacks:
 			var relic: String = relic_id
-			if RelicDB.rank(run.relic_stacks, relic) <= 0: continue
-			button("出售一级%s · 获得8原质" % RelicDB.name_of(relic), "Sell_" + relic, func() -> void:
-				run.relic_stacks[relic] -= 1; run.essence += 8; app.autosave(); refresh())
+			if not RelicDB.owned(run.relic_stacks, relic): continue
+			button("出售%s · 获得8原质" % RelicDB.name_of(relic), "Sell_" + relic, func() -> void:
+				run.remove_relic(relic); run.essence += 8; app.autosave(); refresh())
 	if node["role"] == "item_shop":
 		return
 	for record in run.carried:
@@ -264,7 +276,7 @@ func _price(id: String) -> int:
 	if id.begins_with(Merchant.BOOK_PREFIX):
 		return Merchant.BOOK_PRICE
 	if id.begins_with("relic:"):
-		return 16
+		return Merchant.relic_price(id.trim_prefix("relic:"))
 	return 3 if id == "food" else int(Merchant.ITEMS.get(id, ["", 999])[1])
 
 func buy(id: String) -> void:
@@ -275,8 +287,7 @@ func buy(id: String) -> void:
 	if int(node.get("stock", {}).get(id, 0)) <= 0 or run.essence < price: return
 	if id.begins_with("relic:"):
 		var relic := id.trim_prefix("relic:")
-		if RelicDB.rank(run.relic_stacks, relic) >= 3: return
-		run.relic_stacks[relic] = RelicDB.rank(run.relic_stacks, relic) + 1
+		if not RelicDB.merchant_allowed(relic) or not run.acquire_relic(relic, "merchant"): return
 	elif id == "food":
 		run.add_food("basic", 1)
 	elif id == Merchant.INTEL_ID:

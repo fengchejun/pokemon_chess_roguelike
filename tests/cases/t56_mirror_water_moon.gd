@@ -2,19 +2,20 @@ extends RefCounted
 
 
 func run(t: TestContext) -> void:
-	t.begin("镜花水月：限次状态、水格跃迁与一次免伤")
+	t.begin("镜花水月：状态持续、水格跃迁与一次免伤")
 	_definition(t)
 	_activation_and_movement(t)
 	_damage_bonus(t)
 	_damage_immunity(t)
-	_duration_and_limit(t)
+	_duration_and_pp(t)
 	t.finish()
 
 
 func _definition(t: TestContext) -> void:
 	var def := SkillDB.get_def("mirror_water_moon")
 	t.eq(String(def.get("name", "")), "镜花水月", "技能名称")
-	t.eq(int(def.get("battle_limit", 0)), 1, "镜花水月每场限用一次")
+	t.eq(SkillDB.pp_of("mirror_water_moon"), 5, "镜花水月使用特殊技能 5 PP 档")
+	t.check(not def.has("battle_limit"), "镜花水月不再使用旧每场次数机制")
 	t.check(SkillDB.is_special("mirror_water_moon"), "镜花水月属于特殊技能")
 	t.check(SkillDB.special_ids_for("water").has("mirror_water_moon"), "镜花水月归纳为水系特殊技能")
 	t.check(not SkillDB.learnable_ids_for("water").has("mirror_water_moon"), "特殊技能不进入普通升级学习池")
@@ -89,6 +90,7 @@ func _activation_and_movement(t: TestContext) -> void:
 	t.check(state.move_unit(caster, Vector2i(6, 2)), "同一阶段可再次跃迁至离散深水")
 	t.check(not caster.moved, "连续跃迁仍不消耗普通移动机会")
 	state.settle_round()
+	state._finish_movement_effects("enemy")
 	t.eq(fire_enemy.slow_ticks, 0, "浸湿只覆盖敌方下一次行动")
 
 
@@ -137,16 +139,18 @@ func _damage_immunity(t: TestContext) -> void:
 	t.check(guarded_caster.mirror_until_round > 0, "没有实际伤害时不会消耗镜花水月")
 
 
-func _duration_and_limit(t: TestContext) -> void:
+func _duration_and_pp(t: TestContext) -> void:
 	var state := TestScenario.make_state(["water_starter"], [["rock_wild1", Vector2i(7, 6)]])
 	var caster := state.unit_by_uid(1)
 	caster.skills.append("mirror_water_moon")
 	var entry := {"type": "cell", "cell": caster.cell}
 	t.check(bool(state.cast_skill(caster, "mirror_water_moon", entry).get("ok", false)), "首次发动成功")
+	t.eq(caster.pp_remaining("mirror_water_moon"), SkillDB.pp_of("mirror_water_moon") - 1, "首次发动消耗 1 PP")
 	caster.skill_used = false
 	caster.moved = false
-	t.check(not bool(state.cast_skill(caster, "mirror_water_moon", entry).get("ok", false)), "同一场不能再次发动")
-	t.eq(caster.mirror_until_round, state.round + 2, "重复施放失败不会刷新状态")
+	t.check(bool(state.cast_skill(caster, "mirror_water_moon", entry).get("ok", false)), "仍有 PP 时同一场可以再次发动")
+	t.eq(caster.pp_remaining("mirror_water_moon"), SkillDB.pp_of("mirror_water_moon") - 2, "重复发动继续消耗独立 PP")
+	t.eq(caster.mirror_until_round, state.round + 2, "重复发动刷新状态但不延长额外回合")
 	state.start_round()
 	t.check(caster.mirror_until_round > 0, "第二回合状态持续")
 	state.start_round()

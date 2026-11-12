@@ -109,7 +109,6 @@ func set_from_state(state: BattleState) -> void:
 	chests = state.chests.duplicate()
 	fruits = []
 	food_cells = state.food_cells.duplicate()
-	mentor_cell = state.mentor.get("cell", Vector2i(-1, -1))
 	merchant_cell = state.merchant.get("cell", Vector2i(-1, -1)) if state.node_kind == "event" else Vector2i(-1, -1)
 	units = []
 	for unit in state.units:
@@ -168,7 +167,6 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 	reward = map.get("reward", {"state": "map", "cell": map.get("reward_cell", Vector2i(-1, -1)), "owner_uid": -1}).duplicate(true)
 	fruits = []
 	food_cells = map.get("food_cells", []).duplicate()
-	mentor_cell = map.get("mentor_cell", Vector2i(-1, -1))
 	merchant_cell = map.get("merchant_cell", Vector2i(-1, -1))
 	units = preview_units
 	deploy_cells = map.get("deploy_area", Balance.DEPLOY_AREA).duplicate()
@@ -414,10 +412,6 @@ func _draw_terrain(rect: Rect2, value: int) -> void:
 func _draw_objects(font: Font) -> void:
 	for current in [nest] + extra_nests:
 		_draw_nest_object(font, current)
-	if GridSpec.is_inside(mentor_cell):
-		var center := cell_center(mentor_cell)
-		draw_circle(center, 22, Color("4b7988"))
-		draw_string(font, center + Vector2(-16, 7), "师", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color("ffe6a8"))
 	for point in [reward] + extra_rewards:
 		if point.get("state") in ["map", "guarding"]:
 			_draw_star(point["cell"])
@@ -563,6 +557,8 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		badges_text += "禁"
 	if unit.slow_ticks > 0:
 		badges_text += "缓"
+	if unit.frozen:
+		badges_text += "冰"
 	if badges_text != "":
 		draw_string(font, center + Vector2(20, -18), badges_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 0.6, 0.3))
 	if unit.capture_used:
