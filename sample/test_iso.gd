@@ -14,6 +14,16 @@ func _initialize() -> void:
 func run_tests() -> void:
 	root.size = Vector2i(1280,720)
 	var material_set = preload("res://sample/unified_materials.gd")
+	var fire = preload("res://sample/tile_fire.gd")
+	var fire_frames: Dictionary = {}
+	for fire_frame in 8:
+		var frame_mesh: ArrayMesh = fire.mesh(fire_frame,false,true)
+		fire_frames[hash(frame_mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX])] = true
+		check(frame_mesh.get_aabb().size.x >= 95,"Fire covers the width of a full tile")
+		check(frame_mesh.get_aabb().size.y > 40,"Fire rises above its ground footprint")
+		check(frame_mesh == fire.mesh(fire_frame,false,true),"Fire meshes are shared rather than rebuilt every redraw")
+	check(fire_frames.size()==8,"All eight flame frames have distinct animated silhouettes")
+	check(fire.mesh(0,true,true).surface_get_arrays(0)[Mesh.ARRAY_COLOR] != fire.mesh(0,false,true).surface_get_arrays(0)[Mesh.ARRAY_COLOR],"Blue fire uses its own palette")
 	var selection = preload("res://sample/selection_effect.gd")
 	var art = preload("res://sample/pixel_art.gd")
 	for species in SpeciesDB.SPECIES:
@@ -82,6 +92,20 @@ func run_tests() -> void:
 				check(view.cell_at(BoardView.cell_center(cell) + offset) == cell, "Isometric hit test %s %s" % [cell, offset])
 	for point in [Vector2(-1,192),Vector2(897,304),Vector2(448,-1),Vector2(448,640)]:
 		check(view.cell_at(point) == Vector2i(-1,-1), "Outside diamond must not select a cell")
+	view.terrain.resize(64)
+	view.terrain.fill(TerrainDB.PLAIN)
+	view.terrain[0] = TerrainDB.BLUE_FIRE
+	view.selected_uid = -1
+	view._process(0.11)
+	check(view.fire_clock > 0.1,"Blue fire animates even without selected units or channeling")
+	view.terrain[0] = TerrainDB.PLAIN
+	view.burning_cells[Vector2i(1,1)] = 3
+	view._process(0.11)
+	check(view.fire_clock > 0.2,"Ordinary burning cells also drive animation independently")
+	view.burning_cells.clear()
+	var stopped_fire_clock := view.fire_clock
+	view._process(0.11)
+	check(view.fire_clock == stopped_fire_clock,"Fire animation idles when there are no burning tiles")
 	view.queue_free()
 	var app = load("res://scripts/main.gd").new()
 	app.autosave_enabled = false

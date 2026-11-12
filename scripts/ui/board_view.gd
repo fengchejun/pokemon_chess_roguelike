@@ -11,6 +11,7 @@ const Iso = preload("res://sample/iso_projection.gd")
 const SampleArt = preload("res://sample/pixel_art.gd")
 const SelectionEffect = preload("res://sample/selection_effect.gd")
 const CastWarning = preload("res://sample/cast_warning.gd")
+const TileFire = preload("res://sample/tile_fire.gd")
 
 var biome := "rock" # Presentation only; terrain mechanics remain in TerrainDB.
 var terrain: Array = []
@@ -55,8 +56,13 @@ var presentation_offsets: Dictionary = {} # 只用于展示位移与回弹，不
 var selected_uid: int = -1
 var hover_cell := Vector2i(-1, -1)
 var selection_clock := 0.0
+var fire_clock := 0.0
 
 func _process(delta: float) -> void:
+	if not burning_cells.is_empty() or TerrainDB.BLUE_FIRE in terrain:
+		var previous_fire_frame := int(fire_clock/TileFire.FRAME_SECONDS)
+		fire_clock = fmod(fire_clock+delta,TileFire.FRAME_SECONDS*TileFire.FRAMES)
+		if int(fire_clock/TileFire.FRAME_SECONDS) != previous_fire_frame: queue_redraw()
 	if selected_uid < 0 and pending_casts.is_empty() and storm_strikes.is_empty(): return
 	var previous_step := int(selection_clock/0.18)
 	selection_clock = fmod(selection_clock+delta,0.72)
@@ -271,10 +277,7 @@ func _draw() -> void:
 				draw_texture_rect(Materials.tile(9), Rect2(center + Vector2(-55,-94), Vector2(110,120)), false)
 			elif value in [TerrainDB.TREE, TerrainDB.OBSTACLE]:
 				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), obstacle_rect, false)
-			if value == TerrainDB.BLUE_FIRE:
-				draw_texture_rect(Materials.tile(10), Rect2(center + Vector2(-27,-46), Vector2(54,54)), false)
-			elif burning_cells.has(cell):
-				draw_texture_rect(SampleArt.tile(10), Rect2(center + Vector2(-21, -37), Vector2(42, 42)), false, Color(0.55, 0.7, 1) if value == TerrainDB.BLUE_FIRE else Color.WHITE)
+			if value == TerrainDB.BLUE_FIRE or burning_cells.has(cell): _draw_tile_fire(cell,false)
 			if chests.has(cell): draw_texture_rect(SampleArt.tile(14), Rect2(center + Vector2(-24,-30), Vector2(48,48)), false)
 			for current in [nest] + extra_nests:
 				if current.get("cell", Vector2i(-1,-1)) == cell: _draw_nest_object(font, current)
@@ -286,6 +289,7 @@ func _draw() -> void:
 				draw_string(font, center + Vector2(-7,-5), "电", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("313244"))
 			if value == TerrainDB.GRASS and actors.is_empty(): Materials.draw_grass(self,center)
 			for unit in actors: _draw_unit(font, unit)
+			if actors.is_empty() and (value == TerrainDB.BLUE_FIRE or burning_cells.has(cell)): _draw_tile_fire(cell,true)
 	for arrow in arrows: _draw_arrow(arrow)
 	for marker in markers: _draw_marker(font, marker)
 	for badge in badges:
@@ -298,6 +302,9 @@ func _draw() -> void:
 		var index := SampleArt.unit_index(unit.species_id)
 		var head_y: float = center.y-66+SelectionEffect.silhouette(index)["top"] if index >= 0 else center.y-27
 		SelectionEffect.draw_arrow(self,Vector2(center.x,head_y-7+[0,-2,-4,-2][int(selection_clock/0.18)]))
+
+func _draw_tile_fire(cell: Vector2i, front: bool) -> void:
+	TileFire.paint(self,cell_center(cell),cell,int(fire_clock/TileFire.FRAME_SECONDS),terrain[GridSpec.index(cell)]==TerrainDB.BLUE_FIRE,front)
 
 func _draw_clean_ground(cell: Vector2i, value: int) -> void:
 	var shape := Iso.diamond(cell)
@@ -501,6 +508,7 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	if ground_value == TerrainDB.GRASS: Materials.draw_grass(self,cell_center(unit.cell))
 	elif ground_value in [TerrainDB.WATER,TerrainDB.DEEP]:
 		Materials.draw_water_cover(self,_surface_shape(unit.cell),center,ground_value,biome)
+	if ground_value == TerrainDB.BLUE_FIRE or burning_cells.has(unit.cell): _draw_tile_fire(unit.cell,true)
 	if unit.is_boss:
 		draw_string(font, center + Vector2(-30, -30), "首", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.8, 0.2))
 	# 生命条

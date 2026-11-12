@@ -28,7 +28,8 @@ func _draw() -> void:
 			elif value==TerrainDB.ROCK_MOUNTAIN:
 				draw_texture_rect(Materials.tile(9),Rect2(c+Vector2(-46,-75),Vector2(92,98)),false)
 			elif value==TerrainDB.BLUE_FIRE:
-				draw_texture_rect(Materials.tile(10),Rect2(c+Vector2(-23,-39),Vector2(46,46)),false)
+				preload("res://sample/tile_fire.gd").paint(self,c,Vector2i.ZERO,0,true,false)
+				preload("res://sample/tile_fire.gd").paint(self,c,Vector2i.ZERO,0,true,true)
 			draw_string(font,Vector2(x+10,y+180),CUES[value],HORIZONTAL_ALIGNMENT_LEFT,-1,12,Color("a6adc8"))
 		else:
 			Materials.paint(self,shape,TerrainDB.PLAIN)
