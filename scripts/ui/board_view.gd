@@ -14,6 +14,10 @@ const CastWarning = preload("res://sample/cast_warning.gd")
 const TileFire = preload("res://sample/tile_fire.gd")
 const StatusVisuals = preload("res://scripts/ui/status_visuals.gd")
 const ElectricFlowerArt = preload("res://scripts/ui/electric_flower_art.gd")
+const HealthBarFeedback = preload("res://scripts/ui/health_bar_feedback.gd")
+var health_feedback = HealthBarFeedback.new()
+var feedback_speed := 1.0
+var feedback_paused := false
 
 var biome := "rock" # Presentation only; terrain mechanics remain in TerrainDB.
 var terrain: Array = []
@@ -62,6 +66,9 @@ var selection_clock := 0.0
 var fire_clock := 0.0
 
 func _process(delta: float) -> void:
+	if not feedback_paused and not health_feedback.trails.is_empty():
+		health_feedback.advance(delta * feedback_speed)
+		queue_redraw()
 	if not burning_cells.is_empty() or TerrainDB.BLUE_FIRE in terrain:
 		var previous_fire_frame := int(fire_clock/TileFire.FRAME_SECONDS)
 		fire_clock = fmod(fire_clock+delta,TileFire.FRAME_SECONDS*TileFire.FRAMES)
@@ -81,6 +88,7 @@ func _ready() -> void:
 func set_from_state(state: BattleState) -> void:
 	if state == null:
 		return
+	health_feedback.sync(state.units)
 	var screen := get_parent()
 	if screen != null:
 		for property in screen.get_property_list():
@@ -127,6 +135,7 @@ func set_from_state(state: BattleState) -> void:
 
 
 func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
+	health_feedback = HealthBarFeedback.new()
 	biome = String(map.get("theme_id", "rock"))
 	camp_facilities = map.get("camp_facilities", {}).duplicate(true)
 	extraction_cells = [] # Main-line map previews no longer show obsolete extraction zones.
@@ -245,7 +254,6 @@ func _draw() -> void:
 			var cell := Vector2i(7 - y, x)
 			var value: int = terrain[GridSpec.index(cell)]
 			_draw_clean_ground(cell, value)
-	for cell in deploy_cells: _iso_outline(cell, Color("75bda1"), 1)
 	for cell in capture_exits: _draw_fill(cell, Color(1, 0.6, 0.2, 0.3))
 	for cell in movement_cells: _draw_fill(cell, Color(0.35, 0.75, 0.9, 0.38))
 	for cell in enemy_cells_view: _draw_fill(cell, Color(1, 0.3, 0.3, 0.28))
@@ -275,9 +283,9 @@ func _draw() -> void:
 					draw_rect(Rect2(center+offset,Vector2(22,12)),Color(0.85,0.9,0.96,0.22))
 			var obstacle_rect := Rect2(center + Vector2(-56, -95), Vector2(112, 112)) if value == TerrainDB.TREE else Rect2(center + Vector2(-52, -66), Vector2(104, 96))
 			if value == TerrainDB.ROCK_MOUNTAIN:
-				draw_texture_rect(Materials.tile(9), Rect2(center + Vector2(-55,-94), Vector2(110,120)), false, Color(1, 1, 1, _scenery_alpha(cell)))
+				draw_texture_rect(Materials.tile(9), Rect2(center + Vector2(-55,-94), Vector2(110,120)), false)
 			elif value in [TerrainDB.TREE, TerrainDB.OBSTACLE]:
-				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), obstacle_rect, false, Color(1, 1, 1, _scenery_alpha(cell) if value == TerrainDB.TREE else 1.0))
+				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), obstacle_rect, false)
 			if value == TerrainDB.BLUE_FIRE or burning_cells.has(cell): _draw_tile_fire(cell,false)
 			if chests.has(cell): draw_texture_rect(SampleArt.tile(14), Rect2(center + Vector2(-24,-30), Vector2(48,48)), false)
 			for current in [nest] + extra_nests:
@@ -302,8 +310,9 @@ func _draw() -> void:
 		if GridSpec.is_inside(badge.get("cell", Vector2i(-1,-1))): draw_string(font, cell_center(badge["cell"]) + Vector2(-25,-27), String(badge.get("text", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIKit.ACCENT)
 	if GridSpec.is_inside(hover_cell): _iso_outline(hover_cell, Color.WHITE, 2)
 	for unit in units:
-		if unit.is_on_board():
+		if unit.is_on_board() or (health_feedback.trails.has(unit.uid) and GridSpec.is_inside(unit.cell)):
 			_draw_health_bar(unit)
+		if unit.is_on_board():
 			var center := cell_center(unit.cell) + Vector2(presentation_offsets.get(unit.uid, Vector2.ZERO))
 			StatusVisuals.paint_icons(self, Vector2(center.x + 25, _unit_head_y(unit)), unit)
 	# Draw the pointer last so tall scenery cannot hide the selection marker.
@@ -314,7 +323,6 @@ func _draw() -> void:
 		var head_y: float = center.y-66+SelectionEffect.silhouette(index)["top"] if index >= 0 else center.y-27
 		SelectionEffect.draw_arrow(self,Vector2(center.x,head_y-22+[0,-2,-4,-2][int(selection_clock/0.18)]))
 
-# Grid-relative left and upper-left cells behind tall scenery.
 func face_skill(info: Dictionary, state: BattleState) -> void:
 	var actor := state.unit_by_uid(int(info.get("uid", -1)))
 	if actor == null: return
@@ -333,12 +341,6 @@ func face_skill(info: Dictionary, state: BattleState) -> void:
 	facing_right[actor.uid] = delta.x > 0 if absf(delta.x) > 0.01 else delta.y < 0
 	queue_redraw()
 
-func _scenery_alpha(cell: Vector2i) -> float:
-	for unit in units:
-		if unit.is_on_board() and unit.cell in [cell + Vector2i(0, -1), cell + Vector2i(1, -1)]:
-			return 0.35
-	return 1.0
-
 func _unit_head_y(unit: CombatUnit) -> float:
 	var center := cell_center(unit.cell) + Vector2(presentation_offsets.get(unit.uid, Vector2.ZERO))
 	var index := SampleArt.unit_index(unit.species_id)
@@ -350,6 +352,9 @@ func _draw_health_bar(unit: CombatUnit) -> void:
 	var bar_rect := Rect2(center.x - 22, _unit_head_y(unit) - 12, 44, 7)
 	draw_rect(bar_rect, Color(0.1, 0.1, 0.1, 0.85))
 	var ratio := clampf(float(unit.hp) / float(maxi(1, unit.max_hp)), 0, 1)
+	var trailing := health_feedback.displayed_ratio(unit.uid, ratio)
+	if trailing > ratio:
+		draw_rect(Rect2(bar_rect.position + Vector2(bar_rect.size.x * ratio, 0), Vector2(bar_rect.size.x * (trailing - ratio), bar_rect.size.y)), Color("ff7975"))
 	var hp_color := Color(0.45, 0.85, 0.45)
 	if ratio <= 0.34:
 		hp_color = Color(0.9, 0.35, 0.3)

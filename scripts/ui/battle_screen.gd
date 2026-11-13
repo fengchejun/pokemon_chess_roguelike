@@ -250,6 +250,9 @@ func _on_enemy_captured(_entry: Dictionary) -> void:
 
 
 func _process(_delta: float) -> void:
+	if board != null:
+		board.feedback_speed = app.battle_playback_speed
+		board.feedback_paused = modal_layer != null
 	if battle_notice != null:
 		battle_notice.playback_speed = app.battle_playback_speed
 	if speech_layer != null:

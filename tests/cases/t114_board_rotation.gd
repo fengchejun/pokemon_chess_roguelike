@@ -16,9 +16,6 @@ func run(t: TestContext) -> void:
 		var delta := BoardView.cell_center(actor.cell + dir) - BoardView.cell_center(actor.cell)
 		t.eq(board.facing_right[actor.uid], delta.x > 0, "施法方向决定左右朝向")
 	board.units = [actor]
-	t.eq(board._scenery_alpha(actor.cell + Vector2i(0, 1)), 0.35, "画面左邻单位使遮挡物虚化")
-	t.eq(board._scenery_alpha(actor.cell + Vector2i(-1, 1)), 0.35, "画面左上邻单位使遮挡物虚化")
-	t.eq(board._scenery_alpha(actor.cell + Vector2i(2, 2)), 1.0, "远离单位保持不透明")
 	for seed_value in 24:
 		var map := MapGenerator.generate(seed_value, 0, 0, ["water", "rock"], "fire")
 		t.eq(map["region"], "火谷", "检查火谷主题")
