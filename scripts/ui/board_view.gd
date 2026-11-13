@@ -15,6 +15,7 @@ const TileFire = preload("res://sample/tile_fire.gd")
 const StatusVisuals = preload("res://scripts/ui/status_visuals.gd")
 const ElectricFlowerArt = preload("res://scripts/ui/electric_flower_art.gd")
 const HealthBarFeedback = preload("res://scripts/ui/health_bar_feedback.gd")
+const FoodBerry = preload("res://assets/pixel_sample/oran-berry.png")
 var health_feedback = HealthBarFeedback.new()
 var feedback_speed := 1.0
 var feedback_paused := false
@@ -291,7 +292,7 @@ func _draw() -> void:
 			var obstacle_rect := Rect2(center + Vector2(-56, -95), Vector2(112, 112)) if value == TerrainDB.TREE else Rect2(center + Vector2(-52, -66), Vector2(104, 96))
 			if value == TerrainDB.ROCK_MOUNTAIN:
 				draw_texture_rect(Materials.tile(9), Rect2(center + Vector2(-55,-94), Vector2(110,120)), false)
-			elif value in [TerrainDB.TREE, TerrainDB.OBSTACLE]:
+			elif value in [TerrainDB.TREE, TerrainDB.OBSTACLE] and not chests.has(cell):
 				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), obstacle_rect, false)
 			if value == TerrainDB.BLUE_FIRE or burning_cells.has(cell): _draw_tile_fire(cell,false)
 			if chests.has(cell): draw_texture_rect(SampleArt.tile(14), Rect2(center + Vector2(-24,-30), Vector2(48,48)), false)
@@ -299,7 +300,7 @@ func _draw() -> void:
 				if current.get("cell", Vector2i(-1,-1)) == cell: _draw_nest_object(font, current)
 			for point in [reward] + extra_rewards:
 				if point.get("cell", Vector2i(-1,-1)) == cell and point.get("state") in ["map", "guarding"]: _draw_star(cell)
-			if cell in food_cells: draw_texture_rect(SampleArt.tile(8), Rect2(center + Vector2(-14,-23), Vector2(28,28)), false)
+			if cell in food_cells: draw_texture_rect(FoodBerry, Rect2(center + Vector2(-24,-32), Vector2(48,48)), false)
 			if electric_flowers.has(cell):
 				ElectricFlowerArt.paint(self, center)
 			if value == TerrainDB.GRASS and actors.is_empty(): Materials.draw_grass(self,center)

@@ -824,7 +824,7 @@ func _rebuild_skill_buttons() -> void:
 		for skill_id in unit.skills:
 			var id := String(skill_id)
 			var def := SkillDB.get_def(id)
-			var button_text := "%s%s（%s）" % [def.get("name", id), "·特殊" if SkillDB.is_special(id) else "", _skill_tag(id, unit)]
+			var button_text := "%s%s（%s）" % [def.get("name", id), "·特殊" if SkillDB.is_special(id) else "", _skill_tag(id, unit, false)]
 			var phase_reason := _skill_phase_block_reason(unit, id)
 			if phase_reason != "":
 				button_text += "·" + phase_reason
@@ -848,6 +848,15 @@ func _rebuild_skill_buttons() -> void:
 				button.tooltip_text += "\n（蒸汽中无法施法）" if state.steam_cells.has(unit.cell) else "\n（当前没有有效目标）"
 			button.pressed.connect(func() -> void: _on_skill_pressed(id))
 			skill_box.add_child(button)
+			var pp := Label.new()
+			pp.name = "SkillPP_%s" % id
+			pp.text = "PP  %d / %d" % [unit.pp_remaining(id), unit.max_pp(id)]
+			pp.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			pp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			pp.add_theme_font_size_override("font_size", 18)
+			var pp_color := UIKit.BAD if unit.pp_remaining(id) <= 0 else Color("f9c76c") if unit.pp_remaining(id) * 4 <= unit.max_pp(id) else Color("93d5ff")
+			pp.add_theme_color_override("font_color", pp_color)
+			skill_box.add_child(pp)
 		var back_button := UIKit.small_button("返回行动")
 		back_button.pressed.connect(_return_to_main_actions)
 		skill_box.add_child(back_button)
@@ -964,10 +973,10 @@ func _skill_phase_block_reason(unit: CombatUnit, skill_id: String = "") -> Strin
 	return ""
 
 
-func _skill_tag(skill_id: String, unit: CombatUnit) -> String:
+func _skill_tag(skill_id: String, unit: CombatUnit, include_pp: bool = true) -> String:
 	var def := SkillDB.get_def(skill_id)
 	var parts: Array = []
-	parts.append("PP %d/%d" % [unit.pp_remaining(skill_id), unit.max_pp(skill_id)])
+	if include_pp: parts.append("PP %d/%d" % [unit.pp_remaining(skill_id), unit.max_pp(skill_id)])
 	var base_damage := int(def.get("damage", 0))
 	base_damage = SkillResolver.upgraded_base_damage(unit, skill_id, base_damage)
 	if String(def.get("element", "")) == "water" and state.mirror_water_travel_active(unit):

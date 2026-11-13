@@ -279,7 +279,8 @@ const PUZZLE_HINTS := [
 ]
 
 static func puzzle_description(node: Dictionary) -> String:
-	return PUZZLE_HINTS[int(node.get("puzzle", 0))] + " 可暂离，地形和损耗保留。"
+	var variant := int(node.get("puzzle", 0))
+	return PUZZLE_HINTS[variant] + " 左岸岩障可用推击填入沟壑。" + ("断桥左岸备用岩障耐久为4，可连续推动。" if variant == 2 else "") + "可暂离，地形和损耗保留。"
 
 static func puzzle_name(node: Dictionary) -> String:
 	return PUZZLE_NAMES[int(node.get("puzzle", 0))]
@@ -328,6 +329,16 @@ static func prepare_map(run: RunState, map: Dictionary) -> void:
 		map["obstacle_cells"] = GridSpec.all_cells().filter(func(cell): return TerrainDB.blocks_move(terrain[GridSpec.index(cell)]))
 		if variant == 0:
 			decorate_terrain(run, map, kind)
+		# Left-bank supplies are placed after decoration so the push lanes remain clear.
+		for y in [2, 4, 6]:
+			for x in [1, 2]:
+				terrain[GridSpec.index(Vector2i(x, y))] = TerrainDB.PLAIN if x == 1 else TerrainDB.OBSTACLE
+		if variant == 2:
+			# Keep the original ice-caster entry free; the spare rock takes three pushes.
+			terrain[GridSpec.index(Vector2i(2, 4))] = TerrainDB.PLAIN
+			terrain[GridSpec.index(Vector2i(1, 4))] = TerrainDB.OBSTACLE
+			map["obstacle_durability"] = {Vector2i(1, 4): 4}
+		map["obstacle_cells"] = GridSpec.all_cells().filter(func(cell): return TerrainDB.blocks_move(terrain[GridSpec.index(cell)]))
 		map["reward"] = {"state": "absent", "cell": Vector2i(-1, -1)}
 		map["extra_rewards"] = []
 		map["food_cells"] = []
