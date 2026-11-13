@@ -12,6 +12,8 @@ const SampleArt = preload("res://sample/pixel_art.gd")
 const SelectionEffect = preload("res://sample/selection_effect.gd")
 const CastWarning = preload("res://sample/cast_warning.gd")
 const TileFire = preload("res://sample/tile_fire.gd")
+const StatusVisuals = preload("res://scripts/ui/status_visuals.gd")
+const ElectricFlowerArt = preload("res://scripts/ui/electric_flower_art.gd")
 
 var biome := "rock" # Presentation only; terrain mechanics remain in TerrainDB.
 var terrain: Array = []
@@ -284,8 +286,7 @@ func _draw() -> void:
 				if point.get("cell", Vector2i(-1,-1)) == cell and point.get("state") in ["map", "guarding"]: _draw_star(cell)
 			if cell in food_cells: draw_texture_rect(SampleArt.tile(8), Rect2(center + Vector2(-14,-23), Vector2(28,28)), false)
 			if electric_flowers.has(cell):
-				draw_circle(center + Vector2(0,-10), 10, Color("f9e2af"))
-				draw_string(font, center + Vector2(-7,-5), "电", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("313244"))
+				ElectricFlowerArt.paint(self, center)
 			if value == TerrainDB.GRASS and actors.is_empty(): Materials.draw_grass(self,center)
 			for unit in actors: _draw_unit(font, unit)
 			if actors.is_empty() and (value == TerrainDB.BLUE_FIRE or burning_cells.has(cell)): _draw_tile_fire(cell,true)
@@ -556,7 +557,7 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		var flip := bool(facing_right.get(unit.uid, unit.side == "player"))
 		if flip: draw_set_transform(Vector2(center.x * 2, 0), 0, Vector2(-1, 1))
 		SelectionEffect.draw_outline(self,art_index,center+Vector2(-48,-66),unit.side,unit.uid==selected_uid)
-		draw_texture_rect(SampleArt.tile(art_index), Rect2(center + Vector2(-48, -66), Vector2(96, 96)), false)
+		draw_texture_rect(StatusVisuals.texture(art_index, StatusVisuals.tint(unit)), Rect2(center + Vector2(-48, -66), Vector2(96, 96)), false)
 		draw_set_transform(Vector2.ZERO)
 	else:
 		var radius := 26.0
@@ -564,6 +565,8 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		var fill := Elements.color_of(unit.element)
 		if unit.is_trainer:
 			fill = Color(0.72, 0.7, 0.62)
+		var status_tint := StatusVisuals.tint(unit)
+		fill = fill.lerp(Color(status_tint.r, status_tint.g, status_tint.b), status_tint.a)
 		if unit.is_trainer:
 			draw_rect(Rect2(center - Vector2(radius - 3, radius - 3), Vector2((radius - 3) * 2, (radius - 3) * 2)), fill)
 			draw_rect(Rect2(center - Vector2(radius - 3, radius - 3), Vector2((radius - 3) * 2, (radius - 3) * 2)), body_border, false, 3.0)
