@@ -2309,7 +2309,22 @@ func preview_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary)
 	var clone_unit := clone.unit_by_uid(unit.uid)
 	if clone_unit == null:
 		return {"ok": false}
-	return SkillResolver.apply(clone, clone_unit, skill_id, target_entry, true)
+	var result := SkillResolver.apply(clone, clone_unit, skill_id, target_entry, true)
+	# Compare the simulated HP so shields, collateral hits and displacement agree
+	# with the same preview used for targeting, without changing the live state.
+	var hp_damage := {}
+	if bool(result.get("ok", false)):
+		if bool(SkillDB.get_def(skill_id).get("channel", false)) and not clone.is_free_exploration():
+			for cast in clone.pending_casts:
+				if int(cast["uid"]) == unit.uid and String(cast["skill_id"]) == skill_id:
+					SkillResolver.resolve_channel(clone, clone_unit, skill_id, cast["cells"])
+					break
+		for original in units:
+			var projected := clone.unit_by_uid(original.uid)
+			if projected != null and projected.hp < original.hp:
+				hp_damage[original.uid] = original.hp - maxi(0, projected.hp)
+	result["hp_damage"] = hp_damage
+	return result
 
 
 func cast_skill(unit: CombatUnit, skill_id: String, target_entry: Dictionary) -> Dictionary:

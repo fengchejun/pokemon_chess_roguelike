@@ -18,6 +18,7 @@ const HealthBarFeedback = preload("res://scripts/ui/health_bar_feedback.gd")
 var health_feedback = HealthBarFeedback.new()
 var feedback_speed := 1.0
 var feedback_paused := false
+var damage_preview: Dictionary = {}
 
 var biome := "rock" # Presentation only; terrain mechanics remain in TerrainDB.
 var terrain: Array = []
@@ -80,6 +81,11 @@ func _process(delta: float) -> void:
 
 
 func _ready() -> void:
+	mouse_exited.connect(func():
+		hover_cell = Vector2i(-1, -1)
+		cell_hovered.emit(hover_cell)
+		queue_redraw()
+	)
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	custom_minimum_size = Vector2(896, 654)
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -187,6 +193,7 @@ func set_map_preview(map: Dictionary, preview_units: Array = []) -> void:
 
 
 func clear_overlays() -> void:
+	damage_preview.clear()
 	movement_cells = {}
 	enemy_cells_view = []
 	attack_cells = []
@@ -361,6 +368,21 @@ func _draw_health_bar(unit: CombatUnit) -> void:
 	elif ratio <= 0.67:
 		hp_color = Color(0.95, 0.75, 0.3)
 	draw_rect(Rect2(bar_rect.position, Vector2(bar_rect.size.x * ratio, bar_rect.size.y)), hp_color)
+	var interval := damage_preview_interval(unit)
+	if interval.y > interval.x:
+		var predicted := Rect2(bar_rect.position + Vector2(bar_rect.size.x * interval.x, 0), Vector2(bar_rect.size.x * (interval.y - interval.x), bar_rect.size.y))
+		draw_rect(predicted, Color("ffad42"))
+		draw_rect(predicted, Color("fff0b8"), false, 1)
+		# Small notches distinguish prediction from the solid red damage trail.
+		var notch := predicted.position.x + 3
+		while notch < predicted.end.x - 1:
+			draw_line(Vector2(notch, predicted.position.y + 2), Vector2(notch, predicted.end.y - 2), Color("754329"), 1)
+			notch += 5
+
+func damage_preview_interval(unit: CombatUnit) -> Vector2:
+	var predicted := maxi(0, int(damage_preview.get(unit.uid, 0)))
+	var maximum := float(maxi(1, unit.max_hp))
+	return Vector2(clampf(float(unit.hp - predicted) / maximum, 0, 1), clampf(float(unit.hp) / maximum, 0, 1))
 
 func _draw_tile_fire(cell: Vector2i, front: bool) -> void:
 	TileFire.paint(self,cell_center(cell),cell,int(fire_clock/TileFire.FRAME_SECONDS),terrain[GridSpec.index(cell)]==TerrainDB.BLUE_FIRE,front)

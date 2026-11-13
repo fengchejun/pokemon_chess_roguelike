@@ -1301,6 +1301,8 @@ func _enter_boss_portal() -> void:
 	refresh_all()
 
 func _on_board_hovered(cell: Vector2i) -> void:
+	board.damage_preview.clear()
+	board.queue_redraw()
 	if busy or _playback_active() or state.ended:
 		_show_terrain(cell)
 		return
@@ -1385,6 +1387,7 @@ func _on_board_hovered(cell: Vector2i) -> void:
 
 
 func _preview_overlays(preview: Dictionary) -> void:
+	board.damage_preview = preview.get("hp_damage", {}).duplicate()
 	board.ray_cells = preview.get("ray_cells", [])
 	board.area_cells = preview.get("area_cells", [])
 	for hit in preview.get("hits", []):
