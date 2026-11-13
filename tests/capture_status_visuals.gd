@@ -35,8 +35,14 @@ func capture() -> void:
 		root.add_child(label)
 	for cell in [Vector2i(0,2),Vector2i(0,4),Vector2i(0,6)]:
 		board.electric_flowers[cell] = true
+	var combined := CombatUnit.make("fire_wild1", "player", 99)
+	combined.cell = Vector2i(1, 7)
+	combined.imprison_ticks = 1
+	combined.shock_ticks = 1
+	combined.parasite_source_uid = 1
+	board.units.append(combined)
 	var title := Label.new()
-	title.text = "电电花与异常状态染色预览"
+	title.text = "电电花与异常状态外观预览"
 	title.position = Vector2(30, 20)
 	title.add_theme_font_size_override("font_size", 24)
 	root.add_child(title)

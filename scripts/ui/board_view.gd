@@ -302,7 +302,10 @@ func _draw() -> void:
 		if GridSpec.is_inside(badge.get("cell", Vector2i(-1,-1))): draw_string(font, cell_center(badge["cell"]) + Vector2(-25,-27), String(badge.get("text", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIKit.ACCENT)
 	if GridSpec.is_inside(hover_cell): _iso_outline(hover_cell, Color.WHITE, 2)
 	for unit in units:
-		if unit.is_on_board(): _draw_health_bar(unit)
+		if unit.is_on_board():
+			_draw_health_bar(unit)
+			var center := cell_center(unit.cell) + Vector2(presentation_offsets.get(unit.uid, Vector2.ZERO))
+			StatusVisuals.paint_icons(self, Vector2(center.x + 25, _unit_head_y(unit)), unit)
 	# Draw the pointer last so tall scenery cannot hide the selection marker.
 	for unit in units:
 		if unit.uid != selected_uid or not unit.is_on_board(): continue
@@ -587,8 +590,6 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		badges_text += "护"
 	if unit.burn_ticks > 0:
 		badges_text += "灼"
-	if unit.parasite_source_uid >= 0:
-		badges_text += "寄"
 	if unit.fire_amp_stacks > 0:
 		badges_text += "增"
 	if unit.mirror_until_round > 0 and unit.mirror_until_round >= battle_round:
@@ -599,8 +600,6 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 		badges_text += "盾"
 	if unit.root_pending or unit.move_cancelled:
 		badges_text += "定"
-	if unit.imprison_ticks > 0:
-		badges_text += "禁"
 	if unit.slow_ticks > 0:
 		badges_text += "缓"
 	if unit.frozen:

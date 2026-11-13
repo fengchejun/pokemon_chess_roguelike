@@ -18,6 +18,19 @@ func run(t: TestContext) -> void:
 	t.eq(Visuals.tint(unit), burn, "控制解除后显示仍存在的灼烧")
 	unit.burn_ticks = 0
 	t.eq(Visuals.tint(unit).a, 0.0, "状态全部解除恢复原色")
+	unit.imprison_ticks = 2
+	unit.vine_ticks = 1
+	unit.shock_ticks = 2
+	unit.parasite_source_uid = 99
+	t.eq(Visuals.tint(unit).a, 0.0, "禁锢感电寄生不再染色")
+	t.eq(Visuals.icons(unit), ["bind", "shock", "parasite"], "三种图标可并排且禁锢来源不重复")
+	unit.burn_ticks = 1
+	t.eq(Visuals.tint(unit), burn, "图标状态不遮盖其他状态染色")
+	unit.imprison_ticks = 0
+	unit.vine_ticks = 0
+	unit.shock_ticks = 0
+	unit.parasite_source_uid = -1
+	t.eq(Visuals.icons(unit), [], "状态解除同步移除图标")
 	var original: AtlasTexture = BoardView.SampleArt.tile(105)
 	var source := original.atlas.get_image().get_region(Rect2i(original.region))
 	var painted := Visuals.texture(105, burn)
