@@ -250,10 +250,6 @@ func _draw() -> void:
 	for cell in attack_cells:
 		_draw_fill(cell, Color(1, 0.85, 0.4, 0.35))
 		_iso_outline(cell, Color("f9e2af"), 2)
-	for path in [path_cells, ray_cells]:
-		var points := PackedVector2Array()
-		for cell in path: points.append(cell_center(cell))
-		if points.size() > 1: draw_polyline(points, Color("f9e2af"), 3)
 	for strike in storm_strikes:
 		CastWarning.paint(self,_surface_shape(strike["cell"]),false,true,int(selection_clock/0.18)%2==0)
 	for cast in pending_casts:
@@ -276,9 +272,9 @@ func _draw() -> void:
 					draw_rect(Rect2(center+offset,Vector2(22,12)),Color(0.85,0.9,0.96,0.22))
 			var obstacle_rect := Rect2(center + Vector2(-56, -95), Vector2(112, 112)) if value == TerrainDB.TREE else Rect2(center + Vector2(-52, -66), Vector2(104, 96))
 			if value == TerrainDB.ROCK_MOUNTAIN:
-				draw_texture_rect(Materials.tile(9), Rect2(center + Vector2(-55,-94), Vector2(110,120)), false)
+				draw_texture_rect(Materials.tile(9), Rect2(center + Vector2(-55,-94), Vector2(110,120)), false, Color(1, 1, 1, _scenery_alpha(cell)))
 			elif value in [TerrainDB.TREE, TerrainDB.OBSTACLE]:
-				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), obstacle_rect, false)
+				draw_texture_rect(SampleArt.tile(12 if value == TerrainDB.TREE else 13), obstacle_rect, false, Color(1, 1, 1, _scenery_alpha(cell) if value == TerrainDB.TREE else 1.0))
 			if value == TerrainDB.BLUE_FIRE or burning_cells.has(cell): _draw_tile_fire(cell,false)
 			if chests.has(cell): draw_texture_rect(SampleArt.tile(14), Rect2(center + Vector2(-24,-30), Vector2(48,48)), false)
 			for current in [nest] + extra_nests:
@@ -293,19 +289,50 @@ func _draw() -> void:
 			for unit in actors: _draw_unit(font, unit)
 			if actors.is_empty() and (value == TerrainDB.BLUE_FIRE or burning_cells.has(cell)): _draw_tile_fire(cell,true)
 	_draw_mainline_markers(font)
+	for path in [path_cells, ray_cells]:
+		var points := PackedVector2Array()
+		for cell in path: points.append(cell_center(cell))
+		if points.size() > 1: draw_polyline(points, Color("f9e2af"), 3)
 	for slide in ice_slides: _draw_ice_slide_arrow(slide)
 	for arrow in arrows: _draw_arrow(arrow)
 	for marker in markers: _draw_marker(font, marker)
 	for badge in badges:
 		if GridSpec.is_inside(badge.get("cell", Vector2i(-1,-1))): draw_string(font, cell_center(badge["cell"]) + Vector2(-25,-27), String(badge.get("text", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIKit.ACCENT)
 	if GridSpec.is_inside(hover_cell): _iso_outline(hover_cell, Color.WHITE, 2)
+	for unit in units:
+		if unit.is_on_board(): _draw_health_bar(unit)
 	# Draw the pointer last so tall scenery cannot hide the selection marker.
 	for unit in units:
 		if unit.uid != selected_uid or not unit.is_on_board(): continue
 		var center := cell_center(unit.cell)+Vector2(presentation_offsets.get(unit.uid,Vector2.ZERO))
 		var index := SampleArt.unit_index(unit.species_id)
 		var head_y: float = center.y-66+SelectionEffect.silhouette(index)["top"] if index >= 0 else center.y-27
-		SelectionEffect.draw_arrow(self,Vector2(center.x,head_y-7+[0,-2,-4,-2][int(selection_clock/0.18)]))
+		SelectionEffect.draw_arrow(self,Vector2(center.x,head_y-22+[0,-2,-4,-2][int(selection_clock/0.18)]))
+
+# Grid-relative left and upper-left cells behind tall scenery.
+func _scenery_alpha(cell: Vector2i) -> float:
+	for unit in units:
+		if unit.is_on_board() and unit.cell in [cell + Vector2i(-1, 0), cell + Vector2i(-1, -1)]:
+			return 0.35
+	return 1.0
+
+func _unit_head_y(unit: CombatUnit) -> float:
+	var center := cell_center(unit.cell) + Vector2(presentation_offsets.get(unit.uid, Vector2.ZERO))
+	var index := SampleArt.unit_index(unit.species_id)
+	return center.y - 66 + float(SelectionEffect.silhouette(index)["top"]) if index >= 0 else center.y - 27
+
+func _draw_health_bar(unit: CombatUnit) -> void:
+	var center := cell_center(unit.cell) + Vector2(presentation_offsets.get(unit.uid, Vector2.ZERO))
+	# 生命条
+	var bar_rect := Rect2(center.x - 22, _unit_head_y(unit) - 12, 44, 7)
+	draw_rect(bar_rect, Color(0.1, 0.1, 0.1, 0.85))
+	var ratio := clampf(float(unit.hp) / float(maxi(1, unit.max_hp)), 0, 1)
+	var hp_color := Color(0.45, 0.85, 0.45)
+	if ratio <= 0.34:
+		hp_color = Color(0.9, 0.35, 0.3)
+	elif ratio <= 0.67:
+		hp_color = Color(0.95, 0.75, 0.3)
+	draw_rect(Rect2(bar_rect.position, Vector2(bar_rect.size.x * ratio, bar_rect.size.y)), hp_color)
 
 func _draw_tile_fire(cell: Vector2i, front: bool) -> void:
 	TileFire.paint(self,cell_center(cell),cell,int(fire_clock/TileFire.FRAME_SECONDS),terrain[GridSpec.index(cell)]==TerrainDB.BLUE_FIRE,front)
@@ -525,16 +552,6 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	if ground_value == TerrainDB.BLUE_FIRE or burning_cells.has(unit.cell): _draw_tile_fire(unit.cell,true)
 	if unit.is_boss:
 		draw_string(font, center + Vector2(-30, -30), "首", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.8, 0.2))
-	# 生命条
-	var bar_rect := Rect2(center.x - 22, center.y + 20, 44, 7)
-	draw_rect(bar_rect, Color(0.1, 0.1, 0.1, 0.85))
-	var ratio := clampf(float(unit.hp) / float(maxi(1, unit.max_hp)), 0, 1)
-	var hp_color := Color(0.45, 0.85, 0.45)
-	if ratio <= 0.34:
-		hp_color = Color(0.9, 0.35, 0.3)
-	elif ratio <= 0.67:
-		hp_color = Color(0.95, 0.75, 0.3)
-	draw_rect(Rect2(bar_rect.position, Vector2(bar_rect.size.x * ratio, bar_rect.size.y)), hp_color)
 	# 状态徽章
 	var badges_text := ""
 	if unit.guard_nest.x >= 0 and GridSpec.manhattan(unit.cell, unit.guard_nest) == 1 and not unit.frozen and unit.paralyzed_ticks <= 0:

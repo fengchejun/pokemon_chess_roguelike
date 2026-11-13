@@ -11,7 +11,7 @@ const REGION_WEIGHTS := {
 	"草原": {"ground": 49, "water": 12, "fragile": 5, "rock": 8, "plant": 10, "grass": 16},
 	"溪谷": {"ground": 49, "water": 22, "fragile": 5, "rock": 8, "plant": 10, "grass": 6},
 	"密林": {"ground": 42, "water": 8, "fragile": 4, "rock": 8, "plant": 22, "grass": 16},
-	"火谷": {"ground": 49, "water": 4, "fragile": 5, "rock": 20, "plant": 11, "grass": 4, "blue_fire": 7},
+	"火谷": {"ground": 64, "water": 0, "fragile": 5, "rock": 20, "plant": 0, "grass": 4, "blue_fire": 7},
 	"岩窟": {"ground": 52, "water": 8, "fragile": 8, "rock": 20, "plant": 8, "grass": 4},
 	"深潭": {"ground": 45, "water": 27, "fragile": 5, "rock": 9, "plant": 8, "grass": 6},
 }
@@ -277,6 +277,9 @@ static func _scatter(terrain: Array, protected: Dictionary, rng: RandomNumberGen
 				local["rock"] = int(local["rock"]) + 12
 		if GridSpec.is_inside(mountain_cell) and GridSpec.manhattan(cell, mountain_cell) == 1:
 			local["rock"] = 0
+			local["plant"] = 0
+		if fire_valley:
+			local["water"] = 0
 			local["plant"] = 0
 		match _weighted_pick(local, rng):
 			"water": terrain[GridSpec.index(cell)] = TerrainDB.WATER
