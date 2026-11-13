@@ -93,6 +93,7 @@ func _start() -> void:
 	visual = current["before"]
 	var info: Dictionary = current["info"]
 	var kind := String(info["kind"])
+	if kind == "skill": screen.board.face_skill(info, visual)
 	var declare := kind == "skill" and bool(SkillDB.get_def(String(info.get("skill", ""))).get("channel", false)) and not bool(info.get("release", false))
 	duration = 0.55 if declare else 1.0 if kind == "skill" else 0.22 if kind == "move" else 0.35
 	var impact := 0.25 if declare else 0.5 if kind == "skill" else 0.12 if kind == "move" else 0.04

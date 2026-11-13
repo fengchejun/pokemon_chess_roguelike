@@ -53,6 +53,7 @@ var arrows: Array = []
 var badges: Array = []
 
 var presentation_offsets: Dictionary = {} # 只用于展示位移与回弹，不改变单位格子。
+var facing_right: Dictionary = {} # Presentation only; retained between board refreshes.
 var selected_uid: int = -1
 var hover_cell := Vector2i(-1, -1)
 var selection_clock := 0.0
@@ -239,7 +240,7 @@ func _draw() -> void:
 		for x in 8:
 			var y := sum - x
 			if y < 0 or y > 7: continue
-			var cell := Vector2i(x, y)
+			var cell := Vector2i(7 - y, x)
 			var value: int = terrain[GridSpec.index(cell)]
 			_draw_clean_ground(cell, value)
 	for cell in deploy_cells: _iso_outline(cell, Color("75bda1"), 1)
@@ -263,7 +264,7 @@ func _draw() -> void:
 		for x in 8:
 			var y := sum - x
 			if y < 0 or y > 7: continue
-			var cell := Vector2i(x, y)
+			var cell := Vector2i(7 - y, x)
 			var center := cell_center(cell)
 			var value: int = terrain[GridSpec.index(cell)]
 			var actors := units.filter(func(u): return u.is_on_board() and u.cell == cell)
@@ -310,9 +311,27 @@ func _draw() -> void:
 		SelectionEffect.draw_arrow(self,Vector2(center.x,head_y-22+[0,-2,-4,-2][int(selection_clock/0.18)]))
 
 # Grid-relative left and upper-left cells behind tall scenery.
+func face_skill(info: Dictionary, state: BattleState) -> void:
+	var actor := state.unit_by_uid(int(info.get("uid", -1)))
+	if actor == null: return
+	var entry: Dictionary = info.get("target", {})
+	var target: Vector2i = entry.get("cell", actor.cell)
+	if entry.has("dir"): target = actor.cell + Vector2i(entry["dir"])
+	if target == actor.cell:
+		var cells: Array = info.get("cells", [])
+		for cell in cells:
+			if cell != actor.cell:
+				target = cell
+				break
+	if target == actor.cell: return
+	var delta := cell_center(target) - cell_center(actor.cell)
+	# The four board axes project diagonally: upper/right face right.
+	facing_right[actor.uid] = delta.x > 0 if absf(delta.x) > 0.01 else delta.y < 0
+	queue_redraw()
+
 func _scenery_alpha(cell: Vector2i) -> float:
 	for unit in units:
-		if unit.is_on_board() and unit.cell in [cell + Vector2i(-1, 0), cell + Vector2i(-1, -1)]:
+		if unit.is_on_board() and unit.cell in [cell + Vector2i(0, -1), cell + Vector2i(1, -1)]:
 			return 0.35
 	return 1.0
 
@@ -530,8 +549,11 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	var art_index := SampleArt.unit_index(unit.species_id)
 	if art_index >= 0:
 		draw_rect(Rect2(center + Vector2(-29, 17), Vector2(58, 8)), Color(0.04, 0.04, 0.07, 0.5))
+		var flip := bool(facing_right.get(unit.uid, unit.side == "player"))
+		if flip: draw_set_transform(Vector2(center.x * 2, 0), 0, Vector2(-1, 1))
 		SelectionEffect.draw_outline(self,art_index,center+Vector2(-48,-66),unit.side,unit.uid==selected_uid)
 		draw_texture_rect(SampleArt.tile(art_index), Rect2(center + Vector2(-48, -66), Vector2(96, 96)), false)
+		draw_set_transform(Vector2.ZERO)
 	else:
 		var radius := 26.0
 		if unit.uid == selected_uid: body_border = SelectionEffect.GOLD
