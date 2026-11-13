@@ -548,7 +548,11 @@ func _draw_unit(font: Font, unit: CombatUnit) -> void:
 	var ground_value: int = terrain[GridSpec.index(unit.cell)] if terrain.size() == 64 else TerrainDB.PLAIN
 	var art_index := SampleArt.unit_index(unit.species_id)
 	if art_index >= 0:
-		draw_rect(Rect2(center + Vector2(-29, 17), Vector2(58, 8)), Color(0.04, 0.04, 0.07, 0.5))
+		# A small, light oval grounds the sprite without a hard black strip.
+		draw_set_transform(center + Vector2(0, 21), 0, Vector2(1, 0.2))
+		draw_circle(Vector2.ZERO, 21, Color(0.04, 0.04, 0.07, 0.18))
+		draw_circle(Vector2.ZERO, 16, Color(0.04, 0.04, 0.07, 0.08))
+		draw_set_transform(Vector2.ZERO)
 		var flip := bool(facing_right.get(unit.uid, unit.side == "player"))
 		if flip: draw_set_transform(Vector2(center.x * 2, 0), 0, Vector2(-1, 1))
 		SelectionEffect.draw_outline(self,art_index,center+Vector2(-48,-66),unit.side,unit.uid==selected_uid)
